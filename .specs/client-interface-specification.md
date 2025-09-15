@@ -1,5 +1,20 @@
 # Client Interface Specification
 
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Client Configuration](#client-configuration)
+4. [Comprehensive Examples](#comprehensive-examples)
+5. [Optional Provider & Wallet Design](#optional-provider--wallet-design-benefits)
+6. [Best Practices](#best-practices)
+7. [Core Interfaces](#core-interfaces)
+8. [UTxO-Based Transaction Building](#utxo-based-transaction-building)
+9. [Integration Patterns](#integration-patterns)
+10. [Migration Guide](#migration-guide)
+11. [Future Enhancements](#future-enhancements)
+12. [Conclusion](#conclusion)
+
 ## Overview
 
 The Evolution SDK Client interface is a unified API that combines blockchain data access (Provider), wallet operations (Wallet), and transaction building capabilities into a single, cohesive interface. Inspired by Viem's design patterns, the Client provides a fluent API for interacting with the Cardano blockchain.
@@ -11,34 +26,8 @@ The Client interface serves as the primary entry point for developers, abstracti
 ```mermaid
 graph TB
     Client --> Provider
-    Client --> Walle### Manual Transaction Control
-
-```typescript
-// Build and inspect before signing
-const signBuilder = await client
-  .newTx()
-  .payToAddress(recipientAddress, Value.lovelace(1000000n))
-  .build({
-    coinSelection: "optimal",
-    feeMultiplier: 1.1 // 10% fee buffer
-  })
-
-console.log(`Estimated fee: ${signBuilder.cost.fee}`)
-console.log(`Transaction inputs: ${signBuilder.transaction.body.inputs.length}`)
-
-// Sign when ready
-const submitBuilder = await signBuilder.sign()
-
-// Optionally simulate before submitting
-const simulation = await submitBuilder.simulate()
-if (!simulation.isValid) {
-  throw new Error(`Transaction invalid: ${simulation.errors?.join(', ')}`)
-}
-
-// Submit to network
-const txHash = await submitBuilder.submit()
-console.log(`Submitted: ${txHash}`)
-```> TransactionBuilder
+    Client --> Wallet
+    Client --> TransactionBuilder
     Provider --> Blockchain[Blockchain Data]
     Wallet --> Keys[Key Management]
     TransactionBuilder --> Transaction[Transaction Construction]
@@ -51,6 +40,29 @@ The Evolution SDK Client provides built-in support for popular Cardano providers
 ### Built-in Provider Support
 
 ```typescript
+// Create clients with built-in provider support and just an API key
+const kupmiosClient = createKupmiosClient({
+  apiKey: "your-kupmios-api-key",
+  network: "mainnet",
+  wallet: { type: "seed", mnemonic: "..." }
+})
+
+const blockfrostClient = createBlockfrostClient({
+  apiKey: "your-blockfrost-project-id", 
+  network: "mainnet",
+  wallet: { type: "cip30", walletName: "nami" }
+})
+
+const koiosClient = createKoiosClient({
+  network: "mainnet", // API key optional for public instances
+  wallet: { type: "readOnly", address: "addr1..." }
+})
+
+const maestroClient = createMaestroClient({
+  apiKey: "your-maestro-api-key",
+  network: "mainnet",
+  wallet: { type: "privateKey", privateKey: "..." }
+})
 ```
 
 ## Comprehensive Examples
@@ -234,28 +246,28 @@ const readOnlyClient = createKupmiosClient({
   }
 })
 
-// ✅ These operations work fine (read-only)
+// Supported read-only operations
 const utxos = await readOnlyClient.getUtxos(someAddress)
 const balance = await readOnlyClient.getWalletUtxos()
 const protocolParams = await readOnlyClient.getProtocolParameters()
 
-// ✅ Can build transactions for analysis
+// Transaction construction for analysis (no signing capability)
 const unsignedTx = await readOnlyClient
   .newTx()
   .payToAddress("addr1...", 1_000_000n)
   .build() // Returns { transaction, cost } - no signing capability
 
-// ❌ These operations cause COMPILE-TIME ERRORS:
+// Operations intentionally unavailable (compile-time errors):
 // readOnlyClient.signTx(transaction)           // Property 'signTx' does not exist
 // readOnlyClient.signMessage(address, payload) // Property 'signMessage' does not exist  
 // readOnlyClient.submitTx(transaction)         // Property 'submitTx' does not exist
 
-// ❌ Transaction builder has no signing methods:
+// Transaction builder has no signing methods:
 // readOnlyClient.newTx().payToAddress(addr, value).sign()    // Property 'sign' does not exist
 // readOnlyClient.newTx().payToAddress(addr, value).submit()  // Property 'submit' does not exist
 // readOnlyClient.newTx().payToAddress(addr, value).buildSignAndSubmit() // Property 'buildSignAndSubmit' does not exist
 
-// ✅ Type-safe comparison - these return different types:
+// Type-safe comparison - these return different types:
 const signingClient: SigningClient = createKupmiosClient({
   apiKey: "key",
   network: "mainnet", 
@@ -294,7 +306,7 @@ The read-only wallet design provides several key advantages:
 2. **Zero Private Key Risk**: No possibility of accidental key exposure in monitoring/analysis code
 3. **Clear Intent**: Code clearly communicates whether signing is intended or not
 4. **Performance**: Read-only wallets are lightweight with no key management overhead
-5. **Flexible Integration**: Perfect for portfolio trackers, block explorers, and analytics tools
+5. **Flexible Integration**: Suitable for portfolio trackers, block explorers, and analytics tools
 
 ```typescript
 // Example: Portfolio tracking service
@@ -311,11 +323,11 @@ class PortfolioTracker {
     
     this.readOnlyClients.set(address, client)
     
-    // ✅ Safe operations only
+  // Available operations only
     const utxos = await client.getWalletUtxos()
     const balance = this.calculateBalance(utxos)
     
-    // ❌ Compiler prevents these dangerous operations:
+  // Unsupported operations (compile-time errors):
     // await client.signTx(transaction)  // Compile error!
     // await client.submitTx(tx)         // Compile error!
     
@@ -339,12 +351,12 @@ const providerOnlyClient = createKupmiosClient({
   // wallet: undefined (explicitly or implicitly)
 })
 
-// ✅ These operations work (provider-only)
+// Provider-only operations
 const protocolParams = await providerOnlyClient.getProtocolParameters()
 const utxos = await providerOnlyClient.getUtxos("addr1...")
 const delegation = await providerOnlyClient.getDelegation(rewardAddress)
 
-// ❌ These operations cause COMPILE-TIME ERRORS:
+// Operations unavailable without wallet (compile-time errors):
 // providerOnlyClient.address()           // Property 'address' does not exist
 // providerOnlyClient.getWalletUtxos()    // Property 'getWalletUtxos' does not exist
 // providerOnlyClient.signTx(tx)          // Property 'signTx' does not exist
@@ -360,19 +372,19 @@ const walletOnlyClient = createClient({
   // provider: undefined (uses default)
 })
 
-// ✅ These operations work (wallet-only with signing)
+// Wallet-only operations (signing enabled)
 const walletAddress = await walletOnlyClient.address()
 const walletUtxos = await walletOnlyClient.getWalletUtxos()
 const signature = await walletOnlyClient.signTx(transaction)
 const txHash = await walletOnlyClient.submitTx(transaction)
 
-// ✅ Can build transactions using wallet UTxOs
+// Transaction construction using wallet UTxOs
 const signedTx = await walletOnlyClient
   .newTx() // Uses wallet's UTxOs automatically
   .payToAddress("addr1...", 1_000_000n)
   .buildSignAndSubmit()
 
-// ❌ These operations cause COMPILE-TIME ERRORS:
+// Operations requiring provider (compile-time errors):
 // walletOnlyClient.getProtocolParameters() // Property 'getProtocolParameters' does not exist
 // walletOnlyClient.getUtxos(address)       // Property 'getUtxos' does not exist
 // walletOnlyClient.getDelegation(addr)     // Property 'getDelegation' does not exist
@@ -387,17 +399,17 @@ const readOnlyWalletOnlyClient = createClient({
   // provider: undefined (uses default)
 })
 
-// ✅ These operations work (wallet read-only only)
+// Read-only wallet operations
 const readOnlyAddress = await readOnlyWalletOnlyClient.address()
 const readOnlyUtxos = await readOnlyWalletOnlyClient.getWalletUtxos()
 
-// ✅ Can build transactions for analysis (no signing)
+// Transaction construction for analysis (no signing)
 const unsignedTx = await readOnlyWalletOnlyClient
   .newTx()
   .payToAddress("addr1...", 1_000_000n)
   .build() // Can only build, not sign or submit
 
-// ❌ These operations cause COMPILE-TIME ERRORS:
+// Operations requiring signing (compile-time errors):
 // readOnlyWalletOnlyClient.signTx(tx)        // Property 'signTx' does not exist
 // readOnlyWalletOnlyClient.submitTx(tx)      // Property 'submitTx' does not exist
 // readOnlyWalletOnlyClient.getUtxos(address) // Property 'getUtxos' does not exist
@@ -408,22 +420,78 @@ const minimalClient = createClient({
   // provider: undefined, wallet: undefined
 })
 
-// ❌ Most operations cause COMPILE-TIME ERRORS:
+// Most operations unavailable at this stage (compile-time errors):
 // minimalClient.getUtxos(address)     // Property 'getUtxos' does not exist
 // minimalClient.address()             // Property 'address' does not exist
 // minimalClient.newTx()               // Property 'newTx' does not exist
 
-// ✅ Can attach services later with type safety
+// Services can be attached later with type safety
 const attachedProviderClient = minimalClient.attachProvider(kupmiosProvider)
 // Now has provider operations but still no wallet operations
 
-const attachedWalletClient = minimalClient.attachWallet(seedWallet)
-// Now has wallet operations but still no provider operations
+// Cannot attach wallet without provider (wallet requires provider)
+// minimalClient.attachWallet(seedWallet)  // This method doesn't exist
 
 const fullClient = minimalClient.attach(kupmiosProvider, seedWallet)
 // Now has both provider and wallet operations
 
-// 5. Type-safe progressive enhancement
+// 5. One Provider, Multiple Wallets Pattern
+// Shared provider across multiple wallet clients
+const sharedProvider = createKupmiosProvider({
+  apiKey: "your-kupmios-api-key"
+})
+
+// Create provider-only client
+const providerClient = createClient({
+  network: "mainnet",
+  provider: { type: "custom", provider: sharedProvider }
+})
+
+// Attach different wallets to the same provider
+const userWallet1 = createSeedWallet({ mnemonic: "user1 mnemonic..." })
+const userWallet2 = createSeedWallet({ mnemonic: "user2 mnemonic..." })
+const readOnlyWallet = createReadOnlyWallet({ address: "addr1..." })
+
+const client1 = providerClient.attachWallet(userWallet1) // SigningClient
+const client2 = providerClient.attachWallet(userWallet2) // SigningClient  
+const client3 = providerClient.attachWallet(readOnlyWallet) // ReadOnlyClient
+
+// All clients share the same provider instance and connection
+// Appropriate for services managing multiple user wallets
+
+// Example: Multi-user transaction service
+class MultiUserTransactionService {
+  private providerClient: ProviderOnlyClient
+  private userClients: Map<string, SigningClient> = new Map()
+
+  constructor(apiKey: string) {
+    this.providerClient = createKupmiosClient({
+      apiKey,
+      network: "mainnet"
+      // No wallet - provider only
+    })
+  }
+
+  addUser(userId: string, mnemonic: string) {
+    const wallet = createSeedWallet({ mnemonic })
+    const client = this.providerClient.attachWallet(wallet)
+    this.userClients.set(userId, client)
+  }
+
+  async sendPayment(fromUserId: string, toAddress: string, amount: bigint) {
+    const client = this.userClients.get(fromUserId)
+    if (!client) throw new Error("User not found")
+    
+    return await client
+      .newTx()
+      .payToAddress(toAddress, amount)
+      .buildSignAndSubmit()
+  }
+
+  // All users share the same provider connection
+}
+
+// 6. Type-safe progressive enhancement
 function handleClientByCapability(client: unknown) {
   if ('getUtxos' in client && 'signTx' in client) {
     // TypeScript knows this is a SigningClient
@@ -502,10 +570,10 @@ class AnalyticsService {
   }
   
   async analyzeAddress(address: string) {
-    // ✅ Can access blockchain data
+  // Access to blockchain data
     const utxos = await this.client.getUtxos(address)
     
-    // ❌ Compiler prevents dangerous operations
+  // Restricted operations prevented at compile time
     // this.client.signTx(tx)  // Compile error!
     
     return this.processUtxos(utxos)
@@ -525,10 +593,10 @@ class SigningService {
   }
   
   async signTransaction(tx: Transaction.Transaction) {
-    // ✅ Can sign with wallet
+  // Supports signing
     return await this.client.signTx(tx)
     
-    // ✅ Can also access blockchain data when needed
+  // Also provides blockchain data access
     return await this.client.getUtxos(await this.client.address())
   }
 }
@@ -556,10 +624,10 @@ class MinimalService {
 
 | Client Type | Provider | Wallet | Use Cases |
 |-------------|----------|---------|-----------|
-| `SigningClient` | ✅ | ✅ Signing | Full DApp functionality, wallet applications |
-| `ReadOnlyClient` | ✅ | ✅ Read-only | Portfolio tracking, transaction analysis |
-| `ProviderOnlyClient` | ✅ | ❌ | Block explorers, analytics services, monitoring |
-| `MinimalClient` | ❌ | ❌ | Configuration services, dependency injection |
+| `SigningClient` | Yes | Yes (Signing) | General DApp functionality and wallet-enabled applications |
+| `ReadOnlyClient` | Yes | Yes (Read-only) | Portfolio tracking and transaction analysis |
+| `ProviderOnlyClient` | Yes | No | Block explorers, analytics services, monitoring |
+| `MinimalClient` | No | No | Configuration bootstrapping and dependency injection |
 
 > **Note**: Wallet-only combinations are invalid because wallet operations require blockchain access through a provider.
 
@@ -906,6 +974,8 @@ export function createClient(config: { network: NetworkId, provider: ProviderCon
 export function createClient(config: { network: NetworkId, provider?: undefined, wallet?: undefined, options?: ClientOptions }): MinimalClient
 ```
 
+```typescript
+
 // Fallback for any other combinations
 export function createClient(config: ClientConfig): Client
 
@@ -1046,6 +1116,10 @@ export interface ProviderOnlyClient {
   // Can't create transactions without a wallet
   // NO newTx method
 
+  // Can attach wallets to create full clients (provider + wallet)
+  readonly attachWallet: (wallet: SigningWallet) => SigningClient
+  readonly attachWallet: (wallet: ReadOnlyWallet) => ReadOnlyClient
+
   // Effect namespace (provider only)
   readonly Effect: ProviderOnlyClientEffect
 
@@ -1128,6 +1202,10 @@ export interface ProviderOnlyClientEffect {
   readonly awaitTx: (txHash: string, checkInterval?: number) => Effect.Effect<boolean, ProviderError>
   readonly evaluateTx: (tx: string, additionalUTxOs?: Array<UTxO>) => Effect.Effect<Array<EvalRedeemer>, ProviderError>
   // NO wallet operations, NO newTx
+
+  // Can attach wallets to create full clients (provider + wallet)
+  readonly attachWallet: (wallet: SigningWallet) => ClientEffect
+  readonly attachWallet: (wallet: ReadOnlyWallet) => ReadOnlyClientEffect
 }
 
 // Minimal Effect interface (wallet requires provider)
@@ -2065,14 +2143,14 @@ The Evolution SDK Client interface draws inspiration from Viem's design while ad
 
 ### 1. Choose the Right Provider for Your Needs
 ```typescript
-// ✅ Good: Use built-in provider configuration for simplicity
+// Example: built-in provider configuration for simplicity
 const client = createKupmiosClient({
   apiKey: "your-api-key",
   network: "mainnet",
   wallet: myWallet
 })
 
-// ✅ Good: Use multi-provider setup for production resilience
+// Example: multi-provider setup for production resilience
 const client = createClient({
   provider: {
     type: "multi",
@@ -2085,49 +2163,49 @@ const client = createClient({
   wallet: myWallet
 })
 
-// ❌ Avoid: Manual provider instantiation when built-in support exists
+// Manual provider instantiation when built-in support exists (generally unnecessary)
 const provider = new KupmiosProvider(apiKey, network)
 const client = createClient({ provider: { type: "custom", provider }, wallet })
 ```
 
 ### 2. Use the Client as the Primary Interface
 ```typescript
-// ✅ Good: Use client for all operations
+// Using client for consolidated operations
 const result = await client.getUtxos(address)
 
-// ❌ Avoid: Direct provider/wallet usage when client is available
+// Direct provider/wallet usage when client is available is discouraged
 const result = await client.provider.getUtxos(address)
 ```
 
 ### 2. Choose Appropriate UTxO Management Strategy
 ```typescript
-// ✅ Good: Automatic UTxOs for simple, standalone transactions
+// Automatic UTxO selection for simple, standalone transactions
 const tx = await client
   .newTx()  // Automatically uses wallet.getUtxos()
   .payToAddress(addr1, value1)
   .buildSignAndSubmit()
 
-// ✅ Good: Explicit UTxOs for chaining and complex scenarios
+// Explicit UTxO selection for chaining and complex scenarios
 const walletUtxos = await client.getWalletUtxos()
 const result = await client
   .newTx(walletUtxos)  // Explicit UTxO management
   .payToAddress(addr1, value1)
   .chain()
 
-// ✅ Good: Using chain result for subsequent transactions
+// Using chain result for subsequent transactions
 const nextResult = await client
   .newTx(result.updatedUtxos)  // UTxOs from previous chain
   .payToAddress(addr2, value2)
   .chain()
 
-// ❌ Avoid: Manual UTxO fetching when automatic would work
+// Manual UTxO fetching when automatic selection suffices
 const utxos = await client.getWalletUtxos()
 const tx = await client.newTx(utxos).payToAddress(addr, value).build() // Unnecessary complexity
 ```
 
 ### 3. Leverage Transaction Chaining for Complex Workflows
 ```typescript
-// ✅ Good: Use chaining for multi-step operations
+// Chaining for multi-step operations
 let currentUtxos = await client.getWalletUtxos()
 
 const step1 = await client.newTx(currentUtxos).payToAddress(addr1, val1).chain()
@@ -2141,12 +2219,12 @@ await Promise.all([
   client.submitTx(step3.transaction)
 ])
 
-// ❌ Avoid: Building dependent transactions without proper UTxO management
+// Building dependent transactions without coordinated UTxO management
 ```
 
 ### 4. Handle Errors Appropriately
 ```typescript
-// ✅ Good: Specific error handling
+// Specific error handling
 try {
   const result = await client.newTx(myUtxos)
     .payToAddress(address, value)
@@ -2162,7 +2240,7 @@ try {
 
 ### 5. Use Effect-ts for Complex Workflows
 ```typescript
-// ✅ Good: Use Effect for complex error handling and composition
+// Effect usage for complex error handling and composition
 const transferWorkflow = pipe(
   client.Effect.getUtxos(sourceAddress),
   Effect.flatMap(utxos => {
@@ -2176,6 +2254,262 @@ const transferWorkflow = pipe(
   Effect.retry(Schedule.exponential("1 second", 2.0)),
   Effect.timeout("30 seconds")
 )
+```
+
+## Comprehensive Usage Examples
+
+### Basic Client Patterns
+
+```typescript
+// 1. Read-only client - No wallet needed
+const readOnlyClient = createClient({
+  network: "mainnet",
+  provider: { type: "blockfrost", apiKey: "..." }
+  // No wallet - read-only operations only
+})
+
+const utxos = await readOnlyClient.getUtxos(someAddress)
+const protocolParams = await readOnlyClient.getProtocolParameters()
+// readOnlyClient.newTx() // Not available: no wallet
+
+// 2. Full signing client - Both provider and wallet
+const signingClient = createClient({
+  network: "mainnet",
+  provider: { type: "blockfrost", apiKey: "..." },
+  wallet: { type: "seed", mnemonic: "..." }
+  // Has both provider and wallet
+})
+
+const txHash = await signingClient
+  .newTx()
+  .payToAddress(targetAddress, 1000000n)
+  .buildSignAndSubmit()
+```
+
+### Multi-User Service Pattern
+
+```typescript
+// One provider, multiple wallets (service pattern)
+const sharedProvider = createKupmiosProvider({
+  apiKey: "your-kupmios-api-key"
+})
+
+// Create provider-only client
+const providerClient = createClient({
+  network: "mainnet",
+  provider: { type: "custom", provider: sharedProvider }
+  // No wallet - provider only
+})
+
+// Attach different wallets to same provider
+const alice = providerClient.attachWallet(createSeedWallet({ mnemonic: aliceMnemonic }))
+const bob = providerClient.attachWallet(createSeedWallet({ mnemonic: bobMnemonic }))
+const monitor = providerClient.attachWallet(createReadOnlyWallet({ address: monitorAddress }))
+
+// All clients share the same provider connection
+await alice.newTx().payToAddress(bobAddress, 1000000n).buildSignAndSubmit()
+await bob.newTx().payToAddress(aliceAddress, 500000n).buildSignAndSubmit()
+const bobUtxos = await monitor.getUtxos(bobAddress) // Read-only monitoring
+
+// Real-world multi-user service example
+class PaymentService {
+  private providerClient: ProviderOnlyClient
+  private userClients: Map<string, SigningClient> = new Map()
+
+  constructor(apiKey: string) {
+    this.providerClient = createClient({
+      network: "mainnet",
+      provider: { type: "kupmios", apiKey }
+      // No wallet - provider only
+    })
+  }
+
+  addUser(userId: string, mnemonic: string) {
+    const wallet = createSeedWallet({ mnemonic })
+    const client = this.providerClient.attachWallet(wallet)
+    this.userClients.set(userId, client)
+    return client
+  }
+
+  async sendPayment(fromUserId: string, toAddress: string, amount: bigint) {
+    const client = this.userClients.get(fromUserId)
+    if (!client) throw new Error("User not found")
+    
+    return await client
+      .newTx()
+      .payToAddress(toAddress, amount)
+      .buildSignAndSubmit()
+  }
+
+  async getUserBalance(userId: string): Promise<bigint> {
+    const client = this.userClients.get(userId)
+    if (!client) throw new Error("User not found")
+    
+    const utxos = await client.getWalletUtxos()
+    return utxos.reduce((total, utxo) => total + utxo.output.amount.coin, 0n)
+  }
+
+  // All users share the same provider connection
+}
+```
+
+### Progressive Enhancement Pattern
+
+```typescript
+// Start minimal, add capabilities as needed
+let client = createMinimalClient({ network: "mainnet" })
+
+// Add provider when needed
+const provider = createBlockfrostProvider({ apiKey: "..." })
+client = client.attachProvider(provider)
+const utxos = await client.getUtxos(address) // Now has provider operations
+
+// Add wallet when needed  
+const wallet = createSeedWallet({ mnemonic: "..." })
+client = client.attachWallet(wallet)
+const txHash = await client.newTx().payToAddress(addr, value).buildSignAndSubmit() // Now has signing
+
+// Or combine both in one step
+const fullClient = createMinimalClient({ network: "mainnet" })
+  .attach(provider, wallet) // Add both provider and wallet
+```
+
+### Effect-Based Advanced Example
+
+```typescript
+import { pipe } from "@effect/data/Function"
+import * as Effect from "@effect/io/Effect"
+
+const effectClient = createEffectClient({
+  network: "mainnet",
+  provider: { type: "blockfrost", apiKey: "..." },
+  wallet: { type: "seed", mnemonic: "..." }
+})
+
+// Complex workflow with error handling
+const complexTransferWorkflow = pipe(
+  // Get UTxOs and validate sufficient funds
+  effectClient.getWalletUtxos(),
+  Effect.flatMap(utxos => {
+    const totalBalance = utxos.reduce((sum, utxo) => sum + utxo.output.amount.coin, 0n)
+    if (totalBalance < 2000000n) {
+      return Effect.fail(new InsufficientFundsError())
+    }
+    return Effect.succeed(utxos)
+  }),
+  
+  // Build and submit transaction
+  Effect.flatMap(utxos =>
+    effectClient.newTx()
+      .payToAddress("addr1...", 1000000n)
+      .addMetadata(1, { message: "Payment from Effect workflow" })
+      .buildSignAndSubmit()
+  ),
+  
+  // Wait for confirmation
+  Effect.flatMap(txHash =>
+    effectClient.awaitTx(txHash, 5000) // Check every 5 seconds
+  ),
+  
+  // Add retry logic and timeout
+  Effect.retry(Schedule.exponential("2 seconds", 2.0)),
+  Effect.timeout("60 seconds"),
+  
+  // Handle all possible errors
+  Effect.catchAll(error => {
+    console.error("Transaction workflow failed:", error)
+    return Effect.succeed(null) // Graceful fallback
+  })
+)
+
+// Run the workflow
+const result = await Effect.runPromise(complexTransferWorkflow)
+```
+
+### Real-World DApp Integration
+
+```typescript
+// DeFi trading bot example
+class DeFiTradingBot {
+  private client: SigningClient
+  private monitorClient: ReadOnlyClient
+
+  constructor(config: {
+    apiKey: string,
+    tradingWallet: string,
+    monitorAddresses: string[]
+  }) {
+    // Trading client with signing capabilities
+    this.client = createClient({
+      network: "mainnet",
+      provider: { type: "kupmios", apiKey: config.apiKey },
+      wallet: { type: "seed", mnemonic: config.tradingWallet }
+    })
+
+    // Monitoring client for read-only operations
+    this.monitorClient = createClient({
+      network: "mainnet", 
+      provider: { type: "kupmios", apiKey: config.apiKey }
+      // No wallet - read-only
+    })
+  }
+
+  async executeArbitrageOpportunity(
+    dexAddress: string,
+    tokenA: string,
+    tokenB: string,
+    amount: bigint
+  ) {
+    try {
+      // 1. Check current prices from DEX
+      const dexUtxos = await this.monitorClient.getUtxos(dexAddress)
+      const currentPrice = this.calculatePrice(dexUtxos, tokenA, tokenB)
+      
+      // 2. Check if arbitrage is profitable
+      const expectedProfit = this.calculateExpectedProfit(currentPrice, amount)
+      if (expectedProfit < 100000n) return // Not profitable
+      
+      // 3. Execute swap transaction
+      const txHash = await this.client
+        .newTx()
+        .payToContract(dexAddress, {
+          inline: this.buildSwapDatum(tokenA, tokenB, amount)
+        })
+        .addRedeemer(dexAddress, this.buildSwapRedeemer())
+        .buildSignAndSubmit()
+      
+      // 4. Wait for confirmation
+      await this.client.awaitTx(txHash)
+      
+      console.log(`Arbitrage executed: ${txHash}`)
+      return txHash
+      
+    } catch (error) {
+      console.error("Arbitrage failed:", error)
+      return null
+    }
+  }
+
+  private calculatePrice(utxos: UTxO[], tokenA: string, tokenB: string): bigint {
+    // Price calculation logic
+    return 0n
+  }
+
+  private calculateExpectedProfit(price: bigint, amount: bigint): bigint {
+    // Profit calculation logic  
+    return 0n
+  }
+
+  private buildSwapDatum(tokenA: string, tokenB: string, amount: bigint) {
+    // Build Plutus datum for swap
+    return {}
+  }
+
+  private buildSwapRedeemer() {
+    // Build Plutus redeemer for swap
+    return {}
+  }
+}
 ```
 
 ## Future Enhancements
