@@ -67,6 +67,41 @@ const maestroClient = createMaestroClient({
 
 ## Comprehensive Examples
 
+### SignBuilder Pattern
+
+The `build()` method returns a `SignBuilder` which provides fine-grained control over signing and submission:
+
+```typescript
+// Basic SignBuilder usage
+const signBuilder = await client
+  .newTx()
+  .payToAddress({
+    address: recipientAddress,
+    assets: { coin: 1000000n }
+  })
+  .build() // Returns SignBuilder
+
+// Access the built transaction
+console.log("Transaction CBOR:", signBuilder.transaction.toCbor())
+console.log("Estimated cost:", signBuilder.cost)
+
+// Option 1: Sign and submit in one step (most common)
+const txHash = await signBuilder.sign().then(submitBuilder => 
+  submitBuilder.submit()
+)
+
+// Option 2: Separate signing and submission for inspection
+const submitBuilder = await signBuilder.sign()
+console.log("Signed transaction:", submitBuilder.cbor)
+const txHash = await submitBuilder.submit()
+
+// Option 3: Partial signing for multi-sig workflows
+const witnessSet = await signBuilder.partialSign()
+// Collect additional witnesses from other signers...
+const finalSubmitBuilder = await signBuilder.assemble([witnessSet, otherWitness])
+const txHash = await finalSubmitBuilder.submit()
+```
+
 ### 1. Basic Payment Transaction
 
 ```typescript
@@ -81,11 +116,16 @@ const client = createKupmiosClient({
   }
 })
 
-// Simple payment
+// Simple payment using SignBuilder
 const txHash = await client
   .newTx()
-  .payToAddress("addr1...", 1_000_000n) // 1 ADA
-  .buildSignAndSubmit()
+  .payToAddress({
+    address: "addr1...",
+    assets: { coin: 1_000_000n } // 1 ADA
+  })
+  .build()
+  .then(sb => sb.sign())
+  .then(sb => sb.submit())
 
 console.log("Transaction submitted:", txHash)
 ```
@@ -137,17 +177,18 @@ const client = createMaestroClient({
 })
 
 // First transaction
-const tx1Hash = await client
+const tx1Result = await client
   .newTx()
   .payToAddress("addr1...", 1_000_000n)
-  .buildSignAndSubmit()
+  .chain() // Returns ChainResult with new UTxOs
 
-// Chain second transaction using outputs from first
-const tx1Utxos = await client.awaitTxAndGetUtxos(tx1Hash)
+// Chain second transaction using outputs from first (off-chain)
 const tx2Hash = await client
-  .newTx(tx1Utxos) // Use specific UTxOs
+  .newTx(tx1Result.updatedUtxos) // Use UTxOs from first transaction
   .payToAddress("addr2...", 500_000n)
-  .buildSignAndSubmit()
+  .build()
+  .then(sb => sb.sign())
+  .then(sb => sb.submit())
 ```
 
 ### 4. Smart Contract Interaction
@@ -1156,12 +1197,12 @@ export interface ReadOnlyTransactionBuilder {
   readonly payToAddressWithData: (address: Address.Address, value: Value.Value, data: Datum) => ReadOnlyTransactionBuilder
   readonly payToScript: (scriptRef: ScriptRef, value: Value.Value, datum: Datum, redeemer?: Redeemer.Redeemer) => ReadOnlyTransactionBuilder
   readonly spendFromScript: (scriptRef: ScriptRef, utxo: UTxO.UTxO, redeemer: Redeemer.Redeemer) => ReadOnlyTransactionBuilder
-  readonly mintTokens: (policyId: PolicyId.PolicyId, assets: Map<AssetName.AssetName, bigint>, redeemer?: Redeemer.Redeemer) => ReadOnlyTransactionBuilder
+  readonly mintTokens: (params: MintTokensParams) => ReadOnlyTransactionBuilder
   readonly burnTokens: (policyId: PolicyId.PolicyId, assets: Map<AssetName.AssetName, bigint>, redeemer?: Redeemer.Redeemer) => ReadOnlyTransactionBuilder
   readonly attachScript: (script: PlutusScript.PlutusScript) => ReadOnlyTransactionBuilder
   readonly attachNativeScript: (script: NativeScript.NativeScript) => ReadOnlyTransactionBuilder
   readonly attachScriptRef: (scriptRef: ScriptRef) => ReadOnlyTransactionBuilder
-  readonly collectFrom: (utxos: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+  readonly collectFrom: (params: CollectFromParams) => ReadOnlyTransactionBuilder
   readonly addSigner: (keyHash: string) => ReadOnlyTransactionBuilder
   readonly setValidityInterval: (start?: Slot, end?: Slot) => ReadOnlyTransactionBuilder
   readonly addMetadata: (label: MetadataLabel, metadata: TransactionMetadatum.TransactionMetadatum) => ReadOnlyTransactionBuilder
@@ -1279,12 +1320,11 @@ export interface TransactionBuilder extends EffectToPromiseAPI<TransactionBuilde
 
 export interface TransactionBuilderEffect {
   // Basic transaction operations
-  readonly payToAddress: (address: Address.Address, value: Value.Value) => TransactionBuilderEffect
-  readonly payToAddressWithDatum: (address: Address.Address, value: Value.Value, datum: Data.Data) => TransactionBuilderEffect
+  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilderEffect
   readonly payToScript: (scriptHash: ScriptHash.ScriptHash, value: Value.Value, datum: Data.Data) => TransactionBuilderEffect
   
   // Native token operations
-  readonly mintTokens: (policyId: PolicyId.PolicyId, assets: Map<AssetName.AssetName, bigint>, redeemer?: Redeemer.Redeemer) => TransactionBuilderEffect
+  readonly mintTokens: (params: MintTokensParams) => TransactionBuilderEffect
   readonly burnTokens: (policyId: PolicyId.PolicyId, assets: Map<AssetName.AssetName, bigint>, redeemer?: Redeemer.Redeemer) => TransactionBuilderEffect
   
   // Staking operations
@@ -1304,6 +1344,7 @@ export interface TransactionBuilderEffect {
   readonly addCollateral: (utxo: UTxO.UTxO) => TransactionBuilderEffect
   
   // Manual input/output management
+  readonly collectFrom: (params: CollectFromParams) => TransactionBuilderEffect
   readonly addInput: (utxo: UTxO.UTxO, redeemer?: Redeemer.Redeemer) => TransactionBuilderEffect
   readonly addOutput: (output: TransactionOutput.TransactionOutput) => TransactionBuilderEffect
   readonly addChangeOutput: (address: Address.Address) => TransactionBuilderEffect
@@ -1314,9 +1355,15 @@ export interface TransactionBuilderEffect {
   
   // Transaction finalization and execution
   readonly build: (options?: BuildOptions) => Effect.Effect<SignBuilder, TransactionBuilderError>
+  readonly buildForEvaluation: (collateralAmount: Coin.Coin, changeAddress: Address.Address, options?: BuildOptions) => Effect.Effect<TransactionBuilder, TransactionBuilderError>
   readonly buildAndSign: (options?: BuildOptions) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, TransactionBuilderError>
   readonly buildSignAndSubmit: (options?: BuildOptions) => Effect.Effect<string, TransactionBuilderError>
   readonly estimateFee: (options?: BuildOptions) => Effect.Effect<TransactionEstimate, TransactionBuilderError>
+  
+  // Script evaluation support
+  readonly draftTx: () => Effect.Effect<Transaction, TransactionBuilderError>
+  readonly applyUplcEval: (uplcResults: ReadonlyArray<Uint8Array>) => Effect.Effect<void, TransactionBuilderError>
+  readonly applyProviderEval: (evalResults: ProviderEvaluationResult) => Effect.Effect<void, TransactionBuilderError>
   
   // Transaction chaining
   readonly chain: (options?: BuildOptions) => Effect.Effect<ChainResult, TransactionBuilderError>
@@ -1326,6 +1373,23 @@ export interface TransactionBuilderEffect {
 ### Supporting Types
 
 ```typescript
+export interface PayToAddressParams {
+  readonly address: Address.Address        // Mandatory: Recipient address
+  readonly assets: Value.Value            // Mandatory: ADA and/or native tokens to send
+  readonly datum?: Data.Data              // Optional: Inline datum
+  readonly scriptRef?: Script.Script      // Optional: Reference script to attach
+}
+
+export interface CollectFromParams {
+  readonly inputs: ReadonlyArray<UTxO.UTxO>  // Mandatory: UTxOs to consume as inputs
+  readonly redeemer?: Redeemer.Redeemer      // Optional: Redeemer for script inputs
+}
+
+export interface MintTokensParams {
+  readonly assets: Assets.Assets           // Mandatory: Tokens to mint (excluding lovelace)
+  readonly redeemer?: Redeemer.Redeemer    // Optional: Redeemer for minting script
+}
+
 export interface BuiltTransaction {
   readonly transaction: Transaction.Transaction
   readonly cost: TransactionEstimate
@@ -1349,6 +1413,31 @@ export interface TransactionEstimate {
   readonly fee: Coin.Coin
   readonly executionUnits?: ExecutionUnits
   readonly scriptDataHash?: ScriptDataHash.ScriptDataHash
+}
+
+export interface RedeemerWitnessKey {
+  readonly tag: RedeemerTag
+  readonly index: number
+}
+
+export enum RedeemerTag {
+  Spend = 0,
+  Mint = 1,
+  Cert = 2,
+  Reward = 3,
+  Vote = 4,
+  Propose = 5
+}
+
+export interface ProviderEvaluationResult {
+  readonly redeemers: ReadonlyArray<EvaluatedRedeemer>
+  readonly totalCost?: Coin.Coin
+}
+
+export interface EvaluatedRedeemer {
+  readonly key: RedeemerWitnessKey
+  readonly exUnits: ExUnits
+  readonly redeemerData: Data.Data
 }
 
 // Progressive Builder Interfaces
@@ -1394,39 +1483,66 @@ export interface TransactionSimulation {
   readonly errors?: ReadonlyArray<string>
 }
 
-// Build Options
+// Build Options - Comprehensive configuration for transaction building
 export interface BuildOptions {
-  readonly coinSelection?: CoinSelectionStrategy | CustomCoinSelector
+  // Coin selection strategy
+  readonly coinSelection?: CoinSelectionAlgorithm | CoinSelectionFunction
   readonly coinSelectionOptions?: CoinSelectionOptions
-  readonly feeMultiplier?: number                   // Fee adjustment factor (default: 1.0)
+  
+  // Script evaluation options
+  readonly uplcEval?: UplcEvaluationOptions
+  
+  // Collateral handling
+  readonly collateral?: ReadonlyArray<UTxO.UTxO> // Manual collateral (max 3)
+  readonly autoCollateral?: boolean // Default: true if Plutus scripts present
+  
+  // Fee and optimization
+  readonly minFee?: Coin.Coin
+  readonly feeMultiplier?: number
+  
+  // TODO: To be defined - optimization flags, debug options
+  readonly debug?: boolean
+  readonly optimizations?: TransactionOptimizations
 }
 
-// Coin Selection Types
-export type CoinSelectionStrategy = 
-  | "largest-first"       // Select largest UTxOs first (minimize change)
-  | "random-improve"      // CIP-2 Random-Improve algorithm
-  | "smallest-first"      // Select smallest UTxOs first (UTxO consolidation)
-  | "optimal"             // SDK-optimized selection
-
-export interface CustomCoinSelector {
-  readonly selectCoins: (
-    availableUtxos: ReadonlyArray<UTxO.UTxO>,
-    targetValue: Value.Value,
-    options?: CoinSelectionOptions
-  ) => Effect.Effect<CoinSelectionResult, CoinSelectionError>
+export interface UplcEvaluationOptions {
+  readonly type: "wasm" | "provider"
+  readonly wasmModule?: any // TODO: Define WASM UPLC module interface
+  readonly timeout?: number
+  readonly maxMemory?: number
+  readonly maxCpu?: number
 }
 
 export interface CoinSelectionOptions {
   readonly maxInputs?: number
-  readonly feeRate?: Coin.Coin
   readonly includeUtxos?: ReadonlyArray<UTxO.UTxO>    // UTxOs that must be included
   readonly excludeUtxos?: ReadonlyArray<UTxO.UTxO>    // UTxOs that must be excluded
+  readonly strategy?: "largest-first" | "random-improve" | "optimal"
+  readonly allowPartialSpend?: boolean // For large UTxOs
 }
 
 export interface CoinSelectionResult {
   readonly selectedUtxos: ReadonlyArray<UTxO.UTxO>
-  readonly change: ReadonlyArray<TransactionOutput.TransactionOutput>
-  readonly fee: Coin.Coin
+  readonly changeOutput?: TransactionOutput.TransactionOutput
+  readonly totalFee: Coin.Coin
+  readonly excessAssets?: Assets.Assets // Assets that couldn't be included in change
+}
+
+// Custom coin selection function type
+export type CoinSelectionFunction = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  requiredAssets: Assets.Assets,
+  options: CoinSelectionOptions
+) => Effect.Effect<CoinSelectionResult, CoinSelectionError>
+
+// TODO: Define specific coin selection algorithms
+export type CoinSelectionAlgorithm = "auto" | "largest-first" | "random-improve" | "optimal"
+
+// TODO: To be defined - transaction optimization flags
+export interface TransactionOptimizations {
+  readonly mergeOutputs?: boolean
+  readonly consolidateInputs?: boolean
+  readonly minimizeFee?: boolean
 }
 
 // Transaction Templates
@@ -1480,6 +1596,1122 @@ export interface CoinSelectionError {
 ## UTxO-Based Transaction Building
 
 The Evolution SDK embraces Cardano's UTxO model by making UTxO management explicit and transparent. This design provides several key benefits:
+
+### TransactionBuilder Execution Model
+
+The TransactionBuilder uses a deferred execution pattern where operations accumulate intents that are executed when `build()` is called:
+
+```typescript
+// Internal TransactionBuilder implementation concept
+class TransactionBuilderImpl {
+  private programs: Array<Effect.Effect<void, TransactionBuilderError>> = []
+  private evaluationState: any = null // Holds state for buildForEvaluation workflow
+  
+  payToAddress(params: PayToAddressParams): TransactionBuilder {
+    // Accumulate intent - doesn't execute immediately
+    this.programs.push(
+      Effect.sync(() => {
+        this.addOutput({
+          address: params.address,
+          value: params.assets,
+          datum: params.datum,
+          scriptRef: params.scriptRef
+        })
+      })
+    )
+    return this
+  }
+  
+  collectFrom(params: CollectFromParams): TransactionBuilder {
+    // Accumulate intent - doesn't execute immediately  
+    this.programs.push(
+      Effect.sync(() => {
+        params.inputs.forEach(utxo => this.addInput(utxo, params.redeemer))
+      })
+    )
+    return this
+  }
+  
+  mintTokens(params: MintTokensParams): TransactionBuilder {
+    // Accumulate intent - doesn't execute immediately
+    this.programs.push(
+      Effect.sync(() => {
+        // Process each asset in the Assets object (excluding lovelace)
+        for (const [unit, amount] of Object.entries(params.assets)) {
+          if (unit !== "lovelace" && amount > 0n) {
+            const { policyId, assetName } = Unit.fromUnit(unit)
+            this.addMint(policyId, assetName, amount, params.redeemer)
+          }
+        }
+      })
+    )
+    return this
+  }
+  
+  /**
+   * Build transaction for script evaluation (matches CML build_for_evaluation pattern)
+   * 
+   * THE PROBLEM:
+   * When building Plutus script transactions, you face a chicken-and-egg problem:
+   * - To build a transaction, you need to know script execution units (ExUnits)
+   * - To calculate ExUnits, you need to evaluate the scripts
+   * - To evaluate scripts, you need a complete transaction
+   * 
+   * THE SOLUTION: 
+   * CML's build_for_evaluation creates an intermediate transaction builder:
+   * 
+   * PHASE 1: buildForEvaluation(collateralAmount, changeAddress)
+   * - Creates a transaction with dummy/placeholder ExUnits for all redeemers
+   * - Sets script_data_hash to dummy value (all zeros) as safety mechanism  
+   * - Returns the SAME TransactionBuilder type (not a different interface)
+   * - The builder has a draftTx() method to access the transaction for evaluation
+   * - Transaction would FAIL if accidentally submitted (prevents costly mistakes)
+   * 
+   * PHASE 2: After Script Evaluation
+   * - Use applyUplcEval() or applyProviderEval() to apply real execution units
+   * - Continue using the same builder to call build() for final transaction
+   * - Final transaction has correct script_data_hash and is safe for submission
+   * 
+   * WORKFLOW (matching old implementation):
+   * 1. evalBuilder = await txBuilder.buildForEvaluation(0, changeAddress)
+   * 2. draftTx = await evalBuilder.draftTx() // Get transaction for evaluation  
+   * 3. results = await evaluateScripts(draftTx) // UPLC or provider evaluation
+   * 4. await evalBuilder.applyUplcEval(results) // Apply evaluation results
+   * 5. signBuilder = await evalBuilder.build() // Build final transaction
+   */
+  async buildForEvaluation(
+    collateralAmount: Coin.Coin = 0n, 
+    changeAddress: Address.Address,
+    options: BuildOptions = {}
+  ): Promise<TransactionBuilder> {
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        // Phase 1: Validate and setup (same as regular build)
+        yield* validateBuildOptions(options)
+        
+        // Phase 2: Execute accumulated intents
+        
+        // Phase 3: Initial coin selection and transaction building
+        const hasScripts = yield* hasPlutusScripts(this.programs)
+        
+        // Phase 4: Build transaction with DUMMY ExUnits for evaluation
+        // This matches CML's build_for_evaluation behavior exactly
+        const evaluationBuilder = yield* buildTransactionForEvaluation(
+          this.availableUtxos,
+          this.outputs,
+          this.minted,
+          this.collectedInputs,
+          collateralAmount,
+          changeAddress,
+          hasScripts,
+          options
+        )
+        
+        return evaluationBuilder
+      }.bind(this))
+    )
+  }
+  
+  async build(options: BuildOptions = {}): Promise<SignBuilder> {
+    // Execute comprehensive build workflow
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        // Phase 1: Validate and setup
+        yield* validateBuildOptions(options)
+        
+        // Phase 2: Execute accumulated intents (sequential for now)
+        yield* Effect.all(this.programs, { concurrency: "sequential" })
+        
+        // Phase 3: Calculate asset requirements
+        const assetDelta = yield* calculateAssetDelta(this.outputs, this.minted, this.collectedInputs)
+        
+        // Phase 4: Two-phase coin selection
+        const initialSelection = yield* performInitialCoinSelection(
+          this.availableUtxos,
+          assetDelta, 
+          options.coinSelection,
+          options.coinSelectionOptions
+        )
+        
+        // Phase 5: Script evaluation and refined selection
+        const hasScripts = yield* hasPlutusScripts(this.programs)
+        let finalSelection = initialSelection
+        
+        if (hasScripts) {
+          // Build partial transaction for script evaluation
+          const partialTx = yield* buildPartialTransaction(initialSelection, this.outputs)
+          
+          // Evaluate scripts (WASM UPLC or Provider)
+          const scriptCosts = yield* evaluateScripts(partialTx, options.uplcEval, this.provider)
+          
+          // Refined coin selection with script costs
+          finalSelection = yield* performRefinedCoinSelection(
+            this.availableUtxos,
+            assetDelta + scriptCosts,
+            options.coinSelection,
+            options.coinSelectionOptions
+          )
+        }
+        
+        // Phase 6: Collateral handling
+        if (hasScripts) {
+          yield* handleCollateral(this.availableUtxos, options.collateral, options.autoCollateral)
+        }
+        
+        // Phase 7: Redeemer building
+        // TODO: Implement redeemer building
+        yield* buildRedeemers(this.programs)
+        
+        // Phase 8: Final transaction assembly
+        const transaction = yield* assembleTransaction(finalSelection, this.outputs, this.metadata)
+        const fee = yield* calculateFinalFee(transaction, options.minFee, options.feeMultiplier)
+        
+        return new SignBuilderImpl(transaction, { fee })
+      }.bind(this))
+    )
+  }
+  
+  /**
+   * Get draft transaction for script evaluation.
+   * 
+   * This method provides access to the transaction built by buildForEvaluation()
+   * so it can be passed to script evaluators (UPLC or provider).
+   * 
+   * CRITICAL: The transaction has dummy ExUnits and script_data_hash - 
+   * it would FAIL if submitted to the network without evaluation results applied.
+   */
+  async draftTx(): Promise<Transaction.Transaction> {
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        // Return the transaction with dummy ExUnits for evaluation
+        // This transaction should have been created by buildForEvaluation()
+        return yield* getDraftTransactionForEvaluation(this.evaluationState)
+      }.bind(this))
+    )
+  }
+  
+  /**
+   * Apply UPLC evaluation results to the transaction builder.
+   * 
+   * This matches CML's applyUPLCEval function that takes evaluation results
+   * as CBOR bytes and applies them to the transaction builder.
+   * 
+   * @param uplcResults Array of CBOR-encoded redeemer results from UPLC evaluation
+   */
+  async applyUplcEval(uplcResults: ReadonlyArray<Uint8Array>): Promise<void> {
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        // Process CBOR-encoded redeemer results and apply ExUnits
+        for (const bytes of uplcResults) {
+          yield* applyUplcRedeemerResult(bytes, this.evaluationState)
+        }
+      }.bind(this))
+    )
+  }
+  
+  /**
+   * Apply provider evaluation results to the transaction builder.
+   * 
+   * This applies evaluation results from external providers (like Blockfrost)
+   * that return structured evaluation data rather than CBOR bytes.
+   * 
+   * @param evalResults Structured evaluation results from provider
+   */
+  async applyProviderEval(evalResults: ProviderEvaluationResult): Promise<void> {
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        // Apply provider evaluation results to transaction builder
+        for (const redeemer of evalResults.redeemers) {
+          yield* applyProviderRedeemerResult(redeemer, this.evaluationState)
+        }
+      }.bind(this))
+    )
+  }
+}
+
+// Standalone functions for transaction building - each can be tested in isolation
+
+export const validateBuildOptions = (options: BuildOptions): Effect.Effect<void, TransactionBuilderError> => {
+  /**
+   * Validates build configuration options before transaction construction.
+   * 
+   * Old implementation: No explicit validation function - options passed directly to methods
+   * Evolution SDK: Provides explicit validation for better error handling and debugging
+   * 
+   * Improves upon old implementation by catching configuration errors early.
+   */
+  return Effect.sync(() => {
+    // TODO: Validate coin selection options
+    // TODO: Validate collateral (max 3 UTxOs)
+    // TODO: Validate UPLC evaluation options
+  })
+}
+
+export const calculateAssetDelta = (
+  outputs: TransactionOutput[],
+  minted: Assets.Assets,
+  collectedInputs: UTxO[]
+): Effect.Effect<Assets.Assets, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // Calculate: outputs + estimatedFee - minted - collectedInputs
+    // TODO: Implement asset delta calculation
+    return { lovelace: 0n }
+  })
+}
+
+export const performInitialCoinSelection = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  requiredAssets: Assets.Assets,
+  coinSelection?: CoinSelectionAlgorithm | CoinSelectionFunction,
+  options?: CoinSelectionOptions
+): Effect.Effect<CoinSelectionResult, TransactionBuilderError> => {
+  /**
+   * Performs initial coin selection without considering script execution costs.
+   * 
+   * Old implementation: `doCoinSelection()` + `recursive()` - Custom TypeScript implementation
+   * - Calculates asset delta: outputs + estimatedFee - minted - collected
+   * - Uses custom `selectUTxOs()` and `recursive()` for UTxO selection
+   * - Handles minimum ADA requirements for change outputs iteratively
+   * 
+   * Evolution SDK: Replicates old implementation's native algorithm in pure TypeScript
+   * - Same asset delta calculation approach
+   * - Same recursive UTxO selection logic
+   * - Improves with pluggable coin selection strategies
+   */
+  return Effect.gen(function* () {
+    // TODO: Implement coin selection without script costs
+    // Default to "auto" algorithm if not specified
+    const algorithm = coinSelection || "auto"
+    
+    if (typeof algorithm === "function") {
+      return yield* algorithm(availableUtxos, requiredAssets, options || {})
+    } else {
+      return yield* applyCoinSelectionAlgorithm(algorithm, availableUtxos, requiredAssets, options)
+    }
+  })
+}
+
+export const performRefinedCoinSelection = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  requiredAssetsWithScriptCosts: Assets.Assets,
+  coinSelection?: CoinSelectionAlgorithm | CoinSelectionFunction,
+  options?: CoinSelectionOptions
+): Effect.Effect<CoinSelectionResult, TransactionBuilderError> => {
+  return performInitialCoinSelection(availableUtxos, requiredAssetsWithScriptCosts, coinSelection, options)
+}
+
+export const hasPlutusScripts = (programs: Array<Effect.Effect<void, TransactionBuilderError>>): Effect.Effect<boolean, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // TODO: Analyze programs to detect Plutus script usage
+    return false
+  })
+}
+
+export const buildPartialTransaction = (
+  selection: CoinSelectionResult,
+  outputs: TransactionOutput[]
+): Effect.Effect<any, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // TODO: Build partial transaction for script evaluation
+    return {}
+  })
+}
+
+export const buildEvaluationTransaction = (
+  selection: CoinSelectionResult,
+  outputs: TransactionOutput[],
+  minted: Assets.Assets,
+  options: BuildOptions
+): Effect.Effect<any, TransactionBuilderError> => {
+  /**
+   * Builds a transaction specifically for script evaluation purposes.
+   * 
+   * KEY DIFFERENCES from regular transaction building:
+   * - Uses DUMMY ExUnits for all Plutus script redeemers
+   * - Sets script_data_hash to dummy value (prevents accidental submission)
+   * - Optimized for evaluation rather than submission
+   * 
+   * This transaction is safe to pass to script evaluators but would fail if submitted to network.
+   */
+  return Effect.sync(() => {
+    // TODO: Build evaluation transaction with dummy ExUnits
+    // - Set all redeemer ExUnits to dummy values (e.g., {cpu: 0, memory: 0})
+    // - Calculate dummy script_data_hash (all zeros)
+    // - Include all transaction components needed for evaluation
+    return {}
+  })
+}
+
+export const calculateDummyFee = (
+  transaction: any,
+  feeMultiplier: number = 1.0
+): Effect.Effect<Coin.Coin, TransactionBuilderError> => {
+  /**
+   * Calculates preliminary fee estimate for evaluation transaction.
+   * 
+   * This provides a rough fee estimate before script evaluation.
+   * The final fee will be calculated after getting real ExUnits from evaluation.
+   */
+  return Effect.sync(() => {
+    // TODO: Calculate dummy fee based on transaction size without script costs
+    // - Use base transaction size for LinearFee calculation
+    // - Apply fee multiplier
+    // - Exclude script execution costs (will be added after evaluation)
+    return 0n as Coin.Coin
+  })
+}
+
+export const evaluateScripts = (
+  transaction: any, // TODO: Define transaction type
+  uplcOptions?: UplcEvaluationOptions,
+  provider?: any // TODO: Define provider type
+): Effect.Effect<Assets.Assets, TransactionBuilderError> => {
+  /**
+   * Evaluates Plutus scripts to determine execution units and costs.
+   * 
+   * Old implementation: Delegates to CML `build_for_evaluation()` then evaluates externally
+   * - Uses `config.txBuilder.build_for_evaluation(0, changeAddress)` 
+   * - Then calls either local UPLC eval or provider evaluation
+   * - Applies results back to CML builder via `applyUPLCEval()`
+   * 
+   * Evolution SDK: Implements full script evaluation natively in TypeScript
+   * - Builds transaction for evaluation without CML dependency
+   * - Supports both WASM and provider-based evaluation
+   * - Pure TypeScript implementation of execution unit application
+   */
+  return Effect.gen(function* () {
+    if (!uplcOptions) {
+      // Default to provider evaluation
+      return yield* provider.evaluateTx(transaction)
+    }
+    
+    if (uplcOptions.type === "wasm") {
+      // TODO: Implement WASM UPLC evaluation
+      return yield* wasmUplcEvaluate(transaction, uplcOptions.wasmModule)
+    } else {
+      // Provider evaluation
+      return yield* provider.evaluateTx(transaction)
+    }
+  })
+}
+
+export const wasmUplcEvaluate = (
+  transaction: any,
+  wasmModule: any
+): Effect.Effect<Assets.Assets, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // TODO: Implement WASM UPLC evaluation
+    return { lovelace: 0n }
+  })
+}
+
+export const handleCollateral = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  manualCollateral?: ReadonlyArray<UTxO.UTxO>,
+  autoCollateral: boolean = true
+): Effect.Effect<void, TransactionBuilderError> => {
+  /**
+   * Handles collateral UTxO selection for Plutus script transactions.
+   * 
+   * Old implementation: `findCollateral()` - Native TypeScript implementation
+   * - Implements custom collateral selection logic in TypeScript
+   * - Filters UTxOs by ADA-only and minimum value requirements
+   * - Sorts by value and selects optimal collateral UTxOs (max 3)
+   * - Does NOT use CML for collateral selection
+   * 
+   * Evolution SDK: Pure TypeScript collateral handling (same approach as old implementation)
+   * - Implements identical collateral selection algorithm
+   * - Manual collateral override with validation (max 3 UTxOs)
+   * - Automatic collateral selection when Plutus scripts are present
+   */
+  return Effect.gen(function* () {
+    if (manualCollateral) {
+      // Validate manual collateral (max 3 UTxOs)
+      if (manualCollateral.length > 3) {
+        yield* Effect.fail(new TransactionBuilderError("Collateral cannot exceed 3 UTxOs"))
+      }
+      yield* setCollateral(manualCollateral)
+    } else if (autoCollateral) {
+      // TODO: Implement automatic collateral selection
+      const autoSelected = yield* autoSelectCollateral(availableUtxos)
+      yield* setCollateral(autoSelected)
+    }
+  })
+}
+
+export const autoSelectCollateral = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>
+): Effect.Effect<ReadonlyArray<UTxO.UTxO>, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // TODO: Implement automatic collateral selection
+    // Select up to 3 UTxOs suitable for collateral
+    return []
+  })
+}
+
+export const setCollateral = (
+  collateral: ReadonlyArray<UTxO.UTxO>
+): Effect.Effect<void, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // TODO: Set collateral on transaction builder
+  })
+}
+
+export const buildRedeemers = (
+  programs: Array<Effect.Effect<void, TransactionBuilderError>>
+): Effect.Effect<void, TransactionBuilderError> => {
+  return Effect.sync(() => {
+    // TODO: Implement redeemer building
+    // This functionality is still under development
+  })
+}
+
+export const assembleTransaction = (
+  selection: CoinSelectionResult,
+  outputs: TransactionOutput[],
+  metadata?: any
+): Effect.Effect<any, TransactionBuilderError> => {
+  /**
+   * Assembles the final transaction with all components.
+   * 
+   * Old implementation: Hybrid approach for transaction assembly
+   * - Uses CML `TransactionBuilder.build()` for core transaction building
+   * - Uses CML `add_change_if_needed()` for change output creation
+   * - Uses CML for script data hash calculation and final serialization
+   * - Delegates low-level transaction assembly to CML while managing high-level logic
+   * 
+   * Evolution SDK: Pure TypeScript transaction assembly
+   * - Implements complete transaction building without CML dependency
+   * - Creates TransactionBody with inputs, outputs, fee, and metadata natively
+   * - Implements change output calculation and script data hash generation
+   * - Provides same transaction assembly functionality in pure TypeScript
+   */
+  return Effect.sync(() => {
+    // TODO: Assemble final transaction
+    return {}
+  })
+}
+
+export const calculateFinalFee = (
+  transaction: any,
+  minFee?: Coin.Coin,
+  feeMultiplier: number = 1.0
+): Effect.Effect<Coin.Coin, TransactionBuilderError> => {
+  /**
+   * Calculates final transaction fee based on size and script execution costs.
+   * 
+   * Old implementation: `estimateFee()` - Hybrid approach using CML + custom logic
+   * - Calls `config.txBuilder.min_fee(script_calculation)` for base fee
+   * - Adds custom `calculateMinRefScriptFee()` calculation (native TypeScript)
+   * - Applies custom minimum fee logic and calls `config.txBuilder.set_fee()`
+   * 
+   * Evolution SDK: Pure TypeScript implementation of complete fee calculation
+   * - Implements LinearFee calculation natively (coefficient * size + constant)
+   * - Implements script execution cost calculation natively
+   * - Implements reference script fee calculation natively (same as old implementation logic)
+   */
+  return Effect.sync(() => {
+    // TODO: Calculate final transaction fee
+    return 0n as Coin.Coin
+  })
+}
+
+export const applyCoinSelectionAlgorithm = (
+  algorithm: CoinSelectionAlgorithm,
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  requiredAssets: Assets.Assets,
+  options?: CoinSelectionOptions
+): Effect.Effect<CoinSelectionResult, TransactionBuilderError> => {
+  /**
+   * Applies specific coin selection algorithms.
+   * 
+   * Old implementation: Native TypeScript coin selection implementation
+   * - `doCoinSelection()` implements pure TypeScript algorithms
+   * - Does NOT use CML's `CoinSelectionStrategyCIP2` 
+   * - Implements custom "LargestFirst" and "RandomImprove" algorithms
+   * - Uses recursive selection with native asset arithmetic
+   * 
+   * Evolution SDK: Pure TypeScript CIP-2 algorithms (same approach as old implementation)
+   * - Implements identical coin selection logic without CML dependency
+   * - LargestFirst: Select largest UTxOs first until target met
+   * - RandomImprove: Random selection with improvement heuristics
+   * - Native implementation following CIP-2 specification
+   */
+  return Effect.sync(() => {
+    // TODO: Implement coin selection algorithms
+    switch (algorithm) {
+      case "largest-first":
+        // TODO: Implement largest-first algorithm (CML: LargestFirst)
+        break
+      case "random-improve":
+        // TODO: Implement random-improve algorithm (CML: RandomImprove)
+        break
+      case "optimal":
+        // TODO: Implement optimal algorithm
+        break
+      case "auto":
+      default:
+        // TODO: Implement auto selection (smart default)
+        break
+    }
+    
+    return {
+      selectedUtxos: [],
+      totalFee: 0n as Coin.Coin
+    }
+  })
+}
+
+// EvaluationBuilder Helper Functions - Support for two-phase transaction building
+
+export const applyExUnitsToTransaction = (
+  evaluationTransaction: any,
+  redeemerExUnits: Map<RedeemerWitnessKey, ExUnits>
+): Effect.Effect<any, TransactionBuilderError> => {
+  /**
+   * Applies real execution units to transaction redeemers.
+   * 
+   * Replaces dummy ExUnits in the evaluation transaction with actual
+   * execution units obtained from script evaluation results.
+   * 
+   * SAFETY: Each redeemer is identified by unique key to prevent
+   * misapplication of execution units to wrong scripts.
+   */
+  return Effect.sync(() => {
+    // TODO: Apply execution units to transaction redeemers
+    // - Iterate through redeemerExUnits map
+    // - Apply each ExUnits to corresponding redeemer in transaction
+    // - Validate that all required redeemers have ExUnits
+    return evaluationTransaction
+  })
+}
+
+export const calculateScriptDataHash = (
+  transaction: any
+): Effect.Effect<ScriptDataHash, TransactionBuilderError> => {
+  /**
+   * Calculates script_data_hash for transaction with real ExUnits.
+   * 
+   * This replaces the dummy script_data_hash from evaluation transaction
+   * with the correct hash calculated from real execution units.
+   * Only transactions with correct script_data_hash can be submitted.
+   */
+  return Effect.sync(() => {
+    // TODO: Calculate script data hash from transaction redeemers
+    // - Hash all redeemer data and execution units
+    // - Return proper ScriptDataHash for final transaction
+    return ScriptDataHash.fromHex("0000000000000000000000000000000000000000000000000000000000000000") // Placeholder
+  })
+}
+
+export const calculateScriptExecutionCosts = (
+  redeemerExUnits: Map<RedeemerWitnessKey, ExUnits>
+): Effect.Effect<Coin.Coin, TransactionBuilderError> => {
+  /**
+   * Calculates ADA costs for script execution based on ExUnits.
+   * 
+   * Converts CPU and memory execution units to ADA costs using
+   * protocol parameters (price per CPU step and memory unit).
+   */
+  return Effect.sync(() => {
+    // TODO: Calculate script execution costs in ADA
+    // - Sum all CPU and memory units from ExUnits
+    // - Apply protocol prices for CPU and memory
+    // - Return total execution cost in lovelace
+    return 0n as Coin.Coin
+  })
+}
+
+export const calculateFinalFeeWithScripts = (
+  transaction: any,
+  scriptExecutionCosts: Coin.Coin,
+  feeMultiplier: number = 1.0
+): Effect.Effect<Coin.Coin, TransactionBuilderError> => {
+  /**
+   * Calculates final fee including script execution costs.
+   * 
+   * Combines base transaction fee (based on size) with script execution costs
+   * to produce the total fee for the transaction.
+   */
+  return Effect.sync(() => {
+    // TODO: Calculate complete transaction fee
+    // - Calculate base fee from transaction size (LinearFee)
+    // - Add script execution costs
+    // - Apply fee multiplier
+    // - Return total fee including all costs
+    return scriptExecutionCosts
+  })
+}
+
+export const buildFinalTransaction = (
+  transactionWithExUnits: any,
+  scriptDataHash: ScriptDataHash,
+  finalFee: Coin.Coin
+): Effect.Effect<any, TransactionBuilderError> => {
+  /**
+   * Builds the final transaction ready for submission.
+   * 
+   * Takes the transaction with real ExUnits and produces the final
+   * transaction with correct script_data_hash and fee for network submission.
+   */
+  return Effect.sync(() => {
+    // TODO: Build final transaction for submission
+    // - Set final fee on transaction
+    // - Set correct script_data_hash
+    // - Finalize all transaction components
+    // - Return transaction ready for signing and submission
+    return transactionWithExUnits
+  })
+}
+
+// New helper functions for corrected buildForEvaluation workflow
+
+export const buildTransactionForEvaluation = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  outputs: ReadonlyArray<TransactionOutput>,
+  minted: Assets.Assets,
+  collectedInputs: ReadonlyArray<UTxO.UTxO>,
+  collateralAmount: Coin.Coin,
+  changeAddress: Address.Address,
+  hasScripts: boolean,
+  options: BuildOptions
+): Effect.Effect<TransactionBuilder, TransactionBuilderError> => {
+  /**
+   * Builds a TransactionBuilder configured for script evaluation.
+   * 
+   * This matches CML's build_for_evaluation behavior:
+   * - Performs coin selection without script costs
+   * - Creates transaction with dummy ExUnits for all redeemers
+   * - Sets script_data_hash to dummy value (prevents submission)
+   * - Returns TransactionBuilder that can be used for evaluation and final building
+   * 
+   * CRITICAL: The returned builder has internal state for evaluation workflow.
+   */
+  return Effect.sync(() => {
+    // TODO: Implement TransactionBuilder creation for evaluation
+    // - Perform initial coin selection
+    // - Add dummy ExUnits to all redeemers
+    // - Set dummy script_data_hash (all zeros)
+    // - Configure builder with evaluation state
+    // - Return the same TransactionBuilder type (not a different interface)
+    return new TransactionBuilderImpl(availableUtxos, /* evaluation state */)
+  })
+}
+
+export const getDraftTransactionForEvaluation = (
+  evaluationState: any // TODO: Define evaluation state type
+): Effect.Effect<Transaction.Transaction, TransactionBuilderError> => {
+  /**
+   * Extracts the draft transaction from evaluation state for script evaluation.
+   * 
+   * The draft transaction has dummy ExUnits and script_data_hash but is otherwise
+   * complete enough for script evaluation.
+   */
+  return Effect.sync(() => {
+    // TODO: Extract draft transaction from evaluation state
+    // - Return transaction with dummy ExUnits
+    // - Ensure all redeemers are present with dummy values
+    return {} as Transaction.Transaction
+  })
+}
+
+export const applyUplcRedeemerResult = (
+  cborBytes: Uint8Array,
+  evaluationState: any
+): Effect.Effect<void, TransactionBuilderError> => {
+  /**
+   * Applies a single UPLC evaluation result from CBOR bytes.
+   * 
+   * Matches CML's applyUPLCEval pattern:
+   * - Deserializes LegacyRedeemer from CBOR bytes
+   * - Extracts ExUnits from the redeemer
+   * - Applies ExUnits to the appropriate redeemer in transaction
+   */
+  return Effect.sync(() => {
+    // TODO: Implement CBOR redeemer result application
+    // - Deserialize CBOR bytes to LegacyRedeemer
+    // - Extract ExUnits from redeemer
+    // - Apply to correct redeemer in transaction
+    // - Update evaluation state
+  })
+}
+
+export const applyProviderRedeemerResult = (
+  redeemer: EvaluatedRedeemer,
+  evaluationState: any
+): Effect.Effect<void, TransactionBuilderError> => {
+  /**
+   * Applies provider evaluation result to transaction.
+   * 
+   * Provider results are already structured, so no CBOR deserialization needed.
+   */
+  return Effect.sync(() => {
+    // TODO: Apply provider redeemer result
+    // - Apply ExUnits to correct redeemer using key
+    // - Update evaluation state
+  })
+}
+```
+
+### Intent Accumulation Benefits
+
+1. **Composable**: Operations can be chained fluently
+2. **Optimizable**: Builder can optimize intent execution order
+3. **Atomic**: All intents execute together or fail together
+4. **Inspectable**: Intents can be analyzed before execution
+5. **Reversible**: Transaction can be rebuilt with different parameters
+
+### Build Process Workflow
+
+The `build()` method follows a multi-phase approach for comprehensive transaction building:
+
+```mermaid
+flowchart TD
+    A["build() called"] --> B["Validate BuildOptions"]
+    B --> C["Execute Accumulated Intents"]
+    C --> D["Calculate Asset Delta"]
+    D --> E["Two-Phase Coin Selection"]
+    
+    E --> F["Phase 1: Initial Selection<br/>without script costs"]
+    F --> G["Estimate Base Fee"]
+    G --> H["Select UTxOs for required assets"]
+    
+    H --> I["Phase 2: Script Cost Integration"]
+    I --> J["Build Partial Transaction"]
+    J --> K["Script Evaluation<br/>WASM UPLC or Provider"]
+    K --> L["Recalculate with Script Costs"]
+    L --> M{"New inputs needed?"}
+    
+    M -->|Yes| N["Additional Coin Selection"]
+    M -->|No| O["Collateral Handling"]
+    N --> O
+    
+    O --> P{"Has Plutus Scripts?"}
+    P -->|Yes| Q["Auto/Manual Collateral Selection<br/>Max 3 UTxOs"]
+    P -->|No| R["Redeemer Building"]
+    Q --> R
+    
+    R --> S["Build Final Transaction"]
+    S --> T["Create SignBuilder"]
+    T --> U["Return SignBuilder"]
+    
+    style A fill:#e1f5fe
+    style U fill:#c8e6c9
+    style K fill:#fff3e0
+    style Q fill:#fce4ec
+```
+
+## Complete Transaction Build Process Checklist
+
+*Based on old implementation's CompleteTxBuilder.ts implementation*
+
+### **PHASE 1: Setup and Validation**
+**Purpose**: Initialize build environment and validate configuration  
+**Solves**: Early error detection and proper build context establishment
+
+- [ ] **Validate Build Options**
+  - Validate coin selection parameters
+  - Validate collateral settings (max 3 UTxOs) 
+  - Validate UPLC evaluation options
+  - Check minimum fee requirements
+
+- [ ] **Fetch Wallet UTxOs**
+  - Get available UTxOs from wallet or use preset inputs
+  - Filter out UTxOs with reference scripts (excluded from coin selection)
+  - Ensure sufficient UTxOs available for transaction
+
+- [ ] **Execute Accumulated Intents**
+  - Process all payToAddress, collectFrom, mintTokens operations
+  - Build initial transaction structure with inputs/outputs
+  - Accumulate asset requirements from all operations
+
+### **PHASE 2: Initial Coin Selection (Without Scripts)**
+**Purpose**: Select UTxOs to cover basic transaction needs without script execution costs  
+**Solves**: Provides foundation for script evaluation by ensuring base transaction can be funded
+
+- [ ] **Calculate Asset Delta**
+  - Sum all required outputs (addresses + change)
+  - Add estimated base fee (without script costs)
+  - Subtract collected inputs and minted assets
+  - Calculate net asset requirements
+
+- [ ] **Initial UTxO Selection**
+  - Apply coin selection algorithm (LargestFirst, RandomImprove, or custom)
+  - Select UTxOs to cover required assets
+  - Handle minimum ADA requirements for change outputs
+  - Recursive selection if additional ADA needed for change
+
+- [ ] **Base Fee Estimation**
+  - Calculate minimum fee using CML `min_fee(false)` (without scripts)
+  - Add reference script fees if reference scripts present
+  - Apply custom minimum fee if specified
+  - Set initial fee estimate on transaction builder
+
+### **PHASE 3: Script Evaluation and Execution Units**
+**Purpose**: Determine actual script execution costs for accurate fee calculation  
+**Solves**: The chicken-and-egg problem - need transaction to evaluate scripts, need ExUnits to build transaction
+
+- [ ] **Build Transaction for Evaluation**
+  - Use CML `build_for_evaluation(0, changeAddress)`
+  - Create transaction with dummy ExUnits for all redeemers
+  - Set dummy script_data_hash to prevent accidental submission
+  - Prepare transaction suitable for script evaluation
+
+- [ ] **Script Evaluation**
+  - **Option A: Local UPLC Evaluation**
+    - Use WASM UPLC module for local script evaluation
+    - Process each redeemer with actual script execution
+    - Generate ExUnits (CPU steps and memory units)
+  - **Option B: Provider Evaluation**
+    - Submit to external provider (Blockfrost, etc.)
+    - Receive structured evaluation results
+    - Extract ExUnits from provider response
+
+- [ ] **Apply Evaluation Results**
+  - Use `applyUPLCEval()` for CBOR-encoded UPLC results
+  - Use `applyUPLCEvalProvider()` for structured provider results
+  - Update transaction with real ExUnits for each redeemer
+  - Recalculate script_data_hash with actual execution units
+
+### **PHASE 4: Refined Coin Selection (With Script Costs)**
+**Purpose**: Adjust coin selection to account for actual script execution costs  
+**Solves**: Ensures sufficient funds to cover final transaction including all script execution fees
+
+- [ ] **Calculate Script Execution Costs**
+  - Convert ExUnits to ADA costs using protocol parameters
+  - Sum CPU costs: `cpu_steps * price_per_cpu_step`
+  - Sum memory costs: `memory_units * price_per_memory_unit`
+  - Calculate total script execution cost in lovelace
+
+- [ ] **Refined Fee Calculation**
+  - Recalculate fee with script costs: `min_fee(true)`
+  - Add script execution costs to base fee
+  - Add reference script fees
+  - Apply fee multiplier if specified
+
+- [ ] **Additional Coin Selection**
+  - Check if current UTxOs cover new fee requirements
+  - Select additional UTxOs if needed to cover script costs
+  - Re-run coin selection algorithm with updated requirements
+  - Update change outputs accordingly
+
+- [ ] **Script Re-evaluation Check**
+  - If new inputs selected, script execution budgets may change
+  - Re-evaluate scripts if input set changed significantly
+  - Apply new ExUnits if re-evaluation performed
+  - Iterate until stable coin selection achieved
+
+### **PHASE 5: Collateral Management**
+**Purpose**: Set up collateral for Plutus script transaction safety  
+**Solves**: Ensures network can collect fees even if scripts fail during execution
+
+- [ ] **Collateral Requirement Check**
+  - Determine if Plutus scripts are present in transaction
+  - Skip collateral setup if no Plutus scripts detected
+  - Proceed with collateral selection for script transactions
+
+- [ ] **Calculate Collateral Amount**
+  - Calculate total collateral needed: `max(collateralPercentage * estimatedFee / 100, setCollateral)`
+  - Use protocol parameter for collateral percentage (typically 150%)
+  - Apply minimum collateral if manually specified
+
+- [ ] **Collateral Selection**
+  - **Manual Collateral**: Use provided UTxOs if specified
+  - **Automatic Collateral**: Select optimal UTxOs from wallet
+    - Filter ADA-only UTxOs (no native tokens)
+    - Exclude UTxOs with reference scripts
+    - Sort by value and select up to 3 UTxOs
+    - Ensure sufficient total value for collateral requirement
+
+- [ ] **Apply Collateral**
+  - Set collateral inputs on transaction (max 3 UTxOs)
+  - Configure collateral return address
+  - Set total collateral amount
+  - Validate collateral UTxOs meet requirements
+
+### **PHASE 6: Redeemer and Witness Preparation**
+**Purpose**: Build final redeemers and prepare transaction witnesses  
+**Solves**: Ensures all scripts have proper redeemers with correct indices and execution units
+
+- [ ] **Complete Partial Programs**
+  - Process any remaining partial redeemer builders
+  - Build redeemers with correct input indices
+  - Handle "self" redeemers (one per UTxO)
+  - Handle "shared" redeemers (one per script)
+
+- [ ] **Index Management**
+  - Calculate correct redeemer indices based on final input ordering
+  - Map UTxOs to their positions in transaction inputs
+  - Ensure redeemer indices match CML transaction structure
+  - Validate no duplicate redeemer indices
+
+- [ ] **Redeemer Validation**
+  - Verify all required redeemers are present
+  - Check ExUnits are applied to all script redeemers
+  - Validate redeemer data is properly formatted
+  - Ensure script_data_hash is correctly calculated
+
+### **PHASE 7: Final Transaction Assembly**
+**Purpose**: Create the final, submittable transaction with all components  
+**Solves**: Assembles all pieces into a valid, complete transaction ready for signing
+
+- [ ] **Transaction Finalization**
+  - Use CML `TransactionBuilder.build()` for final assembly
+  - Set final fee (base + script costs + reference script fees)
+  - Add change outputs with minimum ADA requirements
+  - Include all metadata and auxiliary data
+
+- [ ] **Change Output Creation**
+  - Calculate change from input/output difference
+  - Apply minimum ADA requirements to change outputs
+  - Use CML `add_change_if_needed()` for automatic change
+  - Set change address (typically wallet's first address)
+
+- [ ] **Transaction Validation**
+  - Verify transaction meets all Cardano protocol requirements
+  - Check input/output balancing
+  - Validate script_data_hash matches witness set
+  - Ensure transaction size within limits
+
+- [ ] **Build Result Creation**
+  - Create `SignBuilder` with final transaction
+  - Include comprehensive `TransactionEstimate`
+  - Provide fee breakdown and execution unit costs
+  - Return ready-to-sign transaction builder
+
+### **Key Problem-Solution Pairs**
+
+1. **Chicken-and-Egg Script Problem** → Two-phase building with `build_for_evaluation`
+2. **Unknown Script Costs** → UPLC evaluation + ExUnits application
+3. **Insufficient Funds After Script Costs** → Refined coin selection with script costs
+4. **Script Failure Risk** → Collateral mechanism with automatic selection
+5. **Complex Asset Requirements** → Recursive coin selection with minimum ADA handling
+6. **Reference Script Fees** → Dedicated reference script fee calculation
+7. **Change Output Minimums** → Automatic change calculation with minimum ADA
+8. **Multi-signature Scenarios** → Partial signing and witness accumulation support
+
+#### Phase 1: Intent Execution & Asset Calculation
+```typescript
+// Execute all accumulated intents in sequence
+yield* Effect.all(this.programs, { concurrency: "sequential" }) // Sequential for now
+
+// Calculate net asset requirements
+const assetsDelta = {
+  required: outputs + estimatedFee - minted - collectedInputs,
+  available: providedUTxOs
+}
+```
+
+#### Phase 2: Two-Phase Coin Selection
+```typescript
+// Phase 1: Initial selection without script costs
+const initialSelection = yield* coinSelection.select(
+  availableUtxos,
+  requiredAssets,
+  { includeScriptCosts: false }
+)
+
+// Phase 2: Refined selection with script costs
+const scriptEvaluation = yield* evaluateScripts(partialTx, options.uplcEval)
+const refinedSelection = yield* coinSelection.select(
+  availableUtxos, 
+  requiredAssets + scriptCosts,
+  { includeScriptCosts: true }
+)
+```
+
+#### Phase 3: Script Evaluation Options
+```typescript
+// Option 1: WASM UPLC Evaluation (Plugin)
+if (options.uplcEval?.type === "wasm") {
+  const uplcResults = yield* wasmUplcEvaluate(transaction, options.uplcEval.wasmModule)
+}
+
+// Option 2: Provider Evaluation  
+if (options.uplcEval?.type === "provider") {
+  const evalResults = yield* provider.evaluateTx(transaction, additionalUtxos)
+}
+```
+
+#### Phase 4: Collateral & Finalization
+```typescript
+// Automatic collateral selection
+if (hasPlutusScripts && !options.collateral) {
+  const collateral = yield* autoSelectCollateral(walletUtxos, totalCollateral)
+  // TODO: Implement 3-UTxO limit validation
+}
+
+// Manual collateral 
+if (options.collateral) {
+  yield* validateCollateral(options.collateral) // Max 3 UTxOs
+}
+
+// TODO: Redeemer building - functionality under development
+// TODO: Implement pure TypeScript transaction building functions
+```
+
+```typescript
+// Example: Complex transaction with multiple intents
+const signBuilder = await client
+  .newTx()
+  .collectFrom({ inputs: inputUtxos })        // Intent 1: Add inputs
+  .payToAddress({                             // Intent 2: Add output with datum
+    address: alice,
+    assets: { coin: 1000000n },
+    datum: { message: "Payment to Alice" }
+  })
+  .payToAddress({                             // Intent 3: Add simple output
+    address: bob,
+    assets: { coin: 500000n }
+  })
+  .mintTokens({                               // Intent 4: Mint tokens
+    assets: {
+      lovelace: 0n, // Lovelace not applicable for minting
+      [`${policyIdHex}544f4b454e5f41`]: 100n,  // TOKEN_A (hex encoded)
+      [`${policyIdHex}544f4b454e5f42`]: 50n    // TOKEN_B (hex encoded)
+    }
+  })
+  .addMetadata(1, { message: "Batch payment" }) // Intent 5: Add metadata
+  .build() // Execute all intents atomically
+
+// Example: Simple token minting with helper
+const myTokens = {
+  lovelace: 0n,
+  [Unit.toUnit(policyId, "MyToken")]: 1000n  // Helper to construct unit string
+}
+
+const tokenMintBuilder = await client
+  .newTx()
+  .mintTokens({ assets: myTokens })
+  .build()
+
+// Example: Script-based minting with redeemer
+const scriptMintBuilder = await client
+  .newTx()
+  .mintTokens({
+    assets: {
+      lovelace: 0n,
+      [Unit.toUnit(scriptPolicyId, "ScriptToken")]: 500n
+    },
+    redeemer: { action: "mint", mintAmount: 500n }
+  })
+  .build()
+
+// Example: Script input with redeemer
+const scriptSignBuilder = await client
+  .newTx()
+  .collectFrom({ 
+    inputs: scriptUtxos,
+    redeemer: { action: "unlock", data: unlockData }
+  })
+  .payToAddress({
+    address: recipient,
+    assets: { coin: 2000000n }
+  })
+  .build()
+
+// All intents are accumulated and executed together during build()
+```
 
 ### Pure Functional Approach
 
@@ -1660,9 +2892,12 @@ const firstChain = await client
 const secondChain = await client
   .newTx(firstChain.updatedUtxos)
   .payToAddress(bobAddress, Value.lovelace(1500000n))
-  .mintTokens(myPolicyId, new Map([
-    [AssetName.fromString("ChainToken"), 100n]
-  ]))
+  .mintTokens({
+    assets: {
+      lovelace: 0n,
+      [Unit.toUnit(myPolicyId, "ChainToken")]: 100n
+    }
+  })
   .chain()
 
 // Third transaction in the chain  
@@ -1999,9 +3234,12 @@ const txHash = await client
   .newTx()
   .payToAddress(aliceAddress, Value.lovelace(2000000n))
   .payToAddress(bobAddress, Value.lovelace(1500000n))
-  .mintTokens(myPolicyId, new Map([
-    [AssetName.fromString("MyToken"), 1000n]
-  ]))
+  .mintTokens({
+    assets: {
+      lovelace: 0n,
+      [Unit.toUnit(myPolicyId, "MyToken")]: 1000n
+    }
+  })
   .addMetadata(MetadataLabel.fromNumber(721), {
     name: "My NFT",
     description: "A sample NFT"
@@ -2209,7 +3447,7 @@ const tx = await client.newTx(utxos).payToAddress(addr, value).build() // Unnece
 let currentUtxos = await client.getWalletUtxos()
 
 const step1 = await client.newTx(currentUtxos).payToAddress(addr1, val1).chain()
-const step2 = await client.newTx(step1.updatedUtxos).mintTokens(policy, assets).chain()
+const step2 = await client.newTx(step1.updatedUtxos).mintTokens({ assets }).chain()
 const step3 = await client.newTx(step2.updatedUtxos).delegateStake(poolId).chain()
 
 // Submit all transactions
