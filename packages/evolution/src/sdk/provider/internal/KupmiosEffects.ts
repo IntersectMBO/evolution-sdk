@@ -1,38 +1,25 @@
 import { FetchHttpClient } from "@effect/platform"
-import { Array as _Array, Context, Effect, Layer, pipe, Schedule, Schema } from "effect"
+import { Array as _Array, Effect, pipe, Schedule, Schema } from "effect"
 
-import type * as Address from "../Address.js"
-import type * as Assets from "../Assets.js"
-import type * as Credential from "../Credential.js"
-import type { EvalRedeemer } from "../EvalRedeemer.js"
-import type * as OutRef from "../OutRef.js"
-import type * as ProtocolParameters from "../ProtocolParameters.js"
-import type * as RewardAddress from "../RewardAddress.js"
-import * as Script from "../Script.js"
-import * as Unit from "../Unit.js"
-import type * as UTxO from "../UTxO.js"
-import * as HttpUtils from "./internal/HttpUtils.js"
-import * as Kupo from "./internal/Kupo.js"
-import * as Ogmios from "./internal/Ogmios.js"
-import { ProviderError, ProviderService } from "./Provider.js"
+import type * as Address from "../../Address.js"
+import type * as Assets from "../../Assets.js"
+import type * as Credential from "../../Credential.js"
+import type { EvalRedeemer } from "../../EvalRedeemer.js"
+import type * as OutRef from "../../OutRef.js"
+import type * as ProtocolParameters from "../../ProtocolParameters.js"
+import type * as RewardAddress from "../../RewardAddress.js"
+import * as Script from "../../Script.js"
+import * as Unit from "../../Unit.js"
+import type * as UTxO from "../../UTxO.js"
+import { ProviderError } from "../Provider.js"
+import * as HttpUtils from "./HttpUtils.js"
+import * as Kupo from "./Kupo.js"
+import * as Ogmios from "./Ogmios.js"
 
 const TIMEOUT = 10_000
 
-// Configuration service for Kupmios URLs and headers
-export class KupmiosConfig extends Context.Tag("KupmiosConfig")<
-  KupmiosConfig,
-  {
-    readonly kupoUrl: string
-    readonly ogmiosUrl: string
-    readonly headers?: {
-      readonly kupoHeader?: Record<string, string>
-      readonly ogmiosHeader?: Record<string, string>
-    }
-  }
->() {}
-
-// Utility functions
-export const toProtocolParameters = (result: Ogmios.ProtocolParameters): ProtocolParameters.ProtocolParameters => {
+// Internal utility functions (not exported)
+const toProtocolParameters = (result: Ogmios.ProtocolParameters): ProtocolParameters.ProtocolParameters => {
   return {
     minFeeA: result.minFeeCoefficient,
     minFeeB: result.minFeeConstant.ada.lovelace,
@@ -64,7 +51,7 @@ export const toProtocolParameters = (result: Ogmios.ProtocolParameters): Protoco
   }
 }
 
-export const toAssets = (value: Kupo.UTxO["value"]): Assets.Assets => {
+const toAssets = (value: Kupo.UTxO["value"]): Assets.Assets => {
   const assets: Assets.Assets = { lovelace: BigInt(value.coins) }
   for (const unit of Object.keys(value.assets)) {
     assets[unit.replace(".", "")] = BigInt(value.assets[unit])
@@ -72,7 +59,7 @@ export const toAssets = (value: Kupo.UTxO["value"]): Assets.Assets => {
   return assets
 }
 
-export const retrieveDatumEffect =
+const retrieveDatumEffect =
   (kupoUrl: string, kupoHeader?: Record<string, string>) =>
   (datum_type: Kupo.UTxO["datum_type"], datum_hash: Kupo.UTxO["datum_hash"]) =>
     Effect.gen(function* () {
@@ -99,7 +86,7 @@ export const retrieveDatumEffect =
       return undefined
     })
 
-export const getScriptEffect =
+const getScriptEffect =
   (kupoUrl: string, kupoHeader?: Record<string, string>) => (script_hash: Kupo.UTxO["script_hash"]) =>
     Effect.gen(function* () {
       if (script_hash) {
@@ -138,7 +125,7 @@ export const getScriptEffect =
       } else return undefined
     })
 
-export const kupmiosUtxosToUtxos =
+const kupmiosUtxosToUtxos =
   (kupoURL: string, kupoHeader?: Record<string, string>) => (utxos: ReadonlyArray<Kupo.UTxO>) => {
     const getDatum = retrieveDatumEffect(kupoURL, kupoHeader)
     const getScript = getScriptEffect(kupoURL, kupoHeader)
@@ -163,6 +150,7 @@ export const kupmiosUtxosToUtxos =
     )
   }
 
+// Exported effect functions used by KupmiosProvider
 export const getProtocolParametersEffect = Effect.fn("getProtocolParameters")(function* (
   ogmiosUrl: string,
   headers?: { ogmiosHeader?: Record<string, string> }
@@ -296,7 +284,7 @@ export const submitTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Rec
   })
 
 export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<string, string> }) =>
-  Effect.fn("getUtxosWithUnit")(function* (addressOrCredential: Address.Address | { hash: string }, unit: Unit.Unit) {
+  Effect.fn("getUtxosWithUnit")(function* (addressOrCredential: Address.Address | Credential.Credential, unit: Unit.Unit) {
     const isAddress = typeof addressOrCredential === "string"
     const queryPredicate = isAddress ? addressOrCredential : addressOrCredential.hash
     const { assetName, policyId } = Unit.fromUnit(unit)
@@ -407,29 +395,3 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
     )
     return result.datum
   })
-
-// Factory function to create a configured layer
-export const makeKupmiosLayer = (
-  kupoUrl: string,
-  ogmiosUrl: string,
-  headers?: {
-    kupoHeader?: Record<string, string>
-    ogmiosHeader?: Record<string, string>
-  }
-) => {
-  return Layer.succeed(
-    ProviderService,
-    ProviderService.of({
-      getProtocolParameters: getProtocolParametersEffect(ogmiosUrl, headers?.ogmiosHeader),
-      getUtxos: getUtxosEffect(kupoUrl, headers?.kupoHeader),
-      getUtxoByUnit: getUtxoByUnitEffect(kupoUrl, headers?.kupoHeader),
-      getUtxosByOutRef: getUtxosByOutRefEffect(kupoUrl, headers?.kupoHeader),
-      getUtxosWithUnit: getUtxosWithUnitEffect(kupoUrl, headers?.kupoHeader),
-      submitTx: submitTxEffect(ogmiosUrl, headers?.ogmiosHeader),
-      evaluateTx: evaluateTxEffect(ogmiosUrl, headers?.ogmiosHeader),
-      awaitTx: awaitTxEffect(kupoUrl, headers?.kupoHeader),
-      getDelegation: getDelegationEffect(ogmiosUrl, headers?.ogmiosHeader),
-      getDatum: getDatumEffect(kupoUrl, headers?.kupoHeader)
-    })
-  )
-}

@@ -291,9 +291,7 @@ export namespace Either {
 
   export const fromBip39Entropy = (entropy: Uint8Array, password: string = "") =>
     E.gen(function* () {
-      const keyMaterial = yield* E.try(() =>
-        pbkdf2(sha512, password, entropy, { c: PBKDF2_ITERATIONS, dkLen: PBKDF2_KEY_SIZE })
-      )
+      const keyMaterial = pbkdf2(sha512, password, entropy, { c: PBKDF2_ITERATIONS, dkLen: PBKDF2_KEY_SIZE })
       const clamped = new Uint8Array(keyMaterial)
       clamped.set(clampScalar(keyMaterial.slice(0, 32)), 0)
       return yield* fromBytes(clamped)
@@ -327,7 +325,7 @@ export namespace Either {
         zInput.set(indexBytes, 65)
       } else {
         // 0x02 || publicKey || index
-        const publicKey = yield* E.try(() => sodium.crypto_scalarmult_ed25519_base_noclamp(scalar))
+        const publicKey = sodium.crypto_scalarmult_ed25519_base_noclamp(scalar)
         zInput = new Uint8Array(1 + 32 + 4)
         zInput.set(zTag, 0)
         zInput.set(publicKey, 1)
@@ -354,7 +352,7 @@ export namespace Either {
         ccInput.set(indexBytes, 65)
       } else {
         // 0x03 || publicKey || index (use parent public key)
-        const publicKey = yield* E.try(() => sodium.crypto_scalarmult_ed25519_base_noclamp(scalar))
+        const publicKey = sodium.crypto_scalarmult_ed25519_base_noclamp(scalar)
         ccInput = new Uint8Array(1 + 32 + 4)
         ccInput.set(ccTag, 0)
         ccInput.set(publicKey, 1)

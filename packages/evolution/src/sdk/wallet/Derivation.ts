@@ -1,5 +1,7 @@
 import { mnemonicToEntropy } from "@scure/bip39"
 import { wordlist as English } from "@scure/bip39/wordlists/english"
+import * as Data from "effect/Data"
+import * as Either from "effect/Either"
 
 import * as AddressEras from "../../core/AddressEras.js"
 import * as BaseAddress from "../../core/BaseAddress.js"
@@ -10,6 +12,11 @@ import * as PrivateKey from "../../core/PrivateKey.js"
 import * as RewardAccount from "../../core/RewardAccount.js"
 import type * as SdkAddress from "../Address.js"
 import type * as SdkRewardAddress from "../RewardAddress.js"
+
+export class DerivationError extends Data.TaggedError("DerivationError")<{
+  readonly message: string
+  readonly cause?: unknown
+}> {}
 
 /**
  * Result of deriving keys and addresses from a seed or Bip32 root
@@ -24,7 +31,7 @@ export type SeedDerivationResult = {
   stakeKey: string | undefined
 }
 
-export function walletFromSeed(
+export const walletFromSeed = (
   seed: string,
   options: {
     password?: string
@@ -32,63 +39,62 @@ export function walletFromSeed(
     accountIndex?: number
     network?: "Mainnet" | "Testnet" | "Custom"
   } = {}
-): SeedDerivationResult {
-  //Set default options
-  const { accountIndex = 0, addressType = "Base", network = "Mainnet" } = options
+) =>
+  Either.gen(function* () {
+    const { accountIndex = 0, addressType = "Base", network = "Mainnet" } = options
+    const entropy = yield* Either.try({
+      try: () => mnemonicToEntropy(seed, English),
+      catch: (cause) => new DerivationError({ message: "Invalid seed phrase", cause })
+    })
+    const rootXPrv = yield* Bip32PrivateKey.Either.fromBip39Entropy(entropy, options?.password ?? "")
+    const paymentNode = yield* Bip32PrivateKey.Either.derive(
+      rootXPrv,
+      Bip32PrivateKey.CardanoPath.paymentIndices(accountIndex, 0)
+    )
+    const stakeNode = yield* Bip32PrivateKey.Either.derive(
+      rootXPrv,
+      Bip32PrivateKey.CardanoPath.stakeIndices(accountIndex, 0)
+    )
+    const paymentKey = Bip32PrivateKey.toPrivateKey(paymentNode)
+    const stakeKey = Bip32PrivateKey.toPrivateKey(stakeNode)
 
-  // Derive extended root from BIP39 entropy using our ed25519-bip32 (V2) implementation
-  const entropy = mnemonicToEntropy(seed, English)
-  const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy, options?.password ?? "")
+    const paymentKeyHash = KeyHash.fromPrivateKey(paymentKey)
+    const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
+    const networkId = network === "Mainnet" ? 1 : 0
 
-  // Derive child keys using CIP-1852 indices
-  const paymentIndices = Bip32PrivateKey.CardanoPath.paymentIndices(accountIndex, 0)
-  const stakeIndices = Bip32PrivateKey.CardanoPath.stakeIndices(accountIndex, 0)
-  const paymentNode = Bip32PrivateKey.derive(rootXPrv, paymentIndices)
-  const stakeNode = Bip32PrivateKey.derive(rootXPrv, stakeIndices)
+    const address =
+      addressType === "Base"
+        ? yield* AddressEras.Either.toBech32(
+            new BaseAddress.BaseAddress({
+              networkId,
+              paymentCredential: paymentKeyHash,
+              stakeCredential: stakeKeyHash
+            })
+          )
+        : yield* AddressEras.Either.toBech32(
+            new EnterpriseAddress.EnterpriseAddress({
+              networkId,
+              paymentCredential: paymentKeyHash
+            })
+          )
 
-  // Convert to standard PrivateKey (64 bytes: scalar+iv)
-  const paymentKey = Bip32PrivateKey.toPrivateKey(paymentNode)
-  const stakeKey = Bip32PrivateKey.toPrivateKey(stakeNode)
+    const rewardAddress =
+      addressType === "Base"
+        ? yield* AddressEras.Either.toBech32(
+            new RewardAccount.RewardAccount({
+              networkId,
+              stakeCredential: stakeKeyHash
+            })
+          )
+        : undefined
 
-  const paymentKeyHash = KeyHash.fromPrivateKey(paymentKey)
-  const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
-
-  const networkId = network === "Mainnet" ? 1 : 0
-
-  const address =
-    addressType === "Base"
-      ? AddressEras.toBech32(
-          new BaseAddress.BaseAddress({
-            networkId,
-            paymentCredential: paymentKeyHash,
-            stakeCredential: stakeKeyHash
-          })
-        )
-      : AddressEras.toBech32(
-          new EnterpriseAddress.EnterpriseAddress({
-            networkId,
-            paymentCredential: paymentKeyHash
-          })
-        )
-
-  const rewardAddress =
-    addressType === "Base"
-      ? AddressEras.toBech32(
-          new RewardAccount.RewardAccount({
-            networkId,
-            stakeCredential: stakeKeyHash
-          })
-        )
-      : undefined
-
-  return {
-    address,
-    rewardAddress,
-    paymentKey: PrivateKey.toBech32(paymentKey),
-    stakeKey: addressType === "Base" ? PrivateKey.toBech32(stakeKey) : undefined
-  }
-}
-
+    return {
+      address,
+      rewardAddress,
+      paymentKey: PrivateKey.toBech32(paymentKey),
+      stakeKey: addressType === "Base" ? PrivateKey.toBech32(stakeKey) : undefined
+    }
+  })
 /**
  * Derive only the bech32 private keys (ed25519e_sk...) from a seed.
  */
@@ -244,18 +250,14 @@ export function walletFromPrivateKey(
             new BaseAddress.BaseAddress({ networkId, paymentCredential: paymentKeyHash, stakeCredential: stakeKeyHash })
           )
         })()
-      : AddressEras.toBech32(
-          new EnterpriseAddress.EnterpriseAddress({ networkId, paymentCredential: paymentKeyHash })
-        )
+      : AddressEras.toBech32(new EnterpriseAddress.EnterpriseAddress({ networkId, paymentCredential: paymentKeyHash }))
 
   const rewardAddress =
     addressType === "Base" && stakeKeyBech32
       ? (() => {
           const stakeKey = PrivateKey.fromBech32(stakeKeyBech32)
           const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
-          return AddressEras.toBech32(
-            new RewardAccount.RewardAccount({ networkId, stakeCredential: stakeKeyHash })
-          )
+          return AddressEras.toBech32(new RewardAccount.RewardAccount({ networkId, stakeCredential: stakeKeyHash }))
         })()
       : undefined
 

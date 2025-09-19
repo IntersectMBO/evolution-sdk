@@ -2,6 +2,7 @@ import type { Effect } from "effect"
 import { Context, Data } from "effect"
 
 import type * as Address from "../Address.js"
+import type * as Credential from "../Credential.js"
 import type * as Delegation from "../Delegation.js"
 import type { EvalRedeemer } from "../EvalRedeemer.js"
 import type * as OutRef from "../OutRef.js"
@@ -15,42 +16,36 @@ export class ProviderError extends Data.TaggedError("ProviderError")<{
   readonly message: string
 }> {}
 
-// Effect oriented
+// Type helper to convert Effect types to Promise types
+type EffectToPromise<T> = T extends Effect.Effect<infer Return, infer _Error, infer _Context>
+  ? Promise<Return>
+  : T extends (...args: Array<any>) => Effect.Effect<infer Return, infer _Error, infer _Context>
+  ? (...args: Parameters<T>) => Promise<Return>
+  : never
 
-// Provider Service Interface (Context.Tag)
-export interface ProviderService {
+type EffectToPromiseAPI<T> = {
+  [K in keyof T]: EffectToPromise<T[K]>
+}
+
+// Effect-based Provider interface (the source of truth)
+export interface ProviderEffect {
   readonly getProtocolParameters: Effect.Effect<ProtocolParameters.ProtocolParameters, ProviderError>
-  readonly getUtxos: (address: Address.Address) => Effect.Effect<Array<UTxO>, ProviderError>
-  readonly getUtxosWithUnit: (
-    addressOrCredential: Address.Address | { hash: string },
-    unit: string
-  ) => Effect.Effect<Array<UTxO>, ProviderError>
+  getUtxos: (addressOrCredential: Address.Address | Credential.Credential) => Effect.Effect<Array<UTxO>, ProviderError>
+  readonly getUtxosWithUnit: (addressOrCredential: Address.Address | Credential.Credential, unit: string) => Effect.Effect<Array<UTxO>, ProviderError>
   readonly getUtxoByUnit: (unit: string) => Effect.Effect<UTxO, ProviderError>
   readonly getUtxosByOutRef: (outRefs: ReadonlyArray<OutRef.OutRef>) => Effect.Effect<Array<UTxO>, ProviderError>
   readonly getDelegation: (rewardAddress: RewardAddress.RewardAddress) => Effect.Effect<Delegation.Delegation, ProviderError>
   readonly getDatum: (datumHash: string) => Effect.Effect<string, ProviderError>
   readonly awaitTx: (txHash: string, checkInterval?: number) => Effect.Effect<boolean, ProviderError>
-  readonly submitTx: (tx: string) => Effect.Effect<string, ProviderError>
+  readonly submitTx: (cbor: string) => Effect.Effect<string, ProviderError>
   readonly evaluateTx: (tx: string, additionalUTxOs?: Array<UTxO>) => Effect.Effect<Array<EvalRedeemer>, ProviderError>
 }
 
-// Context.Tag for dependency injection
-export const ProviderService: Context.Tag<ProviderService, ProviderService> =
-  Context.GenericTag<ProviderService>("@evolution/ProviderService")
+export const ProviderEffect: Context.Tag<ProviderEffect, ProviderEffect> =
+  Context.GenericTag<ProviderEffect>("@evolution/ProviderService")
 
-// Non effect oriented, same as the old lucid
-
-// Provider Interface (for Promise-based implementations)
-
-export interface Provider {
-  getProtocolParameters(): Promise<ProtocolParameters.ProtocolParameters>
-  getUtxos(addressOrCredential: Address.Address | { hash: string }): Promise<Array<UTxO>>
-  getUtxosWithUnit(addressOrCredential: Address.Address | { hash: string }, unit: string): Promise<Array<UTxO>>
-  getUtxoByUnit(unit: string): Promise<UTxO>
-  getUtxosByOutRef(outRefs: ReadonlyArray<OutRef.OutRef>): Promise<Array<UTxO>>
-  getDelegation(rewardAddress: RewardAddress.RewardAddress): Promise<Delegation.Delegation>
-  getDatum(datumHash: string): Promise<string>
-  awaitTx(txHash: string, checkInterval?: number): Promise<boolean>
-  submitTx(cbor: string): Promise<string>
-  evaluateTx(tx: string, additionalUTxOs?: Array<UTxO>): Promise<Array<EvalRedeemer>>
+// Promise-based Provider interface (auto-generated from Effect interface)
+export interface Provider extends EffectToPromiseAPI<ProviderEffect> {
+  // Effect namespace for Effect-based alternatives
+  readonly Effect: ProviderEffect
 }

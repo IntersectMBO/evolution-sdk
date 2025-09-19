@@ -1,15 +1,8 @@
-import { Array as _Array, Effect } from "effect"
+import { Effect } from "effect"
 
-import type * as UTxO from "../../sdk/UTxO.js"
-import type * as Address from "../Address.js"
-import type * as Delegation from "../Delegation.js"
-import type { EvalRedeemer } from "../EvalRedeemer.js"
-import type * as OutRef from "../OutRef.js"
-import type * as ProtocolParameters from "../ProtocolParameters.js"
-import type * as RewardAddress from "../RewardAddress.js"
 import type * as Unit from "../Unit.js"
-import * as KupmiosService from "./KupmiosService.js"
-import type { Provider } from "./Provider.js"
+import * as KupmiosEffects from "./internal/KupmiosEffects.js"
+import type { Provider, ProviderEffect } from "./Provider.js"
 
 /**
  * Provides support for interacting with both Kupo and Ogmios APIs.
@@ -49,6 +42,9 @@ export class KupmiosProvider implements Provider {
     readonly kupoHeader?: Record<string, string>
   }
 
+  // Effect property for Provider interface
+  readonly Effect: ProviderEffect
+
   constructor(
     kupoUrl: string,
     ogmiosUrl: string,
@@ -60,54 +56,76 @@ export class KupmiosProvider implements Provider {
     this.kupoUrl = kupoUrl
     this.ogmiosUrl = ogmiosUrl
     this.headers = headers
+
+    // Initialize Effect property
+    this.Effect = {
+      getProtocolParameters: KupmiosEffects.getProtocolParametersEffect(this.ogmiosUrl, this.headers?.ogmiosHeader),
+      getUtxos: KupmiosEffects.getUtxosEffect(this.kupoUrl, this.headers?.kupoHeader),
+      getUtxosWithUnit: KupmiosEffects.getUtxosWithUnitEffect(this.kupoUrl, this.headers?.kupoHeader),
+      getUtxoByUnit: KupmiosEffects.getUtxoByUnitEffect(this.kupoUrl, this.headers?.kupoHeader),
+      getUtxosByOutRef: KupmiosEffects.getUtxosByOutRefEffect(this.kupoUrl, this.headers?.kupoHeader),
+      getDelegation: KupmiosEffects.getDelegationEffect(this.ogmiosUrl, this.headers?.ogmiosHeader),
+      getDatum: KupmiosEffects.getDatumEffect(this.kupoUrl, this.headers?.kupoHeader),
+      awaitTx: KupmiosEffects.awaitTxEffect(this.kupoUrl, this.headers?.kupoHeader),
+      evaluateTx: KupmiosEffects.evaluateTxEffect(this.ogmiosUrl, this.headers?.ogmiosHeader),
+      submitTx: KupmiosEffects.submitTxEffect(this.ogmiosUrl, this.headers?.ogmiosHeader)
+    }
   }
 
-  async getProtocolParameters(): Promise<ProtocolParameters.ProtocolParameters> {
-    return Effect.runPromise(KupmiosService.getProtocolParametersEffect(this.ogmiosUrl, this.headers?.ogmiosHeader))
+  get getProtocolParameters(): Provider["getProtocolParameters"] {
+    return Effect.runPromise(this.Effect.getProtocolParameters)
   }
 
-  async getUtxos(address: Address.Address): Promise<Array<UTxO.UTxO>> {
-    return Effect.runPromise(KupmiosService.getUtxosEffect(this.kupoUrl, this.headers?.kupoHeader)(address))
+  async getUtxos(
+    addressOrCredential: Parameters<Provider["getUtxos"]>[0]
+  ): Promise<Awaited<ReturnType<Provider["getUtxos"]>>> {
+    return Effect.runPromise(this.Effect.getUtxos(addressOrCredential))
   }
 
   async getUtxosWithUnit(
-    addressOrCredential: Address.Address | { hash: string },
-    unit: Unit.Unit
-  ): Promise<Array<UTxO.UTxO>> {
-    return Effect.runPromise(
-      KupmiosService.getUtxosWithUnitEffect(this.kupoUrl, this.headers?.kupoHeader)(addressOrCredential, unit)
-    )
+    addressOrCredential: Parameters<Provider["getUtxosWithUnit"]>[0],
+    unit: Parameters<Provider["getUtxosWithUnit"]>[1]
+  ): Promise<Awaited<ReturnType<Provider["getUtxosWithUnit"]>>> {
+    return Effect.runPromise(this.Effect.getUtxosWithUnit(addressOrCredential, unit as Unit.Unit))
   }
 
-  async getUtxoByUnit(unit: Unit.Unit): Promise<UTxO.UTxO> {
-    return Effect.runPromise(KupmiosService.getUtxoByUnitEffect(this.kupoUrl, this.headers?.kupoHeader)(unit))
+  async getUtxoByUnit(
+    unit: Parameters<Provider["getUtxoByUnit"]>[0]
+  ): Promise<Awaited<ReturnType<Provider["getUtxoByUnit"]>>> {
+    return Effect.runPromise(this.Effect.getUtxoByUnit(unit as Unit.Unit))
   }
 
-  async getUtxosByOutRef(outRefs: ReadonlyArray<OutRef.OutRef>): Promise<Array<UTxO.UTxO>> {
-    return Effect.runPromise(KupmiosService.getUtxosByOutRefEffect(this.kupoUrl, this.headers?.kupoHeader)(outRefs))
+  async getUtxosByOutRef(
+    outRefs: Parameters<Provider["getUtxosByOutRef"]>[0]
+  ): Promise<Awaited<ReturnType<Provider["getUtxosByOutRef"]>>> {
+    return Effect.runPromise(this.Effect.getUtxosByOutRef(outRefs))
   }
 
-  async getDelegation(rewardAddress: RewardAddress.RewardAddress): Promise<Delegation.Delegation> {
-    return Effect.runPromise(KupmiosService.getDelegationEffect(this.ogmiosUrl, this.headers?.ogmiosHeader)(rewardAddress))
+  async getDelegation(
+    rewardAddress: Parameters<Provider["getDelegation"]>[0]
+  ): Promise<Awaited<ReturnType<Provider["getDelegation"]>>> {
+    return Effect.runPromise(this.Effect.getDelegation(rewardAddress))
   }
 
-  async getDatum(datumHash: string): Promise<string> {
-    return Effect.runPromise(KupmiosService.getDatumEffect(this.kupoUrl, this.headers?.kupoHeader)(datumHash))
+  async getDatum(datumHash: Parameters<Provider["getDatum"]>[0]): Promise<Awaited<ReturnType<Provider["getDatum"]>>> {
+    return Effect.runPromise(this.Effect.getDatum(datumHash))
   }
 
-  async awaitTx(txHash: string, checkInterval?: number): Promise<boolean> {
-    return Effect.runPromise(
-      KupmiosService.awaitTxEffect(this.kupoUrl, this.headers?.kupoHeader)(txHash, checkInterval)
-    )
+  async awaitTx(
+    txHash: Parameters<Provider["awaitTx"]>[0],
+    checkInterval?: Parameters<Provider["awaitTx"]>[1]
+  ): Promise<Awaited<ReturnType<Provider["awaitTx"]>>> {
+    return Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
   }
 
-  async evaluateTx(tx: string, additionalUTxOs?: Array<UTxO.UTxO>): Promise<Array<EvalRedeemer>> {
-    return Effect.runPromise(
-      KupmiosService.evaluateTxEffect(this.ogmiosUrl, this.headers?.ogmiosHeader)(tx, additionalUTxOs)
-    )
+  async evaluateTx(
+    tx: Parameters<Provider["evaluateTx"]>[0],
+    additionalUTxOs?: Parameters<Provider["evaluateTx"]>[1]
+  ): Promise<Awaited<ReturnType<Provider["evaluateTx"]>>> {
+    return Effect.runPromise(this.Effect.evaluateTx(tx, additionalUTxOs))
   }
 
-  async submitTx(tx: string): Promise<string> {
-    return Effect.runPromise(KupmiosService.submitTxEffect(this.ogmiosUrl, this.headers?.ogmiosHeader)(tx))
+  async submitTx(tx: Parameters<Provider["submitTx"]>[0]): Promise<Awaited<ReturnType<Provider["submitTx"]>>> {
+    return Effect.runPromise(this.Effect.submitTx(tx))
   }
 }
