@@ -56,6 +56,7 @@ export interface ReadOnlyWalletEffect {
 
 export interface ReadOnlyWallet extends EffectToPromiseAPI<ReadOnlyWalletEffect> {
   readonly Effect: ReadOnlyWalletEffect
+  readonly type: "read-only" // Read-only wallet
 }
 
 /**
@@ -83,6 +84,48 @@ export interface SigningWalletEffect extends ReadOnlyWalletEffect {
 
 export interface SigningWallet extends EffectToPromiseAPI<SigningWalletEffect> {
   readonly Effect: SigningWalletEffect
+  readonly type: "signing" // Local signing wallet (seed/private key)
+}
+
+// ============================================================================
+// API Wallet Types (CIP-30 Compatible)
+// ============================================================================
+
+/**
+ * API Wallet Effect interface for CIP-30 compatible wallets.
+ * API wallets handle both signing and submission through the wallet extension,
+ * eliminating the need for a separate provider in browser environments.
+ *
+ * @since 2.0.0
+ * @category interfaces
+ */
+export interface ApiWalletEffect extends ReadOnlyWalletEffect {
+  readonly signTx: (
+    tx: Transaction.Transaction | string,
+    context?: { utxos?: ReadonlyArray<UTxO.UTxO> }
+  ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
+  readonly signMessage: (
+    address: Address.Address | RewardAddress.RewardAddress,
+    payload: Payload
+  ) => Effect.Effect<SignedMessage, WalletError>
+  /**
+   * Submit transaction directly through the wallet API.
+   * API wallets can submit without requiring a separate provider.
+   */
+  readonly submitTx: (tx: Transaction.Transaction | string) => Effect.Effect<string, WalletError>
+}
+
+/**
+ * API Wallet interface for CIP-30 compatible wallets.
+ * These wallets handle signing and submission internally through the browser extension.
+ *
+ * @since 2.0.0
+ * @category interfaces
+ */
+export interface ApiWallet extends EffectToPromiseAPI<ApiWalletEffect> {
+  readonly Effect: ApiWalletEffect
+  readonly api: WalletApi
+  readonly type: "api" // CIP-30 API wallet
 }
 
 // Transaction builder interfaces moved to sdk/builders module (Phase 1)
@@ -157,7 +200,7 @@ export declare function makeWalletFromPrivateKey(
   privateKeyBech32: string
 ): SigningWallet
 
-export declare function makeWalletFromAPI(api: WalletApi): SigningWallet
+export declare function makeWalletFromAPI(api: WalletApi): ApiWallet
 
 export declare function makeWalletFromAddress(
   network: Network,
