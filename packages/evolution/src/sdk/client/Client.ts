@@ -1,19 +1,15 @@
 // Client module: extracted from WalletNew during Phase 2
 // Provides client effect interfaces and promise-based client interfaces
 
-import { Data, type Effect } from "effect"
+import { Data, type Effect, type Schedule } from "effect"
 
-import type * as Transaction from "../../core/Transaction.js"
-import type * as Address from "../Address.js"
 import type { ReadOnlyTransactionBuilder, ReadOnlyTransactionBuilderEffect } from "../builders/index.js"
 import type * as Delegation from "../Delegation.js"
-// (Provider effect already exposes delegation, datum, etc. so we intentionally avoid re-declaring here)
 import type * as Provider from "../provider/Provider.js"
-import type * as RewardAddress from "../RewardAddress.js"
 import type { EffectToPromiseAPI } from "../Type.js"
 import type * as UTxO from "../UTxO.js"
 // Type-only imports to avoid runtime circular dependency
-import type { ApiWallet,ReadOnlyWallet, SigningWallet, SigningWalletEffect, WalletApi } from "../wallet/WalletNew.js"
+import type { ApiWalletEffect, ReadOnlyWalletEffect, SigningWalletEffect, WalletApi } from "../wallet/WalletNew.js"
 
 // ============================================================================
 // Error Types
@@ -30,214 +26,208 @@ export class ProviderError extends Data.TaggedError("ProviderError")<{
   cause?: unknown
 }> {}
 
+// ============================================================================
+// Basic Client Effect Interfaces (extending from modules)
+// ============================================================================
+
 /**
- * Error class for multi-provider failover operations.
- *
- * @since 2.0.0 
- * @category errors
+ * MinimalClient Effect - just holds network context
  */
-export class MultiProviderError extends Data.TaggedError("MultiProviderError")<{
-  message?: string
-  cause?: unknown
-  failedProviders?: ReadonlyArray<{
-    provider: string
-    error: unknown
-  }>
-  allProvidersFailed?: boolean
-}> {}
-
-// ============================================================================
-// Provider Health Types
-// ============================================================================
-
-export interface ProviderHealthStatus {
-  readonly healthy: boolean
-  readonly latency: number
-  readonly lastCheck: Date
-  readonly consecutiveFailures: number
-  readonly lastError?: unknown
+export interface MinimalClientEffect {
+  readonly networkId: Effect.Effect<number | string, never>
 }
 
-export interface MultiProviderState {
-  readonly currentProvider: number
-  readonly providers: ReadonlyArray<{
-    config: KupmiosProviderConfig | BlockfrostProviderConfig
-    health: ProviderHealthStatus
-  }>
-  readonly failoverStrategy: "round-robin" | "priority" | "random"
-}
-
-// ============================================================================
-// Shared Types
-// ============================================================================
-
-export type Payload = string | Uint8Array
-
-export interface SignedMessage {
-  readonly payload: Payload
-  readonly signature: string
-}
-
-// ============================================================================
-// Effect-based Client Interfaces
-// ============================================================================
-
-// ReadOnly client effect surface = full provider effect + newTx builder entry point
-export interface ReadOnlyClientEffect extends Provider.ProviderEffect {
+/**
+ * ReadOnlyClient Effect - Provider + ReadOnlyWallet + transaction builder
+ */
+export interface ReadOnlyClientEffect extends Provider.ProviderEffect, ReadOnlyWalletEffect {
   readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilderEffect
-  // Wallet-scoped convenience (derive address/rewardAddress from attached wallet)
+  // Wallet-scoped convenience methods that combine provider + wallet operations
   readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<UTxO.UTxO>, ProviderError>
   readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, ProviderError>
 }
 
-// ============================================================================
-// Refactored ProviderOnlyClientEffect (provider-only client can submitTx)
-// ============================================================================
-// Effect surface excludes structural composition helpers.
-export interface ProviderOnlyClientEffect extends Provider.ProviderEffect {}
+/**
+ * SigningClient Effect - Provider + SigningWallet + transaction builder
+ */
+export interface SigningClientEffect extends Provider.ProviderEffect, SigningWalletEffect {
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilderEffect
+  // Wallet-scoped convenience methods that combine provider + wallet operations
+  readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<UTxO.UTxO>, ProviderError>
+  readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, ProviderError>
+}
 
-// Full client effect surface = read-only client + wallet signing capabilities (provider already covers submitTx)
-export interface ClientEffect extends ReadOnlyClientEffect, SigningWalletEffect {}
-
-export interface MinimalClientEffect {}
-
-// ============================================================================
-// Wallet-Only Client (for API wallets without provider)
-// ============================================================================
-
-export interface WalletAPIClientEffect extends SigningWalletEffect {
+/**
+ * ApiWalletClient Effect - ApiWallet only (no provider needed for submission)
+ */
+export interface ApiWalletClientEffect extends ApiWalletEffect {
   readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilderEffect
 }
 
 // ============================================================================
-// Promise-based Client Interfaces
+// Promise-based Client Interfaces (using EffectToPromiseAPI)
 // ============================================================================
 
-export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
-  // Wallet-facing convenience (addresses) surfaced directly
-  readonly address: () => Promise<Address.Address>
-  readonly rewardAddress: () => Promise<RewardAddress.RewardAddress | null>
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
-  readonly getWalletUtxos: () => Promise<ReadonlyArray<UTxO.UTxO>>
-  readonly getWalletDelegation: () => Promise<Delegation.Delegation>
-  readonly provider: Provider.Provider
-  readonly wallet: ReadOnlyWallet
-  readonly Effect: ReadOnlyClientEffect
-}
-
-export type SigningClient = EffectToPromiseAPI<ClientEffect> & {
-  readonly address: () => Promise<Address.Address>
-  readonly rewardAddress: () => Promise<RewardAddress.RewardAddress | null>
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
-  readonly getWalletUtxos: () => Promise<ReadonlyArray<UTxO.UTxO>>
-  readonly getWalletDelegation: () => Promise<Delegation.Delegation>
-  readonly provider: Provider.Provider
-  readonly wallet: SigningWallet
-  readonly Effect: ClientEffect
-}
-
-export type Client = SigningClient
-
-export type WalletAPIClient = EffectToPromiseAPI<WalletAPIClientEffect> & {
-  readonly address: () => Promise<Address.Address>
-  readonly rewardAddress: () => Promise<RewardAddress.RewardAddress | null>
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
-  readonly submitTx: (tx: Transaction.Transaction | string) => Promise<string>
-  readonly wallet: ApiWallet
-  readonly attachProvider: {
-    (provider: Provider.Provider): SigningClient
-    (config: ProviderConfig): SigningClient
-  }
-  readonly Effect: WalletAPIClientEffect
-}
-
-export type ProviderOnlyClient = EffectToPromiseAPI<ProviderOnlyClientEffect> & {
-  readonly attachWallet: {
-    (wallet: SigningWallet): SigningClient
-    (wallet: ReadOnlyWallet): ReadOnlyClient
-    (config: SeedWalletConfig): SigningClient
-    (config: ReadOnlyWalletConfig): ReadOnlyClient
-    (config: ApiWalletConfig): SigningClient
-    (api: WalletApi): SigningClient
-  }
-  readonly Effect: ProviderOnlyClientEffect
-  readonly provider: Provider.Provider
-  readonly isMultiProvider: boolean
-  readonly getActiveProvider?: () => Provider.Provider
-  readonly getProviderHealth?: () => Promise<ReadonlyArray<{
-    provider: Provider.Provider
-    healthy: boolean
-    latency: number
-    lastCheck: Date
-  }>>
-}
-
+/**
+ * MinimalClient - starting point, just knows network
+ */
 export interface MinimalClient {
-  readonly networkId: number | string // Simplified network reference
-  readonly attachProvider: {
-    (provider: Provider.Provider): ProviderOnlyClient
-    (config: ProviderConfig): ProviderOnlyClient
-  }
-  readonly attachMultiProvider: {
-    (config: MultiProviderConfig): ProviderOnlyClient
+  readonly networkId: number | string
+  // Combinator methods (pure, no side effects) with type-aware overloads
+  readonly attachProvider: (config: ProviderConfig) => ProviderOnlyClient
+  readonly attachWallet: {
+    (config: SeedWalletConfig): SigningWalletClient
+    (config: ReadOnlyWalletConfig): ReadOnlyWalletClient
+    (config: ApiWalletConfig): ApiWalletClient
   }
   readonly attach: {
-    (provider: Provider.Provider, wallet: SigningWallet): SigningClient
-    (provider: Provider.Provider, wallet: ReadOnlyWallet): ReadOnlyClient
-    (provider: Provider.Provider, wallet: SeedWalletConfig): SigningClient
-    (provider: Provider.Provider, wallet: ReadOnlyWalletConfig): ReadOnlyClient
-    (provider: Provider.Provider, wallet: ApiWalletConfig): SigningClient
-    (config: ProviderConfig, wallet: SigningWallet): SigningClient
-    (config: ProviderConfig, wallet: ReadOnlyWallet): ReadOnlyClient
-    (config: ProviderConfig, wallet: SeedWalletConfig): SigningClient
-    (config: ProviderConfig, wallet: ReadOnlyWalletConfig): ReadOnlyClient
-    (config: ProviderConfig, wallet: ApiWalletConfig): SigningClient
-    // API wallet can work without a separate provider (uses CIP-30 submitTx)
-    (wallet: ApiWalletConfig): WalletAPIClient
-    (api: WalletApi): WalletAPIClient
+    (providerConfig: ProviderConfig, walletConfig: SeedWalletConfig): SigningClient
+    (providerConfig: ProviderConfig, walletConfig: ReadOnlyWalletConfig): ReadOnlyClient
+    (providerConfig: ProviderConfig, walletConfig: ApiWalletConfig): SigningClient
   }
+  // Effect namespace for methods with side effects only
   readonly Effect: MinimalClientEffect
 }
 
+/**
+ * ProviderOnlyClient - can query blockchain and submit transactions
+ */
+export type ProviderOnlyClient = EffectToPromiseAPI<Provider.ProviderEffect> & {
+  // Combinator methods (pure, no side effects) with type-aware overloads
+  readonly attachWallet: {
+    (config: SeedWalletConfig): SigningClient
+    (config: ReadOnlyWalletConfig): ReadOnlyClient
+    (config: ApiWalletConfig): SigningClient
+  }
+  // Effect namespace - includes all provider methods as Effects
+  readonly Effect: Provider.ProviderEffect
+}
+
+/**
+ * ReadOnlyClient - can query blockchain + wallet address operations
+ */
+export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+  // Effect namespace - includes all provider + wallet methods as Effects
+  readonly Effect: ReadOnlyClientEffect
+}
+
+/**
+ * SigningClient - full functionality: query blockchain + sign + submit
+ */
+export type SigningClient = EffectToPromiseAPI<SigningClientEffect> & {
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+  // Effect namespace - includes all provider + wallet methods as Effects
+  readonly Effect: SigningClientEffect
+}
+
+/**
+ * ApiWalletClient - can sign and submit via CIP-30, no blockchain queries without provider
+ */
+export type ApiWalletClient = EffectToPromiseAPI<ApiWalletClientEffect> & {
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+  // Combinator methods (pure, no side effects)
+  readonly attachProvider: (config: ProviderConfig) => SigningClient
+  // Effect namespace - includes all wallet methods as Effects
+  readonly Effect: ApiWalletClientEffect
+}
+
+/**
+ * SigningWalletClient - can sign only, no blockchain access
+ */
+export type SigningWalletClient = EffectToPromiseAPI<SigningWalletEffect> & {
+  readonly networkId: number | string
+  // Combinator methods (pure, no side effects)
+  readonly attachProvider: (config: ProviderConfig) => SigningClient
+  // Effect namespace - includes all wallet methods as Effects
+  readonly Effect: SigningWalletEffect
+}
+
+/**
+ * ReadOnlyWalletClient - address access only, no signing or blockchain access
+ */
+export type ReadOnlyWalletClient = EffectToPromiseAPI<ReadOnlyWalletEffect> & {
+  readonly networkId: number | string
+  // Combinator methods (pure, no side effects)
+  readonly attachProvider: (config: ProviderConfig) => ReadOnlyClient
+  // Effect namespace - includes all wallet methods as Effects
+  readonly Effect: ReadOnlyWalletEffect
+}
+
 // ============================================================================
-// Unified createClient Config Types (Approved Interface Shape)
+// Configuration Types
 // ============================================================================
 
 export type NetworkId = "mainnet" | "preprod" | "preview" | number
 
+// ============================================================================
+// Retry Policy Configuration
+// ============================================================================
+
+/**
+ * Preset retry configuration with simple parameters
+ */
+export interface RetryConfig {
+  readonly maxRetries: number
+  readonly retryDelayMs: number
+  readonly backoffMultiplier: number
+  readonly maxRetryDelayMs: number
+}
+
+/**
+ * Common preset retry configurations
+ */
+export const RetryPresets = {
+  /** No retries - fail immediately */
+  none: { maxRetries: 0, retryDelayMs: 0, backoffMultiplier: 1, maxRetryDelayMs: 0 } as const,
+  /** Fast retry - good for temporary network issues */
+  fast: { maxRetries: 3, retryDelayMs: 500, backoffMultiplier: 1.5, maxRetryDelayMs: 5000 } as const,
+  /** Standard retry - balanced approach */
+  standard: { maxRetries: 3, retryDelayMs: 1000, backoffMultiplier: 2, maxRetryDelayMs: 10000 } as const,
+  /** Aggressive retry - for critical operations */
+  aggressive: { maxRetries: 5, retryDelayMs: 1000, backoffMultiplier: 2, maxRetryDelayMs: 30000 } as const
+} as const
+
+/**
+ * Retry policy can be either a preset config or a custom Effect Schedule
+ */
+export type RetryPolicy = RetryConfig | Schedule.Schedule<any, any> | { preset: keyof typeof RetryPresets }
+
 // Provider Configs
-export interface KupmiosProviderConfig {
-  readonly type: "kupmios"
-  readonly apiKey: string
-  readonly ogmiosUrl?: string
-  readonly kupoUrl?: string
-  readonly priority?: number
-}
-
-export interface BlockfrostProviderConfig {
+export interface BlockfrostConfig {
   readonly type: "blockfrost"
+  readonly baseUrl: string
+  readonly projectId?: string
+  readonly retryPolicy?: RetryPolicy
+}
+
+export interface KupmiosConfig {
+  readonly type: "kupmios"
+  readonly kupoUrl: string
+  readonly ogmiosUrl: string
+  readonly headers?: {
+    readonly ogmiosHeader?: Record<string, string>
+    readonly kupoHeader?: Record<string, string>
+  }
+  readonly retryPolicy?: RetryPolicy
+}
+
+export interface MaestroConfig {
+  readonly type: "maestro"
+  readonly baseUrl: string
   readonly apiKey: string
-  readonly url?: string
-  readonly priority?: number
+  readonly turboSubmit?: boolean
+  readonly retryPolicy?: RetryPolicy
 }
 
-export interface MultiProviderConfig {
-  readonly type: "multi"
-  readonly providers: ReadonlyArray<KupmiosProviderConfig | BlockfrostProviderConfig>
-  readonly failoverStrategy?: "round-robin" | "priority" | "random"
-  readonly healthCheck?: {
-    readonly enabled?: boolean
-    readonly intervalMs?: number
-    readonly timeoutMs?: number
-  }
-  readonly retryConfig?: {
-    readonly maxRetries?: number
-    readonly retryDelayMs?: number
-    readonly backoffMultiplier?: number
-  }
+export interface KoiosConfig {
+  readonly type: "koios"
+  readonly baseUrl: string
+  readonly token?: string
+  readonly retryPolicy?: RetryPolicy
 }
 
-export type ProviderConfig = KupmiosProviderConfig | BlockfrostProviderConfig | MultiProviderConfig
+export type ProviderConfig = BlockfrostConfig | KupmiosConfig | MaestroConfig | KoiosConfig
 
 // Wallet Configs
 export interface SeedWalletConfig {
@@ -257,136 +247,32 @@ export interface ReadOnlyWalletConfig {
 export interface ApiWalletConfig {
   readonly type: "api"
   readonly api: WalletApi // CIP-30 wallet API interface
-  // API wallets handle submission internally - no provider needed for transactions
-  // Optional provider only for enhanced blockchain queries if needed
-  readonly provider?: ProviderConfig
 }
 
 export type WalletConfig = SeedWalletConfig | ReadOnlyWalletConfig | ApiWalletConfig
 
-export type CreateClientConfig =
-  | { network: NetworkId }
-  | { network: NetworkId; provider: ProviderConfig }
-  | { network: NetworkId; provider: ProviderConfig; wallet: WalletConfig }
-
 // ============================================================================
-// createClient Overloads (Stubs)
+// Factory Functions
 // ============================================================================
 
-// ============================================================================
-// Factory Declarations (implementation provided in build output or later phase)
-// ============================================================================
 export declare function createClient(): MinimalClient
 export declare function createClient(config: { network: NetworkId }): MinimalClient
 export declare function createClient(config: { network: NetworkId; provider: ProviderConfig }): ProviderOnlyClient
-export declare function createClient(config: { network: NetworkId; provider: ProviderConfig; wallet: SeedWalletConfig }): SigningClient
-export declare function createClient(config: { network: NetworkId; provider: ProviderConfig; wallet: ReadOnlyWalletConfig }): ReadOnlyClient
-export declare function createClient(config: { network: NetworkId; provider: ProviderConfig; wallet: ApiWalletConfig }): SigningClient
-export declare function createClient(config: { network: NetworkId; wallet: ApiWalletConfig }): WalletAPIClient // API wallet without separate provider
-export declare function createClient(
-  config?: CreateClientConfig
-): MinimalClient | ProviderOnlyClient | SigningClient | ReadOnlyClient | WalletAPIClient
-
-// Helper factory declarations (not yet implemented in this module)
-export declare function providerFromConfig(config: ProviderConfig, network: NetworkId): Provider.Provider
-export declare function multiProviderFromConfig(config: MultiProviderConfig, network: NetworkId): Provider.Provider
-export declare function seedWalletFromConfig(config: SeedWalletConfig, network: NetworkId): SigningWallet
-export declare function readOnlyWalletFromConfig(config: ReadOnlyWalletConfig, network: NetworkId): ReadOnlyWallet
-export declare function apiWalletFromConfig(config: ApiWalletConfig, network: NetworkId): ApiWallet
-export declare function walletFromCip30Api(api: WalletApi): ApiWallet
-
-// Example (non-executable) usage:
-const minimalClient = createClient()
-const providerOnlyClient = minimalClient.attachProvider({ type: "blockfrost", apiKey: "xxx" })
-
-// API wallet client upgrade path:
-const apiWalletClient = createClient({ network: "mainnet", wallet: { type: "api", api: {} as WalletApi } })
-// apiWalletClient: WalletAPIClient (can sign/submit, but no blockchain queries)
-
-const _fullSigningClient = apiWalletClient.attachProvider({ type: "blockfrost", apiKey: "xxx" })
-// _fullSigningClient: SigningClient (full capabilities: query + sign + submit)
-const _readOnlyClient = providerOnlyClient.attachWallet({ type: "read-only", address: "test" })
-const _signingClient = providerOnlyClient.attachWallet({ type: "seed", mnemonic: "..." })
-
-// Multi-provider examples:
-const _multiProviderClient = createClient({
-  network: "mainnet",
-  provider: {
-    type: "multi",
-    providers: [
-      {
-        type: "kupmios",
-        apiKey: "primary-key",
-        priority: 1
-      },
-      {
-        type: "blockfrost", 
-        apiKey: "fallback-key",
-        priority: 2
-      }
-    ],
-    failoverStrategy: "priority",
-    healthCheck: {
-      enabled: true,
-      intervalMs: 30000,
-      timeoutMs: 5000
-    },
-    retryConfig: {
-      maxRetries: 3,
-      retryDelayMs: 1000,
-      backoffMultiplier: 2
-    }
-  }
-})
-
-const _roundRobinClient = createClient({
-  network: "mainnet", 
-  provider: {
-    type: "multi",
-    providers: [
-      { type: "kupmios", apiKey: "key1" },
-      { type: "kupmios", apiKey: "key2" },
-      { type: "blockfrost", apiKey: "key3" }
-    ],
-    failoverStrategy: "round-robin"
-  }
-})
-
-// Advanced multi-provider with wallet attachment:
-const _fullClient = createClient({
-  network: "mainnet",
-  provider: {
-    type: "multi", 
-    providers: [
-      {
-        type: "kupmios",
-        apiKey: "primary-key",
-        ogmiosUrl: "wss://ogmios.example.com",
-        kupoUrl: "https://kupo.example.com",
-        priority: 1
-      },
-      {
-        type: "blockfrost",
-        apiKey: "backup-key", 
-        url: "https://blockfrost.example.com",
-        priority: 2
-      }
-    ],
-    failoverStrategy: "priority",
-    healthCheck: {
-      enabled: true,
-      intervalMs: 15000, // Check every 15 seconds
-      timeoutMs: 3000    // 3 second timeout
-    },
-    retryConfig: {
-      maxRetries: 2,
-      retryDelayMs: 500,
-      backoffMultiplier: 1.5
-    }
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon...",
-    accountIndex: 0
-  }
-})
+export declare function createClient(config: { network: NetworkId; wallet: SeedWalletConfig }): SigningWalletClient
+export declare function createClient(config: { network: NetworkId; wallet: ReadOnlyWalletConfig }): ReadOnlyWalletClient
+export declare function createClient(config: { network: NetworkId; wallet: ApiWalletConfig }): ApiWalletClient
+export declare function createClient(config: {
+  network: NetworkId
+  provider: ProviderConfig
+  wallet: SeedWalletConfig
+}): SigningClient
+export declare function createClient(config: {
+  network: NetworkId
+  provider: ProviderConfig
+  wallet: ReadOnlyWalletConfig
+}): ReadOnlyClient
+export declare function createClient(config: {
+  network: NetworkId
+  provider: ProviderConfig
+  wallet: ApiWalletConfig
+}): SigningClient
