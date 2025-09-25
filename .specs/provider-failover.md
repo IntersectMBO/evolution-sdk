@@ -1,19 +1,20 @@
 # Evolution SDK Provider Failover Specification
 
-Technical specification for multi-provider failover strategies and error handling in the Evolution SDK.
+## Abstract
 
-## Overview
+The Evolution SDK implements a multi-provider failover system enabling resilient blockchain interactions through automatic provider switching when failures occur. This specification defines the architecture, strategies, and error handling mechanisms for orchestrating failover between multiple Cardano data providers, supporting both priority-based and round-robin selection strategies with comprehensive error accumulation and debugging capabilities.
 
-This specification defines the multi-provider failover system architecture, strategies, and error handling mechanisms for Cardano blockchain provider interactions.
+## Purpose and Scope
 
-### Features
+**Purpose**: Enable resilient blockchain interactions by automatically switching between multiple data providers when failures occur, ensuring high availability and fault tolerance for critical blockchain operations.
 
-- Multiple failover strategies: priority-based and round-robin selection
-- Request-level retry mechanisms via Effect.retry
-- Immediate failover on provider errors
-- Comprehensive error handling and accumulation
+**Scope**: Defines the architecture, behavioral contracts, and technical requirements for multi-provider failover system within Evolution SDK. Covers MultiProvider controller, failover strategies, error handling mechanisms, and integration contracts between providers and client applications.
 
-## Architecture
+**Target Architecture**: Multi-provider orchestration system with pluggable failover strategies, immediate error-based switching, and comprehensive error accumulation for debugging and observability.
+
+## Introduction
+
+The provider failover system addresses the inherent unreliability of individual blockchain data providers by orchestrating requests across multiple providers with automatic failover on errors. The system supports multiple failover strategies optimized for different operational goals while maintaining comprehensive error tracking for debugging purposes.
 
 ```mermaid
 graph TB
@@ -23,21 +24,21 @@ graph TB
     FailoverStrategy --> Priority[Priority Strategy]
     FailoverStrategy --> RoundRobin[Round Robin Strategy]
     
-    MultiProvider --> P1[Provider 1<br/>Blockfrost]
-    MultiProvider --> P2[Provider 2<br/>Kupmios]
-    MultiProvider --> P3[Provider 3<br/>Maestro]
-    MultiProvider --> P4[Provider 4<br/>Koios]
+    MultiProvider --> P1[Provider 1]
+    MultiProvider --> P2[Provider 2]
+    MultiProvider --> P3[Provider 3]
+    MultiProvider --> P4[Provider 4]
     
     P1 --> CardanoNetwork[Cardano Network]
     P2 --> CardanoNetwork
     P3 --> CardanoNetwork
     P4 --> CardanoNetwork
     
-    classDef client fill:#3b82f6,stroke:#1e3a8a,stroke-width:3px,color:#ffffff,font-weight:bold
-    classDef controller fill:#8b5cf6,stroke:#4c1d95,stroke-width:3px,color:#ffffff,font-weight:bold
-    classDef strategy fill:#f59e0b,stroke:#92400e,stroke-width:3px,color:#ffffff,font-weight:bold
-    classDef provider fill:#10b981,stroke:#065f46,stroke-width:3px,color:#ffffff,font-weight:bold
-    classDef network fill:#ef4444,stroke:#991b1b,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef client fill:#3b82f6,stroke:#1e40af,stroke-width:2px,color:#ffffff
+    classDef controller fill:#8b5cf6,stroke:#5b21b6,stroke-width:2px,color:#ffffff
+    classDef strategy fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#ffffff
+    classDef provider fill:#10b981,stroke:#065f46,stroke-width:2px,color:#ffffff
+    classDef network fill:#ef4444,stroke:#b91c1c,stroke-width:2px,color:#ffffff
     
     class Client client
     class MultiProvider controller
@@ -46,32 +47,111 @@ graph TB
     class CardanoNetwork network
 ```
 
-## Provider Types
+The system provides immediate failover on provider errors while preserving comprehensive error context for debugging and maintains strategy-specific state for consistent provider selection patterns.
 
-| Provider | Network Support | API Key Required | Pagination |
-|----------|-----------------|------------------|------------|
-| **Blockfrost** | Mainnet, Preprod, Preview | ✅ | Cursor-based |
-| **Kupmios** | Mainnet, Preprod, Preview | ❌ (self-hosted) | Offset-based |
-| **Maestro** | Mainnet, Preprod | ✅ | Cursor-based |
-| **Koios** | Mainnet, Preprod, Preview | Optional | Offset-based |
+## Functional Specification (Normative)
 
-## Failover Strategies
+The following requirements are specified using RFC 2119/8174 keywords: MUST (absolute requirement), SHOULD (recommended), MAY (optional).
 
-### 1. Priority Strategy
+### 1. Failover strategies
 
-Routes requests to providers based on configured priority levels, failing over to lower priority providers when higher priority ones fail.
+**1.1**: Priority strategy **MUST** attempt providers in strict priority order (lowest priority number first).
 
-```typescript
-interface PriorityStrategy {
-  type: "priority"
-  providers: Array<{
-    provider: ProviderConfig
-    priority: number // Lower number = higher priority (1 = highest)
-  }>
-}
+**1.2**: Applications **SHOULD** use priority strategy when providers have different cost, reliability, or feature characteristics.
+
+**1.3**: Priority configuration **MUST** assign unique priority numbers to avoid ambiguous ordering.
+
+**1.4**: Round-robin strategy **MUST** distribute requests evenly across all configured providers.
+
+**1.5**: Applications **SHOULD** use round-robin strategy for load balancing when all providers have equivalent capabilities.
+
+**1.6**: Round-robin **MAY** be preferred in high-throughput scenarios to prevent provider overload.
+
+**1.7**: Priority strategy **MUST** support arbitrary priority ordering with numerical priority values.
+
+**1.8**: Round-robin strategy **MUST** maintain equal distribution across all providers over time.
+
+**1.9**: Strategy selection **MUST** be determined at MultiProvider construction time and remain immutable.
+
+### 2. Request flow and failover orchestration
+
+**2.1**: MultiProvider **MUST** attempt immediate failover when a provider returns a `ProviderError`.
+
+**2.2**: Individual providers **SHOULD** handle internal retries before returning errors to MultiProvider.
+
+**2.3**: Error accumulation **MUST** preserve all provider failure details for debugging purposes.
+
+**2.4**: MultiProviderError **MUST** contain details from all failed provider attempts.
+
+**2.5**: Error timestamps **SHOULD** enable debugging of timing-related issues.
+
+**2.6**: Applications **MAY** use provider error details to implement custom recovery logic.
+
+**2.7**: Retry policies **MUST** be configured at provider construction time and remain immutable.
+
+**2.8**: Applications **SHOULD** tune retry policies based on provider characteristics and SLA requirements.
+
+### 3. Interface contracts and integration
+
+**3.1**: MultiProvider **MUST** implement the complete Provider interface while managing multiple underlying providers.
+
+**3.2**: MultiProvider **MUST** maintain immutable configuration after construction.
+
+**3.3**: MultiProvider state transitions **MUST** be thread-safe and deterministic.
+
+**3.4**: All providers **MUST** implement consistent error handling with `ProviderError` types.
+
+**3.5**: Provider methods **MUST** complete internal retries before returning to MultiProvider.
+
+**3.6**: Providers **SHOULD** implement Effect-based APIs with Promise adapters for compatibility.
+
+**3.7**: FailoverStrategy implementations **MUST** be deterministic for identical input sequences.
+
+**3.8**: Strategy state mutations **MUST** be isolated per MultiProvider instance.
+
+**3.9**: Strategy selection algorithms **MUST** complete in O(1) time complexity.
+
+### 4. Performance and reliability constraints
+
+**4.1**: Failover operations **MUST** complete within 100ms excluding network operations.
+
+**4.2**: Strategy selection **MUST** not block concurrent requests to different MultiProvider instances.
+
+**4.3**: Memory usage **SHOULD** remain constant regardless of error accumulation count.
+
+**4.4**: Provider configurations **MUST** be validated at construction time, not runtime.
+
+### 5. Error handling and classification
+
+**5.1**: MultiProviderError **MUST** distinguish between network failures, authentication failures, and provider unavailability.
+
+**5.2**: Error propagation **MUST** preserve original error context while adding failover metadata.
+
+**5.3**: System **MUST** continue failover attempts until all providers exhausted, regardless of error types.
+
+## Appendix (Informative) {#appendix}
+
+### A.1. Strategy Configuration Workflows
+
+```mermaid
+graph TD
+    MultiProvider[MultiProvider Construction] --> StrategyType{Strategy Type}
+    StrategyType -->|Priority| PriorityReqs[Priority Strategy Requirements:<br/>- Numerical priority ordering<br/>- Strict precedence rules<br/>- Deterministic selection]
+    StrategyType -->|RoundRobin| RoundRobinReqs[Round-Robin Strategy Requirements:<br/>- Equal distribution guarantee<br/>- Cyclic provider iteration<br/>- Stateful index management]
+    
+    PriorityReqs --> Validation[Configuration Validation:<br/>- Unique priorities<br/>- Valid provider configs<br/>- Retry policy compliance]
+    RoundRobinReqs --> Validation
+    
+    classDef system fill:#3b82f6,stroke:#1e40af,stroke-width:2px,color:#ffffff
+    classDef requirements fill:#10b981,stroke:#065f46,stroke-width:2px,color:#ffffff
+    classDef validation fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#ffffff
+    
+    class MultiProvider system
+    class StrategyType,PriorityReqs,RoundRobinReqs requirements
+    class Validation validation
 ```
 
-#### Priority Strategy Workflow
+### A.2. Priority Strategy Flow
 
 ```mermaid
 graph TD
@@ -84,26 +164,15 @@ graph TD
     P3 -->|ProviderError| Error[All Providers Failed - MultiProviderError]
     
     classDef success fill:#10b981,stroke:#065f46,stroke-width:2px,color:#ffffff
-    classDef failure fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#ffffff
-    classDef process fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#ffffff
+    classDef failure fill:#ef4444,stroke:#b91c1c,stroke-width:2px,color:#ffffff
+    classDef process fill:#3b82f6,stroke:#1e40af,stroke-width:2px,color:#ffffff
     
     class Success1,Success2,Success3 success
     class Error failure
     class Start,P1,P2,P3 process
 ```
 
-### 2. Round Robin Strategy
-
-Distributes requests evenly across all providers in sequential order.
-
-```typescript
-interface RoundRobinStrategy {
-  type: "round-robin" 
-  providers: Array<ProviderConfig>
-}
-```
-
-#### Round Robin Strategy Workflow
+### A.3. Round Robin Strategy Flow
 
 ```mermaid
 graph TD
@@ -124,9 +193,9 @@ graph TD
     P3 -->|ProviderError| Error[All Providers Failed<br/>MultiProviderError]
     
     classDef success fill:#10b981,stroke:#065f46,stroke-width:2px,color:#ffffff
-    classDef failure fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#ffffff
-    classDef process fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#ffffff
-    classDef decision fill:#f59e0b,stroke:#92400e,stroke-width:2px,color:#ffffff
+    classDef failure fill:#ef4444,stroke:#b91c1c,stroke-width:2px,color:#ffffff
+    classDef process fill:#3b82f6,stroke:#1e40af,stroke-width:2px,color:#ffffff
+    classDef decision fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#ffffff
     
     class Success1,Success2,Success3 success
     class Error,Acc1,Acc2 failure
@@ -134,9 +203,7 @@ graph TD
     class Check,P1,P2,P3 decision
 ```
 
-## Request Flow and Failover
-
-### High-Level Workflow
+### A.4. High-Level Request Flow
 
 ```mermaid
 graph TD
@@ -151,9 +218,9 @@ graph TD
     NextProvider --> Invoke
     
     classDef success fill:#10b981,stroke:#065f46,stroke-width:2px,color:#ffffff
-    classDef failure fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#ffffff
-    classDef process fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#ffffff
-    classDef decision fill:#f59e0b,stroke:#92400e,stroke-width:2px,color:#ffffff
+    classDef failure fill:#ef4444,stroke:#b91c1c,stroke-width:2px,color:#ffffff
+    classDef process fill:#3b82f6,stroke:#1e40af,stroke-width:2px,color:#ffffff
+    classDef decision fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#ffffff
     
     class Return success
     class Accumulate,ThrowMulti failure
@@ -161,117 +228,50 @@ graph TD
     class Success,CheckNext decision
 ```
 
-The system configures retry policies at provider construction time and switches providers immediately on ProviderError:
+### A.5. Provider Ecosystem Matrix
 
-1. **Provider Construction**: Each provider is created with retry policy configured via `setRetryPolicy(config)`
-2. **Provider Selection**: MultiProvider selects provider based on strategy
-3. **Method Execution**: Call provider method (uses pre-configured retry policy with internal Effect.retry)
-4. **Success**: Return result immediately
-5. **ProviderError**: Provider has exhausted internal retries - immediately switch to next provider
-6. **Error Accumulation**: Add provider's error to accumulated error list
-7. **Failover**: Move to next provider and repeat the process
-8. **Final Error**: Throw `MultiProviderError` with all accumulated errors if all providers fail
+| Provider | Network Support | API Key Required | Pagination | Cost Model | Reliability Notes |
+|----------|-----------------|------------------|------------|------------|------------------|
+| **Blockfrost** | Mainnet, Preprod, Preview | ✅ | Cursor-based | Freemium | High SLA on paid tiers |
+| **Kupmios** | Mainnet, Preprod, Preview | ❌ (self-hosted) | Offset-based | Free | Variable, depends on host |
+| **Maestro** | Mainnet, Preprod | ✅ | Cursor-based | Subscription | Enterprise-grade |
+| **Koios** | Mainnet, Preprod, Preview | Optional | Offset-based | Donation-based | Community-maintained |
 
-### Effect-Based Workflow Conditions
+### A.6. Interface Definitions
 
-The MultiProvider maintains internal state and delegates retry logic to individual provider methods:
-
-#### State Management
 ```typescript
-interface MultiProviderState {
-  readonly providers: ReadonlyArray<Provider>
-  readonly strategy: FailoverStrategy
-  // currentProviderIndex stored internally, accessed via method
-}
-
-// MultiProvider API for accessing internal state
-interface MultiProvider {
-  // Get current provider index (for debugging/monitoring)
-  readonly getCurrentProviderIndex: () => number
-  
-  // ... provider methods
-  readonly getProtocolParameters: () => Effect.Effect<ProtocolParameters, MultiProviderError>
-  readonly getUtxos: (address: Address) => Effect.Effect<Array<UTxO>, MultiProviderError>
-  // ... other provider methods
-}
-```
-
-#### Provider Configuration Interface
-```typescript
-// Provider configuration with immutable retry policy
-interface ProviderConfig {
-  readonly type: "blockfrost" | "kupmios" | "maestro" | "koios"
-  readonly baseUrl: string
-  readonly apiKey?: string
-  readonly projectId?: string
-  readonly retryPolicy: RetryConfig
-  // ... other provider-specific config
-}
-
-// Providers accept retry policy at construction time (immutable)
-interface ProviderConstruction {
-  readonly createProvider: (config: ProviderConfig) => Provider
-}
-```
-
-#### Error Accumulation Pattern
-```typescript
-// MultiProviderError with accumulated child provider errors
-interface MultiProviderError {
-  readonly message: string
-  readonly cause: unknown
-  readonly failedProviders: ReadonlyArray<{
-    readonly providerType: string
-    readonly providerConfig: ProviderConfig
-    readonly error: ProviderError
-    readonly attemptTime: Date
-    readonly retriesAttempted: number
+interface PriorityStrategy {
+  type: "priority"
+  providers: Array<{
+    provider: ProviderConfig
+    priority: number // Lower number = higher priority (1 = highest)
   }>
-  readonly allProvidersFailed: boolean
-  readonly totalAttempts: number
 }
-```
 
-#### Workflow Conditions
-```typescript
-// Minimal failover decision logic - immediate failover on ProviderError
-interface FailoverConditions {
-  // Should failover to next provider (always true on ProviderError)
-  readonly shouldFailover: (
-    providerIndex: number,
-    error: ProviderError
-  ) => boolean
+interface RoundRobinStrategy {
+  type: "round-robin" 
+  providers: Array<ProviderConfig>
 }
-```
 
-#### Error-Driven State Transitions
-```typescript
-// Effect patterns for provider selection and error accumulation
-interface StateTransitions {
-  // Select next provider based on strategy
-  readonly selectNextProvider: (
+interface MultiProviderContract extends Provider {
+  readonly getCurrentProviderIndex: () => number
+  readonly getFailoverStrategy: () => FailoverStrategy
+  readonly getProviderConfigurations: () => ReadonlyArray<ProviderConfig>
+}
+
+interface FailoverStrategyContract {
+  readonly selectProvider: (
+    providers: ReadonlyArray<Provider>,
     currentIndex: number,
-    strategy: FailoverStrategy,
-    totalProviders: number
-  ) => Effect.Effect<number, MultiProviderError>
+    previousErrors: ReadonlyArray<ProviderError>
+  ) => number
   
-  // Create MultiProviderError with all accumulated provider errors
-  readonly createMultiProviderError: (
-    accumulatedErrors: ReadonlyArray<ProviderFailureInfo>
-  ) => MultiProviderError
+  readonly updateState: (
+    selectedIndex: number,
+    result: Either<ProviderError, unknown>
+  ) => FailoverStrategyState
 }
 
-interface ProviderFailureInfo {
-  readonly providerType: string
-  readonly providerConfig: ProviderConfig
-  readonly error: ProviderError
-  readonly attemptTime: Date
-}
-```
-
-### Retry Configuration
-
-```typescript
 interface RetryConfig {
   maxRetries: number          // Configured at provider construction time
   retryDelayMs: number        // Base delay between retries
@@ -280,171 +280,55 @@ interface RetryConfig {
 }
 ```
 
-### Example Flow
+### A.7. System Responsibilities Matrix
 
-```typescript
-// 1. Provider Construction - retry policy configured at construction time
-const blockfrostConfig: ProviderConfig = {
-  type: "blockfrost",
-  baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
-  projectId: "your-project-id",
-  retryPolicy: {
-    maxRetries: 3,
-    retryDelayMs: 1000,
-    backoffMultiplier: 2,
-    maxRetryDelayMs: 30000
-  }
-}
+| Component | Responsibilities |
+|-----------|------------------|
+| **MultiProvider** | Provider selection and failover orchestration; Error accumulation and MultiProviderError construction; Strategy state management and coordination; Request routing and response aggregation |
+| **Provider** | Internal retry logic and backoff handling; Network communication and protocol implementation; Provider-specific error classification and reporting; Resource management and connection pooling |
+| **Strategy** | Provider selection algorithm implementation; Internal state management for selection logic; Deterministic behavior for identical input sequences |
 
-const blockfrostProvider = new BlockfrostProvider(blockfrostConfig)
+### A.8. Key Abstractions
 
-// 2. Provider Implementation - internal Effect.retry using configured policy
-class BlockfrostProvider implements Provider {
-  constructor(private config: ProviderConfig) {
-    this.Effect = {
-      getProtocolParameters: Effect.retry(
-        this.makeProtocolParametersRequest(),
-        Schedule.exponential(`${this.config.retryPolicy.retryDelayMs} millis`)
-          .pipe(
-            Schedule.intersect(Schedule.recurs(this.config.retryPolicy.maxRetries)),
-            Schedule.jittered() // Add jitter to prevent thundering herd
-          )
-      ),
-      // ... other methods with same retry pattern
-    }
-  }
-}
+**Provider failover** is an automatic mechanism that switches between multiple blockchain data providers when one becomes unavailable or returns errors. Think of it as having multiple routes to the same destination - if one route is blocked, you automatically take an alternative path.
 
-// 3. MultiProvider usage flow for getProtocolParameters()
-// - MultiProvider.getProtocolParameters() called
-// - Select provider by strategy (e.g., index 0 for priority strategy)
-// - provider.Effect.getProtocolParameters() -> internal Effect.retry handles all retries
-// - If provider method succeeds -> return result
-// - If provider method fails with ProviderError -> accumulate error, select next provider
-// - Repeat process with next provider
-// - If all providers fail -> throw MultiProviderError with accumulated errors
-```
+**MultiProvider**: A controller that manages multiple individual providers and orchestrates failover logic. It presents a single interface while internally handling provider selection and error recovery.
 
-## Usage Examples
+**Failover Strategy**: The algorithm that determines which provider to try next when the current one fails. Each strategy optimizes for different goals:
+- **Priority Strategy**: Optimizes for provider preference (cost, reliability, features)
+- **Round-Robin Strategy**: Optimizes for load distribution across providers
 
-### MultiProvider Construction
+**Retry vs Failover**: 
+- **Retry**: Attempting the same request on the same provider multiple times with delays
+- **Failover**: Switching to a different provider immediately when the current one fails
 
-```typescript
-// Example: Priority-based MultiProvider with custom retry policies
-const multiProvider = MultiProvider.create({
-  strategy: FailoverStrategy.Priority,
-  providers: [
-    {
-      type: "blockfrost",
-      baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
-      projectId: "mainnet_abc123",
-      retryPolicy: {
-        maxRetries: 3,
-        retryDelayMs: 1000,
-        backoffMultiplier: 2,
-        maxRetryDelayMs: 30000
-      }
-    },
-    {
-      type: "kupmios", 
-      baseUrl: "wss://ogmios.example.com",
-      apiKey: "backup-key",
-      retryPolicy: {
-        maxRetries: 2,
-        retryDelayMs: 500,
-        backoffMultiplier: 1.5,
-        maxRetryDelayMs: 10000
-      }
-    },
-    {
-      type: "maestro",
-      baseUrl: "https://api.maestro.org/v1",
-      apiKey: "maestro-key",
-      retryPolicy: {
-        maxRetries: 1,  // Fast failover for tertiary provider
-        retryDelayMs: 200,
-        backoffMultiplier: 1,
-        maxRetryDelayMs: 200
-      }
-    }
-  ]
-})
+### A.9. Essential Workflows
 
-// Usage with Effect API
-const protocolParamsEffect = multiProvider.Effect.getProtocolParameters()
-const protocolParams = await Effect.runPromise(protocolParamsEffect)
+**Request Lifecycle**: Request → Provider Selection → Execution → Success/Error → (Failover if needed) → Final Result
 
-// Usage with Promise API (auto-generated)
-const protocolParams2 = await multiProvider.getProtocolParameters()
+**Error Accumulation**: When providers fail, their errors are collected rather than discarded, providing complete debugging information in the final `MultiProviderError`.
 
-// Debugging: Check which provider is currently active
-const currentIndex = multiProvider.getCurrentProviderIndex()
-console.log(`Currently using provider at index: ${currentIndex}`)
-```
+**State Management**: Each strategy maintains internal state (current provider index) that evolves with each request, enabling consistent provider selection patterns.
 
-### Round-Robin Example
+### A.10. Implementation Architecture Notes
 
-```typescript
-// Example: Round-robin MultiProvider for load balancing
-const loadBalancedProvider = MultiProvider.create({
-  strategy: FailoverStrategy.RoundRobin,
-  providers: [
-    {
-      type: "blockfrost",
-      baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0", 
-      projectId: "project_1",
-      retryPolicy: { maxRetries: 2, retryDelayMs: 1000, backoffMultiplier: 2, maxRetryDelayMs: 10000 }
-    },
-    {
-      type: "blockfrost",
-      baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
-      projectId: "project_2", 
-      retryPolicy: { maxRetries: 2, retryDelayMs: 1000, backoffMultiplier: 2, maxRetryDelayMs: 10000 }
-    },
-    {
-      type: "maestro",
-      baseUrl: "https://api.maestro.org/v1",
-      apiKey: "load-balance-key",
-      retryPolicy: { maxRetries: 2, retryDelayMs: 800, backoffMultiplier: 1.8, maxRetryDelayMs: 15000 }
-    }
-  ]
-})
-```
+**State Management**: MultiProvider maintains internal provider state and selection logic. See `MultiProvider` implementation in `src/sdk/provider/MultiProvider.ts` for complete interface definitions.
 
-## Error Handling
+**Provider Configuration**: Each provider is configured with retry policies at construction time. Provider configurations are immutable after creation. See `ProviderConfig` and related types in `src/sdk/provider/Provider.ts`.
 
-### MultiProviderError Structure
+**Error Accumulation**: Failed provider attempts are accumulated with timestamps and retry counts, enabling comprehensive debugging information. See `MultiProviderError` and error types in `src/sdk/provider/MultiProvider.ts`.
 
-```typescript
-class MultiProviderError extends Data.TaggedError("MultiProviderError") {
-  readonly message: string
-  readonly cause: unknown
-  readonly failedProviders: ReadonlyArray<{
-    readonly providerType: string
-    readonly providerConfig: ProviderConfig
-    readonly error: ProviderError
-    readonly attemptTime: Date
-  }>
-  readonly allProvidersFailed: boolean
-  readonly totalAttempts: number
-}
-```
+**Failover Logic**: The system uses immediate failover on `ProviderError` - no additional retry logic at the MultiProvider level. Individual providers handle internal retries using Effect.retry patterns.
 
-### Error Recovery Strategies
+### A.11. Error Recovery Patterns
 
-```typescript
-// Immediate Failover (no retries at provider level)
-interface ImmediateFailover {
-  maxRetries: 0
-  retryDelayMs: 0
-}
+**Immediate Failover**: Configure `maxRetries: 0` for fast switching between providers without individual retry delays.
 
-// Retry with Backoff (retries handled internally by provider methods)
-interface RetryWithBackoff {
-  maxRetries: number
-  retryDelayMs: number
-  backoffMultiplier: number
-  maxRetryDelayMs: number
-}
-```
+**Retry with Backoff**: Configure exponential backoff parameters for providers that may have transient failures. See `RetryConfig` interface in `src/sdk/provider/Provider.ts` for configuration options.
+
+**Network Error Handling**: System continues failover on connectivity issues without modification to retry policies.
+
+**Authentication Error Handling**: Provider authentication failures trigger immediate failover without retries on that specific provider.
+
+**Rate Limiting Behavior**: Provider rate limit responses trigger failover and mark provider temporarily unavailable per retry policy configuration.
 

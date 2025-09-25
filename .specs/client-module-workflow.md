@@ -1,10 +1,16 @@
 # Evolution SDK Client Module
 
-A specification for the client architecture and behavior.
+## Abstract
 
-## Quick Overview
+This document specifies the Evolution SDK client architecture and normative behaviors for composing provider and wallet capabilities in TypeScript applications. It defines client roles, available operations, upgrade semantics, transaction building constraints, and the error model. Examples illustrate key usage patterns; detailed feature matrices are provided in the Appendix.
 
-The Evolution SDK provides different types of clients that you can progressively enhance:
+## Purpose and Scope
+
+This specification describes how clients are constructed and enhanced with providers and wallets, what operations are available for each client role, and how transaction building and submission behave. It does not define provider-specific protocols, CIP-30 details, or internal implementation; those are covered by code and provider-specific documents. Multi-provider behavior is specified at a high level here and in detail in the Provider Failover specification. For Effect-based vs Promise-based usage, see the [Effect-Promise Architecture Guide](./effect-promise-architecture.md).
+
+## Introduction
+
+The Evolution SDK offers a progressive client model: start with a minimal client and add a provider and/or wallet to unlock read, sign, and submit capabilities. The goal is clear separation of concerns and compile-time safety for what a given client can do.
 
 ```mermaid
 graph TD
@@ -35,23 +41,119 @@ graph TD
     class G readOnlyClient
 ```
 
-## Client Types
+Summary:
+- MinimalClient: no read/sign/submit
+- ProviderOnlyClient: read and submit (where applicable), no signing
+- SigningWalletClient: sign only
+- ReadOnlyWalletClient: address/rewardAddress only
+- ApiWalletClient: CIP-30 sign and submit via wallet API
+- ReadOnlyClient: provider + read-only wallet; can query wallet data
+- SigningClient: provider + signing wallet or API wallet; full capability
 
-| Client | Can Query Blockchain | Can Sign | Can Submit | Use Case |
-|--------|---------------------|----------|------------|----------|
-| **MinimalClient** | ❌ | ❌ | ❌ | Starting point |
-| **ProviderOnlyClient** | ✅ | ❌ | ✅ | Read blockchain data |
-| **SigningWalletClient** | ❌ | ✅ | ❌ | Sign-only (seed/private key) |
-| **ReadOnlyWalletClient** | ❌ | ❌ | ❌ | Wallet-only (address monitoring) |
-| **ApiWalletClient** | ❌ | ✅ | ✅ | Browser wallets (CIP-30) |
-| **ReadOnlyClient** | ✅ | ❌ | ✅ | Monitor addresses |
-| **SigningClient** | ✅ | ✅ | ✅ | Full functionality |
+Matrices summarizing exact method availability appear in the Appendix.
 
-> **Type Safety**: Separate interfaces ensure compile-time guarantees about submission capabilities.
+## Functional Specification (Normative)
 
-## Detailed Capabilities Matrix
+Requirements language: The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are to be interpreted as described in RFC 2119 and RFC 8174 when, and only when, they appear in all capitals.
 
-### Core Methods Available
+### 1. Client roles and conformance
+
+An Evolution SDK client instance conforms to exactly one role at a time:
+- MinimalClient
+- ProviderOnlyClient
+- SigningWalletClient
+- ReadOnlyWalletClient
+- ApiWalletClient
+- ReadOnlyClient
+- SigningClient
+
+For each role, the following MUST hold:
+- MinimalClient MUST NOT expose provider or wallet operations; it MAY be upgraded.
+- ProviderOnlyClient MUST expose provider operations and MAY submit transactions if the provider supports submission; it MUST NOT expose signing.
+- SigningWalletClient MUST expose signing and message signing; it MUST NOT expose submission or provider queries.
+- ReadOnlyWalletClient MUST expose address() and rewardAddress(); it MUST NOT expose signing, provider queries, or submission.
+- ApiWalletClient MUST expose signing and MAY expose submission via the wallet API; it MUST NOT expose provider queries unless upgraded with a provider.
+- ReadOnlyClient MUST expose provider queries scoped to the configured address and MUST NOT expose signing.
+- SigningClient MUST expose provider queries, transaction building, signing, and submission.
+
+### 2. Network and provider operations
+
+- A client configured with a provider (ProviderOnlyClient, ReadOnlyClient, SigningClient) MUST provide `networkId` and provider query methods (e.g., `getProtocolParameters`, `getUtxos`, `awaitTx`, `evaluateTx`) as listed in the Appendix.
+- `submitTx` MUST be available on clients with a provider or API wallet capable of submission (ProviderOnlyClient, ReadOnlyClient, SigningClient, ApiWalletClient).
+- Provider implementations and their supported operations are out of scope here; see provider-specific docs. A multi-provider MUST follow the strategy defined in the [Provider Failover specification](./provider-failover.md).
+
+### 3. Wallet operations
+
+- A client configured with a wallet MUST provide `address()` and `rewardAddress()` where the wallet type supports them.
+- SigningWalletClient and SigningClient MUST provide `signTx(tx)` and `signMessage(address, payload)`.
+- ReadOnlyWalletClient and ReadOnlyClient MUST NOT provide signing methods.
+- ApiWalletClient MUST provide signTx and SHOULD provide submitTx if the wallet API supports submission.
+
+### 4. Transaction building
+
+- `newTx()` MUST be exposed only on clients that have a provider (ReadOnlyClient, SigningClient).
+- Building a transaction MUST require provider protocol parameters.
+- `build()`/`complete()` on ReadOnlyClient MUST produce an unsigned `Transaction`.
+- `build()`/`complete()` on SigningClient MUST produce a `SignBuilder` (or equivalent) that can be signed and submitted.
+- ApiWalletClient MUST be upgraded to SigningClient (by attaching a provider) before it can build transactions.
+
+### 5. Attachment and upgrade semantics
+
+- `createClient()` without arguments MUST return a MinimalClient.
+- `attachProvider(provider)` and `attachWallet(wallet)` MUST return new client instances (i.e., the API is immutable) with upgraded roles as per the Introduction diagram.
+- `createClient({ network, provider })` MUST produce a ProviderOnlyClient.
+- `createClient({ network, wallet })` MUST produce SigningWalletClient, ReadOnlyWalletClient, or ApiWalletClient depending on wallet type.
+- `createClient({ network, provider, wallet })` MUST produce ReadOnlyClient or SigningClient depending on wallet type.
+
+### 6. Error model and effect semantics
+
+- Methods that interact with external systems MUST reject/raise with typed errors: ProviderError for provider failures, WalletError for wallet failures, MultiProviderError for strategy/exhaustion failures, and TransactionBuilderError for builder validation issues.
+- The Effect API MUST preserve the same error categories as typed causes; callers MAY use retries, timeouts, and fallbacks. The Promise API MUST be semantically equivalent to running the corresponding Effect program to completion.
+- Multi-provider failover MUST adhere to the [Provider Failover specification](./provider-failover.md).
+
+### 7. API equivalence (Effect vs Promise)
+
+For every Promise-returning method, an equivalent Effect program MUST exist under the `client.Effect` namespace with identical semantics regarding success values and error categories.
+
+### 8. Examples (Informative)
+
+Simple creation and upgrade:
+```typescript
+const client = createClient()
+const providerClient = client.attachProvider({ type: "blockfrost", apiKey: "your-key" })
+const signingClient = providerClient.attachWallet({ type: "seed", mnemonic: "your mnemonic" })
+```
+
+Direct creation:
+```typescript
+const client = createClient({
+  network: "mainnet",
+  provider: { type: "blockfrost", apiKey: "your-key" },
+  wallet: { type: "seed", mnemonic: "your mnemonic" }
+})
+```
+
+Browser wallet (CIP-30) with upgrade:
+```typescript
+const apiClient = createClient({ network: "mainnet", wallet: { type: "api", api: window.cardano.nami } })
+const fullClient = apiClient.attachProvider({ type: "blockfrost", apiKey: "your-key" })
+```
+
+Signing-only wallet (no submit without provider):
+```typescript
+const signingWallet = createClient({ network: "mainnet", wallet: { type: "seed", mnemonic: "your mnemonic" } })
+// await signingWallet.submitTx(...) // not available
+```
+
+Effect usage (retries, timeouts):
+```typescript
+const program = client.Effect.signTx(tx).pipe(Effect.retry({ times: 3 }), Effect.timeout(30000))
+const signed = await Effect.runPromise(program)
+```
+
+## Appendix (Informative)
+
+### A. Core methods by role
 
 | Method/Capability | MinimalClient | ProviderOnlyClient | SigningWalletClient | ReadOnlyWalletClient | ApiWalletClient | ReadOnlyClient | SigningClient |
 |-------------------|---------------|--------------------|---------------------|----------------------|-----------------|----------------|---------------|
@@ -82,25 +184,25 @@ graph TD
 | `attachWallet()` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `attach(provider, wallet)` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-### Transaction Builder Capabilities
+### B. Transaction builder capabilities
 
 | Builder Method | ReadOnlyClient | SigningClient | Notes |
 |----------------|----------------|---------------|--------|
-| `build()` | ✅ → `Transaction` | ✅ → `SignBuilder` | ReadOnlyClient returns unsigned transaction, SigningClient returns builder with signing capabilities |
+| `build()` | ✅ → `Transaction` | ✅ → `SignBuilder` | ReadOnlyClient returns unsigned transaction; SigningClient returns a builder with signing capabilities |
 
-> **Note**: Transaction building requires protocol parameters from a provider. Only `ReadOnlyClient` and `SigningClient` have provider access and can build transactions. `ApiWalletClient` cannot build transactions directly - it must be upgraded to `SigningClient` by attaching a provider first.
+Note: Transaction building requires protocol parameters from a provider. ApiWalletClient MUST be upgraded before building.
 
-### Provider Support
+### C. Provider support (categories)
 
-| Provider Type | Description | Supported Operations |
-|---------------|-------------|---------------------|
-| **Blockfrost** | API-based provider | All provider operations |
-| **Kupmios** | Kupo + Ogmios | All provider operations |
-| **Maestro** | Maestro API | All provider operations |
-| **Koios** | Koios API | All provider operations |
-| **Multi-Provider** | Failover support | All provider operations with redundancy (see [Provider Failover Specification](./provider-failover.md)) |
+| Category | Description | Supported Operations |
+|----------|-------------|---------------------|
+| REST API provider | External REST service | All provider operations |
+| Node-backed stack | Local/remote node stack (e.g., indexer + node) | All provider operations |
+| Cloud API provider | Managed blockchain API | All provider operations |
+| Alternative REST provider | Another REST-based service | All provider operations |
+| Multi-provider (strategy) | Failover/hedged strategy | All provider operations with redundancy (see [Provider Failover Specification](./provider-failover.md)) |
 
-### Wallet Support
+### D. Wallet support
 
 | Wallet Type | Client Types | Description | Capabilities |
 |-------------|-------------|-------------|--------------|
@@ -108,245 +210,3 @@ graph TD
 | **Private Key** | SigningWalletClient, SigningClient | Single key wallet | Sign only (no submit without provider) |
 | **Read-Only** | ReadOnlyWalletClient, ReadOnlyClient | Address monitoring | Query only, no signing |
 | **API Wallet (CIP-30)** | ApiWalletClient, SigningClient | Browser extension | Sign + submit via extension |
-
-### Error Handling
-
-| Client Type | Error Types | Effect Support |
-|-------------|-------------|----------------|
-| All clients | `ProviderError`, `WalletError` | ✅ Retry, timeout, fallback |
-| Multi-Provider | `MultiProviderError` | ✅ Automatic failover |
-| Transaction Builder | `TransactionBuilderError` | ✅ Validation errors |
-
-### Upgrade Paths
-
-#### Creation Methods
-
-**Progressive Enhancement (starting from MinimalClient):**
-- `createClient()` → `MinimalClient` → `attachProvider()` → `attachWallet()`
-
-**Direct Creation (bypassing MinimalClient):**
-- `createClient({ network, provider })` → `ProviderOnlyClient`
-- `createClient({ network, wallet: seedWallet })` → `SigningWalletClient`
-- `createClient({ network, wallet: apiWallet })` → `ApiWalletClient`
-- `createClient({ network, provider, wallet })` → `ReadOnlyClient` or `SigningClient`
-
-## Creating Clients
-
-### Simple Creation
-```typescript
-// Start with minimal client
-const client = createClient()
-
-// Add provider for blockchain access
-const providerClient = client.attachProvider({
-  type: "blockfrost",
-  apiKey: "your-key"
-})
-
-// Add wallet for signing
-const signingClient = providerClient.attachWallet({
-  type: "seed",
-  mnemonic: "your mnemonic"
-})
-```
-
-### Direct Creation
-```typescript
-// Create fully configured client directly
-const client = createClient({
-  network: "mainnet",
-  provider: { type: "blockfrost", apiKey: "your-key" },
-  wallet: { type: "seed", mnemonic: "your mnemonic" }
-})
-```
-
-### Browser Wallet (CIP-30)
-```typescript
-// API wallet without provider (limited)
-const apiClient = createClient({
-  network: "mainnet",
-  wallet: { type: "api", api: window.cardano.nami }
-})
-
-// Upgrade to full client by adding provider
-const fullClient = apiClient.attachProvider({
-  type: "blockfrost", 
-  apiKey: "your-key"
-})
-```
-
-## Architecture
-
-The SDK uses Effect-TS for complex operations and provides Promise APIs for convenience. See the [Effect-Promise Architecture Guide](./effect-promise-architecture.md) for detailed information.
-
-### Two Ways to Use
-
-**Simple (Promise API):**
-```typescript
-// Familiar async/await
-const result = await client.signTx(transaction)
-```
-
-**Advanced (Effect API):**
-```typescript
-// When you need retries, timeouts, etc.
-const program = client.Effect.signTx(transaction).pipe(
-  Effect.retry({ times: 3 }),
-  Effect.timeout(30000)
-)
-const result = await Effect.runPromise(program)
-```
-
-## Multi-Provider Support
-
-For production apps, use multiple providers for reliability. See the [Provider Failover Specification](./provider-failover.md) for detailed failover strategies and error handling.
-
-```typescript
-const client = createClient({
-  network: "mainnet",
-  provider: {
-    type: "multi",
-    strategy: "priority", // try providers in order
-    providers: [
-      { 
-        type: "kupmios", 
-        kupoUrl: "wss://ogmios.example.com", 
-        ogmiosUrl: "https://kupo.example.com",
-        retryPolicy: {
-          maxRetries: 3,
-          retryDelayMs: 1000,
-          backoffMultiplier: 2,
-          maxRetryDelayMs: 30000
-        }
-      },
-      { 
-        type: "blockfrost", 
-        apiKey: "backup-key",
-        baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
-        retryPolicy: {
-          maxRetries: 2,
-          retryDelayMs: 500,
-          backoffMultiplier: 1.5,
-          maxRetryDelayMs: 10000
-        }
-      }
-    ]
-  },
-  wallet: { type: "seed", mnemonic: "your mnemonic" }
-})
-```
-
-## Common Patterns
-
-### Signing-Only Wallet (Seed/Private Key)
-```typescript
-// Create signing wallet client for offline signing
-const signingWallet = createClient({
-  network: "mainnet",
-  wallet: { type: "seed", mnemonic: "your mnemonic" }
-})
-
-// Get wallet address
-const address = await signingWallet.address()
-
-// Sign a transaction that was built elsewhere
-const signedTx = await signingWallet.signTx(preBuiltTransaction)
-
-// Sign a message
-const signature = await signingWallet.signMessage(address, "Hello World")
-
-// ❌ Cannot submit - no submitTx method available
-// signingWallet.submitTx() // TypeScript error!
-```
-
-### API Wallet (CIP-30)
-```typescript
-// Create API wallet client for browser wallet
-const apiWallet = createClient({
-  network: "mainnet",
-  wallet: { type: "api", api: window.cardano.nami }
-})
-
-// Can sign AND submit
-const signedTx = await apiWallet.signTx(preBuiltTransaction)
-const txId = await apiWallet.submitTx(signedTx) // ✅ Available for API wallets
-```
-
-### Read-Only Wallet (Address Only)
-```typescript
-// Create read-only wallet client for address-only operations
-const readOnlyWallet = createClient({
-  network: "mainnet",
-  wallet: { type: "read-only", address: "addr1..." }
-})
-
-// Get wallet address and reward address
-const address = await readOnlyWallet.address()
-const rewardAddress = await readOnlyWallet.rewardAddress()
-
-// ❌ Cannot query blockchain - no provider
-// readOnlyWallet.getWalletUtxos() // TypeScript error!
-
-// ❌ Cannot sign - read-only wallet
-// readOnlyWallet.signTx() // TypeScript error!
-
-// ❌ Cannot submit - no provider
-// readOnlyWallet.submitTx() // TypeScript error!
-
-// ✅ Can upgrade to ReadOnlyClient by attaching provider
-const readOnlyClient = readOnlyWallet.attachProvider({
-  type: "blockfrost",
-  apiKey: "your-key"
-})
-
-// Now can query blockchain with the address
-const utxos = await readOnlyClient.getWalletUtxos()
-```
-
-### Monitor an Address
-```typescript
-const client = createClient({
-  network: "mainnet",
-  provider: { type: "blockfrost", apiKey: "key" },
-  wallet: { type: "read-only", address: "addr1..." }
-})
-
-const utxos = await client.getWalletUtxos()
-```
-
-### Browser dApp
-```typescript
-// Connect to user's wallet
-const client = createClient({
-  network: "mainnet",
-  wallet: { type: "api", api: window.cardano.nami }
-})
-
-// Sign and submit (no provider needed)
-const txId = await client.submitTx(transaction)
-```
-
-### Server Application
-```typescript
-const client = createClient({
-  network: "mainnet",
-  provider: { type: "kupmios", kupoUrl: "...", ogmiosUrl: "..." },
-  wallet: { type: "seed", mnemonic: process.env.MNEMONIC }
-})
-
-const tx = await client.newTx()
-  .payToAddress("addr1...", { lovelace: 1000000n })
-  .complete()
-
-const signed = await client.signTx(tx)
-const txId = await client.submitTx(signed)
-```
-
-## Key Concepts
-
-- **MinimalClient**: Starting point, just knows about network
-- **Providers**: Connect to Cardano blockchain (Blockfrost, Kupmios, etc.)
-- **Wallets**: Handle signing (seed phrase, private key, or browser extension)
-- **API Wallets**: Browser extensions like Nami, Eternl (CIP-30 standard)
-- **Effect**: Advanced features like retries and timeouts
-- **Promise**: Simple async/await for basic usage

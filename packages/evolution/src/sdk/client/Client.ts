@@ -57,12 +57,7 @@ export interface SigningClientEffect extends Provider.ProviderEffect, SigningWal
   readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, ProviderError>
 }
 
-/**
- * ApiWalletClient Effect - ApiWallet only (no provider needed for submission)
- */
-export interface ApiWalletClientEffect extends ApiWalletEffect {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilderEffect
-}
+
 
 // ============================================================================
 // Promise-based Client Interfaces (using EffectToPromiseAPI)
@@ -124,12 +119,12 @@ export type SigningClient = EffectToPromiseAPI<SigningClientEffect> & {
 /**
  * ApiWalletClient - can sign and submit via CIP-30, no blockchain queries without provider
  */
-export type ApiWalletClient = EffectToPromiseAPI<ApiWalletClientEffect> & {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+export type ApiWalletClient = EffectToPromiseAPI<ApiWalletEffect> & {
+  // No newTx method - cannot build transactions without provider for protocol parameters
   // Combinator methods (pure, no side effects)
   readonly attachProvider: (config: ProviderConfig) => SigningClient
   // Effect namespace - includes all wallet methods as Effects
-  readonly Effect: ApiWalletClientEffect
+  readonly Effect: ApiWalletEffect
 }
 
 /**

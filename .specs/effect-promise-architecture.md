@@ -1,125 +1,21 @@
-<!--
-  Evolution SDK: Effect-TS and Promise Architecture Specification
-  Version: 1.0.1-draft
-  Status: DRAFT (Normative + Informative Appendices)
-  Last-Updated: 2025-09-22
-  Stability: Experimental
-  Revision-Policy: Semantic Versioning (breaking changes increment MAJOR; normative additions MINOR; clarifications PATCH)
--->
+# Evolution SDK Effect-Promise Dual Interface Specification
 
-# Evolution SDK: Effect / Promise Dual Interface Specification {#spec-top}
+## Abstract
 
-## 1. Abstract (Normative) {#abstract}
-This specification defines the dual interface architecture of the Evolution SDK. Each conforming module SHALL expose: (a) a primary Effect-based API comprised of lazily constructed program descriptions, and (b) a derived Promise API comprised of eagerly executed adaptor methods invoking the primary API through an approved interpreter. The objective is to guarantee consistent execution semantics, centralized policy application, and safe resource handling while enabling ergonomic incremental adoption.
+The Evolution SDK implements a dual interface architecture providing both Effect-based and Promise-based APIs for all I/O operations and resource management. This specification defines the architectural requirements ensuring consistent execution semantics, safe resource handling, and compositional program construction while maintaining familiar Promise interfaces for traditional async/await patterns.
 
-## 2. Scope (Normative) {#scope}
-This specification applies to all publicly exported SDK modules that perform I/O, resource acquisition, computation orchestration, or policy-controlled execution. It excludes purely synchronous utility functions that have no side effects and no dependency on Effect runtime features.
+## Purpose and Scope
 
-## 3. Definitions (Normative) {#definitions}
-| Term | Definition |
-|------|------------|
-| Effect Program | Lazy description of a computation constructed with Effect-TS; produces no external side effects until interpreted. |
-| Execution Edge | Deliberate boundary where an Effect program is interpreted (e.g. CLI entry point, HTTP handler, worker loop). |
-| Promise Wrapper | Eager adaptor method that invokes a corresponding Effect program via the interpreter, returning a native Promise. |
-| Primary API | The namespace / property (named `Effect`) containing Effect-returning functions. |
-| Convenience API | The set of Promise wrapper functions mapped 1:1 to primary Effect functions. |
-| Interpreter | Approved runtime function (e.g. `Effect.runPromise`) that executes an Effect program. |
-| Lazy | Property of not performing I/O or irreversible side effects during construction. |
-| Eager | Immediate execution semantics at call time (Promise / async function). |
+**Purpose**: Establish architectural requirements for dual Effect/Promise interfaces that ensure consistent execution semantics, centralized policy application, and safe resource handling across all SDK modules.
 
-## 4. Architectural Model (Normative) {#architecture}
-1. The primary API MUST consist solely of functions that, when invoked, return Effect program descriptions.
-2. Each Promise wrapper MUST correspond exactly to one primary function differing only in return type (Promise of success value). 
-3. The Promise layer MUST NOT introduce additional business logic, control flow, or side effects beyond argument normalization and interpretation.
-4. All external side effects (network, filesystem, time, randomness, environment) MUST occur only during interpretation at an execution edge.
+**Scope**: Applies to all publicly exported SDK modules that perform I/O, resource acquisition, computation orchestration, or policy-controlled execution. Excludes purely synchronous utility functions with no side effects or Effect runtime dependencies.
 
-### 4.1 Execution Timing {#execution-timing}
-Effect construction MUST be side-effect free with respect to external systems. Observable external interactions MUST be deferred until interpretation via an interpreter function at an execution edge.
+**Target Architecture**: Dual-layer interface design where Effect programs serve as the primary composable API with Promise wrappers providing convenience access for immediate execution patterns.
 
-### 4.2 Wrapper Delegation {#wrapper-delegation}
-Promise wrappers MUST invoke exactly one interpreter call per user invocation and MUST propagate both success values and classified errors without modification except for structural mapping into native Promise rejection channels.
+## Introduction
 
-## 5. Interface Contract (Normative) {#interface-contract}
-The dual interface SHALL follow the canonical structure:
+The Effect-Promise dual interface architecture addresses the need for both composable functional programming patterns and familiar async/await integration within the Evolution SDK. The system maintains a strict separation where Effect programs remain lazy descriptions until interpretation, while Promise methods provide immediate execution semantics.
 
-```ts
-interface ModuleEffect { /* Effect-returning functions only */ }
-type EffectToPromiseAPI<T> = { readonly [K in keyof T]: T[K] extends (...a: infer P) => Effect.Effect<infer A, any> ? (...a: P) => Promise<A> : never }
-interface Module extends EffectToPromiseAPI<ModuleEffect> { readonly Effect: ModuleEffect }
-```
-
-Constraints:
-1. The `Effect` property MUST be immutable after construction.
-2. Wrapper methods MUST retain original parameter ordering and parameter count.
-3. Wrapper methods SHOULD avoid allocating intermediate data structures unless required for type adaptation.
-4. The mapping MUST be total for all public Effect methods (no omissions).
-
-## 6. Execution Semantics (Normative) {#execution-semantics}
-1. Interpretation MAY occur only at explicitly designated edges under caller control.
-2. Implementations MUST support cancellation / interruption semantics provided by the Effect runtime for any in-flight interpreted program.
-3. Timeouts, retries, or circuit breakers MUST be modeled as Effect-level combinators or layers, not ad-hoc Promise logic.
-
-## 7. Resource & Lifecycle Semantics (Normative) {#resource-lifecycle}
-1. Resource acquisition MUST be expressed within Effect scopes or structured resource combinators ensuring deterministic finalization.
-2. Implementations MUST NOT leak resources if Promise wrappers are abandoned after resolution or rejection.
-3. Any resource requiring cleanup MUST provide an Effect-based acquisition that registers a finalizer in the managed scope.
-
-## 8. Concurrency & Policy Semantics (Normative) {#concurrency-policy}
-1. Parallelism MUST be expressed with Effect concurrency combinators (e.g. `Effect.all`, `Effect.forEach` with explicit concurrency options).
-2. Policies (retry, timeout, rate limiting) MUST be applied at the Effect layer prior to interpretation.
-3. Wrapper methods MUST NOT embed hidden concurrency (no implicit parallel side effects beyond the single interpreted Effect chain).
-
-## 9. Error Model (Normative) {#error-model}
-1. Effect functions SHOULD model domain and infrastructure failures via typed errors or tagged error channels.
-2. Promise wrappers MUST surface these failures as Promise rejections preserving discriminability (e.g. tagged object instances or error subclasses).
-3. Wrappers MUST NOT swallow or transform errors except to satisfy language-level Promise rejection semantics.
-4. Implementations SHOULD avoid throwing synchronously inside wrapper functions (prefer failing the underlying Effect and interpreting).
-
-## 10. Observability (Normative) {#observability}
-1. Structured logging, metrics, and tracing SHOULD be implemented as Effect layers or scoped combinators.
-2. Promise wrappers MAY add tracing context only if such addition is transparent and does not alter execution ordering or error taxonomy.
-
-## 11. Security & Reliability (Normative) {#security-reliability}
-1. Construction of Effect programs MUST NOT perform network or filesystem I/O.
-2. Inputs MUST be validated either lazily within the Effect program or eagerly in wrappers without performing side effects.
-3. Secrets (credentials, private keys) MUST be injected through Effect services / layers rather than captured as module-level mutable state.
-4. Implementations SHOULD ensure reproducibility by isolating nondeterminism (time, randomness) behind Effect services.
-5. Wrappers MUST NOT cache mutable shared results unless specified by a higher-level module policy.
-
-## 12. Conformance (Normative) {#conformance}
-Each requirement below is binding. A module claiming conformance MUST satisfy all MUST / SHALL items and SHOULD items unless a documented justification is provided.
-
-| ID | Requirement |
-|----|-------------|
-| R1 | Module MUST expose a primary Effect API (`Effect` namespace) of Effect-returning functions only. |
-| R2 | Every public Effect function MUST have a 1:1 Promise wrapper counterpart. |
-| R3 | Promise wrappers MUST delegate via a single interpreter call (e.g. `Effect.runPromise`). |
-| R4 | No external side effects MAY occur during Effect construction (lazy purity w.r.t I/O). |
-| R5 | Resource acquisition MUST register deterministic finalizers (scoped). |
-| R6 | Policies (retry, timeout, etc.) MUST be implemented as Effect combinators, not inline Promise logic. |
-| R7 | Wrapper methods MUST NOT introduce business logic beyond delegation. |
-| R8 | Error taxonomy exposed by Effect functions MUST be preserved through Promise rejection. |
-| R9 | Concurrency MUST be explicit via Effect primitives; wrappers MUST remain sequential delegators. |
-| R10 | Observability concerns SHOULD be implemented via Effect layers; wrappers MAY only add transparent context. |
-| R11 | Secrets / credentials MUST NOT be stored in mutable global state; use Effect services. |
-| R12 | Wrapper parameter order and parameter count MUST match corresponding Effect functions. |
-| R13 | The `Effect` namespace MUST be immutable post-construction. |
-| R14 | Synchronous throws in wrappers SHOULD be avoided (prefer failing underlying Effect). |
-| R15 | Modules SHOULD provide typed or tagged error channels for classification. |
-
-## 13. Backwards Compatibility (Normative) {#backwards-compatibility}
-Additions of new Effect functions MUST be accompanied by Promise wrappers in the same release. Deprecations SHOULD follow a documented schedule providing both layers until removal. Behavioral changes to wrapper methods MUST reflect underlying Effect changes and MUST NOT introduce divergent semantics.
-
-## 14. Appendices (Informative) {#appendices}
-The following appendices are non-normative and provided for clarification, examples, and rationale.
-
-### Appendix A: Rationale & Principles (Informative) {#appendix-a}
-Effect layer advantages: composability, centralized policy, resource safety, typed errors, deterministic construction, concurrency, testability. Core principles: Effect is primary; Promise is convenience; Execute at edge; Lazy vs eager separation; Composability; Resource safety.
-
-### Appendix B: Selection Guidelines (Informative) {#appendix-b}
-Prefer Effect for multi-stage workflows, policy needs, cancellation, advanced recovery, deterministic cleanup, anticipated evolution. Prefer Promise for trivial linear tasks, prototyping, third-party integration, incremental migration, or constrained team expertise.
-
-### Appendix C: Architecture Diagram (Informative) {#appendix-c}
 ```mermaid
 graph TB
     subgraph "Effect Layer (Primary)"
@@ -139,161 +35,221 @@ graph TB
     E1 --> E2
     P1 --> P2
     Bridge --> Bridge2
-    style E1 fill:#2563eb,stroke:#1e40af,stroke-width:3px,color:#ffffff
-    style P1 fill:#059669,stroke:#047857,stroke-width:2px,color:#ffffff
-    style Bridge fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#ffffff
+    
+    classDef effect fill:#89b4fa,stroke:#74c7ec,stroke-width:3px,color:#11111b
+    classDef promise fill:#a6e3a1,stroke:#94e2d5,stroke-width:3px,color:#11111b
+    classDef bridge fill:#f38ba8,stroke:#fab387,stroke-width:3px,color:#11111b
+    
+    class E1,E2 effect
+    class P1,P2 promise
+    class Bridge,Bridge2 bridge
 ```
 
-### Appendix D: Execution & Selection Diagrams (Informative) {#appendix-d}
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Dev as Developer Code
-    participant P as Promise Method
-    participant E as Effect Method
-    participant RT as Effect Runtime
-    participant Ext as External System (I/O)
-    Note over Dev: Promise (eager)
-    Dev->>P: call client.getData()
-    P->>Ext: Perform I/O immediately
-    Ext-->>P: Data
-    P-->>Dev: Promise resolves
-    Note over Dev,RT: Effect (lazy)
-    Dev->>E: build program (client.Effect.getData())
-    E-->>Dev: Effect (description)
-    Dev->>RT: Effect.runPromise(program)
-    RT->>E: Interpret
-    E->>Ext: Perform I/O
-    Ext-->>E: Data
-    E-->>RT: Result
-    RT-->>Dev: Promise resolves
-```
+The architecture enables hybrid composition where Effect-based modules can build upon other Effect modules while still providing Promise convenience APIs for non-Effect developers.
 
-```mermaid
-classDiagram
-    class ServiceEffect {
-      +getData() Effect<string[], ServiceError>
-      +processData(input: string) Effect<ProcessedData, ProcessError>
-    }
-    class Service {
-      <<interface>>
-      +Effect: ServiceEffect
-      +getData() Promise<string[]>
-      +processData(input: string) Promise<ProcessedData>
-    }
-    class ServiceImpl {
-      +Effect: ServiceEffect
-      +getData() Promise<string[]>
-      +processData(input: string) Promise<ProcessedData>
-    }
-    ServiceEffect <|.. Service
-    Service <|.. ServiceImpl
-```
+## Functional Specification (Normative)
 
-```mermaid
-sequenceDiagram
-    participant P as Promise Style
-    participant E as Effect Scoped
-    participant R as Resource
-    participant Ext as External
-    Note over P: Manual lifecycle
-    P->>R: acquire()
-    R-->>P: handle
-    P->>Ext: use(handle)
-    Ext-->>P: result
-    P->>R: release() (finally)
-    Note over E: Structured scope
-    E->>E: build Effect(resource acquisition)
-    E->>E: compose use + finalizer
-    E->>E: run at edge
-    E->>R: acquire()
-    R-->>E: handle
-    E->>Ext: use(handle)
-    Ext-->>E: result
-    E->>R: auto-finalizer release
-```
+The following requirements are specified using RFC 2119/8174 keywords: MUST (absolute requirement), SHOULD (recommended), MAY (optional).
 
-### Appendix E: Representative Code Examples (Informative) {#appendix-e}
-#### Simple Operation
-```ts
-const service = createService()
-const data = await service.getData()
-const program = service.Effect.getData()
-const data2 = await Effect.runPromise(program)
-```
+### 1. Interface Architecture
 
-#### Complex Workflow with Error Handling
-```ts
-const processAllDataProgram = Effect.gen(function* () {
-  const service = createService()
-  const data = yield* service.Effect.getData()
-  const results = yield* Effect.forEach(
-    data,
-    (item) => service.Effect.processData(item).pipe(
-      Effect.retry({ times: 3, delay: '1 second' })
-    ),
-    { concurrency: 3 }
-  )
-  return results
-}).pipe(
-  Effect.tapError(error => 
-    Effect.sync(() => console.error('Processing failed:', error))
-  )
-)
-```
+**1.1**: The primary API **MUST** consist solely of functions that return Effect program descriptions.
 
-#### Resource Management
-```ts
-const withResourceProgram = Effect.gen(function* () {
-  return yield* acquireResourceEffect.pipe(
-    Effect.flatMap(resource => useResourceEffect(resource)),
-    Effect.scoped
-  )
-})
-```
+**1.2**: Each Promise wrapper **MUST** correspond exactly to one primary function differing only in return type.
 
-#### Concurrent Operations
-```ts
-const service2 = createService()
-const concurrentProgram = Effect.gen(function* () {
-  const [data1, data2, data3] = yield* Effect.all([
-    service2.Effect.getData(),
-    service2.Effect.getData(),
-    service2.Effect.getData()
-  ], { concurrency: "unbounded" })
-  return { data1, data2, data3 }
-})
-```
+**1.3**: The Promise layer **MUST NOT** introduce additional business logic beyond delegation and interpretation.
 
-### Appendix F: Testing Strategy (Informative) {#appendix-f}
-```ts
-const mockService: ServiceEffect = {
-  getData: Effect.succeed(['mock-data-1', 'mock-data-2']),
-  processData: (input: string) => Effect.succeed({ processed: input, timestamp: Date.now() })
+**1.4**: All external side effects **MUST** occur only during interpretation at execution edges.
+
+### 2. Execution semantics
+
+**2.1**: Effect construction **MUST** be side-effect free with respect to external systems.
+
+**2.2**: Observable external interactions **MUST** be deferred until interpretation at execution edges.
+
+**2.3**: Promise wrappers **MUST** invoke exactly one interpreter call per user invocation.
+
+**2.4**: Error propagation **MUST** preserve both success values and classified errors without modification.
+
+**2.5**: Effect programs **MUST** be lazy descriptions that defer execution until interpretation.
+
+**2.6**: Promise wrappers **MUST** execute immediately upon invocation.
+
+**2.7**: Effect programs **MUST** be composable without triggering side effects during composition.
+
+**2.8**: Both interfaces **MUST** preserve identical business logic and error semantics.
+
+**2.9**: Effect programs **MUST** support compositional reasoning without external dependencies.
+
+**2.10**: Promise wrappers **MUST** maintain referential transparency for the same Effect program.
+
+### 3. Interface contracts
+
+**3.1**: The dual interface **SHALL** follow the canonical structure defined in the Appendix (A.1).
+
+**3.2**: The `Effect` property **MUST** be immutable after construction.
+
+**3.3**: Promise wrappers **MUST** retain original parameter ordering and count.
+
+**3.4**: The mapping **MUST** be total for all public Effect methods (no omissions).
+
+### 4. Resource management and reliability
+
+**4.1**: Interpretation **MAY** occur only at explicitly designated execution edges.
+
+**4.2**: Implementations **MUST** support Effect runtime cancellation semantics.
+
+**4.3**: Timeouts, retries, and circuit breakers **MUST** be Effect-level combinators, not Promise logic.
+
+**4.4**: Resource acquisition **MUST** use Effect scopes ensuring deterministic finalization.
+
+**4.5**: Promise wrappers **MUST NOT** leak resources after resolution or rejection.
+
+**4.6**: Parallelism **MUST** use Effect concurrency combinators with explicit options.
+
+### 5. Security constraints
+
+**5.1**: Effect construction **MUST NOT** perform network or filesystem I/O.
+
+**5.2**: Secrets **MUST** be injected through Effect services, not module-level state.
+
+**5.3**: Implementations **SHOULD** isolate nondeterminism behind Effect services.
+
+**5.4**: Promise wrappers **MUST NOT** cache mutable shared results without explicit policy.
+
+### 6. Error handling
+
+**6.1**: Effect functions **SHOULD** model domain and infrastructure failures via typed error channels.
+
+**6.2**: Promise wrappers **MUST** surface failures as Promise rejections preserving error discriminability.
+
+**6.3**: Wrappers **MUST NOT** swallow or transform errors except for Promise rejection semantics.
+
+**6.4**: Implementations **SHOULD** avoid synchronous throws in Promise wrappers.
+
+**6.5**: Structured logging, metrics, and tracing **SHOULD** be implemented as Effect layers.
+
+**6.6**: Promise wrappers **MAY** add tracing context only if transparent and non-invasive.
+
+**6.7**: Error context **MUST** preserve original failure source and execution path.
+
+## Appendix (Informative) {#appendix}
+
+### A.1. Canonical Interface Structure
+
+```typescript
+interface ModuleEffect { 
+  /* Effect-returning functions only */ 
+}
+
+type EffectToPromiseAPI<T> = { 
+  readonly [K in keyof T]: T[K] extends (...a: infer P) => Effect.Effect<infer A, any> 
+    ? (...a: P) => Promise<A> 
+    : never 
+}
+
+interface Module extends EffectToPromiseAPI<ModuleEffect> { 
+  readonly Effect: ModuleEffect 
 }
 ```
 
-### Appendix G: Migration Guidance (Informative) {#appendix-g}
-Recommended phases: (1) Promise adoption; (2) Mixed bridge; (3) Effect refactor; (4) Policy centralization; (5) Advanced observability. (Timeline diagram removed from normative body.)
+### A.2. Hybrid Module Composition Flow
 
-### Appendix H: Traceability Matrix (Informative) {#appendix-h}
-| Requirement | Defined / Primary Section | Notes |
-|-------------|---------------------------|-------|
-| R1 | §5, §4 | Effect namespace requirement |
-| R2 | §5, §12 | 1:1 mapping obligation |
-| R3 | §4.2, §12 | Single interpreter call |
-| R4 | §4.1, §6 | No side effects during construction |
-| R5 | §7 | Scoped finalization |
-| R6 | §8, §12 | Policies via combinators |
-| R7 | §4, §12 | No added business logic in wrappers |
-| R8 | §9, §12 | Error taxonomy preservation |
-| R9 | §8 | Explicit concurrency only |
-| R10 | §10 | Observability via layers |
-| R11 | §11 | Secrets handling |
-| R12 | §5 | Parameter order/count stability |
-| R13 | §5 | Immutability of Effect namespace |
-| R14 | §9 | Avoid sync throws in wrappers |
-| R15 | §9 | Typed/tagged error channels |
+```mermaid
+flowchart TD
+    subgraph CompositionLayer["⚡ Effect Composition Layer"]
+        direction LR
+        A_Module["🔵 Module A<br/>Effect&lt;User, UserError&gt;<br/>Effect&lt;Valid, ValidationError&gt;<br/>Effect&lt;void, StoreError&gt;<br/><br/>📝 Typed error channels"]
+        
+        B_Module["🔵 Module B<br/>Effect&lt;User, RegisterError&gt;<br/>Effect&lt;Profile, UpdateError&gt;<br/>Effect&lt;void, DeactivateError&gt;<br/><br/>🔗 Composes A's errors"]
+        
+        C_Module["🔵 Module C<br/>Effect&lt;Results, BulkError&gt;<br/>Effect&lt;Audit, AuditError&gt;<br/><br/>🔗 Composes A+B errors"]
+        
+        A_Module ===|"Compose & Chain"| B_Module
+        B_Module ===|"Compose & Chain"| C_Module
+        
+        Composition["🔗 Composition Logic<br/>registerUser =<br/>  validateUser >>= <br/>  storeUser >>= <br/>  sendWelcomeEmail<br/><br/>🚫 No execution until interpreted<br/>✅ Errors as typed values<br/>🔧 Compile-time guarantees"]
+        A_Module -.-> Composition
+        B_Module --> Composition
+    end
+    
+    subgraph ExecutionLayer["🎯 Promise Execution Layer"]
+        direction TB
+        Interface_A["🟢 Interface A<br/>Promise&lt;User&gt;<br/>Promise&lt;Valid&gt;<br/>Promise&lt;void&gt;<br/><br/>⚡ Execute Immediately<br/>❌ Runtime exceptions<br/>🚨 try/catch required"]
+        
+        Interface_B["🟢 Interface B<br/>Promise&lt;User&gt;<br/>Promise&lt;Profile&gt;<br/>Promise&lt;void&gt;<br/><br/>⚡ Execute Immediately<br/>❌ Runtime exceptions<br/>🚨 try/catch required"]
+        
+        Interface_C["🟢 Interface C<br/>Promise&lt;Results&gt;<br/>Promise&lt;Audit&gt;<br/><br/>⚡ Execute Immediately<br/>❌ Runtime exceptions<br/>🚨 try/catch required"]
+    end
+    
+    subgraph Developers["👥 Developer Approaches"]
+        Effect_Path["🎯 Effect-Based Development<br/>━━━━━━━━━━━━━<br/>• Errors as typed values<br/>• Compile-time guarantees<br/>• Compose error handling<br/>• No runtime surprises<br/>• Control execution timing<br/>• Resource safety<br/>• Cancellation support"]
+        
+        Promise_Path["⚡ Promise-Based Development<br/>- - - - - - - - - - - - -<br/>• Runtime exceptions<br/>• try/catch everywhere<br/>• Immediate execution<br/>• Familiar async/await<br/>• Simple integration<br/>• No composition control<br/>• Runtime error handling"]
+    end
+    
+    %% Layer connections
+    A_Module ===> Interface_A
+    B_Module ===> Interface_B  
+    C_Module ===> Interface_C
+    
+    %% Developer paths
+    CompositionLayer -.->|"Use Effect namespace"| Effect_Path
+    ExecutionLayer -.->|"Use Promise methods"| Promise_Path
+    
+    classDef compositionLayer fill:#89b4fa,stroke:#74c7ec,stroke-width:3px,color:#11111b
+    classDef executionLayer fill:#a6e3a1,stroke:#94e2d5,stroke-width:3px,color:#11111b
+    classDef module fill:#313244,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4
+    classDef interface fill:#313244,stroke:#a6e3a1,stroke-width:2px,color:#cdd6f4
+    classDef composition fill:#f9e2af,stroke:#fab387,stroke-width:2px,color:#11111b
+    classDef developerPath fill:#cba6f7,stroke:#f38ba8,stroke-width:2px,color:#11111b
+    
+    class CompositionLayer compositionLayer
+    class ExecutionLayer executionLayer
+    class A_Module,B_Module,C_Module module
+    class Interface_A,Interface_B,Interface_C interface
+    class Composition composition
+    class Effect_Path,Promise_Path developerPath
+```
 
----
-This concludes the specification. Informative appendices do not impose conformance requirements.
+### A.3. Key Architectural Benefits
+
+- **Composability**: Effect namespaces enable modules to build upon each other's functionality without execution boundaries
+- **Lazy Evaluation**: Effect programs are constructed but not executed until interpretation, allowing complex composition without side effects
+- **Developer Choice**: Promise APIs provide immediate execution for developers who don't need Effect's advanced composition features
+- **Resource Control**: Effect composition maintains proper resource scoping and cleanup across module boundaries
+
+### A.4. System Responsibilities Matrix
+
+| Component | Responsibilities |
+|-----------|------------------|
+| **Module** | Expose both Effect and Promise interfaces with 1:1 mapping; Ensure Effect programs remain lazy until interpretation; Implement proper resource scoping and cleanup; Maintain consistent error handling across both interfaces |
+| **Effect Layer** | Provide composable, lazy program descriptions; Handle resource acquisition with automatic finalization; Implement cancellation and interruption semantics; Support structured concurrency and policy application |
+| **Promise Layer** | Delegate to Effect programs via single interpreter calls; Preserve error taxonomy in Promise rejection channels; Avoid introducing additional business logic or side effects; Maintain parameter compatibility with Effect counterparts |
+
+### A.5. Key Abstractions
+
+**Effect Program**: Lazy description of a computation that produces no external side effects until interpreted. Programs are composable and resource-safe by construction.
+
+**Execution Edge**: Deliberate boundary where Effect programs are interpreted (CLI entry points, HTTP handlers, worker loops). External side effects occur only at these boundaries.
+
+**Promise Wrapper**: Eager adapter method that invokes corresponding Effect programs via interpreter, returning native Promises. Maintains 1:1 mapping with Effect methods.
+
+**Primary API**: The `Effect` namespace containing Effect-returning functions. This is the authoritative interface for all module operations.
+
+**Interpreter**: Approved runtime function (e.g. `Effect.runPromise`) that executes Effect programs and handles resource management, error propagation, and cleanup.
+
+### A.6. Error Classification and Behavior
+
+**Typed Error Channels**: Effect programs use tagged error types to distinguish between domain failures, infrastructure failures, and system errors.
+
+**Promise Error Mapping**: Promise wrappers preserve error taxonomy through Promise rejection channels using tagged object instances or error subclasses.
+
+**Error Preservation**: System maintains complete error context and classification through the Effect-Promise boundary without loss of diagnostic information.
+
+**Validation Handling**: Input validation occurs either lazily within Effect programs or eagerly in wrappers without side effects.
+
+**Resource Error Recovery**: Failed resource acquisition triggers automatic cleanup through Effect scoped combinators.
+
+**Cancellation Errors**: System properly handles and propagates Effect runtime cancellation and interruption signals through Promise interfaces.
+
