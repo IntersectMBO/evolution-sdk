@@ -1,6 +1,7 @@
+import { Either } from "effect"
 import { expect, test } from "vitest"
 
-import { walletFromSeed } from "../src/sdk/wallet/utils.js"
+import { walletFromSeed } from "../src/sdk/wallet/Derivation.js"
 
 const seedPhrase =
   "zebra short room flavor rival capital fortune hip profit trust melody office depend adapt visa cycle february link tornado whisper physical kiwi film voyage"
@@ -14,14 +15,21 @@ test("WalletFromSeed - Defaults options", () => {
     stakeKey:
       "ed25519e_sk19q4d6fguvncszk6f46fvvep5y5w3877y77t3n3dc446wgja25dg968hm8jxkc9d7p982uls6k8uq0srs69e44lay43hxmdx4nc3rttsn0h2f5"
   }
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      addressType: "Base",
-      accountIndex: 0,
-      network: "Mainnet"
-    })
-  )
-  expect(expectedFromSeed).toStrictEqual(walletFromSeed(seedPhrase))
+  const result1 = walletFromSeed(seedPhrase, {
+    addressType: "Base",
+    accountIndex: 0,
+    network: "Mainnet"
+  })
+  expect(Either.isRight(result1)).toBe(true)
+  if (Either.isRight(result1)) {
+    expect(expectedFromSeed).toStrictEqual(result1.right)
+  }
+
+  const result2 = walletFromSeed(seedPhrase)
+  expect(Either.isRight(result2)).toBe(true)
+  if (Either.isRight(result2)) {
+    expect(expectedFromSeed).toStrictEqual(result2.right)
+  }
 })
 
 test("WalletFromSeed - accountIndex 1", () => {
@@ -33,18 +41,23 @@ test("WalletFromSeed - accountIndex 1", () => {
     stakeKey:
       "ed25519e_sk1trauywg7p9x2hg3jgaw2adeyg5ujhax4jfd6exs6hpzakn925dggyvhgrh8kwc9h9n7nh75nwhge9gyxg7vavcwk7mq3r2t03664drcrdegzx"
   }
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      addressType: "Base",
-      accountIndex: 1,
-      network: "Mainnet"
-    })
-  )
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      accountIndex: 1
-    })
-  )
+  const result1 = walletFromSeed(seedPhrase, {
+    addressType: "Base",
+    accountIndex: 1,
+    network: "Mainnet"
+  })
+  expect(Either.isRight(result1)).toBe(true)
+  if (Either.isRight(result1)) {
+    expect(expectedFromSeed).toStrictEqual(result1.right)
+  }
+
+  const result2 = walletFromSeed(seedPhrase, {
+    accountIndex: 1
+  })
+  expect(Either.isRight(result2)).toBe(true)
+  if (Either.isRight(result2)) {
+    expect(expectedFromSeed).toStrictEqual(result2.right)
+  }
 })
 
 test("WalletFromSeed - Custom Network", () => {
@@ -57,18 +70,23 @@ test("WalletFromSeed - Custom Network", () => {
     stakeKey:
       "ed25519e_sk19q4d6fguvncszk6f46fvvep5y5w3877y77t3n3dc446wgja25dg968hm8jxkc9d7p982uls6k8uq0srs69e44lay43hxmdx4nc3rttsn0h2f5"
   }
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      addressType: "Base",
-      accountIndex: 0,
-      network: "Custom"
-    })
-  )
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      network: "Custom"
-    })
-  )
+  const result1 = walletFromSeed(seedPhrase, {
+    addressType: "Base",
+    accountIndex: 0,
+    network: "Custom"
+  })
+  expect(Either.isRight(result1)).toBe(true)
+  if (Either.isRight(result1)) {
+    expect(expectedFromSeed).toStrictEqual(result1.right)
+  }
+
+  const result2 = walletFromSeed(seedPhrase, {
+    network: "Custom"
+  })
+  expect(Either.isRight(result2)).toBe(true)
+  if (Either.isRight(result2)) {
+    expect(expectedFromSeed).toStrictEqual(result2.right)
+  }
 })
 
 test("WalletFromSeed - Address Enterprise", () => {
@@ -79,16 +97,21 @@ test("WalletFromSeed - Address Enterprise", () => {
       "ed25519e_sk1krszcw3ujfs3qnsjwl6wynw7dwudgnq69w9lrrtdf46yqnd25dgv4f5ttaqxr2v6n6azee489c7mryudvhu8n4x4tcvd5hvhtwswsuc4s4c2d",
     stakeKey: undefined
   }
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      addressType: "Enterprise",
-      accountIndex: 0,
-      network: "Mainnet"
-    })
-  )
-  expect(expectedFromSeed).toStrictEqual(
-    walletFromSeed(seedPhrase, {
-      addressType: "Enterprise"
-    })
-  )
+  const result1 = walletFromSeed(seedPhrase, {
+    addressType: "Enterprise",
+    accountIndex: 0,
+    network: "Mainnet"
+  })
+  expect(Either.isRight(result1)).toBe(true)
+  if (Either.isRight(result1)) {
+    expect(expectedFromSeed).toStrictEqual(result1.right)
+  }
+
+  const result2 = walletFromSeed(seedPhrase, {
+    addressType: "Enterprise"
+  })
+  expect(Either.isRight(result2)).toBe(true)
+  if (Either.isRight(result2)) {
+    expect(expectedFromSeed).toStrictEqual(result2.right)
+  }
 })

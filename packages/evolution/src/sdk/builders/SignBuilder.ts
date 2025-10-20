@@ -1,5 +1,6 @@
 import type { Effect } from "effect"
 
+import type * as Transaction from "../../core/Transaction.js"
 import type * as TransactionWitnessSet from "../../core/TransactionWitnessSet.js"
 import type { EffectToPromiseAPI } from "../Type.js"
 import type { TransactionBuilderError } from "./TransactionBuilder.js"
@@ -27,6 +28,12 @@ export interface SignBuilderEffect {
 
   // Get witness set without signing (for inspection)
   readonly getWitnessSet: () => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, TransactionBuilderError>
+
+  // Get the unsigned transaction (for inspection)
+  readonly toTransaction: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError>
+  
+  // Get the transaction with fake witnesses (for fee validation)
+  readonly toTransactionWithFakeWitnesses: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError>
 }
 
 export interface SignBuilder extends EffectToPromiseAPI<SignBuilderEffect> {

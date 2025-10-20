@@ -3,14 +3,38 @@ import * as Datum from "./Datum.js"
 import * as OutRef from "./OutRef.js"
 import type * as Script from "./Script.js"
 
-export interface UTxO {
-  txHash: string
-  outputIndex: number
+/**
+ * Transaction output before it's submitted on-chain.
+ * Similar to UTxO but without txHash/outputIndex since those don't exist yet.
+ */
+export interface TxOutput {
   address: string
   assets: Assets.Assets
   datumOption?: Datum.Datum
   scriptRef?: Script.Script
 }
+
+/**
+ * UTxO (Unspent Transaction Output) - a TxOutput that has been confirmed on-chain
+ * and has a txHash and outputIndex identifying it.
+ */
+export interface UTxO extends TxOutput {
+  txHash: string
+  outputIndex: number
+}
+
+/**
+ * Convert a TxOutput to a UTxO by adding txHash and outputIndex.
+ * Used after transaction submission when outputs become UTxOs on-chain.
+ * 
+ * @since 2.0.0
+ * @category constructors
+ */
+export const toUTxO = (output: TxOutput, txHash: string, outputIndex: number): UTxO => ({
+  ...output,
+  txHash,
+  outputIndex
+})
 
 export const hasAssets = (utxo: UTxO): boolean => !Assets.isEmpty(utxo.assets)
 
