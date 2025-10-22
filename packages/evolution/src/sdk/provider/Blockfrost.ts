@@ -45,6 +45,8 @@ import type { Provider, ProviderEffect } from "./Provider.js"
  */
 export class BlockfrostProvider implements Provider {
   readonly Effect: ProviderEffect
+  readonly baseUrl: string
+  readonly projectId?: string
 
   /**
    * Create a new Blockfrost provider instance
@@ -52,89 +54,59 @@ export class BlockfrostProvider implements Provider {
    * @param baseUrl - The Blockfrost API base URL (e.g., "https://cardano-mainnet.blockfrost.io/api/v0")
    * @param projectId - Optional project ID for authenticated requests
    */
-  constructor(
-    private readonly baseUrl: string,
-    private readonly projectId?: string
-  ) {
+  constructor(baseUrl: string, projectId?: string) {
+    this.baseUrl = baseUrl
+    this.projectId = projectId
+    
     // Initialize Effect-based API with curry pattern
     this.Effect = {
-      getProtocolParameters: BlockfrostEffect.getProtocolParameters(this.baseUrl, this.projectId),
-      getUtxos: BlockfrostEffect.getUtxos(this.baseUrl, this.projectId),
-      getUtxosWithUnit: BlockfrostEffect.getUtxosWithUnit(this.baseUrl, this.projectId),
-      getUtxoByUnit: BlockfrostEffect.getUtxoByUnit(this.baseUrl, this.projectId),
-      getUtxosByOutRef: BlockfrostEffect.getUtxosByOutRef(this.baseUrl, this.projectId),
-      getDelegation: BlockfrostEffect.getDelegation(this.baseUrl, this.projectId),
-      getDatum: BlockfrostEffect.getDatum(this.baseUrl, this.projectId),
-      awaitTx: BlockfrostEffect.awaitTx(this.baseUrl, this.projectId),
-      submitTx: BlockfrostEffect.submitTx(this.baseUrl, this.projectId),
-      evaluateTx: BlockfrostEffect.evaluateTx(this.baseUrl, this.projectId)
+      getProtocolParameters: () => BlockfrostEffect.getProtocolParameters(baseUrl, projectId),
+      getUtxos: BlockfrostEffect.getUtxos(baseUrl, projectId),
+      getUtxosWithUnit: BlockfrostEffect.getUtxosWithUnit(baseUrl, projectId),
+      getUtxoByUnit: BlockfrostEffect.getUtxoByUnit(baseUrl, projectId),
+      getUtxosByOutRef: BlockfrostEffect.getUtxosByOutRef(baseUrl, projectId),
+      getDelegation: BlockfrostEffect.getDelegation(baseUrl, projectId),
+      getDatum: BlockfrostEffect.getDatum(baseUrl, projectId),
+      awaitTx: BlockfrostEffect.awaitTx(baseUrl, projectId),
+      submitTx: BlockfrostEffect.submitTx(baseUrl, projectId),
+      evaluateTx: BlockfrostEffect.evaluateTx(baseUrl, projectId)
     }
   }
 
   // ============================================================================
-  // Promise-based API (Auto-generated from Effect API)
+  // Promise-based API - now using arrow functions as own properties (spreadable!)
   // ============================================================================
 
-  get getProtocolParameters(): Provider["getProtocolParameters"] {
-    return Effect.runPromise(this.Effect.getProtocolParameters)
-  }
-
-  async getUtxos(
-    addressOrCredential: Parameters<Provider["getUtxos"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getUtxos"]>>> {
-    return Effect.runPromise(this.Effect.getUtxos(addressOrCredential))
-  }
-
-  async getUtxosWithUnit(
+  getProtocolParameters = () => Effect.runPromise(this.Effect.getProtocolParameters())
+  
+  getUtxos = (addressOrCredential: Parameters<Provider["getUtxos"]>[0]) => 
+    Effect.runPromise(this.Effect.getUtxos(addressOrCredential))
+  
+  getUtxosWithUnit = (
     addressOrCredential: Parameters<Provider["getUtxosWithUnit"]>[0],
     unit: Parameters<Provider["getUtxosWithUnit"]>[1]
-  ): Promise<Awaited<ReturnType<Provider["getUtxosWithUnit"]>>> {
-    return Effect.runPromise(this.Effect.getUtxosWithUnit(addressOrCredential, unit))
-  }
-
-  async getUtxoByUnit(
-    unit: Parameters<Provider["getUtxoByUnit"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getUtxoByUnit"]>>> {
-    return Effect.runPromise(this.Effect.getUtxoByUnit(unit))
-  }
-
-  async getUtxosByOutRef(
-    outRefs: Parameters<Provider["getUtxosByOutRef"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getUtxosByOutRef"]>>> {
-    return Effect.runPromise(this.Effect.getUtxosByOutRef(outRefs))
-  }
-
-  async getDelegation(
-    rewardAddress: Parameters<Provider["getDelegation"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getDelegation"]>>> {
-    return Effect.runPromise(this.Effect.getDelegation(rewardAddress))
-  }
-
-  async getDatum(
-    datumHash: Parameters<Provider["getDatum"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getDatum"]>>> {
-    return Effect.runPromise(this.Effect.getDatum(datumHash))
-  }
-
-  async awaitTx(
-    txHash: Parameters<Provider["awaitTx"]>[0],
-    checkInterval?: Parameters<Provider["awaitTx"]>[1]
-  ): Promise<Awaited<ReturnType<Provider["awaitTx"]>>> {
-    return Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
-  }
-
-  async submitTx(
-    cbor: Parameters<Provider["submitTx"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["submitTx"]>>> {
-    return Effect.runPromise(this.Effect.submitTx(cbor))
-  }
-
-  async evaluateTx(
-    tx: Parameters<Provider["evaluateTx"]>[0],
-    additionalUTxOs?: Parameters<Provider["evaluateTx"]>[1]
-  ): Promise<Awaited<ReturnType<Provider["evaluateTx"]>>> {
-    return Effect.runPromise(this.Effect.evaluateTx(tx, additionalUTxOs))
-  }
+  ) => Effect.runPromise(this.Effect.getUtxosWithUnit(addressOrCredential, unit))
+  
+  getUtxoByUnit = (unit: Parameters<Provider["getUtxoByUnit"]>[0]) => 
+    Effect.runPromise(this.Effect.getUtxoByUnit(unit))
+  
+  getUtxosByOutRef = (outRefs: Parameters<Provider["getUtxosByOutRef"]>[0]) => 
+    Effect.runPromise(this.Effect.getUtxosByOutRef(outRefs))
+  
+  getDelegation = (rewardAddress: Parameters<Provider["getDelegation"]>[0]) => 
+    Effect.runPromise(this.Effect.getDelegation(rewardAddress))
+  
+  getDatum = (datumHash: Parameters<Provider["getDatum"]>[0]) => 
+    Effect.runPromise(this.Effect.getDatum(datumHash))
+  
+  awaitTx = (txHash: Parameters<Provider["awaitTx"]>[0], checkInterval?: Parameters<Provider["awaitTx"]>[1]) => 
+    Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
+  
+  submitTx = (cbor: Parameters<Provider["submitTx"]>[0]) => 
+    Effect.runPromise(this.Effect.submitTx(cbor))
+  
+  evaluateTx = (tx: Parameters<Provider["evaluateTx"]>[0], additionalUTxOs?: Parameters<Provider["evaluateTx"]>[1]) => 
+    Effect.runPromise(this.Effect.evaluateTx(tx, additionalUTxOs))
 }
 
 // ============================================================================

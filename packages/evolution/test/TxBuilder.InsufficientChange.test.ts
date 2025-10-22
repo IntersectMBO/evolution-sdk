@@ -86,11 +86,10 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
   it("should throw error by default when change is insufficient (safe default)", async () => {
     // Arrange: UTxO with insufficient leftover for change output
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_000_000n)
+    })
 
     // Act & Assert: Should fail with default 'error' strategy
     // This is the SAFE default - prevents accidental fund loss
@@ -100,11 +99,10 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
   it("should burn leftover as extra fee when onInsufficientChange='burn'", async () => {
     // Arrange: Same insufficient leftover scenario
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_000_000n)
+    })
 
     // Act: Explicitly consent to burning leftover
     const signBuilder = await builder.build({ onInsufficientChange: "burn", useV3: true })
@@ -135,11 +133,10 @@ describe("Fallback Precedence: drainTo before onInsufficientChange", () => {
   it("should use drainTo (Fallback #1) before checking onInsufficientChange (Fallback #2)", async () => {
     // Arrange: Insufficient change + both fallbacks configured
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_000_000n)
+    })
 
     // Act: Configure both drainTo and onInsufficientChange='error'
     // drainTo should take precedence (Fallback #1 before #2)
@@ -171,11 +168,10 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
   it("should create change output when sufficient funds available", async () => {
     // Arrange: UTxO with plenty of ADA
     const utxo = createSufficientUtxo(100_000_000n) // 100 ADA
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(10_000_000n) // 10 ADA payment
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(10_000_000n) // 10 ADA payment
+    })
 
     // Act: Build with fallback configured (shouldn't be needed)
     const signBuilder = await builder.build({
@@ -207,11 +203,10 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
   it("should handle exact amount with drainTo without triggering fallbacks", async () => {
     // Arrange: UTxO with exact amount needed
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_000_000n)
+    })
 
     // Act: Use drainTo for exact amount scenarios
     const signBuilder = await builder.build({ drainTo: 0, useV3: true })
@@ -251,11 +246,10 @@ describe("Edge Cases", () => {
       }
     ]
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_000_000n)
+    })
 
     // Act: Build with drainTo to merge leftover into payment
     // Total: 2.2 ADA - 2.0 payment - 0.17 fee = 0.03 ADA leftover (insufficient for change)
@@ -280,11 +274,10 @@ describe("Edge Cases", () => {
     // Arrange: Use the standard minimal UTxO (sufficient for tests)
     const utxo = createMinimalUtxo()
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_000_000n)
+    })
 
     // Act: Burn small leftover
     const signBuilder = await builder.build({ onInsufficientChange: "burn", useV3: true })
@@ -336,11 +329,10 @@ describe("Multi-Asset minUTxO Calculation", () => {
 
     // Send most lovelace but keep all native assets
     // This creates leftover with: small lovelace + 10 assets
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [multiAssetUtxo] })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(2_500_000n) // Send 2.5 ADA only
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [multiAssetUtxo] }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(2_500_000n) // Send 2.5 ADA only
+    })
 
     // Act: Build transaction
     const signBuilder = await builder.build({ useV3: true })
@@ -382,21 +374,6 @@ describe("Multi-Asset minUTxO Calculation", () => {
 })
 
 describe("Fee Validation: Multiple Witnesses Edge Case", () => {
-  /**
-   * CRITICAL TEST: Verify fee validation with many inputs from different addresses
-   *
-   * Edge case concern: Many inputs from different addresses create many witnesses,
-   * which increases transaction size and fee. The test verifies that:
-   * 1. Fee calculation includes all witnesses in size estimation
-   * 2. Validation uses the same witness set as calculation
-   * 3. Fee validation passes despite increased witness count
-   *
-   * Architecture verification:
-   * - Both fee calculation AND validation use buildFakeWitnessSet(selectedUtxos)
-   * - Witnesses are deduplicated by address key hash
-   * - More unique addresses → more witnesses → larger size → higher fee (correct)
-   * - Validation passes because it uses the same transaction with witnesses
-   */
   it("should validate fee correctly with 10 inputs from different addresses", async () => {
     // Arrange: Create 10 UTxOs from 10 DIFFERENT addresses
     // Each unique address will create one fake witness (~128 bytes)
@@ -424,11 +401,10 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
     }))
 
     // Build transaction that will select all 10 inputs
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(45_000_000n) // 45 ADA
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(45_000_000n) // 45 ADA
+    })
 
     // Act: Build transaction
     const signBuilder = await builder.build({ useV3: true })
@@ -476,11 +452,10 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
       })
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
-      .payToAddress({
-        address: RECIPIENT_ADDRESS,
-        assets: Assets.fromLovelace(45_000_000n)
-      })
+    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+      address: RECIPIENT_ADDRESS,
+      assets: Assets.fromLovelace(45_000_000n)
+    })
 
     // Act
     const signBuilder = await builder.build({ useV3: true })
@@ -504,6 +479,5 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
     // 10 inputs = larger tx body, but only 1 witness
     expect(validation.actualFee).toBeLessThan(200_000n) // Less than 10-witness case
     expect(validation.txSizeBytes).toBeLessThan(900) // Smaller than 10-witness tx
-
   })
 })

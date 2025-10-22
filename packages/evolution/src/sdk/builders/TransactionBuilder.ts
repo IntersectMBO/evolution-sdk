@@ -1762,7 +1762,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       // Get actual CBOR size with fake witnesses
       const txSizeWithWitnesses = yield* calculateTransactionSize(txWithWitnesses)
 
-      yield* Effect.logInfo(
+      yield* Effect.logDebug(
         `Transaction size check: ${txSizeWithWitnesses} bytes ` +
           `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), max=${ctx.config.protocolParameters.maxTxSize} bytes`
       )
@@ -2130,7 +2130,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         // Get actual CBOR size with fake witnesses
         const txSizeWithWitnesses = yield* calculateTransactionSize(txWithFakeWitnesses)
 
-        yield* Effect.logInfo(
+        yield* Effect.logDebug(
           `[StateMachineV2] Transaction size: ${txSizeWithWitnesses} bytes ` +
             `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), ` +
             `max=${ctx.config.protocolParameters.maxTxSize} bytes`
@@ -2155,7 +2155,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         }
 
         // Log final build summary
-        yield* Effect.logInfo(
+        yield* Effect.logDebug(
           `[StateMachineV2] Build complete: ${inputs.length} input(s), ${allOutputs.length} output(s) ` +
             `(${baseOutputs.length} base + ${finalBuildCtx.changeOutputs.length} change), ` +
             `Fee: ${finalBuildCtx.calculatedFee} lovelace, Size: ${txSizeWithWitnesses} bytes, Attempts: ${finalBuildCtx.attempt}`
@@ -2561,7 +2561,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
     // Balanced!
     if (difference === 0n) {
-      yield* Effect.logInfo("[BalanceVerificationV2] Transaction balanced!")
+      yield* Effect.logDebug("[BalanceVerificationV2] Transaction balanced!")
       return { next: "complete" as const }
     }
 
@@ -2645,13 +2645,13 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
           })
         )
       }
-      yield* Effect.logInfo("[BalanceVerificationV2] Attempts exhausted, trying drainTo")
+      yield* Effect.logDebug("[BalanceVerificationV2] Attempts exhausted, trying drainTo")
       return { next: "drainTo" as const }
     }
 
     // Strategy 3: Burn as fee (TODO: add allowBurnAsFee to BuildOptions)
     // if (ctx.options?.allowBurnAsFee && difference < 10_000n) {
-    //   yield* Effect.logInfo("[BalanceVerificationV2] Attempts exhausted, burning as fee")
+    //   yield* Effect.logDebug("[BalanceVerificationV2] Attempts exhausted, burning as fee")
     //   return { next: "burnAsFee" as const }
     // }
 
@@ -2754,7 +2754,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     // Clear change outputs
     yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, changeOutputs: [] }))
 
-    yield* Effect.logInfo(`[DrainToV2] Successfully merged leftover (validated: ${mergedLovelace} >= ${mergedMinUtxo})`)
+    yield* Effect.logDebug(`[DrainToV2] Successfully merged leftover (validated: ${mergedLovelace} >= ${mergedMinUtxo})`)
     return { next: "complete" as const }
   })
 
@@ -2784,7 +2784,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       )
     }
 
-    yield* Effect.logInfo(
+    yield* Effect.logDebug(
       `[BurnAsFeeV2] Burning ${leftoverAfterFee.lovelace} lovelace as extra fee ` + `(below minUTxO, no native assets)`
     )
 
@@ -3121,7 +3121,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
       // Try reselection up to MAX_ATTEMPTS (if UTxOs available)
       if (hasMoreUtxos && buildCtx.attempt < MAX_ATTEMPTS) {
-        yield* Effect.logInfo(
+        yield* Effect.logDebug(
           `[ChangeCreationV3] Leftover ${tentativeLeftover.lovelace} < ${minLovelaceForSingle} minUTxO ` +
             `(shortfall: ${shortfall}${isAdaOnlyLeftover ? ", ADA-only" : ", with native assets"}). ` +
             `Attempting reselection (${buildCtx.attempt + 1}/${MAX_ATTEMPTS})`
@@ -3309,7 +3309,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
     // Step 3: Check if balanced (delta is empty) → complete
     if (isBalanced) {
-      yield* Effect.logInfo("[BalanceV3] Transaction balanced!")
+      yield* Effect.logDebug("[BalanceV3] Transaction balanced!")
       return { next: "complete" as V3Phase }
     }
 
@@ -3374,14 +3374,14 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         )
         yield* Ref.set(ctx.state.totalOutputAssets, newTotalOutputAssets)
         
-        yield* Effect.logInfo(
+        yield* Effect.logDebug(
           `[BalanceV3] DrainTo mode: Merged ${deltaLovelace} lovelace into output[${drainToIndex}]. ` +
             `New output value: ${newLovelace}. Transaction balanced.`
         )
         return { next: "complete" as V3Phase }
       } else if (isBurnMode) {
         // Burn mode: Positive delta is the burned leftover (becomes implicit fee)
-        yield* Effect.logInfo(
+        yield* Effect.logDebug(
           `[BalanceV3] Burn mode: ${deltaLovelace} lovelace burned as implicit fee. ` +
             `Transaction balanced.`
         )
@@ -3429,7 +3429,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
   // Note: ChangeCreation ensures only ADA-only cases reach this phase.
 
   const phaseFallbackV3 = Effect.gen(function* () {
-    yield* Effect.logInfo("[V3] Phase: Fallback")
+    yield* Effect.logDebug("[V3] Phase: Fallback")
 
     const ctx = yield* TxContext
     const buildCtxRef = yield* V3BuildContextTag
@@ -3466,7 +3466,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         changeOutputs: []
       }))
 
-      yield* Effect.logInfo(
+      yield* Effect.logDebug(
         `[Fallback] DrainTo strategy: Change outputs cleared. ` +
           `Leftover will be merged into output[${drainToIndex}] after fee calculation.`
       )
@@ -3486,7 +3486,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         changeOutputs: []
       }))
 
-      yield* Effect.logInfo(
+      yield* Effect.logDebug(
         `[Fallback] Burn strategy: Leftover will be burned as implicit fee ` +
           `(recalculating fee without change outputs).`
       )
@@ -3591,7 +3591,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       const buildCtx = yield* Ref.get(ctxRef)
       const ctx = yield* TxContext
 
-      yield* Effect.logInfo(`[V3] Build complete - fee: ${buildCtx.calculatedFee}`)
+      yield* Effect.logDebug(`[V3] Build complete - fee: ${buildCtx.calculatedFee}`)
 
       // Add change outputs to the transaction outputs
       if (buildCtx.changeOutputs.length > 0) {
@@ -3625,7 +3625,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
       const txSizeWithWitnesses = yield* calculateTransactionSize(txWithFakeWitnesses)
 
-      yield* Effect.logInfo(
+      yield* Effect.logDebug(
         `[V3] Transaction size: ${txSizeWithWitnesses} bytes ` +
           `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), ` +
           `max=${ctx.config.protocolParameters.maxTxSize} bytes`

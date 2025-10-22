@@ -20,7 +20,7 @@ export class ProviderError extends Data.TaggedError("ProviderError")<{
 
 // Effect-based Provider interface (the source of truth)
 export interface ProviderEffect {
-  readonly getProtocolParameters: Effect.Effect<ProtocolParameters.ProtocolParameters, ProviderError>
+  readonly getProtocolParameters: () => Effect.Effect<ProtocolParameters.ProtocolParameters, ProviderError>
   getUtxos: (addressOrCredential: Address.Address | Credential.Credential) => Effect.Effect<Array<UTxO>, ProviderError>
   readonly getUtxosWithUnit: (
     addressOrCredential: Address.Address | Credential.Credential,

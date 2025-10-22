@@ -6,27 +6,6 @@ import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import type * as UTxO from "../src/sdk/UTxO.js"
 import { createTestUtxo } from "./utils/utxo-helpers.js"
 
-/**
- * Integration tests for combining unfracking with drainTo.
- * 
- * Use cases:
- * - Wallet consolidation: Merge multiple UTxOs into one optimized address
- * - Wallet migration: Move all funds to a new wallet with optimization
- * - Cleanup: Organize fragmented UTxOs with token optimization
- * 
- * The combination of drainTo + unfracking allows:
- * 1. drainTo: Merge all leftover assets into a single output
- * 2. unfrack: Organize that output using Unfrack.It principles
- *    - Token bundling (organize tokens into groups)
- *    - Fungible token isolation (separate fungible from NFTs)
- *    - NFT grouping by policy (group NFTs by their policy ID)
- *    - ADA subdivision (split large ADA amounts for flexibility)
- */
-
-// ============================================================================
-// Test Configuration
-// ============================================================================
-
 const PROTOCOL_PARAMS = {
   minFeeCoefficient: 44n,
   minFeeConstant: 155_381n,

@@ -3,13 +3,12 @@
 
 import { Data, type Effect, type Schedule } from "effect"
 
-import type { ReadOnlyTransactionBuilder, ReadOnlyTransactionBuilderEffect } from "../builders/index.js"
 import type * as Delegation from "../Delegation.js"
 import type * as Provider from "../provider/Provider.js"
 import type { EffectToPromiseAPI } from "../Type.js"
 import type * as UTxO from "../UTxO.js"
 // Type-only imports to avoid runtime circular dependency
-import type { ApiWalletEffect, ReadOnlyWalletEffect, SigningWalletEffect, WalletApi } from "../wallet/WalletNew.js"
+import type { ApiWalletEffect, ReadOnlyWalletEffect, SigningWalletEffect, WalletApi, WalletError } from "../wallet/WalletNew.js"
 
 // ============================================================================
 // Error Types
@@ -41,20 +40,20 @@ export interface MinimalClientEffect {
  * ReadOnlyClient Effect - Provider + ReadOnlyWallet + transaction builder
  */
 export interface ReadOnlyClientEffect extends Provider.ProviderEffect, ReadOnlyWalletEffect {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilderEffect
+  // Note: newTx is defined separately in ReadOnlyClient (not as Effect)
   // Wallet-scoped convenience methods that combine provider + wallet operations
-  readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<UTxO.UTxO>, ProviderError>
-  readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, ProviderError>
+  readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<UTxO.UTxO>, Provider.ProviderError>
+  readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, Provider.ProviderError>
 }
 
 /**
  * SigningClient Effect - Provider + SigningWallet + transaction builder
  */
 export interface SigningClientEffect extends Provider.ProviderEffect, SigningWalletEffect {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilderEffect
+  // Note: newTx is defined separately in SigningClient (not as Effect)
   // Wallet-scoped convenience methods that combine provider + wallet operations
-  readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<UTxO.UTxO>, ProviderError>
-  readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, ProviderError>
+  readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<UTxO.UTxO>, WalletError | Provider.ProviderError>
+  readonly getWalletDelegation: () => Effect.Effect<Delegation.Delegation, WalletError | Provider.ProviderError>
 }
 
 
@@ -68,18 +67,23 @@ export interface SigningClientEffect extends Provider.ProviderEffect, SigningWal
  */
 export interface MinimalClient {
   readonly networkId: number | string
-  // Combinator methods (pure, no side effects) with type-aware overloads
+  // Combinator methods (pure, no side effects) with type-aware conditional return types
   readonly attachProvider: (config: ProviderConfig) => ProviderOnlyClient
-  readonly attachWallet: {
-    (config: SeedWalletConfig): SigningWalletClient
-    (config: ReadOnlyWalletConfig): ReadOnlyWalletClient
-    (config: ApiWalletConfig): ApiWalletClient
-  }
-  readonly attach: {
-    (providerConfig: ProviderConfig, walletConfig: SeedWalletConfig): SigningClient
-    (providerConfig: ProviderConfig, walletConfig: ReadOnlyWalletConfig): ReadOnlyClient
-    (providerConfig: ProviderConfig, walletConfig: ApiWalletConfig): SigningClient
-  }
+  readonly attachWallet: <T extends WalletConfig>(
+    config: T
+  ) => T extends SeedWalletConfig
+    ? SigningWalletClient
+    : T extends ApiWalletConfig
+      ? ApiWalletClient
+      : ReadOnlyWalletClient
+  readonly attach: <TW extends WalletConfig>(
+    providerConfig: ProviderConfig,
+    walletConfig: TW
+  ) => TW extends SeedWalletConfig
+    ? SigningClient
+    : TW extends ApiWalletConfig
+      ? SigningClient
+      : ReadOnlyClient
   // Effect namespace for methods with side effects only
   readonly Effect: MinimalClientEffect
 }
@@ -88,12 +92,14 @@ export interface MinimalClient {
  * ProviderOnlyClient - can query blockchain and submit transactions
  */
 export type ProviderOnlyClient = EffectToPromiseAPI<Provider.ProviderEffect> & {
-  // Combinator methods (pure, no side effects) with type-aware overloads
-  readonly attachWallet: {
-    (config: SeedWalletConfig): SigningClient
-    (config: ReadOnlyWalletConfig): ReadOnlyClient
-    (config: ApiWalletConfig): SigningClient
-  }
+  // Combinator methods (pure, no side effects) with type-aware conditional return type
+  readonly attachWallet: <T extends WalletConfig>(
+    config: T
+  ) => T extends SeedWalletConfig
+    ? SigningClient
+    : T extends ApiWalletConfig
+      ? SigningClient
+      : ReadOnlyClient
   // Effect namespace - includes all provider methods as Effects
   readonly Effect: Provider.ProviderEffect
 }
@@ -102,7 +108,7 @@ export type ProviderOnlyClient = EffectToPromiseAPI<Provider.ProviderEffect> & {
  * ReadOnlyClient - can query blockchain + wallet address operations
  */
 export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => any // TODO: Change to ReadOnlyTransactionBuilder when implementing tx builder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: ReadOnlyClientEffect
 }
@@ -111,7 +117,7 @@ export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
  * SigningClient - full functionality: query blockchain + sign + submit
  */
 export type SigningClient = EffectToPromiseAPI<SigningClientEffect> & {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => any // TODO: Change to ReadOnlyTransactionBuilder when implementing tx builder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: SigningClientEffect
 }
@@ -231,6 +237,8 @@ export interface SeedWalletConfig {
   readonly accountIndex?: number
   readonly paymentIndex?: number
   readonly stakeIndex?: number
+  readonly addressType?: "Base" | "Enterprise"
+  readonly password?: string
 }
 
 export interface ReadOnlyWalletConfig {
@@ -250,24 +258,5 @@ export type WalletConfig = SeedWalletConfig | ReadOnlyWalletConfig | ApiWalletCo
 // Factory Functions
 // ============================================================================
 
-export declare function createClient(): MinimalClient
-export declare function createClient(config: { network: NetworkId }): MinimalClient
-export declare function createClient(config: { network: NetworkId; provider: ProviderConfig }): ProviderOnlyClient
-export declare function createClient(config: { network: NetworkId; wallet: SeedWalletConfig }): SigningWalletClient
-export declare function createClient(config: { network: NetworkId; wallet: ReadOnlyWalletConfig }): ReadOnlyWalletClient
-export declare function createClient(config: { network: NetworkId; wallet: ApiWalletConfig }): ApiWalletClient
-export declare function createClient(config: {
-  network: NetworkId
-  provider: ProviderConfig
-  wallet: SeedWalletConfig
-}): SigningClient
-export declare function createClient(config: {
-  network: NetworkId
-  provider: ProviderConfig
-  wallet: ReadOnlyWalletConfig
-}): ReadOnlyClient
-export declare function createClient(config: {
-  network: NetworkId
-  provider: ProviderConfig
-  wallet: ApiWalletConfig
-}): SigningClient
+// Re-export implementation from ClientImpl
+export { createClient } from "./ClientImpl.js"

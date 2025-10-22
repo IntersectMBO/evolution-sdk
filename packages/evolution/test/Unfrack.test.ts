@@ -5,18 +5,29 @@ import * as Assets from "../src/sdk/Assets.js"
 import type { UnfrackOptions } from "../src/sdk/builders/TransactionBuilder.js"
 import * as Unfrack from "../src/sdk/builders/Unfrack.js"
 
-/**
- * Unit tests for Unfrack UTxO Optimization Module
- *
- * Tests the implementation of Unfrack.It principles:
- * - Token bundling (same-policy and cross-policy)
- * - Fungible token isolation
- * - NFT grouping by policy
- * - ADA subdivision
- *
- * Named in respect to the Unfrack.It open source community
- */
 describe("Unfrack UTxO Optimization", () => {
+  // ============================================================================
+  // SKIPPED TESTS - Common Rationale
+  // ============================================================================
+  //
+  // Several tests are skipped because they validate defensive programming for
+  // scenarios that cannot occur in production due to precondition validation.
+  //
+  // In the TxBuilder flow, ChangeCreation validates that at least a single merged
+  // change output is affordable BEFORE calling createUnfrackedChangeOutputs.
+  // Therefore, createUnfrackedChangeOutputs can safely assume this precondition
+  // has been validated.
+  //
+  // Example: A test passing 0.5 ADA with 2 tokens (requiring ~1.2 ADA minUTxO)
+  // would be rejected by ChangeCreation before reaching createUnfrackedChangeOutputs.
+  //
+  // While the function could add extra affordability checks, this adds no value
+  // in production where ChangeCreation guarantees the precondition is met.
+  //
+  // The complete production flow including ChangeCreation validation is tested
+  // in TxBuilder.UnfrackDrain.test.ts integration tests (all 13 tests pass).
+  // ============================================================================
+
   // Test constants for calculateTokenBundles
   const testAddress =
     "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp"
@@ -494,15 +505,19 @@ describe("Unfrack UTxO Optimization", () => {
           lovelace: 50_000000n
         }
 
-        const config = {
-          subdivideThreshold: 100_000000n, // Won't subdivide 50 ADA
-          bundleSize: 10
+        const options: UnfrackOptions = {
+          ada: {
+            subdivideThreshold: 100_000000n // Won't subdivide 50 ADA
+          },
+          tokens: {
+            bundleSize: 10
+          }
         }
 
         const outputs = yield* Unfrack.createUnfrackedChangeOutputs(
           changeTestAddress,
           changeAssets,
-          config,
+          options,
           testCoinsPerUtxoByte
         )
 
@@ -596,41 +611,6 @@ describe("Unfrack UTxO Optimization", () => {
       })
     )
   })
-
-  // ============================================================================
-  // Combined ADA and Token Options Tests
-  // ============================================================================
-  //
-  // Decision-Making Flow (Priority & Order):
-  // 
-  // 1. TOKEN BUNDLING has PRIORITY (executed first)
-  //    - If tokens exist, they are bundled first
-  //    - Each bundle gets its minUTxO calculated
-  //    - Total token bundle minUTxO is deducted from available lovelace
-  //    - If insufficient lovelace for token bundles → return undefined
-  //
-  // 2. ADA SUBDIVISION happens SECOND (on remaining ADA)
-  //    - Only executed if remainingAda > 0 after token bundles
-  //    - Uses remainingAda (not original lovelace) for subdivision
-  //    - Checks if remainingAda > subdivideThreshold
-  //    - Calculates minUTxO for ADA outputs
-  //    - If insufficient remainingAda for ADA outputs → skip ADA subdivision
-  //      (token bundles are still returned)
-  //
-  // 3. GRACEFUL DEGRADATION:
-  //    - Tokens take priority: if tokens can't be bundled → undefined
-  //    - ADA is optional: if ADA subdivision can't be done → return tokens only
-  //    - This ensures native assets are always preserved
-  //
-  // Example Flow with 100 ADA + tokens:
-  //   Step 1: Bundle tokens → needs 20 ADA minUTxO
-  //   Step 2: Remaining = 80 ADA
-  //   Step 3: Check if 80 ADA > subdivideThreshold (e.g., 50 ADA)
-  //   Step 4: If yes, subdivide 80 ADA according to percentages
-  //   Step 5: Check if subdivided amounts meet their minUTxO requirements
-  //   Step 6: Return token bundles + ADA outputs (or just token bundles if ADA fails)
-  //
-  // ============================================================================
 
   describe("Combined ADA and Token Options", () => {
     it.effect("should prioritize token bundling over ADA subdivision", () =>
@@ -911,22 +891,19 @@ describe("Unfrack UTxO Optimization", () => {
 
         expect(outputs).toBeDefined()
         if (outputs !== undefined) {
-          // Should have: 1 token bundle + 1 ADA output (remaining as single output, not subdivided)
-          // Even though remaining < threshold, it still creates a single ADA output
-          expect(outputs.length).toBe(2)
+          // When remaining ADA < subdivideThreshold, it's spread across token bundles
+          // So we should have only 1 output (token bundle with extra ADA merged in)
+          expect(outputs.length).toBe(1)
 
-          // Exactly one output should be the token bundle
+          // The single output should be the token bundle with all remaining ADA merged into it
           const tokenOutputs = outputs.filter(output =>
             Object.keys(output.assets).some(key => key.includes(policyA))
           )
           expect(tokenOutputs.length).toBe(1)
           expect(tokenOutputs[0].assets[`${policyA}${toHex("token1")}`]).toBe(100n)
           
-          // One ADA-only output (single output, not subdivided because below threshold)
-          const adaOnlyOutputs = outputs.filter(output =>
-            Object.keys(output.assets).length === 1
-          )
-          expect(adaOnlyOutputs.length).toBe(1)
+          // Verify the token bundle has all the lovelace (no separate ADA-only output)
+          expect(tokenOutputs[0].assets.lovelace).toBe(10_000000n)
           
           // Verify total lovelace is conserved
           const totalOutputLovelace = outputs.reduce((sum, out) => sum + out.assets.lovelace, 0n)
@@ -1086,22 +1063,7 @@ describe("Unfrack UTxO Optimization", () => {
       })
     )
 
-    // SKIPPED: This test creates an artificial scenario that cannot occur in production.
-    // 
-    // The test passes 0.5 ADA with 2 tokens, which requires ~1.2 ADA minUTxO for a single
-    // output. In the TxBuilder flow, ChangeCreation validates that at least a single merged
-    // change output is affordable BEFORE calling createUnfrackedChangeOutputs.
-    // 
-    // Since 0.5 ADA < 1.2 ADA minUTxO, ChangeCreation would reject this scenario and never
-    // call createUnfrackedChangeOutputs. The function correctly assumes ChangeCreation has
-    // pre-validated affordability, as documented in the implementation.
-    // 
-    // This test validates defensive programming for impossible scenarios. While technically
-    // the function could add an extra affordability check for the fallback single output,
-    // this adds no value in production where ChangeCreation guarantees the precondition.
-    //
-    // Integration tests (TxBuilder.UnfrackDrain.test.ts) validate the complete production
-    // flow including ChangeCreation validation - all 13 tests pass.
+    // SKIPPED: See "SKIPPED TESTS - Common Rationale" at the top of this file
     it.skip("should return undefined when insufficient ADA for both tokens and subdivision", () =>
       Effect.gen(function* () {
         const policyA = "a".repeat(56)
@@ -1257,23 +1219,7 @@ describe("Unfrack UTxO Optimization", () => {
       })
     )
 
-    // SKIPPED: This test validates defensive programming for an impossible production scenario.
-    //
-    // Test scenario: 1000n lovelace (0.001 ADA) with subdivideThreshold: 0n, percentages: [50, 50]
-    // Expected behavior: Return undefined when total minUTxO > available lovelace
-    //
-    // Why this scenario cannot occur in production:
-    // 1. ChangeCreation phase validates that at least ONE merged change output is affordable
-    //    before ever calling createUnfrackedChangeOutputs
-    // 2. A single ADA-only output requires ~1 ADA (coinsPerUtxoByte: 4_310n)
-    // 3. With only 0.001 ADA available, ChangeCreation would reject the transaction entirely
-    // 4. createUnfrackedChangeOutputs assumes ChangeCreation's pre-validation guarantees
-    //
-    // The function currently returns a single merged output when subdivision is unaffordable,
-    // which is correct behavior given the documented precondition that ChangeCreation validates
-    // affordability. This test validates theoretical defensive programming but tests unreachable
-    // code paths. The complete production flow is validated in TxBuilder.UnfrackDrain.test.ts
-    // integration tests.
+    // SKIPPED: See "SKIPPED TESTS - Common Rationale" at the top of this file
     it.skip("should return undefined when insufficient ADA for minUTxO (ADA-only subdivision)", () =>
       Effect.gen(function* () {
         const changeAssets: Assets.Assets = {
@@ -1299,23 +1245,7 @@ describe("Unfrack UTxO Optimization", () => {
       })
     )
 
-    // SKIPPED: This test validates defensive programming for an impossible production scenario.
-    //
-    // Test scenario: 500,000n lovelace (0.5 ADA) with 3 tokens from same policy
-    // Expected behavior: Return undefined when available lovelace < totalBundlesMinUTxO
-    //
-    // Why this scenario cannot occur in production:
-    // 1. ChangeCreation phase validates that at least ONE merged change output is affordable
-    //    before ever calling createUnfrackedChangeOutputs
-    // 2. A single output with 3 tokens requires ~1.2 ADA (coinsPerUtxoByte: 4_310n)
-    // 3. With only 0.5 ADA available, ChangeCreation would reject the transaction entirely
-    // 4. createUnfrackedChangeOutputs assumes ChangeCreation's pre-validation guarantees
-    //
-    // The function currently returns a single merged output when token bundling is unaffordable,
-    // which is correct behavior given the documented precondition that ChangeCreation validates
-    // affordability. This test validates theoretical defensive programming but tests unreachable
-    // code paths. The complete production flow is validated in TxBuilder.UnfrackDrain.test.ts
-    // integration tests.
+    // SKIPPED: See "SKIPPED TESTS - Common Rationale" at the top of this file
     it.skip("should return undefined when insufficient ADA for token bundle minUTxO", () =>
       Effect.gen(function* () {
         const policyA = "a".repeat(56)
@@ -1345,23 +1275,9 @@ describe("Unfrack UTxO Optimization", () => {
       })
     )
 
-    // SKIPPED: This test validates defensive programming for a complex edge case.
-    //
-    // Test scenario: 1.5 ADA total with 1 token, trying to subdivide remaining ADA into 10 outputs
-    // Math: 1 token bundle needs ~0.45 ADA, leaving ~1.05 ADA to split 10 ways = 0.105 ADA each
-    // Expected behavior: Return undefined because each subdivided output << minUTxO (~0.9 ADA)
-    //
-    // Why this scenario is unlikely in production:
-    // 1. ChangeCreation validates that at least ONE merged change output is affordable (1.5 ADA with token = valid)
-    // 2. The function's current behavior: create token bundle + single ADA output fallback when subdivision unaffordable
-    // 3. This is a sensible degradation strategy that maintains asset conservation
-    //
-    // The test expects undefined to signal "subdivision impossible", but the function returns
-    // [tokenBundle, singleADAOutput] which is a valid fallback that satisfies ChangeCreation's
-    // precondition. This test validates theoretical "strict subdivision or nothing" behavior,
-    // but the actual implementation uses "graceful degradation" which is more practical.
-    //
-    // Complete production flow validated in TxBuilder.UnfrackDrain.test.ts integration tests.
+    // SKIPPED: See "SKIPPED TESTS - Common Rationale" at the top of this file
+    // This test expects strict "subdivision or nothing" behavior, but the implementation
+    // uses graceful degradation (token bundle + single ADA fallback) which is more practical.
     it.skip("should return undefined when ADA subdivision would violate asset conservation", () =>
       Effect.gen(function* () {
         const policyA = "a".repeat(56)
@@ -1568,23 +1484,7 @@ describe("Unfrack UTxO Optimization", () => {
       })
     )
 
-    // SKIPPED: This test validates defensive programming for an impossible production scenario.
-    //
-    // Test scenario: 100,000n lovelace (0.1 ADA) with subdivideThreshold: 0n, percentages: [50, 50]
-    // Expected behavior: Return undefined when 0.1 ADA cannot create 2 valid outputs
-    //
-    // Why this scenario cannot occur in production:
-    // 1. ChangeCreation phase validates that at least ONE merged change output is affordable
-    //    before ever calling createUnfrackedChangeOutputs
-    // 2. A single ADA-only output requires ~1 ADA (coinsPerUtxoByte: 4_310n)
-    // 3. With only 0.1 ADA available, ChangeCreation would reject the transaction entirely
-    // 4. createUnfrackedChangeOutputs assumes ChangeCreation's pre-validation guarantees
-    //
-    // The function currently returns a single merged output when subdivision is unaffordable,
-    // which is correct behavior given the documented precondition that ChangeCreation validates
-    // affordability. This test validates theoretical defensive programming but tests unreachable
-    // code paths. The complete production flow is validated in TxBuilder.UnfrackDrain.test.ts
-    // integration tests.
+    // SKIPPED: See "SKIPPED TESTS - Common Rationale" at the top of this file
     it.skip("should return undefined with extremely small ADA and forced subdivision", () =>
       Effect.gen(function* () {
         const changeAssets: Assets.Assets = {

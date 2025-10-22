@@ -66,7 +66,7 @@ export class MaestroProvider implements Provider {
   ) {
     // Initialize Effect-based API with curry pattern
     this.Effect = {
-      getProtocolParameters: MaestroEffect.getProtocolParameters(this.baseUrl, this.apiKey),
+      getProtocolParameters: () => MaestroEffect.getProtocolParameters(this.baseUrl, this.apiKey),
       getUtxos: MaestroEffect.getUtxos(this.baseUrl, this.apiKey),
       getUtxosWithUnit: MaestroEffect.getUtxosWithUnit(this.baseUrl, this.apiKey),
       getUtxosByOutRef: MaestroEffect.getUtxosByOutRef(this.baseUrl, this.apiKey),
@@ -80,65 +80,39 @@ export class MaestroProvider implements Provider {
   }
 
   // ============================================================================
-  // Promise-based API (Auto-generated from Effect API)
+  // Promise-based API - arrow functions as own properties (spreadable!)
   // ============================================================================
 
-  get getProtocolParameters(): Provider["getProtocolParameters"] {
-    return Effect.runPromise(this.Effect.getProtocolParameters)
-  }
+  getProtocolParameters = () => Effect.runPromise(this.Effect.getProtocolParameters())
 
-  async getUtxos(
-    addressOrCredential: Parameters<Provider["getUtxos"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getUtxos"]>>> {
-    return Effect.runPromise(this.Effect.getUtxos(addressOrCredential))
-  }
+  getUtxos = (addressOrCredential: Parameters<Provider["getUtxos"]>[0]) =>
+    Effect.runPromise(this.Effect.getUtxos(addressOrCredential))
 
-  async getUtxosWithUnit(
+  getUtxosWithUnit = (
     addressOrCredential: Parameters<Provider["getUtxosWithUnit"]>[0],
     unit: Parameters<Provider["getUtxosWithUnit"]>[1]
-  ): Promise<Awaited<ReturnType<Provider["getUtxosWithUnit"]>>> {
-    return Effect.runPromise(this.Effect.getUtxosWithUnit(addressOrCredential, unit))
-  }
+  ) => Effect.runPromise(this.Effect.getUtxosWithUnit(addressOrCredential, unit))
 
-  async getUtxoByUnit(
-    unit: Parameters<Provider["getUtxoByUnit"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getUtxoByUnit"]>>> {
-    return Effect.runPromise(this.Effect.getUtxoByUnit(unit))
-  }
+  getUtxoByUnit = (unit: Parameters<Provider["getUtxoByUnit"]>[0]) =>
+    Effect.runPromise(this.Effect.getUtxoByUnit(unit))
 
-  async getUtxosByOutRef(
-    outRefs: Parameters<Provider["getUtxosByOutRef"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getUtxosByOutRef"]>>> {
-    return Effect.runPromise(this.Effect.getUtxosByOutRef(outRefs))
-  }
+  getUtxosByOutRef = (outRefs: Parameters<Provider["getUtxosByOutRef"]>[0]) =>
+    Effect.runPromise(this.Effect.getUtxosByOutRef(outRefs))
 
-  async getDelegation(
-    rewardAddress: Parameters<Provider["getDelegation"]>[0]
-  ): Promise<Awaited<ReturnType<Provider["getDelegation"]>>> {
-    return Effect.runPromise(this.Effect.getDelegation(rewardAddress))
-  }
+  getDelegation = (rewardAddress: Parameters<Provider["getDelegation"]>[0]) =>
+    Effect.runPromise(this.Effect.getDelegation(rewardAddress))
 
-  async getDatum(datumHash: Parameters<Provider["getDatum"]>[0]): Promise<Awaited<ReturnType<Provider["getDatum"]>>> {
-    return Effect.runPromise(this.Effect.getDatum(datumHash))
-  }
+  getDatum = (datumHash: Parameters<Provider["getDatum"]>[0]) =>
+    Effect.runPromise(this.Effect.getDatum(datumHash))
 
-  async awaitTx(
-    txHash: Parameters<Provider["awaitTx"]>[0],
-    checkInterval?: Parameters<Provider["awaitTx"]>[1]
-  ): Promise<Awaited<ReturnType<Provider["awaitTx"]>>> {
-    return Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
-  }
+  awaitTx = (txHash: Parameters<Provider["awaitTx"]>[0], checkInterval?: Parameters<Provider["awaitTx"]>[1]) =>
+    Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
 
-  async submitTx(cbor: Parameters<Provider["submitTx"]>[0]): Promise<Awaited<ReturnType<Provider["submitTx"]>>> {
-    return Effect.runPromise(this.Effect.submitTx(cbor))
-  }
+  submitTx = (cbor: Parameters<Provider["submitTx"]>[0]) =>
+    Effect.runPromise(this.Effect.submitTx(cbor))
 
-  async evaluateTx(
-    tx: Parameters<Provider["evaluateTx"]>[0],
-    additionalUTxOs?: Parameters<Provider["evaluateTx"]>[1]
-  ): Promise<Awaited<ReturnType<Provider["evaluateTx"]>>> {
-    return Effect.runPromise(this.Effect.evaluateTx(tx, additionalUTxOs))
-  }
+  evaluateTx = (tx: Parameters<Provider["evaluateTx"]>[0], additionalUTxOs?: Parameters<Provider["evaluateTx"]>[1]) =>
+    Effect.runPromise(this.Effect.evaluateTx(tx, additionalUTxOs))
 }
 
 // ============================================================================

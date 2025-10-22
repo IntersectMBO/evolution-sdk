@@ -1,4 +1,6 @@
 // Parent imports (../../)
+import * as Either from "effect/Either"
+
 import * as CoreAddressStructure from "../../core/AddressStructure.js"
 import * as Ed25519Signature from "../../core/Ed25519Signature.js"
 import * as KeyHash from "../../core/KeyHash.js"
@@ -142,7 +144,7 @@ export function makeWalletFromSeed(
     accountIndex: options?.accountIndex ?? 0,
     password: options?.password,
     network
-  })
+  }).pipe(Either.getOrThrow)
 
   // Minimal keystore: map KeyHash hex -> PrivateKey
   type KeyStore = Map<string, PrivateKey.PrivateKey>

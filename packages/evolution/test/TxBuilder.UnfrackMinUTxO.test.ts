@@ -1,13 +1,3 @@
-/**
- * Test suite for Unfrack MinUTxO handling with native assets.
- * 
- * Validates CBOR-based minUTxO calculations (Strategy 1) ensure:
- * - Exact per-bundle minUTxO requirements
- * - Automatic reselection when change insufficient
- * - Native asset preservation through reselection cycles
- * - Rejection of unsafe fallbacks (drainTo, burnAsFee)
- */
-
 import { describe, expect, it } from "@effect/vitest"
 
 import * as AddressEras from "../src/core/AddressEras.js"

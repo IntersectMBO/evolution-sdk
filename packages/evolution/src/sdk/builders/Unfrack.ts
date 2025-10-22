@@ -5,10 +5,9 @@
  * - Token bundling: Group tokens into optimally-sized UTxOs
  * - Fungible isolation: Place each fungible token on its own UTxO
  * - NFT grouping: Group NFTs by policy ID
- * - ADA optimization: Roll up or subdivide ADA-only UTxOs
+ * - ADA optimization: Roll up or subdivide ADA-only
  * 
- * Named in respect to the Unfrack.It open source community
- * @see https://unfrack.it
+ * Named in respect to the Unfrack.It website
  */
 
 import * as Effect from "effect/Effect"

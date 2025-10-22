@@ -1073,16 +1073,11 @@ export const createChangeOutput = (params: {
     
     // If unfracking is enabled, use Unfrack module
     if (unfrackOptions) {
-      const config = {
-        subdivideThreshold: unfrackOptions.ada?.subdivideThreshold ?? 100_000000n,
-        bundleSize: unfrackOptions.tokens?.bundleSize ?? 10
-      }
-      
       const unfrackedOutputs = yield* Unfrack.createUnfrackedChangeOutputs(
-        leftoverAssets,
         changeAddress,
+        leftoverAssets,
+        unfrackOptions,
         coinsPerUtxoByte,
-        config
       ).pipe(
         Effect.mapError((error) => 
           new TransactionBuilderError({

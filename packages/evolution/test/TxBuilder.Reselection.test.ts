@@ -11,12 +11,6 @@ import type * as UTxO from "../src/sdk/UTxO.js"
 import * as FeeValidation from "../src/utils/FeeValidation.js"
 import { createTestUtxo } from "./utils/utxo-helpers.js"
 
-/**
- * Integration tests for transaction builder re-selection loop.
- * 
- * Tests various scenarios where the transaction builder must re-select UTxOs
- * when the initially selected set is insufficient to cover fees and outputs.
- */
 describe("TxBuilder Re-selection Loop", () => {
   
   // ============================================================================
@@ -67,21 +61,6 @@ describe("TxBuilder Re-selection Loop", () => {
     return validation
   }
 
-  /**
-   * Validate transaction size is within limits
-   */
-  const assertSizeValid = async (
-    txWithFakeWitnesses: any,
-    maxTxSize: number
-  ) => {
-    const sizeEffect = calculateTransactionSize(txWithFakeWitnesses)
-    const size = await Effect.runPromise(sizeEffect)
-    
-    expect(size).toBeLessThanOrEqual(maxTxSize)
-    
-    return size
-  }
-
   // ============================================================================
   // Basic Re-selection Tests
   // ============================================================================
@@ -111,7 +90,8 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs.length).toBe(2) // Payment + change
       
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       
       // Strict expectations with deterministic values
       expect(size).toBe(294) // Exact transaction size with 1 witness
@@ -163,7 +143,8 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs.length).toBe(2)
       
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       
       expect(size).toBe(330) // 2 inputs, 1 witness, 2 outputs
       expect(validation.actualFee).toBe(169_901n) // Fee for 2-input TX
@@ -218,7 +199,8 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs.length).toBe(1)
       
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       
       // Strict expectations with deterministic values  
       expect(size).toBe(227) // Exact transaction size with 1 witness, drainTo
@@ -321,7 +303,8 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs[1]).toBeDefined()
       
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       
       // Strict expectations with deterministic values
       expect(size).toBe(513) // Exact transaction size with 2 witnesses, multi-asset
@@ -416,7 +399,8 @@ describe("TxBuilder Re-selection Loop", () => {
       const signBuilder = await builder.build({ useV3: true })
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
       
-      const size = await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
       
       // With automatic coin selection, builder picks 3 UTxOs (6M total) to cover 5M payment + fees
@@ -457,7 +441,8 @@ describe("TxBuilder Re-selection Loop", () => {
       const signBuilder = await builder.build({ useV3: true })
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
       
-      const size = await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
       
       // Strict expectations with deterministic values
@@ -523,18 +508,6 @@ describe("TxBuilder Re-selection Loop", () => {
 
   describe("Multiple Reselection Attempts", () => {
     it("should trigger multiple reselection attempts with incremental coin selection", async () => {
-      /**
-       * Edge Case: Multiple Reselection Iterations with Largest-First
-       * 
-       * This test demonstrates reselection behavior using the DEFAULT largest-first algorithm.
-       * Multiple reselections can occur when:
-       * 1. Initial coin selection picks large UTxOs that seem sufficient
-       * 2. Creating change increases tx size → increases fee
-       * 3. Higher fee causes balance shortfall → triggers reselection
-       * 4. Adding more inputs further increases size/fee → may trigger another reselection
-       * 
-       * We use availableUtxos (not collectFrom) to enable automatic coin selection.
-       */
 
       // Create a mix of UTxO sizes - largest-first will pick bigger ones initially
       const utxos: Array<UTxO.UTxO> = [
@@ -573,7 +546,8 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Verify transaction is valid
       await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Largest-first picks 1.5M + 1.2M = 2.7M initially (for 2.5M payment)
       // Leftover 200K < minUTxO (288K), triggers reselection
@@ -629,7 +603,8 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Verify transaction is valid
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Should have selected many inputs due to small UTxO sizes
       // With 350K per UTxO and 3M payment + ~198K fee needed, should need at least 10 inputs
@@ -648,12 +623,6 @@ describe("TxBuilder Re-selection Loop", () => {
     })
 
     it("should handle reselection with mixed-size UTxOs", async () => {
-      /**
-       * Edge Case: Mixed UTxO Sizes During Reselection
-       * 
-       * Start with insufficient large UTxOs, then reselect into smaller ones.
-       * Each reselection adds different amounts and different fee overheads.
-       */
 
       const utxos: Array<UTxO.UTxO> = [
         // First pass: Large UTxO insufficient by itself
@@ -684,7 +653,8 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Verify transaction is valid
       await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      await assertSizeValid(txWithFakeWitnesses, PROTOCOL_PARAMS.maxTxSize)
+      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Should need at least 2 inputs (1.5M + 0.8M + fee > 2.5M)
       expect(tx.body.inputs.length).toBeGreaterThanOrEqual(2)
