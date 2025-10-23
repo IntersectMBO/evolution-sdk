@@ -258,12 +258,15 @@ export const arbitrary: FastCheck.Arbitrary<TransactionMetadatum> = FastCheck.on
     ),
     { maxLength: 3 }
   ).map((value) => new ArrayMetadatum({ value })),
-  FastCheck.array(
+  FastCheck.uniqueArray(
     FastCheck.tuple(
       FastCheck.string().map((value) => new TextMetadatum({ value })),
       int64Arbitrary.map((value) => new IntMetadatum({ value }))
     ),
-    { maxLength: 3 }
+    {
+      maxLength: 3,
+      selector: ([key]) => key.value // Ensure unique keys by their string value
+    }
   ).map((entries) => {
     const map = new Map()
     for (const [key, value] of entries) {
