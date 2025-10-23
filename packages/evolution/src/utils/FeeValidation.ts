@@ -82,30 +82,6 @@ export interface FeeValidationResult {
  * `fakeWitnessSet` parameter to estimate the size with witnesses included. This
  * ensures the fee validation matches what the final signed transaction will be.
  * 
- * @example
- * ```typescript
- * import * as FeeValidation from "./utils/FeeValidation.js"
- * 
- * const tx = await signBuilder.toTransaction()
- * 
- * // For unsigned transactions, include fake witnesses
- * const result = FeeValidation.validateTransactionFee(tx, {
- *   minFeeCoefficient: 44n,
- *   minFeeConstant: 155_381n
- * }, fakeWitnessSet)
- * 
- * if (!result.isValid) {
- *   console.error(`Fee too low! Need at least ${result.minRequiredFee} lovelace`)
- * } else {
- *   console.log(`Fee valid. Overpaying by ${result.difference} lovelace`)
- * }
- * ```
- * 
- * @param transaction - The transaction to validate
- * @param protocolParams - Protocol parameters for fee calculation
- * @param fakeWitnessSet - Optional witness set to use for size calculation (for unsigned tx)
- * @returns Validation result with detailed fee information
- * 
  * @since 2.0.0
  * @category validation
  */
@@ -155,24 +131,6 @@ export const validateTransactionFee = (
  * Assert that a transaction's fee is valid, throwing an error if not.
  * 
  * Useful for tests where you want to ensure fee validity.
- * 
- * @example
- * ```typescript
- * import * as FeeValidation from "./utils/FeeValidation.js"
- * 
- * const tx = await signBuilder.toTransaction()
- * 
- * // Throws if fee is invalid
- * FeeValidation.assertValidFee(tx, {
- *   minFeeCoefficient: 44n,
- *   minFeeConstant: 155_381n
- * }, fakeWitnessSet)
- * ```
- * 
- * @param transaction - The transaction to validate
- * @param protocolParams - Protocol parameters for fee calculation
- * @param fakeWitnessSet - Optional witness set to use for size calculation (for unsigned tx)
- * @throws {Error} If the fee is invalid
  * 
  * @since 2.0.0
  * @category validation

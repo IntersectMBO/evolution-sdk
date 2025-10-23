@@ -9,8 +9,8 @@ import * as Bytes96 from "./Bytes96.js"
 import * as Function from "./Function.js"
 import * as PrivateKey from "./PrivateKey.js"
 
-// Initialize libsodium
-await sodium.ready
+// Initialize libsodium - IIFE executes immediately but doesn't block module loading
+void (async () => await sodium.ready)()
 
 /**
  * Error class for Bip32PrivateKey related operations.

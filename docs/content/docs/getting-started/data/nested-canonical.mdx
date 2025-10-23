@@ -5,7 +5,7 @@ description: "Complex nested Data encoding with canonical CBOR options."
 
 ```typescript
 import assert from "node:assert/strict"
-import { CBOR, Data } from "@evolution-sdk/evolution"
+import { Bytes, CBOR, Data } from "@evolution-sdk/evolution"
 
 const nestedUnsortedData = new Data.Constr({
   index: 1n,
@@ -15,9 +15,9 @@ const nestedUnsortedData = new Data.Constr({
       fields: [new Data.Constr({ index: 2n, fields: [] })]
     }),
     new Map<Data.Data, Data.Data>([
-      ["deadbeef01", new Data.Constr({ index: 0n, fields: [] })],
-      ["beef", 19n],
-      ["deadbeef03", new Data.Constr({ index: 1n, fields: [] })]
+      [Bytes.fromHexUnsafe("deadbeef01"), new Data.Constr({ index: 0n, fields: [] })],
+      [Bytes.fromHexUnsafe("beef"), 19n],
+      [Bytes.fromHexUnsafe("deadbeef03"), new Data.Constr({ index: 1n, fields: [] })]
     ]),
     [10n, 5n, 2n, 3n, 1n, 4n]
   ]

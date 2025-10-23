@@ -54,12 +54,13 @@ const createProvider = (config: ProviderConfig): Provider.Provider => {
   }
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
 /**
- * Convert NetworkId to numeric network ID
+ * Map NetworkId to its numeric representation.
+ * 
+ * "mainnet" → 1; "preprod" and "preview" → 0; numeric IDs pass through unchanged.
+ * 
+ * @since 2.0.0
+ * @category transformation
  */
 const normalizeNetworkId = (network: NetworkId): number => {
   if (typeof network === "number") return network
@@ -76,10 +77,12 @@ const normalizeNetworkId = (network: NetworkId): number => {
 }
 
 /**
- * Convert Client NetworkId to Wallet Network type
- * - "mainnet" → "Mainnet"
- * - "preprod" / "preview" → "Testnet"
- * - number: 1 → "Mainnet", otherwise → "Testnet"
+ * Map NetworkId discriminant to wallet network enumeration.
+ * 
+ * Returns "Mainnet" if numeric 1 or string "mainnet"; returns "Testnet" otherwise.
+ * 
+ * @since 2.0.0
+ * @category transformation
  */
 const toWalletNetwork = (networkId: NetworkId): WalletNew.Network => {
   if (typeof networkId === "number") {
@@ -96,12 +99,14 @@ const toWalletNetwork = (networkId: NetworkId): WalletNew.Network => {
   }
 }
 
-// ============================================================================
-// Step 3: Wallet Creation Functions
-// ============================================================================
 
 /**
- * Create a ReadOnlyWallet - provides address and reward address only
+ * Construct a ReadOnlyWallet instance from network, payment address, and optional reward address.
+ * 
+ * Returns a wallet exposing address properties via both Promise and Effect APIs. No signing or transaction submission capability.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createReadOnlyWallet = (
   network: WalletNew.Network,
@@ -125,7 +130,12 @@ const createReadOnlyWallet = (
 }
 
 /**
- * Create a ReadOnlyWalletClient - wallet with address access only, no provider
+ * Construct a ReadOnlyWalletClient combining a read-only wallet with network metadata and combinator method.
+ * 
+ * Returns a client with address access and a method to attach a provider for blockchain queries.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createReadOnlyWalletClient = (network: NetworkId, config: ReadOnlyWalletConfig): ReadOnlyWalletClient => {
   const walletNetwork = toWalletNetwork(network)
@@ -148,7 +158,12 @@ const createReadOnlyWalletClient = (network: NetworkId, config: ReadOnlyWalletCo
 }
 
 /**
- * Create a ReadOnlyClient - full client with provider + read-only wallet
+ * Construct a ReadOnlyClient by composing a provider and read-only wallet.
+ * 
+ * Returns a client with blockchain query methods and address-based wallet convenience methods (getWalletUtxos, getWalletDelegation).
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createReadOnlyClient = (
   network: NetworkId,
@@ -194,16 +209,14 @@ const createReadOnlyClient = (
   return result
 }
 
-// ============================================================================
-// TODO: SigningClient Implementation (placeholder declarations)
-// ============================================================================
-
-// ============================================================================
-// Step 4: Signing Wallet Creation Functions
-// ============================================================================
-
 /**
- * Helper: Compute required key hashes for signing (from old Wallet.ts)
+ * Determine key hashes that must sign a transaction based on inputs, withdrawals, and certificates.
+ * 
+ * Examines transaction body for required signers, owned inputs, reward account withdrawals, and stake credentials
+ * in certificates. Returns the set of key hash hex strings that must provide signatures.
+ * 
+ * @since 2.0.0
+ * @category predicates
  */
 const computeRequiredKeyHashesSync = (params: {
   paymentKhHex?: string
@@ -269,7 +282,13 @@ const computeRequiredKeyHashesSync = (params: {
 }
 
 /**
- * Create a SigningWallet from seed phrase
+ * Construct a SigningWallet from mnemonic seed phrase by deriving keys and building a keystore.
+ * 
+ * Derives payment and optional stake keys from the seed using the specified address type and account index.
+ * Returns a wallet with signing capability via both Promise and Effect APIs.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfig): WalletNew.SigningWallet => {
   // Derive keys and address from seed
@@ -363,7 +382,13 @@ const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfi
 }
 
 /**
- * Create an ApiWallet from CIP-30 wallet API
+ * Construct an ApiWallet wrapping a CIP-30 browser wallet API.
+ * 
+ * Caches addresses and reward addresses retrieved from the wallet. Returns a wallet with signing and message
+ * authentication via the CIP-30 standard, plus transaction submission capability.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): WalletNew.ApiWallet => {
   const api = config.api
@@ -445,7 +470,12 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
 }
 
 /**
- * Create a SigningWalletClient - signing wallet only, no provider
+ * Construct a SigningWalletClient combining a signing wallet with network metadata and combinator method.
+ * 
+ * Returns a client with transaction signing and address access, plus a method to attach a provider for blockchain queries.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createSigningWalletClient = (network: NetworkId, config: SeedWalletConfig): SigningWalletClient => {
   const walletNetwork = toWalletNetwork(network)
@@ -466,7 +496,12 @@ const createSigningWalletClient = (network: NetworkId, config: SeedWalletConfig)
 }
 
 /**
- * Create an ApiWalletClient - CIP-30 wallet only, no provider
+ * Construct an ApiWalletClient combining a CIP-30 browser wallet with network metadata and combinator method.
+ * 
+ * Returns a client with signing and transaction submission via the browser wallet API, plus a method to attach a provider.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createApiWalletClient = (network: NetworkId, config: ApiWalletConfig): ApiWalletClient => {
   const walletNetwork = toWalletNetwork(network)
@@ -484,7 +519,13 @@ const createApiWalletClient = (network: NetworkId, config: ApiWalletConfig): Api
 }
 
 /**
- * Create a SigningClient - combines provider + signing wallet (seed or API)
+ * Construct a SigningClient by composing a provider and signing wallet.
+ * 
+ * Merges blockchain query capabilities with transaction signing, message authentication, and submission.
+ * Supports both seed-derived and CIP-30 browser wallets as signing sources.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createSigningClient = (
   network: NetworkId,
@@ -530,13 +571,13 @@ const createSigningClient = (
   } 
 }
 
-// ============================================================================
-// Step 2: Implement ProviderOnlyClient (provider + network)
-// ============================================================================
-
 /**
- * Create a ProviderOnlyClient - can query blockchain and submit transactions
- * The provider now has arrow functions as own properties, so spreading works!
+ * Construct a ProviderOnlyClient by pairing a provider with network metadata and combinator method.
+ * 
+ * Returns a client with blockchain query and transaction submission capabilities, plus a method to attach a wallet for signing.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createProviderOnlyClient = (network: NetworkId, config: ProviderConfig): ProviderOnlyClient => {
   const provider = createProvider(config)
@@ -560,12 +601,13 @@ const createProviderOnlyClient = (network: NetworkId, config: ProviderConfig): P
   }
 }
 
-// ============================================================================
-// Step 1: Implement MinimalClient (simplest - just holds network context)
-// ============================================================================
-
 /**
- * Create a MinimalClient - the simplest client that only knows about the network
+ * Construct a MinimalClient holding network metadata and combinator methods.
+ * 
+ * Returns the simplest client form: a network context with methods to progressively attach provider and/or wallet to build richer clients.
+ * 
+ * @since 2.0.0
+ * @category constructors
  */
 const createMinimalClient = (network: NetworkId = "mainnet"): MinimalClient => {
   const networkId = normalizeNetworkId(network)
@@ -610,9 +652,16 @@ const createMinimalClient = (network: NetworkId = "mainnet"): MinimalClient => {
   }
 }
 
-// ============================================================================
-// Factory Function (overloaded for type safety)
-// ============================================================================
+/**
+ * Factory function producing a client instance from configuration parameters.
+ * 
+ * Returns different client types depending on what configuration is provided:
+ * provider and wallet → full-featured client; provider only → query and submission; 
+ * wallet only → signing with network metadata; network only → minimal context with combinators.
+ * 
+ * @since 2.0.0
+ * @category constructors
+ */
 
 // Most specific overloads first - wallet type determines client capability
 // Provider + ReadOnly Wallet → ReadOnlyClient

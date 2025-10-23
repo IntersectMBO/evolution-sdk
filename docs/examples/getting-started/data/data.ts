@@ -2,7 +2,7 @@
 
 // #region data-nested-canonical
 import assert from "node:assert/strict"
-import { CBOR, Data } from "@evolution-sdk/evolution"
+import { Bytes, CBOR, Data } from "@evolution-sdk/evolution"
 // Create a complex nested data structure with:
 // - Constructor with index 1 containing multiple fields
 // - Nested constructors with different indices
@@ -23,9 +23,9 @@ const nestedUnsortedData = new Data.Constr({
     }),
     // Map with unsorted keys (will be sorted in canonical mode)
     new Map<Data.Data, Data.Data>([
-      ["deadbeef01", new Data.Constr({ index: 0n, fields: [] })],
-      ["beef", 19n],
-      ["deadbeef03", new Data.Constr({ index: 1n, fields: [] })]
+      [Bytes.fromHexUnsafe("deadbeef01"), new Data.Constr({ index: 0n, fields: [] })],
+      [Bytes.fromHexUnsafe("beef"), 19n],
+      [Bytes.fromHexUnsafe("deadbeef03"), new Data.Constr({ index: 1n, fields: [] })]
     ]),
     // Array of numbers
     [10n, 5n, 2n, 3n, 1n, 4n]

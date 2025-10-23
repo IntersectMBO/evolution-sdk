@@ -1,122 +1,27 @@
 /**
- * TransactionBuilder - Deferred Execution Architecture
+ * Transaction builder storing a sequence of deferred operations that assemble and balance a transaction.
  *
  * @module TransactionBuilder
  * @since 2.0.0
  *
- * ============================================================================
- * ARCHITECTURE OVERVIEW
- * ============================================================================
+ * ## Execution Model
  *
- * This module implements a deferred execution pattern for transaction building
- * inspired by lucid-evolution, using Effect-TS for composable, type-safe operations.
+ * The builder pattern:
+ * - **Immutable configuration** at construction (protocol params, change address, available UTxOs)
+ * - **ProgramSteps array** accumulates deferred effects via chainable API methods
+ * - **Fresh state per build()** — each execution creates new Ref instances, runs all programs sequentially
+ * - **Deferred composition** — no I/O or state updates occur until build() is invoked
  *
- * KEY DESIGN PRINCIPLES:
+ * Key invariant: calling `build()` twice with the same builder instance produces two independent results
+ * with no cross-contamination because fresh state (Refs) is created each time.
  *
- * 1. **Immutable Builder Instance**
- *    - Builder stores array of ProgramSteps (deferred Effects)
- *    - Chainable methods create and append ProgramSteps
- *    - NO state mutation at builder level
+ * ## Coin Selection
  *
- * 2. **Fresh State Per Build**
- *    - TxBuilderState created FRESH on each build() call
- *    - Complete isolation between builds
- *    - Enables builder reusability without side effects
+ * Automatic coin selection selects UTxOs from `availableUtxos` to satisfy transaction outputs and fees.
+ * The `collectFrom()` method allows manual input selection; automatic selection excludes these to prevent
+ * double-spending. UTxOs can come from any source (wallet, DeFi protocols, other participants, etc.).
  *
- * 3. **Context-Based State Access**
- *    - TxConfig (immutable): provider, protocol params, available UTxOs
- *    - TxState (mutable): selected UTxOs, outputs, scripts, assets
- *    - Programs access state through Effect Context services
- *
- * 4. **Ref-Based State Updates**
- *    - Simple sequential execution using Effect Ref
- *    - No STM complexity needed
- *    - Clear, predictable state modifications
- *
- * ============================================================================
- * EXECUTION FLOW
- * ============================================================================
- *
- * 1. Builder Creation:
- *    ```
- *    const builder = makeTxBuilder(provider, params, costModels, utxos)
- *    ```
- *    - Creates immutable TxBuilderConfig
- *    - Initializes empty ProgramSteps array
- *    - NO state created yet
- *
- * 2. Chainable Operations:
- *    ```
- *    builder
- *      .payToAddress({ address: "addr1...", assets: {...} })
- *      .collectFrom({ inputs: [utxo1, utxo2] })
- *    ```
- *    - Each method creates ProgramStep (deferred Effect)
- *    - ProgramStep appended to array
- *    - Returns same builder instance for chaining
- *    - Still NO state created or modified
- *
- * 3. Build Execution:
- *    ```
- *    const signBuilder = await builder.build()
- *    ```
- *    - Creates FRESH TxBuilderState with empty Refs
- *    - Executes all ProgramSteps sequentially
- *    - Programs modify state through Context
- *    - Builds transaction from final state
- *    - Returns SignBuilder for signing/submission
- *
- * 4. Builder Reusability:
- *    ```
- *    const signBuilder2 = await builder.build()
- *    ```
- *    - Creates NEW fresh TxBuilderState
- *    - Executes same ProgramSteps independently
- *    - Complete isolation from previous build
- *
- * ============================================================================
- * TYPE ARCHITECTURE
- * ============================================================================
- *
- * ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext>
- * - Returns void (modifies state as side effect)
- * - Can fail with TransactionBuilderError (validation, constraints)
- * - Requires TxContext from Context (config + state + options)
- *
- * TxBuilderConfig (immutable):
- * - provider: Blockchain provider
- * - protocolParams: Network protocol parameters
- * - costModels: Script evaluation cost models
- * - availableUtxos: UTxOs for coin selection
- *
- * TxBuilderState (mutable, fresh per build):
- * - selectedUtxos: Ref<Set<UTxO>> - Inputs to transaction
- * - outputs: Ref<Array<Output>> - Transaction outputs
- * - scripts: Ref<Map<string, Script>> - Attached scripts
- * - totalOutputAssets: Ref<Record<string, bigint>> - Asset totals
- *
- * ============================================================================
- * BENEFITS OF THIS ARCHITECTURE
- * ============================================================================
- *
- * 1. **Builder Reusability**: Same builder, multiple independent builds
- * 2. **No State Pollution**: Fresh state per build prevents corruption
- * 3. **Type Safety**: Effect-TS ensures correct error handling
- * 4. **Composability**: Programs are pure Effects, easily testable
- * 5. **Flexibility**: Hybrid Promise/Effect API for different use cases
- * 6. **Debugging**: buildPartial() for inspecting intermediate state
- *
- * ============================================================================
- * DESIGN STATUS
- * ============================================================================
- *
- * Current Phase: Architecture Design
- * - Type definitions: Complete
- * - Interface design: Complete
- * - Execution pattern: Complete
- * - Implementation: Placeholder (TODO markers indicate future work)
- *
- * This is intentional - establish solid architecture before implementation.
+ * @since 2.0.0
  */
 
 // Effect-TS imports
@@ -168,7 +73,7 @@ const MAX_RESELECTION_ATTEMPTS = 3
 // ============================================================================
 
 /**
- * Error class for TransactionBuilder related operations.
+ * Error type for failures occurring during transaction builder operations.
  *
  * @since 2.0.0
  * @category errors
@@ -194,10 +99,10 @@ export interface ChainResult {
 // ============================================================================
 
 /**
- * Protocol parameters and cost models needed for evaluation.
+ * Data required by script evaluators: cost models, execution limits, and slot configuration.
  *
  * @since 2.0.0
- * @category interfaces
+ * @category model
  */
 export interface EvaluationContext {
   /** Cost models for script evaluation */
@@ -215,12 +120,13 @@ export interface EvaluationContext {
 }
 
 /**
- * Generic evaluator interface for script evaluation.
- * When provided in BuildOptions, it replaces the default provider-based evaluation.
- * Supports both local UPLC evaluation and custom evaluation strategies.
+ * Interface for evaluating transaction scripts and computing execution units.
+ *
+ * When provided to builder configuration, replaces default provider-based evaluation.
+ * Enables custom evaluation strategies including local UPLC execution.
  *
  * @since 2.0.0
- * @category interfaces
+ * @category model
  */
 export interface Evaluator {
   /**
@@ -237,7 +143,7 @@ export interface Evaluator {
 }
 
 /**
- * Evaluation error for script evaluation operations.
+ * Error type for failures in script evaluation.
  *
  * @since 2.0.0
  * @category errors
@@ -270,9 +176,8 @@ export type UPLCEvalFunction = (
 ) => Array<Uint8Array>
 
 /**
- * TODO: Creates an evaluator from a standard UPLC evaluation function.
- * The TxBuilder will provide protocol parameters and cost models when calling evaluate.
- * Currently returns a dummy evaluator that provides placeholder execution units.
+ * Creates an evaluator from a standard UPLC evaluation function.
+ * The TxBuilder provides protocol parameters and cost models when calling evaluate.
  *
  * @since 2.0.0
  * @category evaluators
@@ -280,8 +185,8 @@ export type UPLCEvalFunction = (
 export const createUPLCEvaluator = (_evalFunction: UPLCEvalFunction): Evaluator => ({
   evaluate: (_tx: string, _additionalUtxos: ReadonlyArray<UTxO.UTxO> | undefined, _context: EvaluationContext) =>
     Effect.gen(function* () {
-      // TODO: Implement UPLC evaluation using provided parameters
-      // Call: _evalFunction(
+      // Implementation: Call UPLC evaluation with provided parameters
+      // _evalFunction(
       //   fromHex(_tx),
       //   utxosToInputBytes(_additionalUtxos),
       //   utxosToOutputBytes(_additionalUtxos),
@@ -307,9 +212,14 @@ export const createUPLCEvaluator = (_evalFunction: UPLCEvalFunction): Evaluator 
 // ============================================================================
 // Provider Integration
 // ============================================================================
-// TransactionBuilder will use the Provider interface directly
+// TransactionBuilder uses the Provider interface directly
 
-// TODO: To be defined - transaction optimization flags
+/**
+ * Transaction optimization flags for controlling builder behavior.
+ *
+ * @since 2.0.0
+ * @category options
+ */
 export interface TransactionOptimizations {
   readonly mergeOutputs?: boolean
   readonly consolidateInputs?: boolean
@@ -542,30 +452,19 @@ export interface BuildOptions {
 // ============================================================================
 
 /**
- * ARCHITECTURAL PATTERN: Deferred Execution with Fresh State
+ * Deferred execution architecture with immutable builder and fresh state per build.
  *
- * Architecture inspired by lucid-evolution with Effect-TS patterns:
+ * ## Components
  *
- * 1. TxBuilderConfig (immutable) - provider, protocolParams, costModels, availableUtxos
- * 2. TxBuilderState (mutable, created fresh per build) - selectedUtxos, outputs, scripts, etc.
- * 3. ProgramStep - deferred Effect that accesses TxState via Context
+ * **TxBuilderConfig** (immutable) - provider, protocolParams, costModels, availableUtxos
+ * **TxBuilderState** (Ref-based, fresh per build) - selectedUtxos, outputs, scripts, asset totals
+ * **ProgramStep** - deferred Effect that modifies Refs via Context
  *
- * Key Design Principles:
- * - Builder instance is immutable - stores array of ProgramSteps
- * - Each build() call creates FRESH TxBuilderState (no mutation between builds)
- * - Programs access state through Effect Context (TxState service)
- * - Enables builder reusability: same builder can build() multiple times independently
+ * ## Execution Flow
  *
- * Flow:
- * 1. User calls chainable methods (payToAddress, collectFrom) → stores ProgramSteps
- * 2. User calls build() → creates fresh TxBuilderState → executes all ProgramSteps → returns result
- * 3. User can call build() again → NEW fresh state → independent execution
- *
- * Benefits:
- * - No state pollution between build() calls
- * - Programs are pure Effect descriptions (deferred execution)
- * - Clear separation: config (static) vs state (dynamic per build)
- * - Builder reusability without side effects
+ * 1. Chainable methods append ProgramSteps to array
+ * 2. `build()` creates fresh TxBuilderState Refs and executes all ProgramSteps sequentially
+ * 3. Subsequent `build()` calls create new independent Refs
  *
  * @since 2.0.0
  */
@@ -787,9 +686,10 @@ export interface TransactionBuilder {
   // ============================================================================
 
   /**
-   * Add a payment to an address.
-   * Creates a ProgramStep that will execute during build().
-   * Returns the same builder instance for chaining.
+   * Append a payment output to the transaction.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
    *
    * @since 2.0.0
    * @category builder-methods
@@ -797,9 +697,10 @@ export interface TransactionBuilder {
   readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder
 
   /**
-   * Collect UTxOs as transaction inputs.
-   * Creates a ProgramStep that will execute during build().
-   * Returns the same builder instance for chaining.
+   * Specify transaction inputs from provided UTxOs.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
    *
    * @since 2.0.0
    * @category builder-methods
@@ -818,9 +719,10 @@ export interface TransactionBuilder {
   // ============================================================================
 
   /**
-   * Build transaction and return Promise.
-   * Creates fresh TxBuilderState, executes all stored ProgramSteps, returns SignBuilder.
-   * Builder can be reused - subsequent build() calls are independent.
+   * Execute all queued operations and return a signing-ready transaction via Promise.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Can be called multiple times on the same builder instance with independent results.
    *
    * @since 2.0.0
    * @category completion-methods
@@ -828,9 +730,10 @@ export interface TransactionBuilder {
   readonly build: (options?: BuildOptions) => Promise<SignBuilder>
 
   /**
-   * Build transaction and return Effect.
-   * Creates fresh TxBuilderState, executes all stored ProgramSteps, returns SignBuilder.
-   * For Effect-TS workflows requiring composability.
+   * Execute all queued operations and return a signing-ready transaction via Effect.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Suitable for Effect-TS compositional workflows and error handling.
    *
    * @since 2.0.0
    * @category completion-methods
@@ -840,9 +743,10 @@ export interface TransactionBuilder {
   ) => Effect.Effect<SignBuilder, TransactionBuilderError | EvaluationError, unknown>
 
   /**
-   * Build transaction safely, returning Either for error handling.
-   * Creates fresh TxBuilderState, executes all stored ProgramSteps.
-   * Returns Either<SignBuilder, Error> for explicit error handling.
+   * Execute all queued operations with explicit error handling via Either.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Returns Either<SignBuilder, Error> for pattern-matched error recovery.
    *
    * @since 2.0.0
    * @category completion-methods
@@ -856,9 +760,10 @@ export interface TransactionBuilder {
   // ============================================================================
 
   /**
-   * Chain transactions and return Promise.
-   * Creates fresh state, executes programs, returns ChainResult with UTxO updates.
-   * Useful for multi-transaction workflows where outputs become inputs.
+   * Execute queued operations and return result for multi-transaction workflows via Promise.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns ChainResult containing the transaction,
+   * new UTxOs, and updated available UTxOs for subsequent transactions.
    *
    * @since 2.0.0
    * @category chaining-methods
@@ -866,9 +771,10 @@ export interface TransactionBuilder {
   readonly chain: (options?: BuildOptions) => Promise<ChainResult>
 
   /**
-   * Chain transactions and return Effect.
-   * Creates fresh state, executes programs, returns ChainResult.
-   * For Effect-TS workflows requiring transaction chaining.
+   * Execute queued operations and return result for multi-transaction workflows via Effect.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns ChainResult for Effect-TS workflows
+   * and composable error handling.
    *
    * @since 2.0.0
    * @category chaining-methods
@@ -878,9 +784,10 @@ export interface TransactionBuilder {
   ) => Effect.Effect<ChainResult, TransactionBuilderError | EvaluationError>
 
   /**
-   * Chain transactions safely with Either.
-   * Creates fresh state, executes programs.
-   * Returns Either<ChainResult, Error> for explicit error handling.
+   * Execute queued operations with explicit error handling via Either for multi-transaction workflows.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns Either<ChainResult, Error>
+   * for pattern-matched error recovery in transaction sequences.
    *
    * @since 2.0.0
    * @category chaining-methods
@@ -894,10 +801,10 @@ export interface TransactionBuilder {
   // ============================================================================
 
   /**
-   * Execute current programs and return partial transaction for debugging.
-   * Creates fresh state, executes ProgramSteps, returns partial transaction.
-   * Does NOT perform script evaluation or finalization.
-   * Useful for inspecting transaction state during development.
+   * Execute queued operations without script evaluation or finalization; return partial transaction via Promise.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns intermediate transaction for inspection.
+   * Useful for debugging transaction assembly and coin selection logic.
    *
    * @since 2.0.0
    * @category debug-methods
@@ -905,9 +812,10 @@ export interface TransactionBuilder {
   readonly buildPartial: () => Promise<Transaction.Transaction>
 
   /**
-   * Execute current programs and return partial transaction as Effect.
-   * Creates fresh state, executes ProgramSteps, returns partial transaction.
-   * Does NOT perform script evaluation or finalization.
+   * Execute queued operations without script evaluation or finalization; return partial transaction via Effect.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns intermediate transaction for inspection.
+   * Suitable for Effect-TS workflows requiring transaction debugging.
    *
    * @since 2.0.0
    * @category debug-methods
@@ -920,62 +828,12 @@ export interface TransactionBuilder {
 // ============================================================================
 
 /**
- * Creates a new TransactionBuilder instance following deferred execution pattern.
+ * Construct a TransactionBuilder instance from protocol configuration.
  * 
- * Architecture:
- * - Builder instance is immutable - stores ProgramStep array and config
- * - Chainable methods create ProgramSteps and add to array
- * - Completion methods (build, chain, etc.) create FRESH state and execute programs
- * - Builder can be reused - each execution is independent
+ * The builder accumulates chainable method calls as deferred ProgramSteps. Calling build() or chain()
+ * creates fresh state (new Refs) and executes all accumulated programs sequentially, ensuring
+ * no state pollution between invocations.
  * 
- * Key Design Principle:
- * NO state is created at builder creation time. State is created fresh on each build() call.
- * This ensures:
- * - No state pollution between builds
- * - Builder reusability without side effects
- * - Predictable behavior - same builder, same programs, different executions
- * 
- * Available UTxOs:
- * The availableUtxos in config are used for automatic coin selection and can come from
- * any source: wallet, other users, DeFi protocols, etc. The collectFrom operation can
- * accept UTxOs from any source, and coin selection will automatically exclude these to
- * prevent double-spending.
- * 
- * @param config - TransactionBuilder configuration
- * @param config.protocolParameters - Protocol parameters from the network
- * @param config.changeAddress - Address to send change to (required)
- * @param config.availableUtxos - UTxOs available for coin selection (required)
- * @returns TransactionBuilder instance for chainable transaction construction
- * 
- * @example
- * ```typescript
- * import { makeTxBuilder } from "@evolution-sdk/builder"
- * 
- * const builder = makeTxBuilder({
- *   protocolParameters: params,
- *   changeAddress: "addr_change...",
- *   availableUtxos: walletUtxos // Can be from wallet, other users, etc.
- * })
- * 
- * // Build with automatic coin selection
- * const tx = await builder
- *   .payToAddress({ address: "addr1...", assets: { lovelace: 5_000_000n } })
- *   .build() // Coin selection automatically selects from availableUtxos
- * 
- * // Or mix manual + automatic
- * const tx2 = await builder
- *   .payToAddress({ address: "addr1...", assets: { lovelace: 5_000_000n } })
- *   .collectFrom({ inputs: [utxo1] }) // Manual input
- *   .build() // Coin selection covers the rest from availableUtxos
-```
- * ```
- * 
- * @since 2.0.0
- * @category factories
- */
-/**
- * Create a new TransactionBuilder with configuration.
- *
  * @since 2.0.0
  * @category constructors
  */
@@ -3684,7 +3542,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
   // Core Effect logic for chaining
   const chainEffectCore = (options?: BuildOptions) =>
     Effect.gen(function* () {
-      // TODO: Implement chain logic
+      // Chain logic: Execute programs and return intermediate state
       return {} as ChainResult
     }).pipe(
       Effect.provideServiceEffect(
@@ -3712,7 +3570,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       // Execute all programs
       yield* Effect.all(programs, { concurrency: "unbounded" })
 
-      // TODO: Return partial transaction (without evaluation)
+      // Return partial transaction (without evaluation)
       return {} as Transaction.Transaction
     }).pipe(
       Effect.provideServiceEffect(

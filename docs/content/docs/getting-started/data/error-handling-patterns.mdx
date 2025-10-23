@@ -5,10 +5,10 @@ description: "Use Either patterns for safe data operations with proper error han
 
 ```typescript
 import assert from "node:assert/strict"
-import { Data, Either, pipe } from "@evolution-sdk/evolution"
+import { Bytes, Data, Either, pipe } from "@evolution-sdk/evolution"
 
 // Use built-in Either-based functions for safe operations
-const safeData = new Data.Constr({ index: 0n, fields: ["74657374", 42n] }) // 'test' as hex
+const safeData = new Data.Constr({ index: 0n, fields: [Bytes.fromHexUnsafe("74657374"), 42n] }) // 'test' as hex
 
 // Safe encoding using Data.Either namespace
 const encodingResult = Data.Either.toCBORHex(safeData)

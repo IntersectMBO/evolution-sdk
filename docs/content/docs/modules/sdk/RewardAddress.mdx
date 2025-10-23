@@ -1,0 +1,120 @@
+---
+title: sdk/RewardAddress.ts
+nav_order: 150
+parent: Modules
+---
+
+## RewardAddress overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [RewardAddress (type alias)](#rewardaddress-type-alias)
+  - [fromJsonToRewardAccount](#fromjsontorewardaccount)
+  - [fromRewardAccount](#fromrewardaccount)
+  - [fromRewardAccountToJson](#fromrewardaccounttojson)
+  - [jsonToRewardAddress](#jsontorewardaddress)
+  - [rewardAddressToJson](#rewardaddresstojson)
+  - [toRewardAccount](#torewardaccount)
+
+---
+
+# utils
+
+## RewardAddress (type alias)
+
+Reward address in bech32 format.
+Mainnet addresses start with "stake1"
+Testnet addresses start with "stake_test1"
+
+**Signature**
+
+```ts
+export type RewardAddress = string
+```
+
+## fromJsonToRewardAccount
+
+**Signature**
+
+```ts
+export declare const fromJsonToRewardAccount: (
+  i: {
+    readonly _tag: "RewardAccount"
+    readonly networkId: number
+    readonly stakeCredential:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+  },
+  overrideOptions?: ParseOptions
+) => CoreRewardAccount.RewardAccount
+```
+
+## fromRewardAccount
+
+**Signature**
+
+```ts
+export declare const fromRewardAccount: (a: CoreRewardAccount.RewardAccount, overrideOptions?: ParseOptions) => string
+```
+
+## fromRewardAccountToJson
+
+**Signature**
+
+```ts
+export declare const fromRewardAccountToJson: (
+  a: CoreRewardAccount.RewardAccount,
+  overrideOptions?: ParseOptions
+) => {
+  readonly _tag: "RewardAccount"
+  readonly networkId: number
+  readonly stakeCredential:
+    | { readonly _tag: "KeyHash"; readonly hash: string }
+    | { readonly _tag: "ScriptHash"; readonly hash: string }
+}
+```
+
+## jsonToRewardAddress
+
+**Signature**
+
+```ts
+export declare const jsonToRewardAddress: (
+  i: {
+    readonly _tag: "RewardAccount"
+    readonly networkId: number
+    readonly stakeCredential:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+  },
+  overrideOptions?: ParseOptions | undefined
+) => string
+```
+
+## rewardAddressToJson
+
+**Signature**
+
+```ts
+export declare const rewardAddressToJson: (
+  i: string,
+  overrideOptions?: ParseOptions | undefined
+) => {
+  readonly _tag: "RewardAccount"
+  readonly networkId: number
+  readonly stakeCredential:
+    | { readonly _tag: "KeyHash"; readonly hash: string }
+    | { readonly _tag: "ScriptHash"; readonly hash: string }
+}
+```
+
+## toRewardAccount
+
+**Signature**
+
+```ts
+export declare const toRewardAccount: (i: string, overrideOptions?: ParseOptions) => CoreRewardAccount.RewardAccount
+```

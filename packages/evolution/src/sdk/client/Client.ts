@@ -254,9 +254,3 @@ export interface ApiWalletConfig {
 
 export type WalletConfig = SeedWalletConfig | ReadOnlyWalletConfig | ApiWalletConfig
 
-// ============================================================================
-// Factory Functions
-// ============================================================================
-
-// Re-export implementation from ClientImpl
-export { createClient } from "./ClientImpl.js"

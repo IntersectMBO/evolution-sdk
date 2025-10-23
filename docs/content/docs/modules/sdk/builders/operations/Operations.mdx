@@ -1,0 +1,55 @@
+---
+title: sdk/builders/operations/Operations.ts
+nav_order: 128
+parent: Modules
+---
+
+## Operations overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [CollectFromParams (interface)](#collectfromparams-interface)
+  - [MintTokensParams (interface)](#minttokensparams-interface)
+  - [PayToAddressParams (interface)](#paytoaddressparams-interface)
+
+---
+
+# utils
+
+## CollectFromParams (interface)
+
+**Signature**
+
+```ts
+export interface CollectFromParams {
+  readonly inputs: ReadonlyArray<UTxO.UTxO> // Mandatory: UTxOs to consume as inputs
+  readonly redeemer?: string
+}
+```
+
+## MintTokensParams (interface)
+
+**Signature**
+
+```ts
+export interface MintTokensParams {
+  readonly assets: Assets.Assets // Mandatory: Tokens to mint (excluding lovelace)
+  readonly redeemer?: string // Optional: Redeemer for minting script
+}
+```
+
+## PayToAddressParams (interface)
+
+**Signature**
+
+```ts
+export interface PayToAddressParams {
+  readonly address: Address.Address // Mandatory: Recipient address
+  readonly assets: Assets.Assets // Mandatory: ADA and/or native tokens to send
+  readonly datum?: Datum.Datum // Optional: Datum to attach for script addresses
+  readonly scriptRef?: Script.Script // Optional: Reference script to attach
+}
+```

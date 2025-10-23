@@ -1,0 +1,214 @@
+---
+title: core/EnterpriseAddress.ts
+nav_order: 48
+parent: Modules
+---
+
+## EnterpriseAddress overview
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [constructors](#constructors)
+  - [make](#make)
+- [either](#either)
+  - [Either (namespace)](#either-namespace)
+- [encoding](#encoding)
+  - [toBytes](#tobytes)
+  - [toHex](#tohex)
+- [equality](#equality)
+  - [equals](#equals)
+- [parsing](#parsing)
+  - [fromBytes](#frombytes)
+  - [fromHex](#fromhex)
+- [schemas](#schemas)
+  - [EnterpriseAddress (class)](#enterpriseaddress-class)
+    - [toString (method)](#tostring-method)
+    - [[Symbol.for("nodejs.util.inspect.custom")] (method)](#symbolfornodejsutilinspectcustom-method)
+- [testing](#testing)
+  - [arbitrary](#arbitrary)
+- [utils](#utils)
+  - [EnterpriseAddressError (class)](#enterpriseaddresserror-class)
+  - [FromBytes](#frombytes-1)
+  - [FromHex](#fromhex-1)
+
+---
+
+# constructors
+
+## make
+
+Smart constructor for EnterpriseAddress.
+
+**Signature**
+
+```ts
+export declare const make: (
+  i: {
+    readonly _tag: "EnterpriseAddress"
+    readonly networkId: number
+    readonly paymentCredential:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+  },
+  overrideOptions?: ParseOptions
+) => EnterpriseAddress
+```
+
+Added in v2.0.0
+
+# either
+
+## Either (namespace)
+
+Either-based error handling variants for functions that can fail.
+
+Added in v2.0.0
+
+# encoding
+
+## toBytes
+
+Convert a EnterpriseAddress to bytes.
+
+**Signature**
+
+```ts
+export declare const toBytes: (input: EnterpriseAddress) => any
+```
+
+Added in v2.0.0
+
+## toHex
+
+Convert a EnterpriseAddress to hex string.
+
+**Signature**
+
+```ts
+export declare const toHex: (input: EnterpriseAddress) => string
+```
+
+Added in v2.0.0
+
+# equality
+
+## equals
+
+Check if two EnterpriseAddress instances are equal.
+
+**Signature**
+
+```ts
+export declare const equals: (a: EnterpriseAddress, b: EnterpriseAddress) => boolean
+```
+
+Added in v2.0.0
+
+# parsing
+
+## fromBytes
+
+Parse a EnterpriseAddress from bytes.
+
+**Signature**
+
+```ts
+export declare const fromBytes: (input: any) => EnterpriseAddress
+```
+
+Added in v2.0.0
+
+## fromHex
+
+Parse a EnterpriseAddress from hex string.
+
+**Signature**
+
+```ts
+export declare const fromHex: (input: string) => EnterpriseAddress
+```
+
+Added in v2.0.0
+
+# schemas
+
+## EnterpriseAddress (class)
+
+Enterprise address with only payment credential
+
+**Signature**
+
+```ts
+export declare class EnterpriseAddress
+```
+
+Added in v2.0.0
+
+### toString (method)
+
+**Signature**
+
+```ts
+toString(): string
+```
+
+### [Symbol.for("nodejs.util.inspect.custom")] (method)
+
+**Signature**
+
+```ts
+[Symbol.for("nodejs.util.inspect.custom")](): string
+```
+
+# testing
+
+## arbitrary
+
+FastCheck arbitrary for generating random EnterpriseAddress instances
+
+**Signature**
+
+```ts
+export declare const arbitrary: FastCheck.Arbitrary<EnterpriseAddress>
+```
+
+Added in v2.0.0
+
+# utils
+
+## EnterpriseAddressError (class)
+
+**Signature**
+
+```ts
+export declare class EnterpriseAddressError
+```
+
+## FromBytes
+
+**Signature**
+
+```ts
+export declare const FromBytes: Schema.transformOrFail<
+  Schema.filter<typeof Schema.Uint8ArrayFromSelf>,
+  Schema.SchemaClass<EnterpriseAddress, EnterpriseAddress, never>,
+  never
+>
+```
+
+## FromHex
+
+**Signature**
+
+```ts
+export declare const FromHex: Schema.transform<
+  Schema.transform<Schema.Schema<string, string, never>, Schema.Schema<Uint8Array, Uint8Array, never>>,
+  Schema.transformOrFail<
+    Schema.filter<typeof Schema.Uint8ArrayFromSelf>,
+    Schema.SchemaClass<EnterpriseAddress, EnterpriseAddress, never>,
+    never
+  >
+>
+```

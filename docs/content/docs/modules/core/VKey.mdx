@@ -1,0 +1,241 @@
+---
+title: core/VKey.ts
+nav_order: 119
+parent: Modules
+---
+
+## VKey overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [constructors](#constructors)
+  - [make](#make)
+- [cryptography](#cryptography)
+  - [fromPrivateKey](#fromprivatekey)
+  - [verify](#verify)
+- [effect](#effect)
+  - [Either (namespace)](#either-namespace)
+- [encoding](#encoding)
+  - [toBytes](#tobytes)
+  - [toHex](#tohex)
+- [equality](#equality)
+  - [equals](#equals)
+- [errors](#errors)
+  - [VKeyError (class)](#vkeyerror-class)
+- [parsing](#parsing)
+  - [fromBytes](#frombytes)
+  - [fromHex](#fromhex)
+- [predicates](#predicates)
+  - [isVKey](#isvkey)
+- [schemas](#schemas)
+  - [VKey (class)](#vkey-class)
+- [testing](#testing)
+  - [arbitrary](#arbitrary)
+- [utils](#utils)
+  - [FromBytes](#frombytes-1)
+  - [FromHex](#fromhex-1)
+
+---
+
+# constructors
+
+## make
+
+Smart constructor for VKey that validates and applies branding.
+
+**Signature**
+
+```ts
+export declare const make: (props: { readonly bytes: Uint8Array }, options?: Schema.MakeOptions | undefined) => VKey
+```
+
+Added in v2.0.0
+
+# cryptography
+
+## fromPrivateKey
+
+Create a VKey from a PrivateKey (sync version that throws VKeyError).
+For extended keys (64 bytes), uses CML-compatible Ed25519-BIP32 algorithm.
+For normal keys (32 bytes), uses standard Ed25519.
+
+**Signature**
+
+```ts
+export declare const fromPrivateKey: (privateKey: PrivateKey.PrivateKey) => VKey
+```
+
+Added in v2.0.0
+
+## verify
+
+Verify a signature against a message using this verification key.
+
+**Signature**
+
+```ts
+export declare const verify: (vkey: VKey, message: Uint8Array, signature: Uint8Array) => boolean
+```
+
+Added in v2.0.0
+
+# effect
+
+## Either (namespace)
+
+Effect-based error handling variants for functions that can fail.
+
+Added in v2.0.0
+
+# encoding
+
+## toBytes
+
+Convert a VKey to raw bytes.
+
+**Signature**
+
+```ts
+export declare const toBytes: (input: VKey) => Uint8Array
+```
+
+Added in v2.0.0
+
+## toHex
+
+Convert a VKey to a hex string.
+
+**Signature**
+
+```ts
+export declare const toHex: (input: VKey) => string
+```
+
+Added in v2.0.0
+
+# equality
+
+## equals
+
+Check if two VKey instances are equal.
+
+**Signature**
+
+```ts
+export declare const equals: (a: VKey, b: VKey) => boolean
+```
+
+Added in v2.0.0
+
+# errors
+
+## VKeyError (class)
+
+Error class for VKey related operations.
+
+**Signature**
+
+```ts
+export declare class VKeyError
+```
+
+Added in v2.0.0
+
+# parsing
+
+## fromBytes
+
+Parse a VKey from raw bytes.
+Expects exactly 32 bytes.
+
+**Signature**
+
+```ts
+export declare const fromBytes: (input: Uint8Array) => VKey
+```
+
+Added in v2.0.0
+
+## fromHex
+
+Parse a VKey from a hex string.
+Expects exactly 64 hex characters (32 bytes).
+
+**Signature**
+
+```ts
+export declare const fromHex: (input: string) => VKey
+```
+
+Added in v2.0.0
+
+# predicates
+
+## isVKey
+
+Check if the given value is a valid VKey
+
+**Signature**
+
+```ts
+export declare const isVKey: (u: unknown, overrideOptions?: ParseOptions | number) => u is VKey
+```
+
+Added in v2.0.0
+
+# schemas
+
+## VKey (class)
+
+Schema for VKey representing a verification key.
+vkey = bytes .size 32
+Follows the Conway-era CDDL specification.
+
+**Signature**
+
+```ts
+export declare class VKey
+```
+
+Added in v2.0.0
+
+# testing
+
+## arbitrary
+
+FastCheck arbitrary for generating random VKey instances.
+Used for property-based testing to generate valid test data.
+
+**Signature**
+
+```ts
+export declare const arbitrary: FastCheck.Arbitrary<VKey>
+```
+
+Added in v2.0.0
+
+# utils
+
+## FromBytes
+
+**Signature**
+
+```ts
+export declare const FromBytes: Schema.transform<
+  Schema.SchemaClass<Uint8Array, Uint8Array, never>,
+  Schema.SchemaClass<VKey, VKey, never>
+>
+```
+
+## FromHex
+
+**Signature**
+
+```ts
+export declare const FromHex: Schema.transform<
+  Schema.filter<Schema.Schema<Uint8Array, string, never>>,
+  Schema.transform<Schema.SchemaClass<Uint8Array, Uint8Array, never>, Schema.SchemaClass<VKey, VKey, never>>
+>
+```

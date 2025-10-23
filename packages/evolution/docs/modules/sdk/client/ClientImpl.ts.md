@@ -1,0 +1,58 @@
+---
+title: sdk/client/ClientImpl.ts
+nav_order: 134
+parent: Modules
+---
+
+## ClientImpl overview
+
+// ClientImpl.ts - Step-by-step implementation starting with MinimalClient
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [constructors](#constructors)
+  - [createClient](#createclient)
+
+---
+
+# constructors
+
+## createClient
+
+Factory function producing a client instance from configuration parameters.
+
+Returns different client types depending on what configuration is provided:
+provider and wallet → full-featured client; provider only → query and submission;
+wallet only → signing with network metadata; network only → minimal context with combinators.
+
+**Signature**
+
+```ts
+export declare function createClient(config: {
+  network?: NetworkId
+  provider: ProviderConfig
+  wallet: ReadOnlyWalletConfig
+}): ReadOnlyClient
+export declare function createClient(config: {
+  network?: NetworkId
+  provider: ProviderConfig
+  wallet: SeedWalletConfig
+}): SigningClient
+export declare function createClient(config: {
+  network?: NetworkId
+  provider: ProviderConfig
+  wallet: ApiWalletConfig
+}): SigningClient
+export declare function createClient(config: { network?: NetworkId; provider: ProviderConfig }): ProviderOnlyClient
+export declare function createClient(config: {
+  network?: NetworkId
+  wallet: ReadOnlyWalletConfig
+}): ReadOnlyWalletClient
+export declare function createClient(config: { network?: NetworkId; wallet: SeedWalletConfig }): SigningWalletClient
+export declare function createClient(config: { network?: NetworkId; wallet: ApiWalletConfig }): ApiWalletClient
+export declare function createClient(config?: { network?: NetworkId }): MinimalClient
+```
+
+Added in v2.0.0

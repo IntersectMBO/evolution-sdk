@@ -1,0 +1,242 @@
+---
+title: core/AuxiliaryDataHash.ts
+nav_order: 8
+parent: Modules
+---
+
+## AuxiliaryDataHash overview
+
+Auxiliary Data Hash module - provides an alias for Bytes32 specialized for auxiliary data hashing.
+
+In Cardano, auxiliary_data_hash = Bytes32, representing a 32-byte hash
+used for auxiliary data (metadata) attached to transactions.
+
+Added in v2.0.0
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [arbitrary](#arbitrary)
+  - [arbitrary](#arbitrary-1)
+- [constructors](#constructors)
+  - [make](#make)
+- [encoding](#encoding)
+  - [toBytes](#tobytes)
+  - [toHex](#tohex)
+- [equality](#equality)
+  - [equals](#equals)
+- [errors](#errors)
+  - [AuxiliaryDataHashError (class)](#auxiliarydatahasherror-class)
+- [model](#model)
+  - [AuxiliaryDataHash (class)](#auxiliarydatahash-class)
+- [parsing](#parsing)
+  - [fromBytes](#frombytes)
+  - [fromHex](#fromhex)
+- [predicates](#predicates)
+  - [isAuxiliaryDataHash](#isauxiliarydatahash)
+- [utils](#utils)
+  - [BytesSchema](#bytesschema)
+  - [Either (namespace)](#either-namespace)
+  - [FromBytes](#frombytes-1)
+  - [FromHex](#fromhex-1)
+  - [HexSchema](#hexschema)
+
+---
+
+# arbitrary
+
+## arbitrary
+
+FastCheck arbitrary for generating random AuxiliaryDataHash instances.
+
+**Signature**
+
+```ts
+export declare const arbitrary: FastCheck.Arbitrary<AuxiliaryDataHash>
+```
+
+Added in v2.0.0
+
+# constructors
+
+## make
+
+Smart constructor for AuxiliaryDataHash that validates and applies branding.
+
+**Signature**
+
+```ts
+export declare const make: (
+  props: { readonly bytes: Uint8Array },
+  options?: Schema.MakeOptions | undefined
+) => AuxiliaryDataHash
+```
+
+Added in v2.0.0
+
+# encoding
+
+## toBytes
+
+Encode AuxiliaryDataHash to bytes.
+
+**Signature**
+
+```ts
+export declare const toBytes: (input: AuxiliaryDataHash) => Uint8Array
+```
+
+Added in v2.0.0
+
+## toHex
+
+Encode AuxiliaryDataHash to hex string.
+
+**Signature**
+
+```ts
+export declare const toHex: (input: AuxiliaryDataHash) => string
+```
+
+Added in v2.0.0
+
+# equality
+
+## equals
+
+Check if two AuxiliaryDataHash instances are equal.
+
+**Signature**
+
+```ts
+export declare const equals: (a: AuxiliaryDataHash, b: AuxiliaryDataHash) => boolean
+```
+
+Added in v2.0.0
+
+# errors
+
+## AuxiliaryDataHashError (class)
+
+Error class for AuxiliaryDataHash related operations.
+
+**Signature**
+
+```ts
+export declare class AuxiliaryDataHashError
+```
+
+Added in v2.0.0
+
+# model
+
+## AuxiliaryDataHash (class)
+
+Schema for AuxiliaryDataHash representing auxiliary data hashes.
+auxiliary_data_hash = Bytes32
+
+**Signature**
+
+```ts
+export declare class AuxiliaryDataHash
+```
+
+Added in v2.0.0
+
+# parsing
+
+## fromBytes
+
+Parse AuxiliaryDataHash from bytes.
+
+**Signature**
+
+```ts
+export declare const fromBytes: (input: Uint8Array) => AuxiliaryDataHash
+```
+
+Added in v2.0.0
+
+## fromHex
+
+Parse AuxiliaryDataHash from hex string.
+
+**Signature**
+
+```ts
+export declare const fromHex: (input: string) => AuxiliaryDataHash
+```
+
+Added in v2.0.0
+
+# predicates
+
+## isAuxiliaryDataHash
+
+Check if the given value is a valid AuxiliaryDataHash
+
+**Signature**
+
+```ts
+export declare const isAuxiliaryDataHash: (
+  u: unknown,
+  overrideOptions?: ParseOptions | number
+) => u is AuxiliaryDataHash
+```
+
+Added in v2.0.0
+
+# utils
+
+## BytesSchema
+
+**Signature**
+
+```ts
+export declare const BytesSchema: Schema.transform<
+  Schema.SchemaClass<Uint8Array, Uint8Array, never>,
+  Schema.SchemaClass<AuxiliaryDataHash, AuxiliaryDataHash, never>
+>
+```
+
+## Either (namespace)
+
+## FromBytes
+
+**Signature**
+
+```ts
+export declare const FromBytes: Schema.transform<
+  Schema.SchemaClass<Uint8Array, Uint8Array, never>,
+  Schema.SchemaClass<AuxiliaryDataHash, AuxiliaryDataHash, never>
+>
+```
+
+## FromHex
+
+**Signature**
+
+```ts
+export declare const FromHex: Schema.transform<
+  Schema.filter<Schema.Schema<Uint8Array, string, never>>,
+  Schema.transform<
+    Schema.SchemaClass<Uint8Array, Uint8Array, never>,
+    Schema.SchemaClass<AuxiliaryDataHash, AuxiliaryDataHash, never>
+  >
+>
+```
+
+## HexSchema
+
+**Signature**
+
+```ts
+export declare const HexSchema: Schema.transform<
+  Schema.filter<Schema.Schema<Uint8Array, string, never>>,
+  Schema.transform<
+    Schema.SchemaClass<Uint8Array, Uint8Array, never>,
+    Schema.SchemaClass<AuxiliaryDataHash, AuxiliaryDataHash, never>
+  >
+>
+```

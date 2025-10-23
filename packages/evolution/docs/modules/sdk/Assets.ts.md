@@ -1,0 +1,186 @@
+---
+title: sdk/Assets.ts
+nav_order: 126
+parent: Modules
+---
+
+## Assets overview
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [Assets (interface)](#assets-interface)
+  - [add](#add)
+  - [assetsToValue](#assetstovalue)
+  - [empty](#empty)
+  - [filter](#filter)
+  - [fromLovelace](#fromlovelace)
+  - [getAsset](#getasset)
+  - [getUnits](#getunits)
+  - [hasAsset](#hasasset)
+  - [isEmpty](#isempty)
+  - [make](#make)
+  - [merge](#merge)
+  - [multiply](#multiply)
+  - [negate](#negate)
+  - [sortCanonical](#sortcanonical)
+  - [subtract](#subtract)
+  - [valueToAssets](#valuetoassets)
+
+---
+
+# utils
+
+## Assets (interface)
+
+**Signature**
+
+```ts
+export interface Assets {
+  lovelace: bigint
+  [key: string]: bigint
+}
+```
+
+## add
+
+**Signature**
+
+```ts
+export declare const add: (a: Assets, b: Assets) => Assets
+```
+
+## assetsToValue
+
+Convert Assets interface format to a core Value.
+
+**Signature**
+
+```ts
+export declare const assetsToValue: (assets: Assets) => CoreValue.Value
+```
+
+## empty
+
+**Signature**
+
+```ts
+export declare const empty: () => Assets
+```
+
+## filter
+
+**Signature**
+
+```ts
+export declare const filter: (assets: Assets, predicate: (unit: string, amount: bigint) => boolean) => Assets
+```
+
+## fromLovelace
+
+**Signature**
+
+```ts
+export declare const fromLovelace: (lovelace: bigint) => Assets
+```
+
+## getAsset
+
+**Signature**
+
+```ts
+export declare const getAsset: (assets: Assets, unit: string) => bigint
+```
+
+## getUnits
+
+**Signature**
+
+```ts
+export declare const getUnits: (assets: Assets) => Array<string>
+```
+
+## hasAsset
+
+**Signature**
+
+```ts
+export declare const hasAsset: (assets: Assets, unit: string) => boolean
+```
+
+## isEmpty
+
+**Signature**
+
+```ts
+export declare const isEmpty: (assets: Assets) => boolean
+```
+
+## make
+
+**Signature**
+
+```ts
+export declare const make: (lovelace: bigint, tokens?: Record<string, bigint>) => Assets
+```
+
+## merge
+
+**Signature**
+
+```ts
+export declare const merge: (...assets: Array<Assets>) => Assets
+```
+
+## multiply
+
+Multiply all asset amounts by a factor.
+Useful for calculating fees, rewards, or scaling asset amounts.
+
+**Signature**
+
+```ts
+export declare const multiply: (assets: Assets, factor: bigint) => Assets
+```
+
+## negate
+
+Negate all asset amounts.
+Useful for calculating what needs to be subtracted or for representing debts.
+
+**Signature**
+
+```ts
+export declare const negate: (assets: Assets) => Assets
+```
+
+## sortCanonical
+
+Sort assets according to CBOR canonical ordering rules (RFC 7049 section 3.9).
+Lovelace comes first, then assets sorted by policy ID length, then lexicographically.
+
+**Signature**
+
+```ts
+export declare const sortCanonical: (assets: Assets) => Assets
+```
+
+## subtract
+
+**Signature**
+
+```ts
+export declare const subtract: (a: Assets, b: Assets) => Assets
+```
+
+## valueToAssets
+
+Convert a core Value to the Assets interface format.
+
+**Signature**
+
+```ts
+export declare const valueToAssets: (value: CoreValue.Value) => Assets
+```
