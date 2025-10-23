@@ -1,0 +1,41 @@
+---
+title: sdk/Label.ts
+nav_order: 141
+parent: Modules
+---
+
+## Label overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [fromLabel](#fromlabel)
+  - [toLabel](#tolabel)
+
+---
+
+# utils
+
+## fromLabel
+
+Parse a CIP-67 label format back to a number.
+Returns undefined if the label format is invalid or checksum doesn't match.
+
+**Signature**
+
+```ts
+export declare function fromLabel(label: string): number | undefined
+```
+
+## toLabel
+
+Convert a number to a CIP-67 label format.
+Creates an 8-character hex string with format: 0[4-digit-hex][2-digit-checksum]0
+
+**Signature**
+
+```ts
+export declare function toLabel(num: number): string
+```

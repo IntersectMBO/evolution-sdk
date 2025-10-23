@@ -116,6 +116,7 @@ export class TransactionWitnessSet extends Schema.Class<TransactionWitnessSet>("
 /**
  * CDDL schema for TransactionWitnessSet encoded as a CBOR map with integer keys.
  * Keys and values follow Conway-era CDDL:
+ * ```
  *   0: nonempty_set<vkeywitness>
  *   1: nonempty_set<native_script>
  *   2: nonempty_set<bootstrap_witness>
@@ -126,6 +127,7 @@ export class TransactionWitnessSet extends Schema.Class<TransactionWitnessSet>("
  *   7: nonempty_set<plutus_v3_script>
  *
  * nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
+ * ```
  *
  * @since 2.0.0
  * @category schemas

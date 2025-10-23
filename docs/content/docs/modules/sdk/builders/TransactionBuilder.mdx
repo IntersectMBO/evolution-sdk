@@ -1,0 +1,849 @@
+---
+title: sdk/builders/TransactionBuilder.ts
+nav_order: 130
+parent: Modules
+---
+
+## TransactionBuilder overview
+
+Transaction builder storing a sequence of deferred operations that assemble and balance a transaction.
+
+Added in v2.0.0
+
+## Execution Model
+
+The builder pattern:
+
+- **Immutable configuration** at construction (protocol params, change address, available UTxOs)
+- **ProgramSteps array** accumulates deferred effects via chainable API methods
+- **Fresh state per build()** — each execution creates new Ref instances, runs all programs sequentially
+- **Deferred composition** — no I/O or state updates occur until build() is invoked
+
+Key invariant: calling `build()` twice with the same builder instance produces two independent results
+with no cross-contamination because fresh state (Refs) is created each time.
+
+## Coin Selection
+
+Automatic coin selection selects UTxOs from `availableUtxos` to satisfy transaction outputs and fees.
+The `collectFrom()` method allows manual input selection; automatic selection excludes these to prevent
+double-spending. UTxOs can come from any source (wallet, DeFi protocols, other participants, etc.).
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [config](#config)
+  - [ProtocolParameters (interface)](#protocolparameters-interface)
+  - [TxBuilderConfig (interface)](#txbuilderconfig-interface)
+- [constructors](#constructors)
+  - [makeTxBuilder](#maketxbuilder)
+- [context](#context)
+  - [TxContext (class)](#txcontext-class)
+  - [TxContextData (interface)](#txcontextdata-interface)
+- [errors](#errors)
+  - [EvaluationError (class)](#evaluationerror-class)
+  - [TransactionBuilderError (class)](#transactionbuildererror-class)
+- [evaluators](#evaluators)
+  - [createUPLCEvaluator](#createuplcevaluator)
+- [interfaces](#interfaces)
+  - [TransactionBuilder (interface)](#transactionbuilder-interface)
+- [model](#model)
+  - [EvaluationContext (interface)](#evaluationcontext-interface)
+  - [Evaluator (interface)](#evaluator-interface)
+- [options](#options)
+  - [TransactionOptimizations (interface)](#transactionoptimizations-interface)
+- [state](#state)
+  - [RedeemerData (interface)](#redeemerdata-interface)
+  - [TxBuilderState (interface)](#txbuilderstate-interface)
+- [types](#types)
+  - [ProgramStep (type alias)](#programstep-type-alias)
+  - [UPLCEvalFunction (type alias)](#uplcevalfunction-type-alias)
+- [utils](#utils)
+  - [BuildOptions (interface)](#buildoptions-interface)
+  - [ChainResult (interface)](#chainresult-interface)
+  - [UnfrackAdaOptions (interface)](#unfrackadaoptions-interface)
+  - [UnfrackOptions (interface)](#unfrackoptions-interface)
+  - [UnfrackTokenOptions (interface)](#unfracktokenoptions-interface)
+
+---
+
+# config
+
+## ProtocolParameters (interface)
+
+Protocol parameters required for transaction building.
+Subset of full protocol parameters, only what's needed for minimal build.
+
+**Signature**
+
+```ts
+export interface ProtocolParameters {
+  /** Coefficient for linear fee calculation (minFeeA) */
+  minFeeCoefficient: bigint
+
+  /** Constant for linear fee calculation (minFeeB) */
+  minFeeConstant: bigint
+
+  /** Minimum ADA per UTxO byte (for future change output validation) */
+  coinsPerUtxoByte: bigint
+
+  /** Maximum transaction size in bytes */
+  maxTxSize: number
+
+  // Future fields for advanced features:
+  // maxBlockHeaderSize?: number
+  // maxTxExecutionUnits?: ExUnits
+  // maxBlockExecutionUnits?: ExUnits
+  // collateralPercentage?: number
+  // maxCollateralInputs?: number
+  // prices?: Prices
+}
+```
+
+Added in v2.0.0
+
+## TxBuilderConfig (interface)
+
+Configuration for TransactionBuilder.
+Immutable configuration passed to builder at creation time.
+
+Contains:
+
+- Protocol parameters for fee calculation
+- Change address for leftover funds
+- Available UTxOs for coin selection
+
+**Signature**
+
+```ts
+export interface TxBuilderConfig {
+  readonly protocolParameters: ProtocolParameters
+
+  /**
+   * Address to send change (leftover assets) to.
+   * This is required for proper transaction balancing.
+   */
+  readonly changeAddress: string
+
+  /**
+   * UTxOs available for coin selection.
+   * These can be from a wallet, another user, or any other source.
+   * Coin selection will automatically select from these UTxOs to cover
+   * required outputs + fees, excluding any already collected via collectFrom().
+   */
+  readonly availableUtxos: ReadonlyArray<UTxO.UTxO>
+
+  // Future fields:
+  // readonly provider?: any // Provider interface for blockchain communication
+  // readonly costModels?: Uint8Array // Cost models for script evaluation
+}
+```
+
+Added in v2.0.0
+
+# constructors
+
+## makeTxBuilder
+
+Construct a TransactionBuilder instance from protocol configuration.
+
+The builder accumulates chainable method calls as deferred ProgramSteps. Calling build() or chain()
+creates fresh state (new Refs) and executes all accumulated programs sequentially, ensuring
+no state pollution between invocations.
+
+**Signature**
+
+```ts
+export declare const makeTxBuilder: (config: TxBuilderConfig) => TransactionBuilder
+```
+
+Added in v2.0.0
+
+# context
+
+## TxContext (class)
+
+Single Context service providing all transaction building data to programs.
+Combines config (immutable), state (mutable), and options (build-specific).
+
+**Signature**
+
+```ts
+export declare class TxContext
+```
+
+Added in v2.0.0
+
+## TxContextData (interface)
+
+Combined transaction context containing all necessary data for building.
+
+**Signature**
+
+```ts
+export interface TxContextData {
+  readonly config: TxBuilderConfig // Immutable: provider, params, available UTxOs
+  readonly state: TxBuilderState // Mutable: selected UTxOs, outputs, scripts
+  readonly options: BuildOptions // Build-specific: coin selection, evaluator, etc.
+}
+```
+
+Added in v2.0.0
+
+# errors
+
+## EvaluationError (class)
+
+Error type for failures in script evaluation.
+
+**Signature**
+
+```ts
+export declare class EvaluationError
+```
+
+Added in v2.0.0
+
+## TransactionBuilderError (class)
+
+Error type for failures occurring during transaction builder operations.
+
+**Signature**
+
+```ts
+export declare class TransactionBuilderError
+```
+
+Added in v2.0.0
+
+# evaluators
+
+## createUPLCEvaluator
+
+Creates an evaluator from a standard UPLC evaluation function.
+The TxBuilder provides protocol parameters and cost models when calling evaluate.
+
+**Signature**
+
+```ts
+export declare const createUPLCEvaluator: (_evalFunction: UPLCEvalFunction) => Evaluator
+```
+
+Added in v2.0.0
+
+# interfaces
+
+## TransactionBuilder (interface)
+
+TransactionBuilder with hybrid Effect/Promise API following lucid-evolution pattern.
+
+Architecture:
+
+- Immutable builder instance stores array of ProgramSteps
+- Chainable methods create ProgramSteps and return same builder instance
+- Completion methods (build, chain, etc.) execute all stored ProgramSteps with FRESH state
+- Builder can be reused - each build() call is independent with its own state
+
+Key Design Principle:
+Builder instance never mutates. Programs are deferred Effects that execute later.
+Each build() creates fresh TxBuilderState, executes programs, returns result.
+
+Usage Pattern:
+
+```typescript
+const builder = makeTxBuilder(provider, params, costModels, utxos)
+  .payToAddress({ address: "addr1...", assets: { lovelace: 5_000_000n } })
+  .collectFrom({ inputs: [utxo1, utxo2] })
+
+// First build - creates fresh state, executes programs
+const signBuilder1 = await builder.build()
+
+// Second build - NEW fresh state, independent execution
+const signBuilder2 = await builder.build()
+```
+
+**Signature**
+
+```ts
+export interface TransactionBuilder {
+  // ============================================================================
+  // Chainable Builder Methods - Create ProgramSteps, return same builder
+  // ============================================================================
+
+  /**
+   * Append a payment output to the transaction.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
+   *
+   * @since 2.0.0
+   * @category builder-methods
+   */
+  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder
+
+  /**
+   * Specify transaction inputs from provided UTxOs.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
+   *
+   * @since 2.0.0
+   * @category builder-methods
+   */
+  readonly collectFrom: (params: CollectFromParams) => TransactionBuilder
+
+  // Future expansion points for other operations:
+  // readonly mintTokens: (params: MintTokensParams) => TransactionBuilder
+  // readonly delegateStake: (poolId: string) => TransactionBuilder
+  // readonly withdrawRewards: (amount?: Coin.Coin) => TransactionBuilder
+  // readonly addMetadata: (label: string | number, metadata: any) => TransactionBuilder
+  // readonly setValidityInterval: (start?: number, end?: number) => TransactionBuilder
+
+  // ============================================================================
+  // Hybrid Completion Methods - Execute Programs with Fresh State
+  // ============================================================================
+
+  /**
+   * Execute all queued operations and return a signing-ready transaction via Promise.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Can be called multiple times on the same builder instance with independent results.
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly build: (options?: BuildOptions) => Promise<SignBuilder>
+
+  /**
+   * Execute all queued operations and return a signing-ready transaction via Effect.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Suitable for Effect-TS compositional workflows and error handling.
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly buildEffect: (
+    options?: BuildOptions
+  ) => Effect.Effect<SignBuilder, TransactionBuilderError | EvaluationError, unknown>
+
+  /**
+   * Execute all queued operations with explicit error handling via Either.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Returns Either<SignBuilder, Error> for pattern-matched error recovery.
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly buildEither: (
+    options?: BuildOptions
+  ) => Promise<Either<SignBuilder, TransactionBuilderError | EvaluationError>>
+
+  // ============================================================================
+  // Transaction Chaining Methods - Multi-transaction workflows
+  // ============================================================================
+
+  /**
+   * Execute queued operations and return result for multi-transaction workflows via Promise.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns ChainResult containing the transaction,
+   * new UTxOs, and updated available UTxOs for subsequent transactions.
+   *
+   * @since 2.0.0
+   * @category chaining-methods
+   */
+  readonly chain: (options?: BuildOptions) => Promise<ChainResult>
+
+  /**
+   * Execute queued operations and return result for multi-transaction workflows via Effect.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns ChainResult for Effect-TS workflows
+   * and composable error handling.
+   *
+   * @since 2.0.0
+   * @category chaining-methods
+   */
+  readonly chainEffect: (
+    options?: BuildOptions
+  ) => Effect.Effect<ChainResult, TransactionBuilderError | EvaluationError>
+
+  /**
+   * Execute queued operations with explicit error handling via Either for multi-transaction workflows.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns Either<ChainResult, Error>
+   * for pattern-matched error recovery in transaction sequences.
+   *
+   * @since 2.0.0
+   * @category chaining-methods
+   */
+  readonly chainEither: (
+    options?: BuildOptions
+  ) => Promise<Either<ChainResult, TransactionBuilderError | EvaluationError>>
+
+  // ============================================================================
+  // Debug Methods - Inspect transaction state during development
+  // ============================================================================
+
+  /**
+   * Execute queued operations without script evaluation or finalization; return partial transaction via Promise.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns intermediate transaction for inspection.
+   * Useful for debugging transaction assembly and coin selection logic.
+   *
+   * @since 2.0.0
+   * @category debug-methods
+   */
+  readonly buildPartial: () => Promise<Transaction.Transaction>
+
+  /**
+   * Execute queued operations without script evaluation or finalization; return partial transaction via Effect.
+   *
+   * Creates fresh state and runs all ProgramSteps. Returns intermediate transaction for inspection.
+   * Suitable for Effect-TS workflows requiring transaction debugging.
+   *
+   * @since 2.0.0
+   * @category debug-methods
+   */
+  readonly buildPartialEffect: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError, unknown>
+}
+```
+
+Added in v2.0.0
+
+# model
+
+## EvaluationContext (interface)
+
+Data required by script evaluators: cost models, execution limits, and slot configuration.
+
+**Signature**
+
+```ts
+export interface EvaluationContext {
+  /** Cost models for script evaluation */
+  readonly costModels: Uint8Array
+  /** Maximum execution steps allowed */
+  readonly maxTxExSteps: bigint
+  /** Maximum execution memory allowed */
+  readonly maxTxExMem: bigint
+  /** Slot configuration for time-based operations */
+  readonly slotConfig: {
+    readonly zeroTime: bigint
+    readonly zeroSlot: bigint
+    readonly slotLength: number
+  }
+}
+```
+
+Added in v2.0.0
+
+## Evaluator (interface)
+
+Interface for evaluating transaction scripts and computing execution units.
+
+When provided to builder configuration, replaces default provider-based evaluation.
+Enables custom evaluation strategies including local UPLC execution.
+
+**Signature**
+
+```ts
+export interface Evaluator {
+  /**
+   * Evaluate transaction scripts and return execution units.
+   *
+   * @since 2.0.0
+   * @category methods
+   */
+  evaluate: (
+    tx: string,
+    additionalUtxos: ReadonlyArray<UTxO.UTxO> | undefined,
+    context: EvaluationContext
+  ) => Effect.Effect<ReadonlyArray<EvalRedeemer>, EvaluationError>
+}
+```
+
+Added in v2.0.0
+
+# options
+
+## TransactionOptimizations (interface)
+
+Transaction optimization flags for controlling builder behavior.
+
+**Signature**
+
+```ts
+export interface TransactionOptimizations {
+  readonly mergeOutputs?: boolean
+  readonly consolidateInputs?: boolean
+  readonly minimizeFee?: boolean
+}
+```
+
+Added in v2.0.0
+
+# state
+
+## RedeemerData (interface)
+
+Redeemer data stored during input collection.
+Index is determined later during witness assembly based on input ordering.
+
+**Signature**
+
+```ts
+export interface RedeemerData {
+  readonly tag: "spend" | "mint" | "cert" | "reward"
+  readonly data: string // PlutusData CBOR hex
+  readonly exUnits?: {
+    // Optional: from script evaluation
+    readonly mem: bigint
+    readonly steps: bigint
+  }
+}
+```
+
+Added in v2.0.0
+
+## TxBuilderState (interface)
+
+Mutable state created FRESH on each build() call.
+Contains all Refs for transaction building state.
+
+Design: Stores SDK types (UTxO.UTxO), converts to core types during build.
+This enables coin selection (needs full UTxO context) while maintaining
+transaction-native assembly.
+
+**Signature**
+
+```ts
+export interface TxBuilderState {
+  readonly selectedUtxos: Ref.Ref<ReadonlyArray<UTxO.UTxO>> // SDK type: Array for ordering, converted at build
+  readonly outputs: Ref.Ref<ReadonlyArray<UTxO.TxOutput>> // Transaction outputs (no txHash/outputIndex yet)
+  readonly scripts: Ref.Ref<Map<string, any>> // Scripts attached to the transaction
+  readonly totalOutputAssets: Ref.Ref<Assets.Assets> // Asset totals for balancing
+  readonly totalInputAssets: Ref.Ref<Assets.Assets> // Asset totals for balancing
+  readonly redeemers: Ref.Ref<Map<string, RedeemerData>> // Redeemer data for script inputs
+}
+```
+
+Added in v2.0.0
+
+# types
+
+## ProgramStep (type alias)
+
+A deferred Effect program that represents a single transaction building operation.
+
+ProgramSteps are:
+
+- Created when user calls chainable methods (payToAddress, collectFrom, etc.)
+- Stored in the builder's programs array
+- Executed later when build() is called
+- Access TxContext through Effect Context
+
+This deferred execution pattern enables:
+
+- Builder reusability (same builder, multiple builds)
+- Fresh state per build (no mutation between builds)
+- Composable transaction construction
+- No prop drilling (programs access everything via single Context)
+
+Type signature:
+
+```typescript
+type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext>
+```
+
+Requirements from context:
+
+- TxContext.config: Immutable configuration (provider, protocol params, available UTxOs)
+- TxContext.state: Mutable state (selected UTxOs, outputs, scripts, assets)
+- TxContext.options: Build options (coin selection, evaluator, collateral, etc.)
+
+**Signature**
+
+```ts
+export type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext>
+```
+
+Added in v2.0.0
+
+## UPLCEvalFunction (type alias)
+
+Standard UPLC evaluation function signature (matches UPLC.eval_phase_two_raw).
+
+**Signature**
+
+```ts
+export type UPLCEvalFunction = (
+  tx_bytes: Uint8Array,
+  utxos_bytes_x: Array<Uint8Array>,
+  utxos_bytes_y: Array<Uint8Array>,
+  cost_mdls_bytes: Uint8Array,
+  initial_budget_n: bigint,
+  initial_budget_d: bigint,
+  slot_config_x: bigint,
+  slot_config_y: bigint,
+  slot_config_z: number
+) => Array<Uint8Array>
+```
+
+Added in v2.0.0
+
+# utils
+
+## BuildOptions (interface)
+
+**Signature**
+
+````ts
+export interface BuildOptions {
+  /**
+   * Coin selection strategy for automatic input selection.
+   *
+   * Options:
+   * - `"largest-first"`: Use largest-first algorithm (DEFAULT)
+   * - `"random-improve"`: Use random-improve algorithm (not yet implemented)
+   * - `"optimal"`: Use optimal algorithm (not yet implemented)
+   * - Custom function: Provide your own CoinSelectionFunction
+   * - `undefined`: Use default (largest-first)
+   *
+   * Coin selection runs after programs execute and automatically
+   * selects UTxOs to cover required outputs + fees. UTxOs already collected
+   * via collectFrom() are excluded to prevent double-spending.
+   *
+   * To disable coin selection entirely, ensure all inputs are provided via collectFrom().
+   *
+   * @default "largest-first"
+   */
+  readonly coinSelection?: CoinSelectionAlgorithm | CoinSelectionFunction
+
+  // ============================================================================
+  // Change Handling Configuration
+  // ============================================================================
+
+  /**
+   * # Change Handling Strategy Matrix
+   * 
+   * | unfrack | drainTo | onInsufficientChange | leftover >= minUtxo | Has Native Assets | Result |
+   * |---------|---------|---------------------|---------------------|-------------------|--------|
+   * | false   | unset   | 'error' (default)   | true                | any               | Single change output created |
+   * | false   | unset   | 'error'             | false               | any               | TransactionBuilderError thrown |
+   * | false   | unset   | 'burn'              | false               | false             | Leftover becomes extra fee |
+   * | false   | unset   | 'burn'              | false               | true              | TransactionBuilderError thrown |
+   * | false   | set     | any                 | true                | any               | Single change output created |
+   * | false   | set     | any                 | false               | any               | Assets merged into outputs[drainTo] |
+   * | true    | unset   | 'error' (default)   | true                | any               | Multiple optimized change outputs |
+   * | true    | unset   | 'error'             | false               | any               | TransactionBuilderError thrown |
+   * | true    | unset   | 'burn'              | false               | false             | Leftover becomes extra fee |
+   * | true    | unset   | 'burn'              | false               | true              | TransactionBuilderError thrown |
+   * | true    | set     | any                 | true                | any               | Multiple optimized change outputs |
+   * | true    | set     | any                 | false               | any               | Assets merged into outputs[drainTo] |
+   * 
+   * **Execution Priority:** unfrack attempt → changeOutput >= minUtxo check → drainTo → onInsufficientChange
+   * 
+   * **Note:** When drainTo is set, onInsufficientChange is never evaluated (unreachable code path)
+   * 
+
+  /**
+   * Output index to merge leftover assets into as a fallback when change output cannot be created.
+   * 
+   * This serves as **Fallback #1** in the change handling strategy:
+   * 1. Try to create change output (with optional unfracking)
+   * 2. If that fails → Use drainTo (if configured)
+   * 3. If drainTo not configured → Use onInsufficientChange strategy
+   * 
+   * Use cases:
+   * - Wallet drain: Send maximum to recipient without leaving dust
+   * - Multi-output drain: Choose which output receives leftover
+   * - Avoiding minimum UTxO: Merge small leftover that can't create valid change
+   * 
+   * Example:
+   * ```typescript
+   * builder
+   *   .payToAddress({ address: "recipient", assets: { lovelace: 5_000_000n }})
+   *   .build({ drainTo: 0 })  // Fallback: leftover goes to recipient
+   * ```
+   * 
+   * @since 2.0.0
+   */
+  readonly drainTo?: number
+
+  /**
+   * Strategy for handling insufficient leftover assets when change output cannot be created.
+   *
+   * This serves as **Fallback #2** (final fallback) in the change handling strategy:
+   * 1. Try to create change output (with optional unfracking)
+   * 2. If that fails AND drainTo configured → Drain to that output
+   * 3. If that fails OR drainTo not configured → Use this strategy
+   *
+   * Options:
+   * - `'error'` (DEFAULT): Throw error, transaction fails - **SAFE**, prevents fund loss
+   * - `'burn'`: Allow leftover to become extra fee - Requires **EXPLICIT** user consent
+   *
+   * Default behavior is 'error' to prevent accidental loss of funds.
+   *
+   * Example:
+   * ```typescript
+   * // Safe (default): Fail if change insufficient
+   * .build({ onInsufficientChange: 'error' })
+   *
+   * // Explicit consent to burn leftover as fee
+   * .build({ onInsufficientChange: 'burn' })
+   * ```
+   *
+   * @default 'error'
+   * @since 2.0.0
+   */
+  readonly onInsufficientChange?: "error" | "burn"
+
+  // Script evaluator - if provided, replaces the default provider-based evaluation
+  // Use createUPLCEvaluator() for UPLC libraries, or implement Evaluator directly
+  readonly evaluator?: Evaluator
+
+  // Collateral handling
+  readonly collateral?: ReadonlyArray<UTxO.UTxO> // Manual collateral (max 3)
+  // Amount to set as collateral default 5_000_000n
+  readonly setCollateral?: bigint
+  // Minimum fee
+  readonly minFee?: Coin.Coin
+
+  /**
+   * Unfrack: Optimize wallet UTxO structure
+   *
+   * Implements Unfrack.It principles for efficient wallet management:
+   * - Token bundling: Group tokens into optimally-sized UTxOs
+   * - ADA optimization: Roll up or subdivide ADA-only UTxOs
+   *
+   * Works as an **enhancement** to change output creation. When enabled:
+   * - Change output will be split into multiple optimized UTxOs
+   * - If unfracking fails (insufficient ADA), falls back to drainTo or onInsufficientChange
+   *
+   * Named in respect to the Unfrack.It open source community
+   */
+  readonly unfrack?: UnfrackOptions
+
+  /**
+   * **EXPERIMENTAL**: Use state machine implementation instead of monolithic buildEffectCore
+   *
+   * When true, uses the experimental 6-phase state machine:
+   * - initialSelection → changeCreation → feeCalculation → balanceVerification → reselection → complete
+   *
+   * WARNING: Has known Context.Tag type inference issues. Use for testing only.
+   *
+   * @experimental
+   * @default false
+   */
+  readonly useStateMachine?: boolean
+
+  /**
+   * **EXPERIMENTAL**: Use V3 4-phase state machine
+   *
+   * When true, uses V3's simplified 4-phase state machine:
+   * - selection → changeValidation → balanceVerification → fallback → complete
+   *
+   * V3 shares TxContext with V2 but uses mathematical validation approach.
+   *
+   * @experimental
+   * @default false
+   */
+  readonly useV3?: boolean
+}
+````
+
+## ChainResult (interface)
+
+**Signature**
+
+```ts
+export interface ChainResult {
+  readonly transaction: Transaction.Transaction
+  readonly newOutputs: ReadonlyArray<UTxO.UTxO> // UTxOs created by this transaction
+  readonly updatedUtxos: ReadonlyArray<UTxO.UTxO> // Available UTxOs for next transaction (original - spent + new)
+  readonly spentUtxos: ReadonlyArray<UTxO.UTxO> // UTxOs consumed by this transaction
+}
+```
+
+## UnfrackAdaOptions (interface)
+
+**Signature**
+
+```ts
+export interface UnfrackAdaOptions {
+  /**
+   * Roll Up ADA-Only: Intentionally collect and consolidate ADA-only UTxOs
+   * @default false (only collect when needed for change)
+   */
+  readonly rollUpAdaOnly?: boolean
+
+  /**
+   * Subdivide Leftover ADA: If leftover ADA > threshold, split into multiple UTxOs
+   * Creates multiple ADA options for future transactions (parallelism)
+   * @default 100_000000 (100 ADA)
+   */
+  readonly subdivideThreshold?: Coin.Coin
+
+  /**
+   * Subdivision percentages for leftover ADA
+   * Must sum to 100
+   * @default [50, 15, 10, 10, 5, 5, 5]
+   */
+  readonly subdividePercentages?: ReadonlyArray<number>
+
+  /**
+   * Maximum ADA-only UTxOs to consolidate in one transaction
+   * @default 20
+   */
+  readonly maxUtxosToConsolidate?: number
+}
+```
+
+## UnfrackOptions (interface)
+
+Unfrack Options: Optimize wallet UTxO structure
+Named in respect to the Unfrack.It open source community
+
+**Signature**
+
+```ts
+export interface UnfrackOptions {
+  readonly tokens?: UnfrackTokenOptions
+  readonly ada?: UnfrackAdaOptions
+}
+```
+
+## UnfrackTokenOptions (interface)
+
+UTxO Optimization Options
+Based on Unfrack.It principles for efficient wallet structure
+
+**Signature**
+
+```ts
+export interface UnfrackTokenOptions {
+  /**
+   * Bundle Size: Number of tokens to collect per UTxO
+   * - Same policy: up to bundleSize tokens together
+   * - Multiple policies: up to bundleSize/2 tokens from different policies
+   * - Policy exceeds bundle: split into multiple UTxOs
+   * @default 10
+   */
+  readonly bundleSize?: number
+
+  /**
+   * Isolate Fungible Behavior: Place each fungible token policy on its own UTxO
+   * Decreases fees and makes DEX interactions easier
+   * @default false
+   */
+  readonly isolateFungibles?: boolean
+
+  /**
+   * Group NFTs by Policy: Separate NFTs onto policy-specific UTxOs
+   * Decreases fees for marketplaces, staking, sending
+   * @default false
+   */
+  readonly groupNftsByPolicy?: boolean
+}
+```

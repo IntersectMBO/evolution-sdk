@@ -37,26 +37,26 @@ export class ValueError extends Data.TaggedError("ValueError")<{
 export class OnlyCoin extends Schema.TaggedClass<OnlyCoin>("OnlyCoin")("OnlyCoin", {
   coin: Coin.Coin
 }) {
-  toString(): string {
-    return `OnlyCoin { coin: ${this.coin} }`
-  }
+  // toString(): string {
+  //   return `OnlyCoin { coin: ${this.coin} }`
+  // }
 
-  [Symbol.for("nodejs.util.inspect.custom")](): string {
-    return this.toString()
-  }
+  // [Symbol.for("nodejs.util.inspect.custom")](): string {
+  //   return this.toString()
+  // }
 }
 
 export class WithAssets extends Schema.TaggedClass<WithAssets>("WithAssets")("WithAssets", {
   coin: Coin.Coin,
   assets: MultiAsset.MultiAsset
 }) {
-  toString(): string {
-    return `WithAssets { coin: ${this.coin}, assets: ${this.assets} }`
-  }
+  // toString(): string {
+  //   return `WithAssets { coin: ${this.coin}, assets: ${this.assets} }`
+  // }
 
-  [Symbol.for("nodejs.util.inspect.custom")](): string {
-    return this.toString()
-  }
+  // [Symbol.for("nodejs.util.inspect.custom")](): string {
+  //   return this.toString()
+  // }
 }
 
 export const Value = Schema.Union(OnlyCoin, WithAssets)
@@ -223,6 +223,22 @@ export const equals = (a: Value, b: Value): boolean => {
   }
 
   return false
+}
+
+/**
+ * Check if Value a is greater than or equal to Value b.
+ * This means after subtracting b from a, the result would not be negative.
+ *
+ * @since 2.0.0
+ * @category ordering
+ */
+export const geq = (a: Value, b: Value): boolean => {
+  try {
+    subtract(a, b)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**

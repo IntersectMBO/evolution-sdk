@@ -1,0 +1,260 @@
+---
+title: sdk/wallet/WalletNew.ts
+nav_order: 157
+parent: Modules
+---
+
+## WalletNew overview
+
+// Effect-TS imports
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [errors](#errors)
+  - [Payload (type alias)](#payload-type-alias)
+  - [WalletError (class)](#walleterror-class)
+- [interfaces](#interfaces)
+  - [ApiWallet (interface)](#apiwallet-interface)
+  - [ApiWalletEffect (interface)](#apiwalleteffect-interface)
+  - [ReadOnlyWalletEffect (interface)](#readonlywalleteffect-interface)
+  - [SigningWalletEffect (interface)](#signingwalleteffect-interface)
+  - [WalletApi (interface)](#walletapi-interface)
+- [types](#types)
+  - [Network (type alias)](#network-type-alias)
+- [utils](#utils)
+  - [ReadOnlyWallet (interface)](#readonlywallet-interface)
+  - [SignedMessage (interface)](#signedmessage-interface)
+  - [SigningWallet (interface)](#signingwallet-interface)
+  - [makeWalletFromAPI](#makewalletfromapi)
+  - [makeWalletFromAddress](#makewalletfromaddress)
+  - [makeWalletFromPrivateKey](#makewalletfromprivatekey)
+  - [makeWalletFromSeed](#makewalletfromseed)
+
+---
+
+# errors
+
+## Payload (type alias)
+
+Error class for Provider related operations.
+
+**Signature**
+
+```ts
+export type Payload = string | Uint8Array
+```
+
+Added in v2.0.0
+
+## WalletError (class)
+
+Error class for WalletNew related operations.
+
+**Signature**
+
+```ts
+export declare class WalletError
+```
+
+Added in v2.0.0
+
+# interfaces
+
+## ApiWallet (interface)
+
+API Wallet interface for CIP-30 compatible wallets.
+These wallets handle signing and submission internally through the browser extension.
+
+**Signature**
+
+```ts
+export interface ApiWallet extends EffectToPromiseAPI<ApiWalletEffect> {
+  readonly Effect: ApiWalletEffect
+  readonly api: WalletApi
+  readonly type: "api" // CIP-30 API wallet
+}
+```
+
+Added in v2.0.0
+
+## ApiWalletEffect (interface)
+
+API Wallet Effect interface for CIP-30 compatible wallets.
+API wallets handle both signing and submission through the wallet extension,
+eliminating the need for a separate provider in browser environments.
+
+**Signature**
+
+```ts
+export interface ApiWalletEffect extends ReadOnlyWalletEffect {
+  readonly signTx: (
+    tx: Transaction.Transaction | string,
+    context?: { utxos?: ReadonlyArray<UTxO.UTxO> }
+  ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
+  readonly signMessage: (
+    address: Address.Address | RewardAddress.RewardAddress,
+    payload: Payload
+  ) => Effect.Effect<SignedMessage, WalletError>
+  /**
+   * Submit transaction directly through the wallet API.
+   * API wallets can submit without requiring a separate provider.
+   */
+  readonly submitTx: (tx: Transaction.Transaction | string) => Effect.Effect<string, WalletError>
+}
+```
+
+Added in v2.0.0
+
+## ReadOnlyWalletEffect (interface)
+
+Read-only wallet interface providing access to wallet data without signing capabilities.
+Suitable for read-only applications that need wallet information.
+
+**Signature**
+
+```ts
+export interface ReadOnlyWalletEffect {
+  readonly address: Effect.Effect<Address.Address, WalletError>
+  readonly rewardAddress: Effect.Effect<RewardAddress.RewardAddress | null, WalletError>
+}
+```
+
+Added in v2.0.0
+
+## SigningWalletEffect (interface)
+
+Full wallet interface with signing capabilities extending ReadOnlyWallet.
+Provides complete wallet functionality including transaction signing and submission.
+
+**Signature**
+
+```ts
+export interface SigningWalletEffect extends ReadOnlyWalletEffect {
+  /**
+   * Sign a transaction given its structured representation. UTxOs required for correctness
+   * (e.g. to determine required signers) must be supplied by the caller (client) and not
+   * fetched internally.
+   */
+  readonly signTx: (
+    tx: Transaction.Transaction | string,
+    context?: { utxos?: ReadonlyArray<UTxO.UTxO> }
+  ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
+  readonly signMessage: (
+    address: Address.Address | RewardAddress.RewardAddress,
+    payload: Payload
+  ) => Effect.Effect<SignedMessage, WalletError>
+}
+```
+
+Added in v2.0.0
+
+## WalletApi (interface)
+
+CIP-30 compatible wallet API interface.
+
+**Signature**
+
+```ts
+export interface WalletApi {
+  getUsedAddresses(): Promise<ReadonlyArray<string>>
+  getUnusedAddresses(): Promise<ReadonlyArray<string>>
+  getRewardAddresses(): Promise<ReadonlyArray<string>>
+  getUtxos(): Promise<ReadonlyArray<string>> // CBOR hex
+  signTx(txCborHex: string, partialSign: boolean): Promise<string> // CBOR hex witness set
+  signData(addressHex: string, payload: Payload): Promise<SignedMessage>
+  submitTx(txCborHex: string): Promise<string>
+}
+```
+
+Added in v2.0.0
+
+# types
+
+## Network (type alias)
+
+Network type for wallet creation.
+
+**Signature**
+
+```ts
+export type Network = "Mainnet" | "Testnet" | "Custom"
+```
+
+Added in v2.0.0
+
+# utils
+
+## ReadOnlyWallet (interface)
+
+**Signature**
+
+```ts
+export interface ReadOnlyWallet extends EffectToPromiseAPI<ReadOnlyWalletEffect> {
+  readonly Effect: ReadOnlyWalletEffect
+  readonly type: "read-only" // Read-only wallet
+}
+```
+
+## SignedMessage (interface)
+
+**Signature**
+
+```ts
+export interface SignedMessage {
+  readonly payload: Payload
+  readonly signature: string
+}
+```
+
+## SigningWallet (interface)
+
+**Signature**
+
+```ts
+export interface SigningWallet extends EffectToPromiseAPI<SigningWalletEffect> {
+  readonly Effect: SigningWalletEffect
+  readonly type: "signing" // Local signing wallet (seed/private key)
+}
+```
+
+## makeWalletFromAPI
+
+**Signature**
+
+```ts
+export declare function makeWalletFromAPI(api: WalletApi): ApiWallet
+```
+
+## makeWalletFromAddress
+
+**Signature**
+
+```ts
+export declare function makeWalletFromAddress(network: Network, address: Address.Address): ReadOnlyWallet
+```
+
+## makeWalletFromPrivateKey
+
+**Signature**
+
+```ts
+export declare function makeWalletFromPrivateKey(network: Network, privateKeyBech32: string): SigningWallet
+```
+
+## makeWalletFromSeed
+
+**Signature**
+
+```ts
+export declare function makeWalletFromSeed(
+  network: Network,
+  seed: string,
+  options?: {
+    addressType?: "Base" | "Enterprise"
+    accountIndex?: number
+    password?: string
+  }
+): SigningWallet
+```

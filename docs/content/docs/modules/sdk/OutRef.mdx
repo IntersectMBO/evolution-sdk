@@ -1,0 +1,246 @@
+---
+title: sdk/OutRef.ts
+nav_order: 142
+parent: Modules
+---
+
+## OutRef overview
+
+OutRef types and utilities for handling Cardano transaction output references.
+
+This module provides types and functions for working with transaction output references,
+which uniquely identify UTxOs by their transaction hash and output index.
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [OutRef (interface)](#outref-interface)
+  - [compare](#compare)
+  - [contains](#contains)
+  - [difference](#difference)
+  - [equals](#equals)
+  - [filter](#filter)
+  - [find](#find)
+  - [first](#first)
+  - [fromTxHashAndIndex](#fromtxhashandindex)
+  - [getIndicesForTx](#getindicesfortx)
+  - [getTxHashes](#gettxhashes)
+  - [groupByTxHash](#groupbytxhash)
+  - [intersection](#intersection)
+  - [isEmpty](#isempty)
+  - [last](#last)
+  - [make](#make)
+  - [remove](#remove)
+  - [size](#size)
+  - [sort](#sort)
+  - [sortByIndex](#sortbyindex)
+  - [sortByTxHash](#sortbytxhash)
+  - [toString](#tostring)
+  - [union](#union)
+  - [unique](#unique)
+
+---
+
+# utils
+
+## OutRef (interface)
+
+OutRef types and utilities for handling Cardano transaction output references.
+
+This module provides types and functions for working with transaction output references,
+which uniquely identify UTxOs by their transaction hash and output index.
+
+**Signature**
+
+```ts
+export interface OutRef {
+  txHash: string
+  outputIndex: number
+}
+```
+
+## compare
+
+**Signature**
+
+```ts
+export declare const compare: (a: OutRef, b: OutRef) => number
+```
+
+## contains
+
+**Signature**
+
+```ts
+export declare const contains: (outRefs: Array<OutRef>, target: OutRef) => boolean
+```
+
+## difference
+
+**Signature**
+
+```ts
+export declare const difference: (setA: Array<OutRef>, setB: Array<OutRef>) => Array<OutRef>
+```
+
+## equals
+
+**Signature**
+
+```ts
+export declare const equals: (a: OutRef, b: OutRef) => boolean
+```
+
+## filter
+
+**Signature**
+
+```ts
+export declare const filter: (outRefs: Array<OutRef>, predicate: (outRef: OutRef) => boolean) => Array<OutRef>
+```
+
+## find
+
+**Signature**
+
+```ts
+export declare const find: (outRefs: Array<OutRef>, predicate: (outRef: OutRef) => boolean) => OutRef | undefined
+```
+
+## first
+
+**Signature**
+
+```ts
+export declare const first: (outRefs: Array<OutRef>) => OutRef | undefined
+```
+
+## fromTxHashAndIndex
+
+**Signature**
+
+```ts
+export declare const fromTxHashAndIndex: (txHash: string, outputIndex: number) => OutRef
+```
+
+## getIndicesForTx
+
+**Signature**
+
+```ts
+export declare const getIndicesForTx: (outRefs: Array<OutRef>, txHash: string) => Array<number>
+```
+
+## getTxHashes
+
+**Signature**
+
+```ts
+export declare const getTxHashes: (outRefs: Array<OutRef>) => Array<string>
+```
+
+## groupByTxHash
+
+**Signature**
+
+```ts
+export declare const groupByTxHash: (outRefs: Array<OutRef>) => Record<string, Array<OutRef>>
+```
+
+## intersection
+
+**Signature**
+
+```ts
+export declare const intersection: (setA: Array<OutRef>, setB: Array<OutRef>) => Array<OutRef>
+```
+
+## isEmpty
+
+**Signature**
+
+```ts
+export declare const isEmpty: (outRefs: Array<OutRef>) => boolean
+```
+
+## last
+
+**Signature**
+
+```ts
+export declare const last: (outRefs: Array<OutRef>) => OutRef | undefined
+```
+
+## make
+
+**Signature**
+
+```ts
+export declare const make: (txHash: string, outputIndex: number) => OutRef
+```
+
+## remove
+
+**Signature**
+
+```ts
+export declare const remove: (outRefs: Array<OutRef>, target: OutRef) => Array<OutRef>
+```
+
+## size
+
+**Signature**
+
+```ts
+export declare const size: (outRefs: Array<OutRef>) => number
+```
+
+## sort
+
+**Signature**
+
+```ts
+export declare const sort: (outRefs: Array<OutRef>) => Array<OutRef>
+```
+
+## sortByIndex
+
+**Signature**
+
+```ts
+export declare const sortByIndex: (outRefs: Array<OutRef>) => Array<OutRef>
+```
+
+## sortByTxHash
+
+**Signature**
+
+```ts
+export declare const sortByTxHash: (outRefs: Array<OutRef>) => Array<OutRef>
+```
+
+## toString
+
+**Signature**
+
+```ts
+export declare const toString: (outRef: OutRef) => string
+```
+
+## union
+
+**Signature**
+
+```ts
+export declare const union: (setA: Array<OutRef>, setB: Array<OutRef>) => Array<OutRef>
+```
+
+## unique
+
+**Signature**
+
+```ts
+export declare const unique: (outRefs: Array<OutRef>) => Array<OutRef>
+```

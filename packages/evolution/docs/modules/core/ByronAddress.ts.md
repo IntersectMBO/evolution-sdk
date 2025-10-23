@@ -1,0 +1,100 @@
+---
+title: core/ByronAddress.ts
+nav_order: 19
+parent: Modules
+---
+
+## ByronAddress overview
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [errors](#errors)
+  - [ByronAddressError (class)](#byronaddresserror-class)
+- [schemas](#schemas)
+  - [ByronAddress (class)](#byronaddress-class)
+    - [[Symbol.for("nodejs.util.inspect.custom")] (method)](#symbolfornodejsutilinspectcustom-method)
+  - [BytesSchema](#bytesschema)
+  - [FromHex](#fromhex)
+- [utils](#utils)
+  - [equals](#equals)
+
+---
+
+# errors
+
+## ByronAddressError (class)
+
+Error class for ByronAddress related operations.
+
+**Signature**
+
+```ts
+export declare class ByronAddressError
+```
+
+Added in v2.0.0
+
+# schemas
+
+## ByronAddress (class)
+
+Byron legacy address format
+
+**Signature**
+
+```ts
+export declare class ByronAddress
+```
+
+Added in v2.0.0
+
+### [Symbol.for("nodejs.util.inspect.custom")] (method)
+
+**Signature**
+
+```ts
+;[Symbol.for("nodejs.util.inspect.custom")]()
+```
+
+## BytesSchema
+
+Schema for encoding/decoding Byron addresses as bytes.
+
+**Signature**
+
+```ts
+export declare const BytesSchema: Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, typeof ByronAddress, never>
+```
+
+Added in v2.0.0
+
+## FromHex
+
+Schema for encoding/decoding Byron addresses as hex strings.
+
+**Signature**
+
+```ts
+export declare const FromHex: Schema.transform<
+  Schema.transform<Schema.Schema<string, string, never>, Schema.Schema<Uint8Array, Uint8Array, never>>,
+  Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, typeof ByronAddress, never>
+>
+```
+
+Added in v2.0.0
+
+# utils
+
+## equals
+
+Checks if two Byron addresses are equal.
+
+**Signature**
+
+```ts
+export declare const equals: (a: ByronAddress, b: ByronAddress) => boolean
+```
+
+Added in v2.0.0

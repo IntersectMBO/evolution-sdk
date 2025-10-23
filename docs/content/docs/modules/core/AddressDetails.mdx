@@ -1,0 +1,198 @@
+---
+title: core/AddressDetails.ts
+nav_order: 1
+parent: Modules
+---
+
+## AddressDetails overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [arbitrary](#arbitrary)
+  - [arbitrary](#arbitrary-1)
+- [constructors](#constructors)
+  - [fromAddress](#fromaddress)
+  - [make](#make)
+- [either](#either)
+  - [Either (namespace)](#either-namespace)
+- [encoding](#encoding)
+  - [toBech32](#tobech32)
+  - [toHex](#tohex)
+- [equality](#equality)
+  - [equals](#equals)
+- [parsing](#parsing)
+  - [fromBech32](#frombech32)
+  - [fromHex](#fromhex)
+- [schemas](#schemas)
+  - [AddressDetails (class)](#addressdetails-class)
+- [utils](#utils)
+  - [AddressDetailsError (class)](#addressdetailserror-class)
+  - [FromBech32](#frombech32-1)
+  - [FromHex](#fromhex-1)
+
+---
+
+# arbitrary
+
+## arbitrary
+
+FastCheck arbitrary for AddressDetails instances.
+
+**Signature**
+
+```ts
+export declare const arbitrary: Arbitrary<AddressDetails>
+```
+
+Added in v2.0.0
+
+# constructors
+
+## fromAddress
+
+Create AddressDetails from an Address.
+
+**Signature**
+
+```ts
+export declare const fromAddress: (address: AddressEras.AddressEras) => AddressDetails
+```
+
+Added in v2.0.0
+
+## make
+
+Create AddressDetails from an Address instance.
+
+**Signature**
+
+```ts
+export declare const make: <C>(this: C, ...args: ConstructorParameters<C>) => InstanceType<C>
+```
+
+Added in v2.0.0
+
+# either
+
+## Either (namespace)
+
+Either-based error handling variants for functions that can fail.
+
+Added in v2.0.0
+
+# encoding
+
+## toBech32
+
+Convert AddressDetails to Bech32 string.
+
+**Signature**
+
+```ts
+export declare const toBech32: (input: AddressDetails) => string
+```
+
+Added in v2.0.0
+
+## toHex
+
+Convert AddressDetails to hex string.
+
+**Signature**
+
+```ts
+export declare const toHex: (input: AddressDetails) => string
+```
+
+Added in v2.0.0
+
+# equality
+
+## equals
+
+Check if two AddressDetails instances are equal.
+
+**Signature**
+
+```ts
+export declare const equals: (self: AddressDetails, that: AddressDetails) => boolean
+```
+
+Added in v2.0.0
+
+# parsing
+
+## fromBech32
+
+Parse AddressDetails from Bech32 string.
+
+**Signature**
+
+```ts
+export declare const fromBech32: (input: string) => AddressDetails
+```
+
+Added in v2.0.0
+
+## fromHex
+
+Parse AddressDetails from hex string.
+
+**Signature**
+
+```ts
+export declare const fromHex: (input: string) => AddressDetails
+```
+
+Added in v2.0.0
+
+# schemas
+
+## AddressDetails (class)
+
+Schema for AddressDetails representing extended address information.
+Contains the address structure and its serialized representations
+
+**Signature**
+
+```ts
+export declare class AddressDetails
+```
+
+Added in v2.0.0
+
+# utils
+
+## AddressDetailsError (class)
+
+**Signature**
+
+```ts
+export declare class AddressDetailsError
+```
+
+## FromBech32
+
+**Signature**
+
+```ts
+export declare const FromBech32: Schema.transformOrFail<
+  typeof Schema.String,
+  Schema.SchemaClass<AddressDetails, AddressDetails, never>,
+  never
+>
+```
+
+## FromHex
+
+**Signature**
+
+```ts
+export declare const FromHex: Schema.transformOrFail<
+  Schema.refine<string, typeof Schema.String>,
+  Schema.SchemaClass<AddressDetails, AddressDetails, never>,
+  never
+>
+```

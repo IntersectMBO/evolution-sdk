@@ -5,39 +5,50 @@ description: "Create and manipulate Data Maps with key-value pairs."
 
 ```typescript
 import assert from "node:assert/strict"
-import { Data } from "@evolution-sdk/evolution"
+import { Bytes, Data } from "@evolution-sdk/evolution"
 
-// Create a simple map with hex string keys and integer values
+// Create byte keys to use consistently
+const aliceKey = Bytes.fromHexUnsafe("616c696365") // 'alice' in hex
+const bobKey = Bytes.fromHexUnsafe("626f62") // 'bob' in hex
+const charlieKey = Bytes.fromHexUnsafe("636861726c6965") // 'charlie' in hex
+
+// Create a simple map with byte keys and integer values
 const userAges = new Map<Data.Data, Data.Data>([
-  ["616c696365", 25n], // 'alice' in hex
-  ["626f62", 30n], // 'bob' in hex
-  ["636861726c6965", 35n] // 'charlie' in hex
+  [aliceKey, 25n],
+  [bobKey, 30n],
+  [charlieKey, 35n]
 ])
 
 console.log("User ages map:", userAges)
 
-// Create a map with constructor keys and hex string values
+// Create constructor keys to use consistently
+const pendingKey = new Data.Constr({ index: 0n, fields: [] })
+const approvedKey = new Data.Constr({ index: 1n, fields: [] })
+const rejectedKey = new Data.Constr({ index: 2n, fields: [] })
+
+// Create a map with constructor keys and byte values
 const statusMap = new Map<Data.Data, Data.Data>([
-  [new Data.Constr({ index: 0n, fields: [] }), "70656e64696e67"], // 'pending' in hex
-  [new Data.Constr({ index: 1n, fields: [] }), "617070726f766564"], // 'approved' in hex
-  [new Data.Constr({ index: 2n, fields: [] }), "72656a6563746564"] // 'rejected' in hex
+  [pendingKey, Bytes.fromHexUnsafe("70656e64696e67")], // 'pending' in hex
+  [approvedKey, Bytes.fromHexUnsafe("617070726f766564")], // 'approved' in hex
+  [rejectedKey, Bytes.fromHexUnsafe("72656a6563746564")] // 'rejected' in hex
 ])
 
-// Demonstrate map usage - Maps are Data types themselves, not constructor fields
-console.log("Status for constructor 0:", statusMap.get(new Data.Constr({ index: 0n, fields: [] })))
+// Demonstrate map usage - use the same key reference for lookups
+console.log("Alice's age:", userAges.get(aliceKey))
+console.log("Status for pending:", statusMap.get(pendingKey))
 
-// Create a constructor that references the maps via indexes or simple structure
+// Create a constructor that contains Data values
 const dataRecord = new Data.Constr({
   index: 1n,
   fields: [
     25n, // alice's age directly
-    "deadbeef", // some data
+    Bytes.fromHexUnsafe("deadbeef"), // some data
     42n // more data
   ]
 })
 
-// Verify map operations
-assert.equal(userAges.get("616c696365"), 25n) // alice's age
+// Verify map operations - use same key references
+assert.deepEqual(userAges.get(aliceKey), 25n) // alice's age
 assert.equal(userAges.size, 3)
 assert.equal(dataRecord.fields.length, 3)
 

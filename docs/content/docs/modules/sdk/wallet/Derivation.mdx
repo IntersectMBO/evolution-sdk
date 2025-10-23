@@ -1,0 +1,139 @@
+---
+title: sdk/wallet/Derivation.ts
+nav_order: 155
+parent: Modules
+---
+
+## Derivation overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [DerivationError (class)](#derivationerror-class)
+  - [SeedDerivationResult (type alias)](#seedderivationresult-type-alias)
+  - [addressFromSeed](#addressfromseed)
+  - [keysFromSeed](#keysfromseed)
+  - [walletFromBip32](#walletfrombip32)
+  - [walletFromPrivateKey](#walletfromprivatekey)
+  - [walletFromSeed](#walletfromseed)
+
+---
+
+# utils
+
+## DerivationError (class)
+
+**Signature**
+
+```ts
+export declare class DerivationError
+```
+
+## SeedDerivationResult (type alias)
+
+Result of deriving keys and addresses from a seed or Bip32 root
+
+- address: bech32 payment address (addr... / addr_test...)
+- rewardAddress: bech32 reward address (stake... / stake_test...)
+- paymentKey / stakeKey: ed25519e_sk bech32 private keys
+
+**Signature**
+
+```ts
+export type SeedDerivationResult = {
+  address: SdkAddress.Address
+  rewardAddress: SdkRewardAddress.RewardAddress | undefined
+  paymentKey: string
+  stakeKey: string | undefined
+}
+```
+
+## addressFromSeed
+
+Derive only addresses (payment and optional reward) from a seed.
+
+**Signature**
+
+```ts
+export declare function addressFromSeed(
+  seed: string,
+  options: {
+    password?: string
+    addressType?: "Base" | "Enterprise"
+    accountIndex?: number
+    network?: "Mainnet" | "Testnet" | "Custom"
+  } = {}
+): { address: SdkAddress.Address; rewardAddress: SdkRewardAddress.RewardAddress | undefined }
+```
+
+## keysFromSeed
+
+Derive only the bech32 private keys (ed25519e_sk...) from a seed.
+
+**Signature**
+
+```ts
+export declare function keysFromSeed(
+  seed: string,
+  options: {
+    password?: string
+    accountIndex?: number
+  } = {}
+): { paymentKey: string; stakeKey: string }
+```
+
+## walletFromBip32
+
+Same as walletFromSeed but accepts a Bip32 root key directly.
+
+**Signature**
+
+```ts
+export declare function walletFromBip32(
+  rootXPrv: Bip32PrivateKey.Bip32PrivateKey,
+  options: {
+    addressType?: "Base" | "Enterprise"
+    accountIndex?: number
+    network?: "Mainnet" | "Testnet" | "Custom"
+  } = {}
+): SeedDerivationResult
+```
+
+## walletFromPrivateKey
+
+Build an address (enterprise by default) from an already-derived payment private key.
+Optionally provide a stake private key to get a base address + reward address.
+
+**Signature**
+
+```ts
+export declare function walletFromPrivateKey(
+  paymentKeyBech32: string,
+  options: {
+    stakeKeyBech32?: string
+    addressType?: "Base" | "Enterprise"
+    network?: "Mainnet" | "Testnet" | "Custom"
+  } = {}
+): SeedDerivationResult
+```
+
+## walletFromSeed
+
+**Signature**
+
+```ts
+export declare const walletFromSeed: (
+  seed: string,
+  options?: {
+    password?: string
+    addressType?: "Base" | "Enterprise"
+    accountIndex?: number
+    network?: "Mainnet" | "Testnet" | "Custom"
+  }
+) => Either.Either<
+  { address: string; rewardAddress: string | undefined; paymentKey: string; stakeKey: string | undefined },
+  Bip32PrivateKey.Bip32PrivateKeyError | AddressEras.AddressError | DerivationError
+>
+```

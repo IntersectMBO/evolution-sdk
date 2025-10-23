@@ -1,0 +1,69 @@
+---
+title: sdk/Unit.ts
+nav_order: 153
+parent: Modules
+---
+
+## Unit overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [Unit (type alias)](#unit-type-alias)
+  - [UnitDetails (interface)](#unitdetails-interface)
+  - [fromUnit](#fromunit)
+  - [toUnit](#tounit)
+
+---
+
+# utils
+
+## Unit (type alias)
+
+**Signature**
+
+```ts
+export type Unit = string
+```
+
+## UnitDetails (interface)
+
+**Signature**
+
+```ts
+export interface UnitDetails {
+  policyId: PolicyId.PolicyId
+  assetName: string | undefined
+  name: string | undefined
+  label: number | undefined
+}
+```
+
+## fromUnit
+
+Parse a unit string into its components.
+Returns policy ID, asset name (full hex after policy),
+name (without label) and label if applicable.
+name will be returned in Hex.
+
+**Signature**
+
+```ts
+export declare const fromUnit: (unit: Unit) => UnitDetails
+```
+
+## toUnit
+
+Create a unit string from policy ID, name, and optional label.
+
+**Signature**
+
+```ts
+export declare const toUnit: (
+  policyId: PolicyId.PolicyId,
+  name?: string | undefined,
+  label?: number | undefined
+) => Unit
+```

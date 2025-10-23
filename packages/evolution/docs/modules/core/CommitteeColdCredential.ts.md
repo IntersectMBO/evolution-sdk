@@ -1,0 +1,33 @@
+---
+title: core/CommitteeColdCredential.ts
+nav_order: 36
+parent: Modules
+---
+
+## CommitteeColdCredential overview
+
+Committee Cold Credential module - provides an alias for Credential specialized for committee cold key usage.
+
+In Cardano, committee_cold_credential = credential, representing the same credential structure
+but used specifically for committee cold keys in governance.
+
+Added in v2.0.0
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [CommitteeColdCredential](#committeecoldcredential)
+
+---
+
+# utils
+
+## CommitteeColdCredential
+
+**Signature**
+
+```ts
+export declare const CommitteeColdCredential: typeof Credential
+```

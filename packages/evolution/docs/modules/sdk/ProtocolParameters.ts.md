@@ -1,0 +1,108 @@
+---
+title: sdk/ProtocolParameters.ts
+nav_order: 144
+parent: Modules
+---
+
+## ProtocolParameters overview
+
+Protocol Parameters types and utilities for Cardano network configuration.
+
+This module provides types and functions for working with Cardano protocol parameters,
+which define the operational rules and limits of the network.
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [ProtocolParameters (type alias)](#protocolparameters-type-alias)
+  - [calculateMinFee](#calculateminfee)
+  - [calculateUtxoCost](#calculateutxocost)
+  - [getCostModel](#getcostmodel)
+  - [supportsPlutusVersion](#supportsplutusversion)
+
+---
+
+# utils
+
+## ProtocolParameters (type alias)
+
+Protocol Parameters types and utilities for Cardano network configuration.
+
+This module provides types and functions for working with Cardano protocol parameters,
+which define the operational rules and limits of the network.
+
+**Signature**
+
+```ts
+export type ProtocolParameters = {
+  readonly minFeeA: number
+  readonly minFeeB: number
+  readonly maxTxSize: number
+  readonly maxValSize: number
+  readonly keyDeposit: bigint
+  readonly poolDeposit: bigint
+  readonly drepDeposit: bigint
+  readonly govActionDeposit: bigint
+  readonly priceMem: number
+  readonly priceStep: number
+  readonly maxTxExMem: bigint
+  readonly maxTxExSteps: bigint
+  readonly coinsPerUtxoByte: bigint
+  readonly collateralPercentage: number
+  readonly maxCollateralInputs: number
+  readonly minFeeRefScriptCostPerByte: number
+  readonly costModels: {
+    readonly PlutusV1: Record<string, number>
+    readonly PlutusV2: Record<string, number>
+    readonly PlutusV3: Record<string, number>
+  }
+}
+```
+
+## calculateMinFee
+
+Calculate the minimum fee for a transaction based on protocol parameters.
+
+**Signature**
+
+```ts
+export declare const calculateMinFee: (protocolParams: ProtocolParameters, txSize: number) => bigint
+```
+
+## calculateUtxoCost
+
+Calculate the UTxO cost based on the protocol parameters.
+
+**Signature**
+
+```ts
+export declare const calculateUtxoCost: (protocolParams: ProtocolParameters, utxoSize: number) => bigint
+```
+
+## getCostModel
+
+Get the cost model for a specific Plutus version.
+
+**Signature**
+
+```ts
+export declare const getCostModel: (
+  protocolParams: ProtocolParameters,
+  version: "PlutusV1" | "PlutusV2" | "PlutusV3"
+) => Record<string, number>
+```
+
+## supportsPlutusVersion
+
+Check if the protocol parameters support a specific Plutus version.
+
+**Signature**
+
+```ts
+export declare const supportsPlutusVersion: (
+  protocolParams: ProtocolParameters,
+  version: "PlutusV1" | "PlutusV2" | "PlutusV3"
+) => boolean
+```

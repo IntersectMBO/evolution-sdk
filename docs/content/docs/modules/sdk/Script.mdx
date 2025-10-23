@@ -1,0 +1,185 @@
+---
+title: sdk/Script.ts
+nav_order: 151
+parent: Modules
+---
+
+## Script overview
+
+---
+
+<h2 className="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [MintingPolicy (type alias)](#mintingpolicy-type-alias)
+  - [Native (type alias)](#native-type-alias)
+  - [PlutusV1 (type alias)](#plutusv1-type-alias)
+  - [PlutusV2 (type alias)](#plutusv2-type-alias)
+  - [PlutusV3 (type alias)](#plutusv3-type-alias)
+  - [PolicyId (type alias)](#policyid-type-alias)
+  - [Script (type alias)](#script-type-alias)
+  - [SpendingValidator (type alias)](#spendingvalidator-type-alias)
+  - [Validator (type alias)](#validator-type-alias)
+  - [applyDoubleCborEncoding](#applydoublecborencoding)
+  - [applySingleCborEncoding](#applysinglecborencoding)
+  - [makeNativeScript](#makenativescript)
+  - [makePlutusV1Script](#makeplutusv1script)
+  - [makePlutusV2Script](#makeplutusv2script)
+  - [makePlutusV3Script](#makeplutusv3script)
+  - [scriptEquals](#scriptequals)
+
+---
+
+# utils
+
+## MintingPolicy (type alias)
+
+**Signature**
+
+```ts
+export type MintingPolicy = Script
+```
+
+## Native (type alias)
+
+**Signature**
+
+```ts
+export type Native = {
+  type: "Native"
+  script: string // CBOR hex string
+}
+```
+
+## PlutusV1 (type alias)
+
+**Signature**
+
+```ts
+export type PlutusV1 = {
+  type: "PlutusV1"
+  script: string // CBOR hex string
+}
+```
+
+## PlutusV2 (type alias)
+
+**Signature**
+
+```ts
+export type PlutusV2 = {
+  type: "PlutusV2"
+  script: string // CBOR hex string
+}
+```
+
+## PlutusV3 (type alias)
+
+**Signature**
+
+```ts
+export type PlutusV3 = {
+  type: "PlutusV3"
+  script: string // CBOR hex string
+}
+```
+
+## PolicyId (type alias)
+
+**Signature**
+
+```ts
+export type PolicyId = string
+```
+
+## Script (type alias)
+
+**Signature**
+
+```ts
+export type Script = Native | PlutusV1 | PlutusV2 | PlutusV3
+```
+
+## SpendingValidator (type alias)
+
+**Signature**
+
+```ts
+export type SpendingValidator = Script
+```
+
+## Validator (type alias)
+
+**Signature**
+
+```ts
+export type Validator = Script
+```
+
+## applyDoubleCborEncoding
+
+Compute the policy ID for a minting policy script.
+The policy ID is identical to the script hash.
+
+**Signature**
+
+```ts
+export declare const applyDoubleCborEncoding: (script: string) => string
+```
+
+## applySingleCborEncoding
+
+**Signature**
+
+```ts
+export declare const applySingleCborEncoding: (script: string) => string
+```
+
+## makeNativeScript
+
+Compute the hash of a script.
+
+Cardano script hashes use blake2b-224 (28 bytes) with tag prefixes:
+
+- Native scripts: tag 0
+- PlutusV1 scripts: tag 1
+- PlutusV2 scripts: tag 2
+- PlutusV3 scripts: tag 3
+
+**Signature**
+
+```ts
+export declare const makeNativeScript: (cbor: string) => Native
+```
+
+## makePlutusV1Script
+
+**Signature**
+
+```ts
+export declare const makePlutusV1Script: (cbor: string) => PlutusV1
+```
+
+## makePlutusV2Script
+
+**Signature**
+
+```ts
+export declare const makePlutusV2Script: (cbor: string) => PlutusV2
+```
+
+## makePlutusV3Script
+
+**Signature**
+
+```ts
+export declare const makePlutusV3Script: (cbor: string) => PlutusV3
+```
+
+## scriptEquals
+
+**Signature**
+
+```ts
+export declare const scriptEquals: (a: Script, b: Script) => boolean
+```

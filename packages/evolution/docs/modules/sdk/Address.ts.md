@@ -1,0 +1,134 @@
+---
+title: sdk/Address.ts
+nav_order: 125
+parent: Modules
+---
+
+## Address overview
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [utils](#utils)
+  - [Address (type alias)](#address-type-alias)
+  - [addressToJson](#addresstojson)
+  - [fromAddressStructure](#fromaddressstructure)
+  - [fromAddressStructureToJson](#fromaddressstructuretojson)
+  - [fromJsonToAddressStructure](#fromjsontoaddressstructure)
+  - [jsonToAddress](#jsontoaddress)
+  - [toAddressStructure](#toaddressstructure)
+
+---
+
+# utils
+
+## Address (type alias)
+
+**Signature**
+
+```ts
+export type Address = string
+```
+
+## addressToJson
+
+**Signature**
+
+```ts
+export declare const addressToJson: (
+  i: string,
+  overrideOptions?: ParseOptions | undefined
+) => {
+  readonly networkId: number
+  readonly paymentCredential:
+    | { readonly _tag: "KeyHash"; readonly hash: string }
+    | { readonly _tag: "ScriptHash"; readonly hash: string }
+  readonly stakingCredential?:
+    | { readonly _tag: "KeyHash"; readonly hash: string }
+    | { readonly _tag: "ScriptHash"; readonly hash: string }
+    | undefined
+}
+```
+
+## fromAddressStructure
+
+**Signature**
+
+```ts
+export declare const fromAddressStructure: (
+  a: CoreAddressStructure.AddressStructure,
+  overrideOptions?: ParseOptions
+) => string
+```
+
+## fromAddressStructureToJson
+
+**Signature**
+
+```ts
+export declare const fromAddressStructureToJson: (
+  a: CoreAddressStructure.AddressStructure,
+  overrideOptions?: ParseOptions
+) => {
+  readonly networkId: number
+  readonly paymentCredential:
+    | { readonly _tag: "KeyHash"; readonly hash: string }
+    | { readonly _tag: "ScriptHash"; readonly hash: string }
+  readonly stakingCredential?:
+    | { readonly _tag: "KeyHash"; readonly hash: string }
+    | { readonly _tag: "ScriptHash"; readonly hash: string }
+    | undefined
+}
+```
+
+## fromJsonToAddressStructure
+
+**Signature**
+
+```ts
+export declare const fromJsonToAddressStructure: (
+  i: {
+    readonly networkId: number
+    readonly paymentCredential:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+    readonly stakingCredential?:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+      | undefined
+  },
+  overrideOptions?: ParseOptions
+) => CoreAddressStructure.AddressStructure
+```
+
+## jsonToAddress
+
+**Signature**
+
+```ts
+export declare const jsonToAddress: (
+  i: {
+    readonly networkId: number
+    readonly paymentCredential:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+    readonly stakingCredential?:
+      | { readonly _tag: "KeyHash"; readonly hash: string }
+      | { readonly _tag: "ScriptHash"; readonly hash: string }
+      | undefined
+  },
+  overrideOptions?: ParseOptions | undefined
+) => string
+```
+
+## toAddressStructure
+
+**Signature**
+
+```ts
+export declare const toAddressStructure: (
+  i: string,
+  overrideOptions?: ParseOptions
+) => CoreAddressStructure.AddressStructure
+```
