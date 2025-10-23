@@ -65,13 +65,13 @@
     "sdk",
     "web3"
   ],
-  "homepage": "https://github.com/no-witness-labs/evolution-sdk",
+  "homepage": "https://github.com/IntersectMBO/evolution-sdk",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/no-witness-labs/evolution-sdk.git"
+    "url": "git+https://github.com/IntersectMBO/evolution-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/no-witness-labs/evolution-sdk/issues"
+    "url": "https://github.com/IntersectMBO/evolution-sdk/issues"
   },
   "license": "MIT",
   "publishConfig": {
