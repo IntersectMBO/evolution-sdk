@@ -226,6 +226,22 @@ export const equals = (a: Value, b: Value): boolean => {
 }
 
 /**
+ * Check if Value a is greater than or equal to Value b.
+ * This means after subtracting b from a, the result would not be negative.
+ *
+ * @since 2.0.0
+ * @category ordering
+ */
+export const geq = (a: Value, b: Value): boolean => {
+  try {
+    subtract(a, b)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Check if a value is a valid Value.
  *
  * @since 2.0.0
