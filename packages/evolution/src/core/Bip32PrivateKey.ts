@@ -1,16 +1,16 @@
+import { mod } from "@noble/curves/abstract/modular.js"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { bytesToNumberLE } from "@noble/curves/utils.js"
+import { hmac } from "@noble/hashes/hmac.js"
 import { pbkdf2 } from "@noble/hashes/pbkdf2"
 import { sha512 } from "@noble/hashes/sha2"
-import { Data, Either as E, FastCheck, Schema } from "effect"
-import sodium from "libsodium-wrappers-sumo"
+import { Data, Effect, FastCheck, Schema } from "effect"
 
 import * as Bip32PublicKey from "./Bip32PublicKey.js"
 import * as Bytes from "./Bytes.js"
 import * as Bytes96 from "./Bytes96.js"
 import * as Function from "./Function.js"
 import * as PrivateKey from "./PrivateKey.js"
-
-// Initialize libsodium - IIFE executes immediately but doesn't block module loading
-void (async () => await sodium.ready)()
 
 /**
  * Error class for Bip32PrivateKey related operations.
@@ -180,9 +180,7 @@ export const toHex = Function.makeEncodeSync(FromHex, Bip32PrivateKeyError, "Bip
  * @category bip39
  */
 export const fromBip39Entropy = (entropy: Uint8Array, password: string = ""): Bip32PrivateKey => {
-  return E.getOrThrowWith(Either.fromBip39Entropy(entropy, password), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.fromBip39Entropy(entropy, password))
 }
 
 /**
@@ -193,9 +191,7 @@ export const fromBip39Entropy = (entropy: Uint8Array, password: string = ""): Bi
  * @category bip32
  */
 export const deriveChild = (bip32PrivateKey: Bip32PrivateKey, index: number): Bip32PrivateKey => {
-  return E.getOrThrowWith(Either.deriveChild(bip32PrivateKey, index), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.deriveChild(bip32PrivateKey, index))
 }
 
 /**
@@ -205,9 +201,7 @@ export const deriveChild = (bip32PrivateKey: Bip32PrivateKey, index: number): Bi
  * @category bip32
  */
 export const derive = (bip32PrivateKey: Bip32PrivateKey, indices: Array<number>): Bip32PrivateKey => {
-  return E.getOrThrowWith(Either.derive(bip32PrivateKey, indices), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.derive(bip32PrivateKey, indices))
 }
 
 /**
@@ -218,9 +212,7 @@ export const derive = (bip32PrivateKey: Bip32PrivateKey, indices: Array<number>)
  * @category bip32
  */
 export const derivePath = (bip32PrivateKey: Bip32PrivateKey, path: string): Bip32PrivateKey => {
-  return E.getOrThrowWith(Either.derivePath(bip32PrivateKey, path), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.derivePath(bip32PrivateKey, path))
 }
 
 /**
@@ -230,9 +222,7 @@ export const derivePath = (bip32PrivateKey: Bip32PrivateKey, path: string): Bip3
  * @category conversion
  */
 export const toPrivateKey = (bip32PrivateKey: Bip32PrivateKey): PrivateKey.PrivateKey => {
-  return E.getOrThrowWith(Either.toPrivateKey(bip32PrivateKey), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.toPrivateKey(bip32PrivateKey))
 }
 
 /**
@@ -242,9 +232,7 @@ export const toPrivateKey = (bip32PrivateKey: Bip32PrivateKey): PrivateKey.Priva
  * @category cryptography
  */
 export const toPublicKey = (bip32PrivateKey: Bip32PrivateKey): Bip32PublicKey.Bip32PublicKey => {
-  return E.getOrThrowWith(Either.toPublicKey(bip32PrivateKey), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.toPublicKey(bip32PrivateKey))
 }
 
 /**
@@ -254,9 +242,7 @@ export const toPublicKey = (bip32PrivateKey: Bip32PrivateKey): Bip32PublicKey.Bi
  * @category cml-compatibility
  */
 export const to128XPRV = (bip32PrivateKey: Bip32PrivateKey): Uint8Array => {
-  return E.getOrThrowWith(Either.to_128_xprv(bip32PrivateKey), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.to_128_xprv(bip32PrivateKey))
 }
 
 /**
@@ -266,9 +252,7 @@ export const to128XPRV = (bip32PrivateKey: Bip32PrivateKey): Uint8Array => {
  * @category cml-compatibility
  */
 export const from128XPRV = (bytes: Uint8Array): Bip32PrivateKey => {
-  return E.getOrThrowWith(Either.from_128_xprv(bytes), (err) => {
-    throw err
-  })
+  return Effect.runSync(Either.from_128_xprv(bytes))
 }
 
 // ============================================================================
@@ -280,7 +264,7 @@ export const arbitrary = FastCheck.uint8Array({ minLength: 96, maxLength: 96 }).
 )
 
 // ============================================================================
-// Either Namespace (Composable API)
+// Either Namespace (Composable API - for backward compatibility)
 // ============================================================================
 
 export namespace Either {
@@ -290,16 +274,22 @@ export namespace Either {
   export const toHex = Function.makeEncodeEither(FromHex, Bip32PrivateKeyError)
 
   export const fromBip39Entropy = (entropy: Uint8Array, password: string = "") =>
-    E.gen(function* () {
+    Effect.gen(function* () {
       const keyMaterial = pbkdf2(sha512, password, entropy, { c: PBKDF2_ITERATIONS, dkLen: PBKDF2_KEY_SIZE })
       const clamped = new Uint8Array(keyMaterial)
       clamped.set(clampScalar(keyMaterial.slice(0, 32)), 0)
-      return yield* fromBytes(clamped)
+      return yield* Effect.try({
+        try: () => Schema.decodeUnknownSync(FromBytes)(clamped),
+        catch: (cause) => new Bip32PrivateKeyError({ message: "fromBip39Entropy failed", cause })
+      })
     })
 
   export const deriveChild = (bip32PrivateKey: Bip32PrivateKey, index: number) =>
-    E.gen(function* () {
-      const keyBytes = yield* toBytes(bip32PrivateKey)
+    Effect.gen(function* () {
+      const keyBytes = yield* Effect.try({
+        try: () => Schema.encodeSync(FromBytes)(bip32PrivateKey),
+        catch: (cause) => new Bip32PrivateKeyError({ message: "toBytes failed", cause })
+      })
       const scalar = extractScalar(keyBytes)
       const iv = extractIV(keyBytes)
       const chainCode = extractChainCode(keyBytes)
@@ -325,13 +315,15 @@ export namespace Either {
         zInput.set(indexBytes, 65)
       } else {
         // 0x02 || publicKey || index
-        const publicKey = sodium.crypto_scalarmult_ed25519_base_noclamp(scalar)
+        const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
+        const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+        const publicKey = publicKeyPoint.toBytes()
         zInput = new Uint8Array(1 + 32 + 4)
         zInput.set(zTag, 0)
         zInput.set(publicKey, 1)
         zInput.set(indexBytes, 33)
       }
-      const hmacZ = sodium.crypto_auth_hmacsha512(zInput, chainCode)
+      const hmacZ = hmac(sha512, chainCode, zInput)
       const z = new Uint8Array(hmacZ)
       const zl = z.slice(0, 32)
       const zr = z.slice(32, 64)
@@ -352,13 +344,15 @@ export namespace Either {
         ccInput.set(indexBytes, 65)
       } else {
         // 0x03 || publicKey || index (use parent public key)
-        const publicKey = sodium.crypto_scalarmult_ed25519_base_noclamp(scalar)
+        const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
+        const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+        const publicKey = publicKeyPoint.toBytes()
         ccInput = new Uint8Array(1 + 32 + 4)
         ccInput.set(ccTag, 0)
         ccInput.set(publicKey, 1)
         ccInput.set(indexBytes, 33)
       }
-      const hmacCC = sodium.crypto_auth_hmacsha512(ccInput, chainCode)
+      const hmacCC = hmac(sha512, chainCode, ccInput)
       const newChainCode = new Uint8Array(hmacCC).slice(32, 64)
 
       const out = new Uint8Array(96)
@@ -370,7 +364,7 @@ export namespace Either {
     })
 
   export const derive = (bip32PrivateKey: Bip32PrivateKey, indices: Array<number>) =>
-    E.gen(function* () {
+    Effect.gen(function* () {
       let current = bip32PrivateKey
       for (const idx of indices) {
         current = yield* deriveChild(current, idx)
@@ -379,37 +373,53 @@ export namespace Either {
     })
 
   const parsePath = (path: string) =>
-    E.try(() => {
-      const clean = path.startsWith("m/") ? path.slice(2) : path
-      if (clean.length === 0) return [] as Array<number>
-      return clean.split("/").map((seg) => {
-        const hardened = seg.endsWith("'") || seg.endsWith("h") || seg.endsWith("H")
-        const core = hardened ? seg.slice(0, -1) : seg
-        const n = Number(core)
-        if (!Number.isInteger(n) || n < 0) throw new Error(`Invalid path segment: ${seg}`)
-        return hardened ? (0x80000000 + n) >>> 0 : n >>> 0
-      })
+    Effect.try({
+      try: () => {
+        const clean = path.startsWith("m/") ? path.slice(2) : path
+        if (clean.length === 0) return [] as Array<number>
+        return clean.split("/").map((seg) => {
+          const hardened = seg.endsWith("'") || seg.endsWith("h") || seg.endsWith("H")
+          const core = hardened ? seg.slice(0, -1) : seg
+          const n = Number(core)
+          if (!Number.isInteger(n) || n < 0) throw new Error(`Invalid path segment: ${seg}`)
+          return hardened ? (0x80000000 + n) >>> 0 : n >>> 0
+        })
+      },
+      catch: (cause) => new Bip32PrivateKeyError({ message: "Invalid derivation path", cause })
     })
 
   export const derivePath = (bip32PrivateKey: Bip32PrivateKey, path: string) =>
-    E.gen(function* () {
+    Effect.gen(function* () {
       const indices = yield* parsePath(path)
       return yield* derive(bip32PrivateKey, indices)
     })
 
   export const toPrivateKey = (bip32PrivateKey: Bip32PrivateKey) =>
-    E.gen(function* () {
-      const keyBytes = yield* toBytes(bip32PrivateKey)
+    Effect.gen(function* () {
+      const keyBytes = yield* Effect.try({
+        try: () => Schema.encodeSync(FromBytes)(bip32PrivateKey),
+        catch: (cause) => new Bip32PrivateKeyError({ message: "toBytes failed", cause })
+      })
       const priv = keyBytes.slice(0, 64)
       return new PrivateKey.PrivateKey({ key: priv }, { disableValidation: true })
     })
 
   export const toPublicKey = (bip32PrivateKey: Bip32PrivateKey) =>
-    E.gen(function* () {
-      const keyBytes = yield* toBytes(bip32PrivateKey)
+    Effect.gen(function* () {
+      const keyBytes = yield* Effect.try({
+        try: () => Schema.encodeSync(FromBytes)(bip32PrivateKey),
+        catch: (cause) => new Bip32PrivateKeyError({ message: "toBytes failed", cause })
+      })
       const scalar = extractScalar(keyBytes)
       const chainCode = extractChainCode(keyBytes)
-      const publicKeyBytes = yield* E.try(() => sodium.crypto_scalarmult_ed25519_base_noclamp(scalar))
+      const publicKeyBytes = yield* Effect.try({
+        try: () => {
+          const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
+          const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+          return publicKeyPoint.toBytes()
+        },
+        catch: (cause) => new Bip32PrivateKeyError({ message: "toPublicKey failed", cause })
+      })
       const combined = new Uint8Array(64)
       combined.set(publicKeyBytes, 0)
       combined.set(chainCode, 32)
@@ -417,12 +427,22 @@ export namespace Either {
     })
 
   export const to_128_xprv = (bip32PrivateKey: Bip32PrivateKey) =>
-    E.gen(function* () {
-      const keyBytes = yield* toBytes(bip32PrivateKey)
+    Effect.gen(function* () {
+      const keyBytes = yield* Effect.try({
+        try: () => Schema.encodeSync(FromBytes)(bip32PrivateKey),
+        catch: (cause) => new Bip32PrivateKeyError({ message: "toBytes failed", cause })
+      })
       const scalar = extractScalar(keyBytes)
       const iv = extractIV(keyBytes)
       const chainCode = extractChainCode(keyBytes)
-      const publicKeyBytes = yield* E.try(() => sodium.crypto_scalarmult_ed25519_base_noclamp(scalar))
+      const publicKeyBytes = yield* Effect.try({
+        try: () => {
+          const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
+          const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+          return publicKeyPoint.toBytes()
+        },
+        catch: (cause) => new Bip32PrivateKeyError({ message: "to_128_xprv failed", cause })
+      })
       const out = new Uint8Array(128)
       out.set(scalar, 0)
       out.set(iv, 32)
@@ -432,19 +452,26 @@ export namespace Either {
     })
 
   export const from_128_xprv = (bytes: Uint8Array) =>
-    E.gen(function* () {
+    Effect.gen(function* () {
       if (bytes.length !== 128) {
-        return yield* E.left(new Bip32PrivateKeyError({ message: `Expected exactly 128 bytes, got ${bytes.length}` }))
+        return yield* Effect.fail(new Bip32PrivateKeyError({ message: `Expected exactly 128 bytes, got ${bytes.length}` }))
       }
       const scalar = bytes.slice(0, 32)
       const iv = bytes.slice(32, 64)
       const publicKeyExpected = bytes.slice(64, 96)
       const chaincode = bytes.slice(96, 128)
 
-      const derivedPK = yield* E.try(() => sodium.crypto_scalarmult_ed25519_base_noclamp(scalar))
+      const derivedPK = yield* Effect.try({
+        try: () => {
+          const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
+          const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+          return publicKeyPoint.toBytes()
+        },
+        catch: (cause) => new Bip32PrivateKeyError({ message: "from_128_xprv failed", cause })
+      })
       const matches = derivedPK.every((b, i) => b === publicKeyExpected[i])
       if (!matches) {
-        return yield* E.left(
+        return yield* Effect.fail(
           new Bip32PrivateKeyError({ message: "Public key does not match private key in 128-byte blob" })
         )
       }

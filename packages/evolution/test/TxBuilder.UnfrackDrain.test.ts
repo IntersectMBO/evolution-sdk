@@ -123,9 +123,6 @@ const createSimpleAdaWallet = (): Array<UTxO.UTxO> => [
 
 describe("TxBuilder Unfrack + DrainTo Integration", () => {
   const baseConfig: TxBuilderConfig = {
-    protocolParameters: PROTOCOL_PARAMS,
-    changeAddress: DESTINATION_ADDRESS,
-    availableUtxos: []
   }
 
   // ==========================================================================
@@ -138,7 +135,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Simple ADA-only wallet
       const utxos = createSimpleAdaWallet()
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+      const builder = makeTxBuilder(baseConfig)
         .payToAddress({
           address: DESTINATION_ADDRESS,
           assets: Assets.fromLovelace(1_000_000n) // 1 ADA minimum payment
@@ -146,8 +143,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain to output 0 with ADA subdivision
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 100_000_000n, // 100 ADA
@@ -193,7 +193,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
         }
       ]
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+      const builder = makeTxBuilder(baseConfig)
         .payToAddress({
           address: DESTINATION_ADDRESS,
           assets: Assets.fromLovelace(1_000_000n)
@@ -201,8 +201,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with subdivision threshold of 100 ADA (total is 80 ADA, below threshold)
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 100_000_000n // 100 ADA threshold
@@ -247,8 +250,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with token bundling (no isolation or grouping)
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 5 // Bundle tokens in groups of 5
@@ -287,8 +293,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with fungible isolation
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 5,
@@ -328,8 +337,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with NFT policy grouping
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 5,
@@ -369,8 +381,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with full Unfrack.It optimization
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 5,
@@ -424,9 +439,12 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain without any unfracking (standard consolidation)
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
         // No unfrack options
+        protocolParameters: PROTOCOL_PARAMS,
         useStateMachine: true
       })
 
@@ -462,8 +480,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with empty token options (only ADA subdivision active)
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 10 // Default value, but no tokens present
@@ -515,8 +536,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain with subdivision threshold much higher than leftover
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 100_000_000n // 100 ADA (leftover is ~5 ADA)
@@ -557,8 +581,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Drain to first output with unfracking
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0, // Drain into first payment output
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 5
@@ -608,8 +635,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Subdividing by [25, 25, 25, 25] would create 4 outputs of ~0.46 ADA each
       // which is BELOW minimum UTxO requirement of ~1.72 ADA
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n, // 0.5 ADA (very low threshold)
@@ -655,8 +685,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Full wallet optimization
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 10, // Larger bundles for efficiency
@@ -701,8 +734,11 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       // Act: Migrate everything to destination with optimization
       const signBuilder = await builder.build({
+        changeAddress: SOURCE_ADDRESS,
+        availableUtxos: utxos,
         useV3: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           tokens: {
             bundleSize: 5,

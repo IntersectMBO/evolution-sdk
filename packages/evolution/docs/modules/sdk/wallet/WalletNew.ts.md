@@ -1,6 +1,6 @@
 ---
 title: sdk/wallet/WalletNew.ts
-nav_order: 157
+nav_order: 161
 parent: Modules
 ---
 
@@ -116,8 +116,8 @@ Suitable for read-only applications that need wallet information.
 
 ```ts
 export interface ReadOnlyWalletEffect {
-  readonly address: Effect.Effect<Address.Address, WalletError>
-  readonly rewardAddress: Effect.Effect<RewardAddress.RewardAddress | null, WalletError>
+  readonly address: () => Effect.Effect<Address.Address, WalletError>
+  readonly rewardAddress: () => Effect.Effect<RewardAddress.RewardAddress | null, WalletError>
 }
 ```
 

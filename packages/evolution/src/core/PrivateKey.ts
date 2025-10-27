@@ -1,9 +1,13 @@
+import { mod } from "@noble/curves/abstract/modular.js"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { bytesToNumberLE, numberToBytesLE } from "@noble/curves/utils.js"
+import { sha512 } from "@noble/hashes/sha2.js"
+import { randomBytes } from "@noble/hashes/utils.js"
 import { bech32 } from "@scure/base"
 import * as BIP32 from "@scure/bip32"
 import * as BIP39 from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
 import { Data, Either as E, FastCheck, ParseResult, Schema } from "effect"
-import sodium from "libsodium-wrappers-sumo"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
@@ -66,7 +70,7 @@ export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchem
     E.gen(function* () {
       const { prefix, words } = yield* ParseResult.try({
         try: () => bech32.decode(fromA as any, 1023),
-        catch: (error) => new ParseResult.Type(ast, fromA, `Failed to decode Bech32: ${(error as Error).message}`)
+        catch: (error) => new ParseResult.Type(ast, fromA, `Failed to decode bech32 string: ${(error as Error).message}`)
       })
       if (prefix !== "ed25519e_sk") {
         throw new ParseResult.Type(ast, fromA, `Expected ed25519e_sk prefix, got ${prefix}`)
@@ -177,7 +181,7 @@ export const toBech32 = Function.makeEncodeSync(FromBech32, PrivateKeyError, "Pr
  * @since 2.0.0
  * @category generators
  */
-export const generate = () => sodium.randombytes_buf(32)
+export const generate = () => randomBytes(32)
 
 /**
  * Generate a random 64-byte extended Ed25519 private key.
@@ -186,7 +190,7 @@ export const generate = () => sodium.randombytes_buf(32)
  * @since 2.0.0
  * @category generators
  */
-export const generateExtended = () => sodium.randombytes_buf(64)
+export const generateExtended = () => randomBytes(64)
 
 /**
  * Derive the public key (VKey) from a private key.
@@ -388,23 +392,38 @@ export namespace Either {
         const scalar = privateKeyBytes.slice(0, 32)
         const iv = privateKeyBytes.slice(32, 64)
 
-        const publicKey = sodium.crypto_scalarmult_ed25519_base_noclamp(scalar)
-        const nonceHash = sodium.crypto_hash_sha512(new Uint8Array([...iv, ...message]))
-        const nonce = sodium.crypto_core_ed25519_scalar_reduce(nonceHash)
-        const r = sodium.crypto_scalarmult_ed25519_base_noclamp(nonce)
-        const hramHash = sodium.crypto_hash_sha512(new Uint8Array([...r, ...publicKey, ...message]))
-        const hram = sodium.crypto_core_ed25519_scalar_reduce(hramHash)
-        const s = sodium.crypto_core_ed25519_scalar_add(sodium.crypto_core_ed25519_scalar_mul(hram, scalar), nonce)
+        // Get curve order from the field
+        const CURVE_ORDER = ed25519.Point.Fn.ORDER
 
-        // return new Uint8Array([...r, ...s])
-        const signature = new Uint8Array([...r, ...s])
+        // Calculate public key from scalar: publicKey = scalar * G
+        // Apply modular reduction to ensure scalar is in valid range [0, curve.n)
+        const scalarBigInt = mod(bytesToNumberLE(scalar), CURVE_ORDER)
+        const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+        const publicKey = publicKeyPoint.toBytes()
+
+        // Calculate nonce: nonce = reduce(sha512(iv || message))
+        const nonceHash = sha512(new Uint8Array([...iv, ...message]))
+        const nonce = mod(bytesToNumberLE(nonceHash), CURVE_ORDER)
+
+        // Calculate R: R = nonce * G
+        const rPoint = ed25519.Point.BASE.multiply(nonce)
+        const r = rPoint.toBytes()
+
+        // Calculate challenge: hram = reduce(sha512(R || publicKey || message))
+        const hramHash = sha512(new Uint8Array([...r, ...publicKey, ...message]))
+        const hram = mod(bytesToNumberLE(hramHash), CURVE_ORDER)
+
+        // Calculate s: s = (hram * scalar + nonce) mod L
+        const s = mod(hram * scalarBigInt + nonce, CURVE_ORDER)
+
+        // Encode s as little-endian 32 bytes
+        const sBytes = numberToBytesLE(s, 32)
+        const signature = new Uint8Array([...r, ...sBytes])
         return Ed25519Signature.make({ bytes: signature })
       }
 
       // Standard 32-byte Ed25519 signing
-      const publicKey = sodium.crypto_sign_seed_keypair(privateKeyBytes).publicKey
-      const secretKey = new Uint8Array([...privateKeyBytes, ...publicKey])
-      const signature = sodium.crypto_sign_detached(message, secretKey)
+      const signature = ed25519.sign(message, privateKeyBytes)
       return Ed25519Signature.make({ bytes: signature })
     })
 }

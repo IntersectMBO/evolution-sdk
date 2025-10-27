@@ -50,8 +50,8 @@ export interface SignedMessage {
  * @category interfaces
  */
 export interface ReadOnlyWalletEffect {
-  readonly address: Effect.Effect<Address.Address, WalletError>
-  readonly rewardAddress: Effect.Effect<RewardAddress.RewardAddress | null, WalletError>
+  readonly address: () => Effect.Effect<Address.Address, WalletError>
+  readonly rewardAddress: () => Effect.Effect<RewardAddress.RewardAddress | null, WalletError>
 }
 
 export interface ReadOnlyWallet extends EffectToPromiseAPI<ReadOnlyWalletEffect> {

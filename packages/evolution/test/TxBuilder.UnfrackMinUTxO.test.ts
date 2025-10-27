@@ -48,9 +48,6 @@ const ASSET_NAME_HEX = "544f4b454e" // "TOKEN" in hex
 
 describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
   const baseConfig: TxBuilderConfig = {
-    protocolParameters: PROTOCOL_PARAMS,
-    changeAddress: CHANGE_ADDRESS,
-    availableUtxos: []
   }
 
   /**
@@ -82,18 +79,19 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
       }
     }
 
-    const builder = makeTxBuilder({
-      ...baseConfig,
-      availableUtxos: [utxo1, utxo2]
-    })
+    const builder = makeTxBuilder(baseConfig)
       .payToAddress({
         address: RECIPIENT_ADDRESS,
         assets: Assets.fromLovelace(2_000_000n) // 2.0 ADA only
       })
 
     // Act: Build transaction with unfrack enabled
-    const signBuilder = await builder.build({ useV3: true, 
+    const signBuilder = await builder.build({ 
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [utxo1, utxo2],
+      useV3: true, 
       useStateMachine: true,
+      protocolParameters: PROTOCOL_PARAMS,
       unfrack: {
         tokens: {
           bundleSize: 10 // All 5 tokens fit in one bundle
@@ -182,18 +180,19 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
       }
     }
 
-    const builder = makeTxBuilder({
-      ...baseConfig,
-      availableUtxos: [utxo1, utxo2, utxo3]
-    })
+    const builder = makeTxBuilder(baseConfig)
       .payToAddress({
         address: RECIPIENT_ADDRESS,
         assets: Assets.fromLovelace(2_000_000n)
       })
 
     // Act: Build transaction with unfrack (bundleSize=5 → 3 bundles for 15 tokens)
-    const signBuilder = await builder.build({ useV3: true, 
+    const signBuilder = await builder.build({ 
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [utxo1, utxo2, utxo3],
+      useV3: true, 
       useStateMachine: true,
+      protocolParameters: PROTOCOL_PARAMS,
       unfrack: {
         tokens: {
           bundleSize: 5 // 15 tokens → 3 bundles
@@ -247,15 +246,19 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
       }
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
+    const builder = makeTxBuilder(baseConfig)
       .payToAddress({
         address: RECIPIENT_ADDRESS,
         assets: Assets.fromLovelace(2_000_000n)
       })
 
     // Build with drainTo option
-    const signBuilder = await builder.build({ useV3: true, 
+    const signBuilder = await builder.build({ 
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [utxo],
+      useV3: true, 
       useStateMachine: true,
+      protocolParameters: PROTOCOL_PARAMS,
       drainTo: 0 // Request drain into first output
     })
     
@@ -291,7 +294,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
       }
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
+    const builder = makeTxBuilder(baseConfig)
       .payToAddress({
         address: RECIPIENT_ADDRESS,
         assets: Assets.fromLovelace(2_000_000n)
@@ -299,8 +302,12 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
 
     // Try with burnAsFee - should fail because of native assets
     await expect(
-      builder.build({ useV3: true, 
+      builder.build({ 
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo],
+        useV3: true, 
         useStateMachine: true,
+        protocolParameters: PROTOCOL_PARAMS,
         onInsufficientChange: "burn"
       })
     ).rejects.toThrow() // Should error about native assets

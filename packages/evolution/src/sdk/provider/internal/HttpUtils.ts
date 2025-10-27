@@ -71,10 +71,12 @@ export const postUint8Array = <A, I>(
 ) =>
   Effect.gen(function* () {
     let request = HttpClientRequest.post(url)
+    // Set body with content-type
     request = HttpClientRequest.bodyUint8Array(request, body, "application/cbor")
-    request = HttpClientRequest.setHeaders(request, {
-      ...(headers || {})
-    })
+    // Set additional headers AFTER body (so they don't get overridden)
+    if (headers) {
+      request = HttpClientRequest.setHeaders(request, headers)
+    }
 
     const response = yield* HttpClient.execute(request)
     const filteredResponse = yield* filterStatusOk(response)

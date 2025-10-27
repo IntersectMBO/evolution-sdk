@@ -5,6 +5,7 @@
 
 import { Effect, Schedule, Schema } from "effect"
 
+import * as Bytes from "../../../core/Bytes.js"
 import type * as Address from "../../Address.js"
 import type * as Credential from "../../Credential.js"
 import type * as OutRef from "../../OutRef.js"
@@ -244,17 +245,24 @@ export const awaitTx = (baseUrl: string, projectId?: string) =>
  * Returns: (baseUrl, projectId?) => (cbor) => Effect<string, ProviderError>
  */
 export const submitTx = (baseUrl: string, projectId?: string) =>
-  (cbor: string) =>
-    withRateLimit(
-      HttpUtils.postJson(
+  (cbor: string) => {
+    // Convert CBOR hex string to Uint8Array for submission
+    const cborBytes = Bytes.fromHex(cbor)
+    
+    // Create headers without Content-Type (will be set by postUint8Array)
+    const headers = projectId ? { "project_id": projectId } : undefined
+    
+    return withRateLimit(
+      HttpUtils.postUint8Array(
         `${baseUrl}/tx/submit`,
-        { cbor },
+        cborBytes,
         Blockfrost.BlockfrostSubmitResponse,
-        createHeaders(projectId)
+        headers
       ).pipe(
         Effect.mapError(wrapError("submitTx"))
       )
     )
+  }
 
 /**
  * Evaluate transaction

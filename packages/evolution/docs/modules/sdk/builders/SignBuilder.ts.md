@@ -10,76 +10,57 @@ parent: Modules
 
 <h2 class="text-delta">Table of contents</h2>
 
-- [utils](#utils)
+- [interfaces](#interfaces)
   - [SignBuilder (interface)](#signbuilder-interface)
   - [SignBuilderEffect (interface)](#signbuildereffect-interface)
-  - [SubmitBuilder (interface)](#submitbuilder-interface)
-  - [SubmitBuilderEffect (interface)](#submitbuildereffect-interface)
 
 ---
 
-# utils
+# interfaces
 
 ## SignBuilder (interface)
+
+SignBuilder extends TransactionResultBase with signing capabilities.
+
+Only available when the client has a signing wallet (seed, private key, or API wallet).
+Provides access to unsigned transaction (via base interface) and signing operations.
 
 **Signature**
 
 ```ts
-export interface SignBuilder extends EffectToPromiseAPI<SignBuilderEffect> {
+export interface SignBuilder extends TransactionResultBase, EffectToPromiseAPI<SignBuilderEffect> {
   readonly Effect: SignBuilderEffect
 }
 ```
 
+Added in v2.0.0
+
 ## SignBuilderEffect (interface)
+
+Effect-based API for SignBuilder operations.
+
+Includes all TransactionResultBase.Effect methods plus signing-specific operations.
 
 **Signature**
 
 ```ts
 export interface SignBuilderEffect {
-  // Main signing method - produces a fully signed transaction ready for submission
-  readonly sign: () => Effect.Effect<SubmitBuilder, TransactionBuilderError>
+  // Base transaction methods (from TransactionResultBase)
+  readonly toTransaction: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError>
+  readonly toTransactionWithFakeWitnesses: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError>
+  readonly estimateFee: () => Effect.Effect<bigint, TransactionBuilderError>
 
-  // Add external witness and proceed to submission
+  // Signing methods
+  readonly sign: () => Effect.Effect<SubmitBuilder, TransactionBuilderError>
   readonly signWithWitness: (
     witnessSet: TransactionWitnessSet.TransactionWitnessSet
   ) => Effect.Effect<SubmitBuilder, TransactionBuilderError>
-
-  // Assemble multiple witnesses into a complete transaction ready for submission
   readonly assemble: (
     witnesses: ReadonlyArray<TransactionWitnessSet.TransactionWitnessSet>
   ) => Effect.Effect<SubmitBuilder, TransactionBuilderError>
-
-  // Partial signing - creates witness without advancing to submission (useful for multi-sig)
   readonly partialSign: () => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, TransactionBuilderError>
-
-  // Get witness set without signing (for inspection)
   readonly getWitnessSet: () => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, TransactionBuilderError>
-
-  // Get the unsigned transaction (for inspection)
-  readonly toTransaction: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError>
-
-  // Get the transaction with fake witnesses (for fee validation)
-  readonly toTransactionWithFakeWitnesses: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError>
 }
 ```
 
-## SubmitBuilder (interface)
-
-**Signature**
-
-```ts
-export interface SubmitBuilder extends EffectToPromiseAPI<SubmitBuilderEffect> {
-  readonly Effect: SubmitBuilderEffect
-  readonly witnessSet: TransactionWitnessSet.TransactionWitnessSet
-}
-```
-
-## SubmitBuilderEffect (interface)
-
-**Signature**
-
-```ts
-export interface SubmitBuilderEffect {
-  readonly submit: () => Effect.Effect<string, TransactionBuilderError>
-}
-```
+Added in v2.0.0

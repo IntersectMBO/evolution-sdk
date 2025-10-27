@@ -58,9 +58,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       ]
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: additionalUtxos // Available for re-selection
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -69,8 +66,11 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
 
       const signBuilder = await builder.build({
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: additionalUtxos, // Available for re-selection
         useV3: true,
         useStateMachine: true,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n,
@@ -135,9 +135,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       ]
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: tinyUtxos // Available but won't be used
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -146,8 +143,11 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
 
       const signBuilder = await builder.build({
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: tinyUtxos, // Available but won't be used
         useV3: true,
         useStateMachine: true,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n,
@@ -198,9 +198,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       }
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: [] // No more UTxOs available
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -211,8 +208,11 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       // Expect build to throw error
       await expect(async () => {
         await builder.build({
+          changeAddress: CHANGE_ADDRESS,
+          availableUtxos: [], // No more UTxOs available
           useV3: true,
           useStateMachine: true,
+          protocolParameters: PROTOCOL_PARAMS,
           unfrack: {
             ada: {
               subdivideThreshold: 500_000n,
@@ -239,9 +239,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       }
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: []
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -250,8 +247,11 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
 
       const signBuilder = await builder.build({
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [],
         useV3: true,
         useStateMachine: true,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n,
@@ -282,9 +282,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       }
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: []
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -293,8 +290,11 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
 
       const signBuilder = await builder.build({
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [],
         useV3: true,
         useStateMachine: true,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n,
@@ -322,9 +322,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       }
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: []
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -333,9 +330,12 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
 
       const signBuilder = await builder.build({
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [],
         useV3: true,
         useStateMachine: true,
         drainTo: 0,
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n,
@@ -364,9 +364,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       }
 
       const builder = makeTxBuilder({
-        protocolParameters: PROTOCOL_PARAMS,
-        changeAddress: CHANGE_ADDRESS,
-        availableUtxos: []
       })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
@@ -375,9 +372,12 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
 
       const signBuilder = await builder.build({
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [],
         useV3: true,
         useStateMachine: true,
         onInsufficientChange: "burn",
+        protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
             subdivideThreshold: 500_000n,

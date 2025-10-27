@@ -26,6 +26,8 @@ parent: Modules
   - [arbitrary](#arbitrary)
 - [model](#model)
   - [ValueCDDL (type alias)](#valuecddl-type-alias)
+- [ordering](#ordering)
+  - [geq](#geq)
 - [parsing](#parsing)
   - [fromCBORBytes](#fromcborbytes)
   - [fromCBORHex](#fromcborhex)
@@ -164,6 +166,21 @@ This is what gets encoded/decoded to/from CBOR.
 
 ```ts
 export type ValueCDDL = typeof FromCDDL.Type
+```
+
+Added in v2.0.0
+
+# ordering
+
+## geq
+
+Check if Value a is greater than or equal to Value b.
+This means after subtracting b from a, the result would not be negative.
+
+**Signature**
+
+```ts
+export declare const geq: (a: Value, b: Value) => boolean
 ```
 
 Added in v2.0.0

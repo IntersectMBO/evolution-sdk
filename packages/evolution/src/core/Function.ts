@@ -98,14 +98,14 @@ export const makeDecodeEither =
   <T, A, E extends Error>(schema: Schema.Schema<T, A>, ErrorClass: ErrorCtor<E>) =>
   (input: A) =>
     Schema.decodeEither(schema)(input).pipe(
-      Either.mapLeft((e) => new ErrorClass({ message: "Failed to decode input", cause: e }))
+      Either.mapLeft((e) => new ErrorClass({ message: e.message, cause: e }))
     )
 
 export const makeEncodeEither =
   <T, A, E extends Error>(schema: Schema.Schema<T, A>, ErrorClass: ErrorCtor<E>) =>
   (input: T) =>
     Schema.encodeEither(schema)(input).pipe(
-      Either.mapLeft((e) => new ErrorClass({ message: "Failed to encode input", cause: e }))
+      Either.mapLeft((e) => new ErrorClass({ message: e.message, cause: e }))
     )
 
 /**
@@ -212,7 +212,7 @@ export const makeCBORDecodeEither =
   (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
     Either.try(() => CBOR.internalDecodeSync(bytes, options || defaultOptions)).pipe(
       Either.flatMap((cbor) => Schema.decodeEither(schemaTransformer)(cbor as T)),
-      Either.mapLeft((e) => new ErrorClass({ message: "Failed to decode CBOR bytes", cause: e }))
+      Either.mapLeft((e) => new ErrorClass({ message: (e as Error).message, cause: e as Error }))
     )
 
 /**
@@ -228,7 +228,7 @@ export const makeCBORDecodeHexEither =
     Either.try(() => Bytes.fromHex(hex)).pipe(
       Either.flatMap((bytes) => Either.try(() => CBOR.internalDecodeSync(bytes, options || defaultOptions))),
       Either.flatMap((cbor) => Schema.decodeEither(schemaTransformer)(cbor as T)),
-      Either.mapLeft((e) => new ErrorClass({ message: "Failed to decode CBOR hex", cause: e }))
+      Either.mapLeft((e) => new ErrorClass({ message: (e as Error).message, cause: e as Error }))
     )
 
 /**
@@ -240,10 +240,10 @@ export const makeCBOREncodeEither =
     ErrorClass: ErrorCtor<E>,
     defaultOptions?: CBOR.CodecOptions
   ) =>
-  (input: A, options?: CBOR.CodecOptions) =>
-    Schema.encodeEither(schemaTransformer)(input).pipe(
-      Either.flatMap((cborValue) => Either.try(() => CBOR.internalEncodeSync(cborValue, options || defaultOptions))),
-      Either.mapLeft((e) => new ErrorClass({ message: "Failed to encode CBOR bytes", cause: e }))
+  (value: A, options?: CBOR.CodecOptions) =>
+    Schema.encodeEither(schemaTransformer)(value).pipe(
+      Either.flatMap((cbor) => Either.try(() => CBOR.internalEncodeSync(cbor, options || defaultOptions))),
+      Either.mapLeft((e) => new ErrorClass({ message: (e as Error).message, cause: e as Error }))
     )
 
 /**
@@ -259,5 +259,5 @@ export const makeCBOREncodeHexEither =
     Schema.encodeEither(schemaTransformer)(input).pipe(
       Either.flatMap((cborValue) => Either.try(() => CBOR.internalEncodeSync(cborValue, options || defaultOptions))),
       Either.map((bytes) => Bytes.toHexUnsafe(bytes)),
-      Either.mapLeft((e) => new ErrorClass({ message: "Failed to encode CBOR hex string", cause: e }))
+      Either.mapLeft((e) => new ErrorClass({ message: (e as Error).message, cause: e as Error }))
     )

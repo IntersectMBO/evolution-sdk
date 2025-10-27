@@ -1,5 +1,5 @@
 // Parent imports (../../)
-import * as Either from "effect/Either"
+import * as Effect from "effect/Effect"
 
 import * as CoreAddressStructure from "../../core/AddressStructure.js"
 import * as Ed25519Signature from "../../core/Ed25519Signature.js"
@@ -139,12 +139,14 @@ export function makeWalletFromSeed(
 ): Wallet {
   const config = { overriddenUTxOs: [] as Array<UTxO.UTxO> }
 
-  const { address, paymentKey, rewardAddress, stakeKey } = walletFromSeed(seed, {
-    addressType: options?.addressType ?? "Base",
-    accountIndex: options?.accountIndex ?? 0,
-    password: options?.password,
-    network
-  }).pipe(Either.getOrThrow)
+  const { address, paymentKey, rewardAddress, stakeKey } = Effect.runSync(
+    walletFromSeed(seed, {
+      addressType: options?.addressType ?? "Base",
+      accountIndex: options?.accountIndex ?? 0,
+      password: options?.password,
+      network
+    })
+  )
 
   // Minimal keystore: map KeyHash hex -> PrivateKey
   type KeyStore = Map<string, PrivateKey.PrivateKey>
