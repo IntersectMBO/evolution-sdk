@@ -1,6 +1,6 @@
 ---
 title: sdk/UTxO.ts
-nav_order: 154
+nav_order: 158
 parent: Modules
 ---
 

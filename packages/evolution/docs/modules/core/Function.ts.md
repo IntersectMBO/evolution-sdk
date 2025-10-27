@@ -121,7 +121,7 @@ export declare const makeCBOREncodeEither: <A, T extends CBOR.CBOR, E extends Er
   schemaTransformer: Schema.Schema<A, T>,
   ErrorClass: ErrorCtor<E>,
   defaultOptions?: CBOR.CodecOptions
-) => (input: A, options?: CBOR.CodecOptions) => Either.Either<Uint8Array, E>
+) => (value: A, options?: CBOR.CodecOptions) => Either.Either<Uint8Array, E>
 ```
 
 ## makeCBOREncodeHexEither

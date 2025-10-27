@@ -19,9 +19,6 @@ const RECEIVER_ADDRESS =
   "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
 
 const baseConfig: TxBuilderConfig = {
-  protocolParameters: PROTOCOL_PARAMS,
-  changeAddress: CHANGE_ADDRESS,
-  availableUtxos: []
 }
 
 describe("Insufficient Lovelace", () => {
@@ -31,12 +28,12 @@ describe("Insufficient Lovelace", () => {
       createTestUtxo({ txHash: "tx1", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 1_000_000n })
     ]
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(5_000_000n)
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 
   it("should fail when lovelace covers payment but not payment + fees", async () => {
@@ -45,12 +42,12 @@ describe("Insufficient Lovelace", () => {
       createTestUtxo({ txHash: "tx1", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
     ]
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(1_950_000n)
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Cannot create valid change/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Cannot create valid change/)
   })
 
   it("should fail with multiple small UTxOs that sum to insufficient amount", async () => {
@@ -63,12 +60,12 @@ describe("Insufficient Lovelace", () => {
       createTestUtxo({ txHash: "tx5", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 100_000n })
     ]
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(1_000_000n)
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 })
 
@@ -96,12 +93,12 @@ describe("Missing Native Assets", () => {
       [tokenB]: 100n // Requesting token that doesn't exist
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 
   it("should fail when multiple assets requested but one is missing", async () => {
@@ -135,12 +132,12 @@ describe("Missing Native Assets", () => {
       [tokenC]: 10n // Missing token
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 })
 
@@ -165,12 +162,12 @@ describe("Insufficient Native Asset Quantity", () => {
       [tokenA]: 100n // Need 100, only have 50
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 
   it("should fail when tokens are fragmented across UTxOs but total is insufficient", async () => {
@@ -207,12 +204,12 @@ describe("Insufficient Native Asset Quantity", () => {
       [tokenA]: 100n // Need 100, only have 90 total
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 
   it("should fail when one of multiple required assets is insufficient", async () => {
@@ -242,12 +239,12 @@ describe("Insufficient Native Asset Quantity", () => {
       [tokenB]: 100n // Insufficient
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 })
 
@@ -255,13 +252,13 @@ describe("Complex Mixed Failures", () => {
   it("should fail with empty wallet (no UTxOs)", async () => {
     const utxos: Array<UTxO.UTxO> = []
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(1_000_000n)
     })
 
     // Empty wallet fails coin selection
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed/)
   })
 
   it("should fail when UTxOs exist but all are too small for min UTxO + fees", async () => {
@@ -271,12 +268,12 @@ describe("Complex Mixed Failures", () => {
       (_, i) => createTestUtxo({ txHash: `tx${i}`, outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 1000n }) // 0.001 ADA each
     )
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(50_000n)
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 
   it("should fail with sufficient lovelace but missing native asset", async () => {
@@ -293,12 +290,12 @@ describe("Complex Mixed Failures", () => {
       [tokenA]: 1n // Even 1 token will fail
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 
   it("should fail when combined shortfalls across lovelace and multiple assets", async () => {
@@ -328,12 +325,12 @@ describe("Complex Mixed Failures", () => {
       [tokenB]: 50n // Need 50, have 5
     }
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: paymentAssets
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 })
 
@@ -346,13 +343,13 @@ describe("Edge Case: drainTo Cannot Save Insufficient Funds", () => {
       createTestUtxo({ txHash: "tx1", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 1_000_000n })
     ]
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(5_000_000n) // Way more than available
     })
 
     await expect(
-      builder.build({ drainTo: 0, useStateMachine: true, useV3: true }) // drainTo cannot save this
+      builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, drainTo: 0, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS }) // drainTo cannot save this
     ).rejects.toThrow(/Coin selection failed for/)
   })
 
@@ -363,11 +360,11 @@ describe("Edge Case: drainTo Cannot Save Insufficient Funds", () => {
       createTestUtxo({ txHash: "tx1", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 800_000n })
     ]
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos }).payToAddress({
+    const builder = makeTxBuilder(baseConfig).payToAddress({
       address: RECEIVER_ADDRESS,
       assets: Assets.fromLovelace(2_000_000n)
     })
 
-    await expect(builder.build({ useStateMachine: true, useV3: true })).rejects.toThrow(/Coin selection failed for/)
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useStateMachine: true, useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow(/Coin selection failed for/)
   })
 })

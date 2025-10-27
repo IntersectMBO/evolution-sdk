@@ -1,6 +1,6 @@
 ---
 title: sdk/builders/TransactionBuilder.ts
-nav_order: 130
+nav_order: 133
 parent: Modules
 ---
 
@@ -38,6 +38,9 @@ double-spending. UTxOs can come from any source (wallet, DeFi protocols, other p
 - [constructors](#constructors)
   - [makeTxBuilder](#maketxbuilder)
 - [context](#context)
+  - [AvailableUtxosTag (class)](#availableutxostag-class)
+  - [ChangeAddressTag (class)](#changeaddresstag-class)
+  - [ProtocolParametersTag (class)](#protocolparameterstag-class)
   - [TxContext (class)](#txcontext-class)
   - [TxContextData (interface)](#txcontextdata-interface)
 - [errors](#errors)
@@ -107,34 +110,49 @@ Added in v2.0.0
 Configuration for TransactionBuilder.
 Immutable configuration passed to builder at creation time.
 
-Contains:
+Wallet-centric design (when wallet provided):
 
-- Protocol parameters for fee calculation
-- Change address for leftover funds
-- Available UTxOs for coin selection
+- Wallet provides change address (via wallet.Effect.address())
+- Provider + Wallet provide available UTxOs (via provider.Effect.getUtxos(wallet.address))
+- Override per-build via BuildOptions if needed
+
+Manual mode (no wallet):
+
+- Must provide changeAddress and availableUtxos in BuildOptions for each build
+- Used for read-only scenarios or advanced use cases
 
 **Signature**
 
 ```ts
 export interface TxBuilderConfig {
-  readonly protocolParameters: ProtocolParameters
+  /**
+   * Optional wallet provides:
+   * - Change address via wallet.Effect.address()
+   * - Available UTxOs via wallet.Effect.address() + provider.Effect.getUtxos()
+   * - Signing capability via wallet.Effect.signTx() (SigningWallet and ApiWallet only)
+   *
+   * When provided: Automatic change address and UTxO resolution.
+   * When omitted: Must provide changeAddress and availableUtxos in BuildOptions.
+   *
+   * ReadOnlyWallet: For read-only clients that can build but not sign transactions.
+   * SigningWallet/ApiWallet: For signing clients with full transaction signing capability.
+   *
+   * Override per-build via BuildOptions.changeAddress and BuildOptions.availableUtxos.
+   */
+  readonly wallet?: WalletNew.SigningWallet | WalletNew.ApiWallet | WalletNew.ReadOnlyWallet
 
   /**
-   * Address to send change (leftover assets) to.
-   * This is required for proper transaction balancing.
+   * Optional provider for:
+   * - Fetching UTxOs for the wallet's address (provider.Effect.getUtxos)
+   * - Transaction submission (provider.Effect.submitTx)
+   * - Protocol parameters
+   *
+   * Works together with wallet to provide everything needed for transaction building.
+   * When wallet is omitted, provider is only used if you call provider methods directly.
    */
-  readonly changeAddress: string
-
-  /**
-   * UTxOs available for coin selection.
-   * These can be from a wallet, another user, or any other source.
-   * Coin selection will automatically select from these UTxOs to cover
-   * required outputs + fees, excluding any already collected via collectFrom().
-   */
-  readonly availableUtxos: ReadonlyArray<UTxO.UTxO>
+  readonly provider?: Provider.Provider
 
   // Future fields:
-  // readonly provider?: any // Provider interface for blockchain communication
   // readonly costModels?: Uint8Array // Cost models for script evaluation
 }
 ```
@@ -151,15 +169,74 @@ The builder accumulates chainable method calls as deferred ProgramSteps. Calling
 creates fresh state (new Refs) and executes all accumulated programs sequentially, ensuring
 no state pollution between invocations.
 
+Generic type parameter TResult determines what build() returns:
+
+- SignBuilder (default): When wallet has signing capability
+- TransactionResultBase: When wallet is read-only
+
 **Signature**
 
 ```ts
-export declare const makeTxBuilder: (config: TxBuilderConfig) => TransactionBuilder
+export declare const makeTxBuilder: <TResult = SignBuilder>(config: TxBuilderConfig) => TransactionBuilder<TResult>
 ```
 
 Added in v2.0.0
 
 # context
+
+## AvailableUtxosTag (class)
+
+Resolved available UTxOs for the current build.
+This is resolved once at the start of build() from either:
+
+- BuildOptions.availableUtxos (per-transaction override)
+- provider.Effect.getUtxos(wallet.address) (default from wallet + provider)
+
+Available to all phase functions via Effect Context.
+
+**Signature**
+
+```ts
+export declare class AvailableUtxosTag
+```
+
+Added in v2.0.0
+
+## ChangeAddressTag (class)
+
+Resolved change address for the current build.
+This is resolved once at the start of build() from either:
+
+- BuildOptions.changeAddress (per-transaction override)
+- TxBuilderConfig.wallet.Effect.address() (default from wallet)
+
+Available to all phase functions via Effect Context.
+
+**Signature**
+
+```ts
+export declare class ChangeAddressTag
+```
+
+Added in v2.0.0
+
+## ProtocolParametersTag (class)
+
+Resolved protocol parameters for the current build.
+This is resolved once at the start of build() from either:
+
+- BuildOptions.protocolParameters (per-transaction override)
+- provider.Effect.getProtocolParameters() (fetched from provider)
+
+Available to all phase functions via Effect Context.
+
+**Signature**
+
+```ts
+export declare class ProtocolParametersTag
+```
+
+Added in v2.0.0
 
 ## TxContext (class)
 
@@ -248,6 +325,12 @@ Key Design Principle:
 Builder instance never mutates. Programs are deferred Effects that execute later.
 Each build() creates fresh TxBuilderState, executes programs, returns result.
 
+Generic Type Parameter:
+TResult determines the return type of build() methods:
+
+- SignBuilder: When wallet has signing capability (SigningClient)
+- TransactionResultBase: When wallet is read-only (ReadOnlyClient)
+
 Usage Pattern:
 
 ```typescript
@@ -265,7 +348,7 @@ const signBuilder2 = await builder.build()
 **Signature**
 
 ```ts
-export interface TransactionBuilder {
+export interface TransactionBuilder<TResult = SignBuilder> {
   // ============================================================================
   // Chainable Builder Methods - Create ProgramSteps, return same builder
   // ============================================================================
@@ -279,7 +362,7 @@ export interface TransactionBuilder {
    * @since 2.0.0
    * @category builder-methods
    */
-  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder
+  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder<TResult>
 
   /**
    * Specify transaction inputs from provided UTxOs.
@@ -290,7 +373,7 @@ export interface TransactionBuilder {
    * @since 2.0.0
    * @category builder-methods
    */
-  readonly collectFrom: (params: CollectFromParams) => TransactionBuilder
+  readonly collectFrom: (params: CollectFromParams) => TransactionBuilder<TResult>
 
   // Future expansion points for other operations:
   // readonly mintTokens: (params: MintTokensParams) => TransactionBuilder
@@ -309,10 +392,14 @@ export interface TransactionBuilder {
    * Creates fresh state and runs all accumulated ProgramSteps sequentially.
    * Can be called multiple times on the same builder instance with independent results.
    *
+   * Returns TResult which is:
+   * - SignBuilder for SigningClient (can sign transactions)
+   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
+   *
    * @since 2.0.0
    * @category completion-methods
    */
-  readonly build: (options?: BuildOptions) => Promise<SignBuilder>
+  readonly build: (options?: BuildOptions) => Promise<TResult>
 
   /**
    * Execute all queued operations and return a signing-ready transaction via Effect.
@@ -320,25 +407,43 @@ export interface TransactionBuilder {
    * Creates fresh state and runs all accumulated ProgramSteps sequentially.
    * Suitable for Effect-TS compositional workflows and error handling.
    *
+   * Error types include WalletError and ProviderError from config Effects.
+   *
+   * Returns TResult which is:
+   * - SignBuilder for SigningClient (can sign transactions)
+   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
+   *
    * @since 2.0.0
    * @category completion-methods
    */
   readonly buildEffect: (
     options?: BuildOptions
-  ) => Effect.Effect<SignBuilder, TransactionBuilderError | EvaluationError, unknown>
+  ) => Effect.Effect<
+    TResult,
+    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+    unknown
+  >
 
   /**
    * Execute all queued operations with explicit error handling via Either.
    *
    * Creates fresh state and runs all accumulated ProgramSteps sequentially.
-   * Returns Either<SignBuilder, Error> for pattern-matched error recovery.
+   * Returns Either<TResult, Error> for pattern-matched error recovery.
+   *
+   * Error types include WalletError and ProviderError from config Effects.
+   *
+   * Returns TResult which is:
+   * - SignBuilder for SigningClient (can sign transactions)
+   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
    *
    * @since 2.0.0
    * @category completion-methods
    */
   readonly buildEither: (
     options?: BuildOptions
-  ) => Promise<Either<SignBuilder, TransactionBuilderError | EvaluationError>>
+  ) => Promise<
+    Either<TResult, TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError>
+  >
 
   // ============================================================================
   // Transaction Chaining Methods - Multi-transaction workflows
@@ -601,6 +706,29 @@ Added in v2.0.0
 ````ts
 export interface BuildOptions {
   /**
+   * Override protocol parameters for this specific transaction build.
+   *
+   * By default, fetches from provider during build().
+   * Provide this to use different protocol parameters for testing or special cases.
+   *
+   * Use cases:
+   * - Testing with different fee parameters
+   * - Simulating future protocol changes
+   * - Using cached parameters to avoid provider fetch
+   *
+   * Example:
+   * ```typescript
+   * // Test with custom fee parameters
+   * builder.build({
+   *   protocolParameters: { ...params, minFeeCoefficient: 50n, minFeeConstant: 200000n }
+   * })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly protocolParameters?: ProtocolParameters
+
+  /**
    * Coin selection strategy for automatic input selection.
    *
    * Options:
@@ -623,6 +751,56 @@ export interface BuildOptions {
   // ============================================================================
   // Change Handling Configuration
   // ============================================================================
+
+  /**
+   * Override the change address for this specific transaction build.
+   *
+   * By default, uses wallet.Effect.address() from TxBuilderConfig.
+   * Provide this to use a different address for change outputs.
+   *
+   * Use cases:
+   * - Multi-address wallet (use account index 5 for change)
+   * - Different change address per transaction
+   * - Multi-sig workflows where change address varies
+   * - Testing with different addresses
+   *
+   * Example:
+   * ```typescript
+   * // Use different account for change
+   * builder.build({ changeAddress: wallet.addresses[5] })
+   *
+   * // Custom address
+   * builder.build({ changeAddress: "addr_test1..." })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly changeAddress?: string
+
+  /**
+   * Override the available UTxOs for this specific transaction build.
+   *
+   * By default, fetches UTxOs from provider.Effect.getUtxos(wallet.address).
+   * Provide this to use a specific set of UTxOs for coin selection.
+   *
+   * Use cases:
+   * - Use UTxOs from specific account index
+   * - Pre-filtered UTxO set
+   * - Testing with known UTxO set
+   * - Multi-address UTxO aggregation
+   *
+   * Example:
+   * ```typescript
+   * // Use UTxOs from specific account
+   * builder.build({ availableUtxos: utxosFromAccount5 })
+   *
+   * // Combine UTxOs from multiple addresses
+   * builder.build({ availableUtxos: [...utxos1, ...utxos2] })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly availableUtxos?: ReadonlyArray<UTxO.UTxO>
 
   /**
    * # Change Handling Strategy Matrix
@@ -739,12 +917,11 @@ export interface BuildOptions {
   readonly useStateMachine?: boolean
 
   /**
-   * **EXPERIMENTAL**: Use V3 4-phase state machine
    *
-   * When true, uses V3's simplified 4-phase state machine:
+   * When true, uses simplified 4-phase state machine:
    * - selection → changeValidation → balanceVerification → fallback → complete
    *
-   * V3 shares TxContext with V2 but uses mathematical validation approach.
+   * shares TxContext with V2 but uses mathematical validation approach.
    *
    * @experimental
    * @default false

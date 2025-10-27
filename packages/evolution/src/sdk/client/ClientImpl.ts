@@ -1,6 +1,6 @@
 // ClientImpl.ts - Step-by-step implementation starting with MinimalClient
 
-import { Effect, Either } from "effect"
+import { Effect } from "effect"
 
 import * as KeyHash from "../../core/KeyHash.js"
 import * as PrivateKey from "../../core/PrivateKey.js"
@@ -9,8 +9,12 @@ import * as Transaction from "../../core/Transaction.js"
 import * as TransactionHash from "../../core/TransactionHash.js"
 import * as TransactionWitnessSet from "../../core/TransactionWitnessSet.js"
 import * as VKey from "../../core/VKey.js"
+import { runEffect } from "../../utils/effect-runtime.js"
 import { hashTransaction } from "../../utils/Hash.js"
 import type * as Address from "../Address.js"
+import type { SignBuilder } from "../builders/SignBuilder.js"
+import { makeTxBuilder, type TransactionBuilder } from "../builders/TransactionBuilder.js"
+import type { TransactionResultBase } from "../builders/TransactionResult.js"
 import * as Blockfrost from "../provider/Blockfrost.js"
 import * as Koios from "../provider/Koios.js"
 import * as Kupmios from "../provider/Kupmios.js"
@@ -26,6 +30,7 @@ import {
   type MinimalClient,
   type MinimalClientEffect,
   type NetworkId,
+  type PrivateKeyWalletConfig,
   type ProviderConfig,
   type ProviderOnlyClient,
   type ReadOnlyClient,
@@ -77,6 +82,8 @@ const normalizeNetworkId = (network: NetworkId): number => {
 }
 
 /**
+ * Convert SDK ProtocolParameters to TransactionBuilder format.
+/**
  * Map NetworkId discriminant to wallet network enumeration.
  * 
  * Returns "Mainnet" if numeric 1 or string "mainnet"; returns "Testnet" otherwise.
@@ -115,14 +122,14 @@ const createReadOnlyWallet = (
 ): WalletNew.ReadOnlyWallet => {
   // Effect interface - methods that return Effects
   const walletEffect: WalletNew.ReadOnlyWalletEffect = {
-    address: Effect.succeed(address),
-    rewardAddress: Effect.succeed(rewardAddress ?? null)
+    address: () => Effect.succeed(address),
+    rewardAddress: () => Effect.succeed(rewardAddress ?? null)
   }
 
   return {
-    // Promise-based API - these are Promises, not functions
-    address: Promise.resolve(address),
-    rewardAddress: Promise.resolve(rewardAddress ?? null),
+    // Promise-based API - these are functions returning Promises
+    address: () => Promise.resolve(address),
+    rewardAddress: () => Promise.resolve(rewardAddress ?? null),
     // Effect namespace
     Effect: walletEffect,
     type: "read-only"
@@ -188,9 +195,15 @@ const createReadOnlyClient = (
       if (!rewardAddr) throw new Error("No reward address configured")
       return provider.getDelegation(rewardAddr)
     },
-    // Transaction builder (TODO: implement later)
-    newTx: (_utxos?: any): any => {
-      throw new Error("newTx not yet implemented")
+    // Transaction builder - creates a new builder instance
+    newTx: (): TransactionBuilder<TransactionResultBase> => {
+      // ReadOnlyWallet provides change address and UTxO fetching via wallet.Effect.address()
+      // The wallet is passed to the builder config, which handles address and UTxO resolution automatically
+      // Protocol parameters are auto-fetched from provider during build()
+      return makeTxBuilder<TransactionResultBase>({
+        wallet,
+        provider
+      })
     },
     // Effect namespace - combined provider + wallet Effects
     Effect: {
@@ -282,50 +295,38 @@ const computeRequiredKeyHashesSync = (params: {
 }
 
 /**
- * Construct a SigningWallet from mnemonic seed phrase by deriving keys and building a keystore.
+ * Create a signing wallet from a seed phrase.
  * 
- * Derives payment and optional stake keys from the seed using the specified address type and account index.
- * Returns a wallet with signing capability via both Promise and Effect APIs.
- * 
- * @since 2.0.0
+ * Wallet creation is synchronous - sodium initialization and key derivation
+ * happen lazily on first crypto operation (signTx, signMessage).
+ *
  * @category constructors
  */
 const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfig): WalletNew.SigningWallet => {
-  // Derive keys and address from seed
-  const derivation = Derivation.walletFromSeed(config.mnemonic, {
+  const derivationEffect = Derivation.walletFromSeed(config.mnemonic, {
     addressType: config.addressType ?? "Base",
     accountIndex: config.accountIndex ?? 0,
     password: config.password,
     network
-  }).pipe(Either.getOrThrow)
-
-  // Build keystore: map KeyHash hex -> PrivateKey
-  const keyStore = new Map<string, PrivateKey.PrivateKey>()
-  const paymentSk = PrivateKey.fromBech32(derivation.paymentKey)
-  const paymentKh = KeyHash.fromPrivateKey(paymentSk)
-  const paymentKhHex = KeyHash.toHex(paymentKh)
-  keyStore.set(paymentKhHex, paymentSk)
-
-  let stakeSk: PrivateKey.PrivateKey | undefined
-  let stakeKhHex: string | undefined
-  if (derivation.stakeKey) {
-    stakeSk = PrivateKey.fromBech32(derivation.stakeKey)
-    const stakeKh = KeyHash.fromPrivateKey(stakeSk)
-    stakeKhHex = KeyHash.toHex(stakeKh)
-    keyStore.set(stakeKhHex, stakeSk)
-  }
+  }).pipe(
+    Effect.mapError(
+      (cause) => new WalletNew.WalletError({ message: cause.message, cause })
+    )
+  )
 
   // Effect implementations are the source of truth
   const effectInterface: WalletNew.SigningWalletEffect = {
-    address: Effect.succeed(derivation.address),
-    rewardAddress: Effect.succeed(derivation.rewardAddress ?? null),
+    address: () => Effect.map(derivationEffect, (d) => d.address),
+    rewardAddress: () => Effect.map(derivationEffect, (d) => d.rewardAddress ?? null),
     signTx: (txOrHex: Transaction.Transaction | string, context?: { utxos?: ReadonlyArray<UTxO.UTxO> }) =>
       Effect.gen(function* () {
+        const derivation = yield* derivationEffect
+        
         const tx =
           typeof txOrHex === "string"
             ? yield* Transaction.Either.fromCBORHex(txOrHex).pipe(
                 Effect.mapError(
-                  (cause) => new WalletNew.WalletError({ message: "Failed to decode transaction", cause })
+                  (cause) => new WalletNew.WalletError({ message: cause.message, cause })
                 )
               )
             : txOrHex
@@ -333,9 +334,9 @@ const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfi
 
         // Determine required key hashes for signing
         const required = computeRequiredKeyHashesSync({
-          paymentKhHex,
+          paymentKhHex: derivation.paymentKhHex,
           rewardAddress: derivation.rewardAddress ?? null,
-          stakeKhHex,
+          stakeKhHex: derivation.stakeKhHex,
           tx,
           utxos
         })
@@ -347,7 +348,7 @@ const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfi
         const witnesses: Array<TransactionWitnessSet.VKeyWitness> = []
         const seenVKeys = new Set<string>()
         for (const khHex of required) {
-          const sk = keyStore.get(khHex)
+          const sk = derivation.keyStore.get(khHex)
           if (!sk) continue
           const sig = PrivateKey.sign(sk, msg)
           const vk = VKey.fromPrivateKey(sk)
@@ -360,8 +361,9 @@ const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfi
         return witnesses.length > 0 ? TransactionWitnessSet.fromVKeyWitnesses(witnesses) : TransactionWitnessSet.empty()
       }),
     signMessage: (_address: Address.Address | RewardAddress.RewardAddress, payload: WalletNew.Payload) =>
-      Effect.sync(() => {
+      Effect.map(derivationEffect, (derivation) => {
         // For now, always use payment key for message signing
+        const paymentSk = PrivateKey.fromBech32(derivation.paymentKey)
         const vk = VKey.fromPrivateKey(paymentSk)
         const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload
         const _sig = PrivateKey.sign(paymentSk, bytes)
@@ -373,10 +375,97 @@ const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfi
   // Promise API runs the Effect implementations
   return {
     type: "signing",
-    address: Effect.runPromise(effectInterface.address),
-    rewardAddress: Effect.runPromise(effectInterface.rewardAddress),
+    address: () => Effect.runPromise(effectInterface.address()),
+    rewardAddress: () => Effect.runPromise(effectInterface.rewardAddress()),
     signTx: (txOrHex, context) => Effect.runPromise(effectInterface.signTx(txOrHex, context)),
     signMessage: (address, payload) => Effect.runPromise(effectInterface.signMessage(address, payload)),
+    Effect: effectInterface
+  }
+}
+
+/**
+ * Create a signing wallet from private keys.
+ * 
+ * @category constructors
+ */
+const createPrivateKeyWallet = (
+  network: WalletNew.Network,
+  config: PrivateKeyWalletConfig
+): WalletNew.SigningWallet => {
+  // walletFromPrivateKey now returns an Effect directly
+  const derivationEffect = Derivation.walletFromPrivateKey(config.paymentKey, {
+    stakeKeyBech32: config.stakeKey,
+    addressType: config.addressType ?? (config.stakeKey ? "Base" : "Enterprise"),
+    network
+  }).pipe(
+    Effect.mapError((cause) => new WalletNew.WalletError({ message: cause.message, cause }))
+  )
+
+  // Effect implementations are the source of truth
+  const effectInterface: WalletNew.SigningWalletEffect = {
+    address: () => Effect.map(derivationEffect, (d) => d.address),
+    rewardAddress: () => Effect.map(derivationEffect, (d) => d.rewardAddress ?? null),
+    signTx: (txOrHex: Transaction.Transaction | string, context?: { utxos?: ReadonlyArray<UTxO.UTxO> }) =>
+      Effect.gen(function* () {
+        const derivation = yield* derivationEffect
+        
+        const tx =
+          typeof txOrHex === "string"
+            ? yield* Transaction.Either.fromCBORHex(txOrHex).pipe(
+                Effect.mapError(
+                  (cause) => new WalletNew.WalletError({ message: cause.message, cause })
+                )
+              )
+            : txOrHex
+        const utxos = context?.utxos ?? []
+
+        // Determine required key hashes for signing
+        const required = computeRequiredKeyHashesSync({
+          paymentKhHex: derivation.paymentKhHex,
+          rewardAddress: derivation.rewardAddress ?? null,
+          stakeKhHex: derivation.stakeKhHex,
+          tx,
+          utxos
+        })
+
+        // Build witnesses for keys we have
+        const txHash = hashTransaction(tx.body)
+        const msg = txHash.hash
+
+        const witnesses: Array<TransactionWitnessSet.VKeyWitness> = []
+        const seenVKeys = new Set<string>()
+        for (const khHex of required) {
+          const sk = derivation.keyStore.get(khHex)
+          if (!sk) continue
+          const sig = PrivateKey.sign(sk, msg)
+          const vk = VKey.fromPrivateKey(sk)
+          const vkHex = VKey.toHex(vk)
+          if (seenVKeys.has(vkHex)) continue
+          seenVKeys.add(vkHex)
+          witnesses.push(new TransactionWitnessSet.VKeyWitness({ vkey: vk, signature: sig }))
+        }
+
+        return witnesses.length > 0 ? TransactionWitnessSet.fromVKeyWitnesses(witnesses) : TransactionWitnessSet.empty()
+      }),
+    signMessage: (_address: Address.Address | RewardAddress.RewardAddress, payload: WalletNew.Payload) =>
+      Effect.map(derivationEffect, (derivation) => {
+        // For now, always use payment key for message signing
+        const paymentSk = PrivateKey.fromBech32(derivation.paymentKey)
+        const vk = VKey.fromPrivateKey(paymentSk)
+        const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload
+        const _sig = PrivateKey.sign(paymentSk, bytes)
+        const sigHex = VKey.toHex(vk) // TODO: Convert signature properly
+        return { payload, signature: sigHex }
+      })
+  }
+
+  // Promise API runs the Effect implementations
+  return {
+    type: "signing",
+    address: () => runEffect(effectInterface.address()),
+    rewardAddress: () => runEffect(effectInterface.rewardAddress()),
+    signTx: (txOrHex, context) => runEffect(effectInterface.signTx(txOrHex, context)),
+    signMessage: (address, payload) => runEffect(effectInterface.signMessage(address, payload)),
     Effect: effectInterface
   }
 }
@@ -399,11 +488,11 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
     if (cachedAddress) return cachedAddress
     const used = yield* Effect.tryPromise({
       try: () => api.getUsedAddresses(),
-      catch: (cause) => new WalletNew.WalletError({ message: "Failed to get used addresses", cause })
+      catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
     })
     const unused = yield* Effect.tryPromise({
       try: () => api.getUnusedAddresses(),
-      catch: (cause) => new WalletNew.WalletError({ message: "Failed to get unused addresses", cause })
+      catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
     })
     const addr = used[0] ?? unused[0]
     if (!addr) {
@@ -417,7 +506,7 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
     if (cachedReward !== null) return cachedReward
     const rewards = yield* Effect.tryPromise({
       try: () => api.getRewardAddresses(),
-      catch: (cause) => new WalletNew.WalletError({ message: "Failed to get reward addresses", cause })
+      catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
     })
     cachedReward = rewards[0] ?? null
     return cachedReward
@@ -425,8 +514,8 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
 
   // Effect implementations are the source of truth
   const effectInterface: WalletNew.ApiWalletEffect = {
-    address: getPrimaryAddress,
-    rewardAddress: getPrimaryRewardAddress,
+    address: () => getPrimaryAddress,
+    rewardAddress: () => getPrimaryRewardAddress,
     signTx: (txOrHex: Transaction.Transaction | string, _context?: { utxos?: ReadonlyArray<UTxO.UTxO> }) =>
       Effect.gen(function* () {
         const cbor = typeof txOrHex === "string" ? txOrHex : Transaction.toCBORHex(txOrHex)
@@ -435,7 +524,7 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
           catch: (cause) => new WalletNew.WalletError({ message: "User rejected transaction signing", cause })
         })
         return yield* TransactionWitnessSet.Either.fromCBORHex(witnessHex).pipe(
-          Effect.mapError((cause) => new WalletNew.WalletError({ message: "Failed to decode witness set", cause }))
+          Effect.mapError((cause) => new WalletNew.WalletError({ message: cause.message, cause }))
         )
       }),
     signMessage: (address: Address.Address | RewardAddress.RewardAddress, payload: WalletNew.Payload) =>
@@ -451,7 +540,7 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
         const cbor = typeof txOrHex === "string" ? txOrHex : Transaction.toCBORHex(txOrHex)
         return yield* Effect.tryPromise({
           try: () => api.submitTx(cbor),
-          catch: (cause) => new WalletNew.WalletError({ message: "Failed to submit transaction", cause })
+          catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
         })
       })
   }
@@ -460,8 +549,8 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
   return {
     type: "api" as const,
     api,
-    address: Effect.runPromise(effectInterface.address),
-    rewardAddress: Effect.runPromise(effectInterface.rewardAddress),
+    address: () => Effect.runPromise(effectInterface.address()),
+    rewardAddress: () => Effect.runPromise(effectInterface.rewardAddress()),
     signTx: (txOrHex, context) => Effect.runPromise(effectInterface.signTx(txOrHex, context)),
     signMessage: (address, payload) => Effect.runPromise(effectInterface.signMessage(address, payload)),
     submitTx: (txOrHex) => Effect.runPromise(effectInterface.submitTx(txOrHex)),
@@ -477,9 +566,11 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
  * @since 2.0.0
  * @category constructors
  */
-const createSigningWalletClient = (network: NetworkId, config: SeedWalletConfig): SigningWalletClient => {
+const createSigningWalletClient = (network: NetworkId, config: SeedWalletConfig | PrivateKeyWalletConfig): SigningWalletClient => {
   const walletNetwork = toWalletNetwork(network)
-  const wallet = createSigningWallet(walletNetwork, config)
+  const wallet = config.type === "seed"
+    ? createSigningWallet(walletNetwork, config)
+    : createPrivateKeyWallet(walletNetwork, config)
   const networkId = normalizeNetworkId(network)
 
   return {
@@ -530,16 +621,18 @@ const createApiWalletClient = (network: NetworkId, config: ApiWalletConfig): Api
 const createSigningClient = (
   network: NetworkId,
   providerConfig: ProviderConfig,
-  walletConfig: SeedWalletConfig | ApiWalletConfig
+  walletConfig: SeedWalletConfig | PrivateKeyWalletConfig | ApiWalletConfig
 ): SigningClient => {
   const provider = createProvider(providerConfig)
   const walletNetwork = toWalletNetwork(network)
 
-  // Create appropriate wallet based on type
+  // Create appropriate wallet based on type (both are now sync)
   const wallet =
     walletConfig.type === "seed"
       ? createSigningWallet(walletNetwork, walletConfig)
-      : createApiWallet(walletNetwork, walletConfig)
+      : walletConfig.type === "private-key"
+        ? createPrivateKeyWallet(walletNetwork, walletConfig)
+        : createApiWallet(walletNetwork, walletConfig)
 
   // Effect implementations are the source of truth
   const effectInterface = {
@@ -547,25 +640,34 @@ const createSigningClient = (
     ...provider.Effect, // Provider methods override wallet methods (e.g., submitTx uses ProviderError not WalletError)
     // Wallet-scoped convenience methods as Effects - expose union types (Effect-TS idiom)
     getWalletUtxos: () =>
-      Effect.flatMap(wallet.Effect.address, (addr) => provider.Effect.getUtxos(addr)),
+      Effect.flatMap(wallet.Effect.address(), (addr) => provider.Effect.getUtxos(addr)),
     getWalletDelegation: () =>
-      Effect.flatMap(wallet.Effect.rewardAddress, (rewardAddr) => {
+      Effect.flatMap(wallet.Effect.rewardAddress(), (rewardAddr) => {
         if (!rewardAddr) return Effect.fail(new Provider.ProviderError({ message: "No reward address configured", cause: null }))
         return provider.Effect.getDelegation(rewardAddr)
-      }),
-    newTx: (_utxos?: any) => {
-      return Effect.fail(new Provider.ProviderError({ message: "newTx not yet implemented", cause: null }))
-    }
+      })
   }
 
   // Combine provider + signing wallet via spreading
+  // Define getWalletUtxos first so we can reference it in newTx
+  const getWalletUtxos = () => Effect.runPromise(effectInterface.getWalletUtxos())
+
   return {
     ...provider,
     ...wallet,
     // Promise methods call Effect implementations
-    getWalletUtxos: () => Effect.runPromise(effectInterface.getWalletUtxos()),
+    getWalletUtxos,
     getWalletDelegation: () => Effect.runPromise(effectInterface.getWalletDelegation()),
-    newTx: (_utxos?: any) => Effect.runPromise(effectInterface.newTx(_utxos)),
+    // Transaction builder - creates a new builder instance
+    newTx: (): TransactionBuilder<SignBuilder> => {
+      // Wallet provides change address and UTxO fetching via wallet.Effect.address()
+      // The wallet is passed to the builder config, which handles address and UTxO resolution automatically
+      // Protocol parameters are auto-fetched from provider during build()
+      return makeTxBuilder<SignBuilder>({
+        provider, // Pass provider for submission
+        wallet // Pass wallet for signing
+      })
+    },
     // Effect namespace
     Effect: effectInterface
   } 
@@ -671,14 +773,14 @@ export function createClient(config: {
   wallet: ReadOnlyWalletConfig
 }): ReadOnlyClient
 
-// Provider + Seed Wallet → SigningClient (TODO: implement)
+// Provider + Seed Wallet → SigningClient
 export function createClient(config: {
   network?: NetworkId
   provider: ProviderConfig
   wallet: SeedWalletConfig
 }): SigningClient
 
-// Provider + API Wallet → SigningClient (TODO: implement)
+// Provider + API Wallet → SigningClient
 export function createClient(config: {
   network?: NetworkId
   provider: ProviderConfig
@@ -691,26 +793,31 @@ export function createClient(config: { network?: NetworkId; provider: ProviderCo
 // ReadOnly Wallet only → ReadOnlyWalletClient
 export function createClient(config: { network?: NetworkId; wallet: ReadOnlyWalletConfig }): ReadOnlyWalletClient
 
-// Seed Wallet only → SigningWalletClient (TODO: implement)
+// Seed Wallet only → SigningWalletClient
 export function createClient(config: { network?: NetworkId; wallet: SeedWalletConfig }): SigningWalletClient
 
-// API Wallet only → ApiWalletClient (TODO: implement)
+// Private Key Wallet only → SigningWalletClient
+export function createClient(config: { network?: NetworkId; wallet: PrivateKeyWalletConfig }): SigningWalletClient
+
+// API Wallet only → ApiWalletClient
 export function createClient(config: { network?: NetworkId; wallet: ApiWalletConfig }): ApiWalletClient
 
 // Network only or minimal → MinimalClient
 export function createClient(config?: { network?: NetworkId }): MinimalClient
 
-// Implementation signature - handles all cases
-export function createClient(config?: {
-  network?: NetworkId
-  provider?: ProviderConfig
-  wallet?: WalletConfig
-}):
+// Implementation signature - handles all cases (all synchronous now)
+export function createClient(
+  config?: {
+    network?: NetworkId
+    provider?: ProviderConfig
+    wallet?: WalletConfig
+  },
+):
   | MinimalClient
-  | ProviderOnlyClient
-  | ReadOnlyWalletClient
   | ReadOnlyClient
   | SigningClient
+  | ProviderOnlyClient
+  | ReadOnlyWalletClient
   | SigningWalletClient
   | ApiWalletClient {
   const network = config?.network ?? "mainnet"
@@ -721,6 +828,8 @@ export function createClient(config?: {
       case "read-only":
         return createReadOnlyClient(network, config.provider, config.wallet)
       case "seed":
+        return createSigningClient(network, config.provider, config.wallet)
+      case "private-key":
         return createSigningClient(network, config.provider, config.wallet)
       case "api":
         return createSigningClient(network, config.provider, config.wallet)
@@ -733,6 +842,8 @@ export function createClient(config?: {
       case "read-only":
         return createReadOnlyWalletClient(network, config.wallet)
       case "seed":
+        return createSigningWalletClient(network, config.wallet)
+      case "private-key":
         return createSigningWalletClient(network, config.wallet)
       case "api":
         return createApiWalletClient(network, config.wallet)

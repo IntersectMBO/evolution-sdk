@@ -1,12 +1,13 @@
+import { mod } from "@noble/curves/abstract/modular.js"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { bytesToNumberLE } from "@noble/curves/utils.js"
+import { hmac } from "@noble/hashes/hmac.js"
+import { sha512 } from "@noble/hashes/sha2.js"
 import { Data, Either as E, FastCheck, Schema } from "effect"
-import sodium from "libsodium-wrappers-sumo"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes64 from "./Bytes64.js"
 import * as Function from "./Function.js"
-
-// Initialize libsodium - IIFE executes immediately but doesn't block module loading
-void (async () => await sodium.ready)()
 
 /**
  * Error class for Bip32PublicKey related operations.
@@ -285,7 +286,7 @@ export namespace Either {
         zInput.set(indexBytes, 33)
 
         // HMAC-SHA512 with chain code as key
-        const hmacZ = sodium.crypto_auth_hmacsha512(zInput, parentChainCode)
+        const hmacZ = hmac(sha512, parentChainCode, zInput)
         const z = new Uint8Array(hmacZ)
         const zl = z.slice(0, 32)
 
@@ -311,10 +312,16 @@ export namespace Either {
         }
 
         // Now compute zl8*G (scalar multiplication with base point using processed zl)
-        const zl8G = sodium.crypto_scalarmult_ed25519_base_noclamp(zl8)
+        // Apply modular reduction to ensure scalar is in valid range [0, curve.n)
+        const zl8BigInt = mod(bytesToNumberLE(zl8), ed25519.Point.Fn.ORDER)
+        const zl8GPoint = ed25519.Point.BASE.multiplyUnsafe(zl8BigInt)
+        const zl8G = zl8GPoint.toBytes()
 
         // Then add parentPublicKey + zl8G (point addition)
-        const childPublicKey = sodium.crypto_core_ed25519_add(parentPublicKey, zl8G)
+        const parentPublicKeyPoint = ed25519.Point.fromBytes(parentPublicKey)
+        const zl8GPointForAdd = ed25519.Point.fromBytes(zl8G)
+        const childPublicKeyPoint = parentPublicKeyPoint.add(zl8GPointForAdd)
+        const childPublicKey = childPublicKeyPoint.toBytes()
 
         // Derive new chain code: tag(0x03) + public_key(32 bytes) + index(4 bytes)
         const ccTag = new Uint8Array([0x03]) // TAG_DERIVE_CC_SOFT - corrected to 0x03
@@ -323,7 +330,7 @@ export namespace Either {
         ccInput.set(parentPublicKey, 1)
         ccInput.set(indexBytes, 33)
 
-        const hmacCC = sodium.crypto_auth_hmacsha512(ccInput, parentChainCode)
+        const hmacCC = hmac(sha512, parentChainCode, ccInput)
         const newChainCode = new Uint8Array(hmacCC).slice(32, 64) // Take right 32 bytes
 
         return {

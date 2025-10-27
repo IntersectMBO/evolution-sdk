@@ -1,6 +1,6 @@
 ---
 title: sdk/wallet/Derivation.ts
-nav_order: 155
+nav_order: 159
 parent: Modules
 ---
 
@@ -38,6 +38,8 @@ Result of deriving keys and addresses from a seed or Bip32 root
 - address: bech32 payment address (addr... / addr_test...)
 - rewardAddress: bech32 reward address (stake... / stake_test...)
 - paymentKey / stakeKey: ed25519e_sk bech32 private keys
+- keyStore: Map of KeyHash hex -> PrivateKey for signing operations
+- paymentKhHex / stakeKhHex: KeyHash hex strings for quick lookup
 
 **Signature**
 
@@ -47,6 +49,9 @@ export type SeedDerivationResult = {
   rewardAddress: SdkRewardAddress.RewardAddress | undefined
   paymentKey: string
   stakeKey: string | undefined
+  keyStore: Map<string, PrivateKey.PrivateKey>
+  paymentKhHex: string
+  stakeKhHex: string | undefined
 }
 ```
 
@@ -116,7 +121,7 @@ export declare function walletFromPrivateKey(
     addressType?: "Base" | "Enterprise"
     network?: "Mainnet" | "Testnet" | "Custom"
   } = {}
-): SeedDerivationResult
+): Effect.Effect<SeedDerivationResult, DerivationError>
 ```
 
 ## walletFromSeed
@@ -132,8 +137,5 @@ export declare const walletFromSeed: (
     accountIndex?: number
     network?: "Mainnet" | "Testnet" | "Custom"
   }
-) => Either.Either<
-  { address: string; rewardAddress: string | undefined; paymentKey: string; stakeKey: string | undefined },
-  Bip32PrivateKey.Bip32PrivateKeyError | AddressEras.AddressError | DerivationError
->
+) => Effect.Effect<SeedDerivationResult, DerivationError | Bip32PrivateKey.Bip32PrivateKeyError>
 ```

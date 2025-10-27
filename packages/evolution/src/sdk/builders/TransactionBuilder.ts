@@ -32,11 +32,15 @@ import type * as Coin from "../../core/Coin.js"
 import * as Transaction from "../../core/Transaction.js"
 import * as Assets from "../Assets.js"
 import type { EvalRedeemer } from "../EvalRedeemer.js"
+import type * as Provider from "../provider/Provider.js"
 import type * as UTxO from "../UTxO.js"
+import type * as WalletNew from "../wallet/WalletNew.js"
 import type { CoinSelectionAlgorithm, CoinSelectionFunction } from "./CoinSelection.js"
 import { largestFirstSelection } from "./CoinSelection.js"
 import type { CollectFromParams, PayToAddressParams } from "./operations/Operations.js"
 import type { SignBuilder } from "./SignBuilder.js"
+import { makeSignBuilder } from "./SignBuilderImpl.js"
+import { makeTransactionResult } from "./TransactionResult.js"
 import {
   assembleTransaction,
   buildFakeWitnessSet,
@@ -45,32 +49,10 @@ import {
   calculateMinimumUtxoLovelace,
   calculateTotalAssets,
   calculateTransactionSize,
-  createChangeOutput,
   createCollectFromProgram,
-  createPayToAddressProgram,
-  makeTxOutput,
-  verifyTransactionBalance
+  createPayToAddressProgram
 } from "./TxBuilderImpl.js"
 import * as Unfrack from "./Unfrack.js"
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * Maximum number of re-selection attempts when balancing transaction.
- *
- * During transaction building, if the actual fee (calculated with fake witnesses)
- * exceeds the initial estimate and causes insufficient balance, the builder will
- * retry coin selection up to this many times with updated fee estimates.
- *
- * @since 2.0.0
- */
-const MAX_RESELECTION_ATTEMPTS = 3
-
-// ============================================================================
-// Error Types
-// ============================================================================
 
 /**
  * Error type for failures occurring during transaction builder operations.
@@ -82,10 +64,6 @@ export class TransactionBuilderError extends Data.TaggedError("TransactionBuilde
   message?: string
   cause?: unknown
 }> {}
-
-// ============================================================================
-// Transaction Types
-// ============================================================================
 
 export interface ChainResult {
   readonly transaction: Transaction.Transaction
@@ -296,6 +274,29 @@ export interface UnfrackOptions {
 // Build configuration options
 export interface BuildOptions {
   /**
+   * Override protocol parameters for this specific transaction build.
+   *
+   * By default, fetches from provider during build().
+   * Provide this to use different protocol parameters for testing or special cases.
+   *
+   * Use cases:
+   * - Testing with different fee parameters
+   * - Simulating future protocol changes
+   * - Using cached parameters to avoid provider fetch
+   *
+   * Example:
+   * ```typescript
+   * // Test with custom fee parameters
+   * builder.build({
+   *   protocolParameters: { ...params, minFeeCoefficient: 50n, minFeeConstant: 200000n }
+   * })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly protocolParameters?: ProtocolParameters
+
+  /**
    * Coin selection strategy for automatic input selection.
    *
    * Options:
@@ -318,6 +319,56 @@ export interface BuildOptions {
   // ============================================================================
   // Change Handling Configuration
   // ============================================================================
+
+  /**
+   * Override the change address for this specific transaction build.
+   *
+   * By default, uses wallet.Effect.address() from TxBuilderConfig.
+   * Provide this to use a different address for change outputs.
+   *
+   * Use cases:
+   * - Multi-address wallet (use account index 5 for change)
+   * - Different change address per transaction
+   * - Multi-sig workflows where change address varies
+   * - Testing with different addresses
+   *
+   * Example:
+   * ```typescript
+   * // Use different account for change
+   * builder.build({ changeAddress: wallet.addresses[5] })
+   *
+   * // Custom address
+   * builder.build({ changeAddress: "addr_test1..." })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly changeAddress?: string
+
+  /**
+   * Override the available UTxOs for this specific transaction build.
+   *
+   * By default, fetches UTxOs from provider.Effect.getUtxos(wallet.address).
+   * Provide this to use a specific set of UTxOs for coin selection.
+   *
+   * Use cases:
+   * - Use UTxOs from specific account index
+   * - Pre-filtered UTxO set
+   * - Testing with known UTxO set
+   * - Multi-address UTxO aggregation
+   *
+   * Example:
+   * ```typescript
+   * // Use UTxOs from specific account
+   * builder.build({ availableUtxos: utxosFromAccount5 })
+   *
+   * // Combine UTxOs from multiple addresses
+   * builder.build({ availableUtxos: [...utxos1, ...utxos2] })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly availableUtxos?: ReadonlyArray<UTxO.UTxO>
 
   /**
    * # Change Handling Strategy Matrix
@@ -434,12 +485,11 @@ export interface BuildOptions {
   readonly useStateMachine?: boolean
 
   /**
-   * **EXPERIMENTAL**: Use V3 4-phase state machine
    *
-   * When true, uses V3's simplified 4-phase state machine:
+   * When true, uses simplified 4-phase state machine:
    * - selection → changeValidation → balanceVerification → fallback → complete
    *
-   * V3 shares TxContext with V2 but uses mathematical validation approach.
+   * shares TxContext with V2 but uses mathematical validation approach.
    *
    * @experimental
    * @default false
@@ -506,33 +556,47 @@ export interface ProtocolParameters {
  * Configuration for TransactionBuilder.
  * Immutable configuration passed to builder at creation time.
  *
- * Contains:
- * - Protocol parameters for fee calculation
- * - Change address for leftover funds
- * - Available UTxOs for coin selection
+ * Wallet-centric design (when wallet provided):
+ * - Wallet provides change address (via wallet.Effect.address())
+ * - Provider + Wallet provide available UTxOs (via provider.Effect.getUtxos(wallet.address))
+ * - Override per-build via BuildOptions if needed
+ *
+ * Manual mode (no wallet):
+ * - Must provide changeAddress and availableUtxos in BuildOptions for each build
+ * - Used for read-only scenarios or advanced use cases
  *
  * @since 2.0.0
  * @category config
  */
 export interface TxBuilderConfig {
-  readonly protocolParameters: ProtocolParameters
+  /**
+   * Optional wallet provides:
+   * - Change address via wallet.Effect.address()
+   * - Available UTxOs via wallet.Effect.address() + provider.Effect.getUtxos()
+   * - Signing capability via wallet.Effect.signTx() (SigningWallet and ApiWallet only)
+   *
+   * When provided: Automatic change address and UTxO resolution.
+   * When omitted: Must provide changeAddress and availableUtxos in BuildOptions.
+   *
+   * ReadOnlyWallet: For read-only clients that can build but not sign transactions.
+   * SigningWallet/ApiWallet: For signing clients with full transaction signing capability.
+   *
+   * Override per-build via BuildOptions.changeAddress and BuildOptions.availableUtxos.
+   */
+  readonly wallet?: WalletNew.SigningWallet | WalletNew.ApiWallet | WalletNew.ReadOnlyWallet
 
   /**
-   * Address to send change (leftover assets) to.
-   * This is required for proper transaction balancing.
+   * Optional provider for:
+   * - Fetching UTxOs for the wallet's address (provider.Effect.getUtxos)
+   * - Transaction submission (provider.Effect.submitTx)
+   * - Protocol parameters
+   *
+   * Works together with wallet to provide everything needed for transaction building.
+   * When wallet is omitted, provider is only used if you call provider methods directly.
    */
-  readonly changeAddress: string
-
-  /**
-   * UTxOs available for coin selection.
-   * These can be from a wallet, another user, or any other source.
-   * Coin selection will automatically select from these UTxOs to cover
-   * required outputs + fees, excluding any already collected via collectFrom().
-   */
-  readonly availableUtxos: ReadonlyArray<UTxO.UTxO>
+  readonly provider?: Provider.Provider
 
   // Future fields:
-  // readonly provider?: any // Provider interface for blockchain communication
   // readonly costModels?: Uint8Array // Cost models for script evaluation
 }
 
@@ -613,6 +677,48 @@ export interface TxContextData {
  */
 export class TxContext extends Context.Tag("TxContext")<TxContext, TxContextData>() {}
 
+/**
+ * Resolved change address for the current build.
+ * This is resolved once at the start of build() from either:
+ * - BuildOptions.changeAddress (per-transaction override)
+ * - TxBuilderConfig.wallet.Effect.address() (default from wallet)
+ *
+ * Available to all phase functions via Effect Context.
+ *
+ * @since 2.0.0
+ * @category context
+ */
+export class ChangeAddressTag extends Context.Tag("ChangeAddress")<ChangeAddressTag, string>() {}
+
+/**
+ * Resolved protocol parameters for the current build.
+ * This is resolved once at the start of build() from either:
+ * - BuildOptions.protocolParameters (per-transaction override)
+ * - provider.Effect.getProtocolParameters() (fetched from provider)
+ *
+ * Available to all phase functions via Effect Context.
+ *
+ * @since 2.0.0
+ * @category context
+ */
+export class ProtocolParametersTag extends Context.Tag("ProtocolParameters")<
+  ProtocolParametersTag,
+  ProtocolParameters
+>() {}
+
+/**
+ * Resolved available UTxOs for the current build.
+ * This is resolved once at the start of build() from either:
+ * - BuildOptions.availableUtxos (per-transaction override)
+ * - provider.Effect.getUtxos(wallet.address) (default from wallet + provider)
+ *
+ * Available to all phase functions via Effect Context.
+ *
+ * @since 2.0.0
+ * @category context
+ */
+export class AvailableUtxosTag extends Context.Tag("AvailableUtxos")<AvailableUtxosTag, ReadonlyArray<UTxO.UTxO>>() {}
+
 // ============================================================================
 // Program Step Type - Deferred Execution Pattern
 // ============================================================================
@@ -664,6 +770,11 @@ export type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext
  * Builder instance never mutates. Programs are deferred Effects that execute later.
  * Each build() creates fresh TxBuilderState, executes programs, returns result.
  *
+ * Generic Type Parameter:
+ * TResult determines the return type of build() methods:
+ * - SignBuilder: When wallet has signing capability (SigningClient)
+ * - TransactionResultBase: When wallet is read-only (ReadOnlyClient)
+ *
  * Usage Pattern:
  * ```typescript
  * const builder = makeTxBuilder(provider, params, costModels, utxos)
@@ -677,10 +788,12 @@ export type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext
  * const signBuilder2 = await builder.build()
  * ```
  *
+ * @typeParam TResult - The result type returned by build methods (SignBuilder or TransactionResultBase)
+ *
  * @since 2.0.0
  * @category interfaces
  */
-export interface TransactionBuilder {
+export interface TransactionBuilder<TResult = SignBuilder> {
   // ============================================================================
   // Chainable Builder Methods - Create ProgramSteps, return same builder
   // ============================================================================
@@ -694,7 +807,7 @@ export interface TransactionBuilder {
    * @since 2.0.0
    * @category builder-methods
    */
-  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder
+  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder<TResult>
 
   /**
    * Specify transaction inputs from provided UTxOs.
@@ -705,7 +818,7 @@ export interface TransactionBuilder {
    * @since 2.0.0
    * @category builder-methods
    */
-  readonly collectFrom: (params: CollectFromParams) => TransactionBuilder
+  readonly collectFrom: (params: CollectFromParams) => TransactionBuilder<TResult>
 
   // Future expansion points for other operations:
   // readonly mintTokens: (params: MintTokensParams) => TransactionBuilder
@@ -724,10 +837,14 @@ export interface TransactionBuilder {
    * Creates fresh state and runs all accumulated ProgramSteps sequentially.
    * Can be called multiple times on the same builder instance with independent results.
    *
+   * Returns TResult which is:
+   * - SignBuilder for SigningClient (can sign transactions)
+   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
+   *
    * @since 2.0.0
    * @category completion-methods
    */
-  readonly build: (options?: BuildOptions) => Promise<SignBuilder>
+  readonly build: (options?: BuildOptions) => Promise<TResult>
 
   /**
    * Execute all queued operations and return a signing-ready transaction via Effect.
@@ -735,25 +852,43 @@ export interface TransactionBuilder {
    * Creates fresh state and runs all accumulated ProgramSteps sequentially.
    * Suitable for Effect-TS compositional workflows and error handling.
    *
+   * Error types include WalletError and ProviderError from config Effects.
+   *
+   * Returns TResult which is:
+   * - SignBuilder for SigningClient (can sign transactions)
+   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
+   *
    * @since 2.0.0
    * @category completion-methods
    */
   readonly buildEffect: (
     options?: BuildOptions
-  ) => Effect.Effect<SignBuilder, TransactionBuilderError | EvaluationError, unknown>
+  ) => Effect.Effect<
+    TResult,
+    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+    unknown
+  >
 
   /**
    * Execute all queued operations with explicit error handling via Either.
    *
    * Creates fresh state and runs all accumulated ProgramSteps sequentially.
-   * Returns Either<SignBuilder, Error> for pattern-matched error recovery.
+   * Returns Either<TResult, Error> for pattern-matched error recovery.
+   *
+   * Error types include WalletError and ProviderError from config Effects.
+   *
+   * Returns TResult which is:
+   * - SignBuilder for SigningClient (can sign transactions)
+   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
    *
    * @since 2.0.0
    * @category completion-methods
    */
   readonly buildEither: (
     options?: BuildOptions
-  ) => Promise<Either<SignBuilder, TransactionBuilderError | EvaluationError>>
+  ) => Promise<
+    Either<TResult, TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError>
+  >
 
   // ============================================================================
   // Transaction Chaining Methods - Multi-transaction workflows
@@ -829,31 +964,23 @@ export interface TransactionBuilder {
 
 /**
  * Construct a TransactionBuilder instance from protocol configuration.
- * 
+ *
  * The builder accumulates chainable method calls as deferred ProgramSteps. Calling build() or chain()
  * creates fresh state (new Refs) and executes all accumulated programs sequentially, ensuring
  * no state pollution between invocations.
- * 
+ *
+ * Generic type parameter TResult determines what build() returns:
+ * - SignBuilder (default): When wallet has signing capability
+ * - TransactionResultBase: When wallet is read-only
+ *
+ * @typeParam TResult - The result type for build() methods (SignBuilder or TransactionResultBase)
+ *
  * @since 2.0.0
  * @category constructors
  */
-export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
-  // Validate protocol parameters
-  if (config.protocolParameters.minFeeCoefficient < 0n) {
-    throw new Error("minFeeCoefficient must be non-negative")
-  }
-
-  if (config.protocolParameters.minFeeConstant < 0n) {
-    throw new Error("minFeeConstant must be non-negative")
-  }
-
-  if (config.protocolParameters.coinsPerUtxoByte < 0n) {
-    throw new Error("coinsPerUtxoByte must be non-negative")
-  }
-
-  if (config.protocolParameters.maxTxSize <= 0) {
-    throw new Error("maxTxSize must be positive")
-  }
+export const makeTxBuilder = <TResult = SignBuilder>(config: TxBuilderConfig): TransactionBuilder<TResult> => {
+  // Protocol parameters validation is deferred to build time when they are resolved
+  // (from BuildOptions > config > provider)
 
   // ProgramSteps array - stores deferred operations
   // NO state created here - state is fresh per build()
@@ -895,1161 +1022,6 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       }
     })
 
-  // Core Effect logic for building transaction
-  const buildEffectCore = (options?: BuildOptions) =>
-    Effect.gen(function* () {
-      const ctx = yield* TxContext
-
-      // 1. Execute all programs to populate state
-      yield* Effect.all(programs, { concurrency: "unbounded" })
-
-      // 2. Initial Coin Selection Phase
-      // collectFrom = explicit selection (user-specified inputs)
-      // availableUtxos = pool for automatic balancing (wallet UTxOs)
-      yield* Effect.logDebug("Starting initial coin selection phase")
-
-      // Get current input and output assets
-      const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-      const outputAssets = yield* Ref.get(ctx.state.totalOutputAssets)
-      const estimatedFee = 200_000n // Conservative initial estimate
-
-      // Calculate asset delta: (outputs + estimated fee) - inputs
-      const assetDelta: Assets.Assets = { lovelace: 0n }
-      let hasPositiveDelta = false
-
-      // Calculate required assets (outputs + estimated fee)
-      const outputLovelace = outputAssets.lovelace || 0n
-      const requiredAssets: Assets.Assets = {
-        ...outputAssets,
-        lovelace: outputLovelace + estimatedFee
-      }
-
-      // Calculate delta for each asset unit
-      for (const [unit, required] of Object.entries(requiredAssets)) {
-        const available = (inputAssets[unit] as bigint) || 0n
-        const delta = required - available
-
-        if (delta > 0n) {
-          assetDelta[unit] = delta
-          hasPositiveDelta = true
-        }
-      }
-
-      // Run initial coin selection if we have positive asset delta
-      if (hasPositiveDelta) {
-        const assetDeltaStr = Object.entries(assetDelta)
-          .map(([unit, amount]) => `${unit}:${amount.toString()}`)
-          .join(", ")
-
-        yield* Effect.logDebug(`Initial coin selection for: {${assetDeltaStr}}`)
-
-        // Get available UTxOs from config for automatic balancing
-        const configUtxos = ctx.config.availableUtxos
-
-        // Get already-collected UTxOs to prevent double-spending
-        const alreadyCollected = yield* Ref.get(ctx.state.selectedUtxos)
-
-        // Filter out already-collected UTxOs
-        const availableUtxos = configUtxos.filter(
-          (utxo) =>
-            !alreadyCollected.some(
-              (collected) => collected.txHash === utxo.txHash && collected.outputIndex === utxo.outputIndex
-            )
-        )
-
-        // Determine coin selection function
-        const coinSelectionFn = options?.coinSelection
-          ? typeof options.coinSelection === "function"
-            ? options.coinSelection
-            : getCoinSelectionAlgorithm(options.coinSelection)
-          : largestFirstSelection // Default: largest-first
-
-        const { selectedUtxos: additionalUtxos } = yield* Effect.try({
-          try: () => coinSelectionFn(availableUtxos, assetDelta),
-          catch: (error) =>
-            new TransactionBuilderError({
-              message: "Initial coin selection failed",
-              cause: error
-            })
-        })
-
-        yield* Effect.logDebug(
-          `Initial coin selection added ${additionalUtxos.length} UTxOs ` + `(${availableUtxos.length} available)`
-        )
-
-        // Add selected UTxOs to state
-        yield* Ref.update(ctx.state.selectedUtxos, (current) => [...current, ...additionalUtxos])
-
-        // Update total input assets
-        for (const utxo of additionalUtxos) {
-          yield* Ref.update(ctx.state.totalInputAssets, (current) => {
-            const updated = { ...current }
-            for (const [unit, amount] of Object.entries(utxo.assets)) {
-              updated[unit] = (updated[unit] || 0n) + (amount as bigint)
-            }
-            return updated
-          })
-        }
-
-        yield* Effect.logDebug(`Initial coin selection added ${additionalUtxos.length} UTxOs`)
-      } else {
-        yield* Effect.logDebug("Inputs already cover outputs + estimated fee, skipping initial coin selection")
-      }
-
-      // 3. Reselection Loop: Create change, calculate actual fee, verify balance
-      // Now that we have initial coin selection, we iteratively:
-      // 1. Create change outputs from leftover assets
-      // 2. Calculate actual fee with complete output set
-      // 3. Verify balance is sufficient
-      // 4. If insufficient, select more UTxOs and retry
-      yield* Effect.logDebug("Starting reselection loop with change creation")
-
-      let attempt = 0
-      let calculatedFee = 0n
-      let balanceVerificationPassed = false
-
-      while (attempt < MAX_RESELECTION_ATTEMPTS && !balanceVerificationPassed) {
-        attempt++
-
-        yield* Effect.logDebug(`Reselection attempt ${attempt}/${MAX_RESELECTION_ATTEMPTS}`)
-
-        // Get current state
-        const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
-        const baseOutputs = yield* Ref.get(ctx.state.outputs)
-        const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-        const outputAssets = yield* Ref.get(ctx.state.totalOutputAssets)
-
-        yield* Effect.logDebug(
-          `Reselection state: ${selectedUtxos.length} UTxOs selected, ` +
-            `inputs: ${inputAssets.lovelace || 0n} lovelace, ` +
-            `outputs: ${outputAssets.lovelace || 0n} lovelace`
-        )
-
-        // Convert UTxOs to TransactionInputs for fee calculation
-        const inputs = yield* Effect.catchAll(buildTransactionInputs(selectedUtxos), (error) =>
-          Effect.gen(function* () {
-            yield* Effect.logError(`Failed to build transaction inputs: ${JSON.stringify(error, null, 2)}`)
-            return yield* Effect.fail(error)
-          })
-        )
-
-        yield* Effect.logDebug(`Successfully built ${inputs.length} transaction inputs`)
-
-        // Estimate fee for current transaction WITHOUT change outputs
-        // This gives us a baseline fee to reserve from leftover
-        const baseFee = yield* calculateFeeIteratively(selectedUtxos, inputs, baseOutputs, {
-          minFeeCoefficient: ctx.config.protocolParameters.minFeeCoefficient,
-          minFeeConstant: ctx.config.protocolParameters.minFeeConstant
-        })
-
-        yield* Effect.logDebug(`Base fee (without change): ${baseFee} lovelace`)
-
-        // Calculate leftover assets (inputs - outputs - estimatedFee)
-        // Reserve estimated fee so change outputs don't consume it
-        const leftoverAssets: Assets.Assets = { ...inputAssets, lovelace: 0n }
-        for (const [unit, amount] of Object.entries(outputAssets)) {
-          const current = leftoverAssets[unit] || 0n
-          const remaining = current - (amount as bigint)
-          if (remaining > 0n) {
-            leftoverAssets[unit] = remaining
-          } else {
-            delete leftoverAssets[unit]
-          }
-        }
-
-        // Subtract base fee from lovelace leftover
-        leftoverAssets.lovelace = Assets.getAsset(leftoverAssets, "lovelace") - baseFee
-
-        // Attempt to create change output(s) from leftover assets
-        let changeOutputs: Array<UTxO.TxOutput> = []
-
-        const leftoverLovelace = Assets.getAsset(leftoverAssets, "lovelace")
-
-        // BUG FIX: Check if leftover lovelace is negative BEFORE attempting change creation
-        // If we have insufficient funds (negative lovelace), skip change creation entirely
-        // and let balance verification trigger reselection
-        if (leftoverLovelace < 0n) {
-          yield* Effect.logDebug(
-            `Insufficient lovelace for fee: leftover is ${leftoverLovelace}. ` +
-              `Skipping change creation, balance verification will trigger reselection.`
-          )
-          // Set leftover to empty to skip change creation
-          // Native assets (if any) will be included in next reselection iteration
-        } else if (leftoverLovelace > 0n || Object.keys(leftoverAssets).length > 1) {
-          yield* Effect.logDebug("Attempting to create change output from leftover assets")
-
-          // Calculate actual minimum UTxO requirement using CBOR encoding
-          // This ensures accurate decision-making for complex asset bundles
-          const nativeAssetCount = Object.keys(leftoverAssets).length - 1 // Exclude 'lovelace'
-          yield* Effect.logDebug(`Change calculation: ${leftoverLovelace} lovelace + ${nativeAssetCount} native assets`)
-
-          const minUtxo = yield* calculateMinimumUtxoLovelace({
-            address: ctx.config.changeAddress,
-            assets: leftoverAssets,
-            coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-          })
-
-          yield* Effect.logDebug(`MinUTxO requirement: ${minUtxo} lovelace (via actual CBOR calculation)`)
-
-          if (leftoverLovelace >= minUtxo) {
-            // SUCCESS: Leftover is sufficient for change output(s)
-
-            // Priority 1: Apply unfracking if configured
-            if (options?.unfrack) {
-              yield* Effect.logDebug("Applying unfrack optimization to change outputs")
-              const unfrackedOutputs = yield* createChangeOutput({
-                leftoverAssets,
-                changeAddress: ctx.config.changeAddress,
-                coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte,
-                unfrackOptions: options.unfrack
-              })
-              changeOutputs = [...unfrackedOutputs]
-              yield* Effect.logDebug(`Created ${unfrackedOutputs.length} unfracked change outputs`)
-            } else {
-              // Priority 2: Create simple change output (no unfracking)
-              changeOutputs.push({
-                address: ctx.config.changeAddress,
-                assets: leftoverAssets
-              })
-              yield* Effect.logDebug(
-                `Created change output: ${leftoverLovelace} lovelace + ${Object.keys(leftoverAssets).length - 1} asset units`
-              )
-            }
-          } else {
-            // INSUFFICIENT: Try fallback strategies
-            yield* Effect.logDebug(`Change too small (${leftoverLovelace} < ${minUtxo}), attempting fallback`)
-
-            // Strategy 1: drainTo (merge with existing output)
-            if (options?.drainTo !== undefined) {
-              const drainToIndex = options.drainTo
-              const targetOutput = baseOutputs[drainToIndex]
-
-              if (!targetOutput) {
-                return yield* Effect.fail(
-                  new TransactionBuilderError({
-                    message: `drainTo index ${drainToIndex} out of bounds (${baseOutputs.length} outputs)`
-                  })
-                )
-              }
-
-              yield* Effect.logDebug(`Merging leftover into output #${drainToIndex} (drainTo strategy)`)
-
-              // Merge leftover into target output
-              const updatedAssets = Assets.add(targetOutput.assets, leftoverAssets)
-
-              const updatedOutput: UTxO.TxOutput = {
-                ...targetOutput,
-                assets: updatedAssets
-              }
-
-              // Validate that the merged output meets minimum UTxO requirements
-              const mergedMinUtxo = yield* calculateMinimumUtxoLovelace({
-                address: updatedOutput.address,
-                assets: updatedAssets,
-                datum: updatedOutput.datumOption,
-                scriptRef: updatedOutput.scriptRef,
-                coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-              })
-
-              const updatedLovelace = Assets.getAsset(updatedAssets, "lovelace")
-
-              yield* Effect.logDebug(
-                `drainTo validation: Merged output has ${updatedLovelace} lovelace ` + `(minUTxO: ${mergedMinUtxo})`
-              )
-
-              if (updatedLovelace < mergedMinUtxo) {
-                return yield* Effect.fail(
-                  new TransactionBuilderError({
-                    message:
-                      `drainTo validation failed: Merged output at index ${drainToIndex} ` +
-                      `has ${updatedLovelace} lovelace but requires minimum ${mergedMinUtxo}. ` +
-                      `The target output has too many assets to absorb the small leftover. ` +
-                      `Consider using a different drainTo target or adding more funds.`
-                  })
-                )
-              }
-
-              // Replace the target output in base outputs
-              const updatedBaseOutputs = [...baseOutputs]
-              updatedBaseOutputs[drainToIndex] = updatedOutput
-
-              yield* Ref.set(ctx.state.outputs, updatedBaseOutputs)
-              yield* Effect.logDebug(
-                `Successfully merged leftover via drainTo (validated: ${updatedLovelace} >= ${mergedMinUtxo})`
-              )
-
-              // No change outputs needed (merged into existing)
-              changeOutputs = []
-            } else {
-              // Strategy 2: Check onInsufficientChange option
-              const hasNativeAssets = Object.keys(leftoverAssets).length > 1
-
-              if (hasNativeAssets) {
-                // Native assets cannot be burned as fee - they would be lost forever
-                // STRATEGY: Create a change output with minUTxO requirement even though
-                // we don't have enough lovelace yet. This will cause balance verification
-                // to detect the shortfall and trigger reselection for more lovelace.
-                const lovelaceShortfall = minUtxo - leftoverLovelace
-
-                yield* Effect.logDebug(
-                  `Insufficient change with native assets: ${leftoverLovelace} < ${minUtxo}. ` +
-                    `Shortfall: ${lovelaceShortfall} lovelace. ` +
-                    `Creating change output with minUTxO requirement to trigger reselection.`
-                )
-
-                // Create change output with the REQUIRED minUTxO amount (not what we have)
-                // This will cause balance verification to see we're short on lovelace
-                changeOutputs.push({
-                  address: ctx.config.changeAddress,
-                  assets: {
-                    ...leftoverAssets,
-                    lovelace: minUtxo // Use required amount, not available amount
-                  }
-                })
-
-                // Balance verification will detect:
-                // - We need minUtxo lovelace for change
-                // - We only have leftoverLovelace available
-                // - Shortfall = minUtxo - leftoverLovelace
-                // This will trigger reselection to add more UTxOs
-              } else {
-                // Only lovelace left and it's below minUtxo
-                const insufficientChangeStrategy = options?.onInsufficientChange ?? "error"
-
-                if (insufficientChangeStrategy === "burn") {
-                  // User explicitly consented to burn leftover lovelace as extra fee
-                  yield* Effect.logWarning(
-                    `Burning ${leftoverLovelace} lovelace as extra fee (below minUtxo ${minUtxo})`
-                  )
-                  // Leftover becomes extra fee (not added to outputs)
-                  changeOutputs = []
-                } else {
-                  // Default: Error to prevent accidental loss
-                  return yield* Effect.fail(
-                    new TransactionBuilderError({
-                      message:
-                        `Insufficient change: ${leftoverLovelace} lovelace is below ` +
-                        `minimum UTxO (${minUtxo}). Configure drainTo to merge with an existing output, ` +
-                        `or set onInsufficientChange: 'burn' to explicitly allow burning as extra fee.`
-                    })
-                  )
-                }
-              }
-            }
-          }
-        } else {
-          yield* Effect.logDebug("No leftover assets, skipping change creation")
-        }
-
-        // Build complete output set: base outputs + change outputs
-        const currentBaseOutputs = yield* Ref.get(ctx.state.outputs) // Re-fetch in case drainTo modified it
-        const allOutputs = [...currentBaseOutputs, ...changeOutputs]
-
-        // Calculate actual fee with complete outputs (including change)
-        calculatedFee = yield* calculateFeeIteratively(selectedUtxos, inputs, allOutputs, {
-          minFeeCoefficient: ctx.config.protocolParameters.minFeeCoefficient,
-          minFeeConstant: ctx.config.protocolParameters.minFeeConstant
-        })
-
-        yield* Effect.logDebug(`Calculated fee with ${allOutputs.length} outputs: ${calculatedFee} lovelace`)
-
-        // Check if actual fee differs from base fee
-        // Recalculation needed when: (1) change outputs exist, OR (2) drainTo was used
-        const needsRecalculation = changeOutputs.length > 0 || options?.drainTo !== undefined
-        if (calculatedFee !== baseFee && needsRecalculation) {
-          const feeDelta = calculatedFee - baseFee
-          yield* Effect.logDebug(
-            `Fee adjustment triggered: ${baseFee} → ${calculatedFee} (Δ +${feeDelta} lovelace). ` +
-              `Recalculating change outputs with correct fee.`
-          )
-
-          // Recalculate leftover with ACTUAL fee
-          const correctedLeftover: Assets.Assets = { ...inputAssets, lovelace: 0n }
-          for (const [unit, amount] of Object.entries(outputAssets)) {
-            const current = correctedLeftover[unit] || 0n
-            const remaining = current - (amount as bigint)
-            if (remaining > 0n) {
-              correctedLeftover[unit] = remaining
-            } else {
-              delete correctedLeftover[unit]
-            }
-          }
-
-          // Subtract ACTUAL fee from lovelace leftover
-          const feeUsedForLeftover = calculatedFee // Track which fee we used
-          const currentCorrectedLovelace = Assets.getAsset(correctedLeftover, "lovelace")
-          correctedLeftover.lovelace = currentCorrectedLovelace - calculatedFee
-
-          const correctedLovelace = Assets.getAsset(correctedLeftover, "lovelace")
-          if (correctedLovelace >= 0n && (correctedLovelace > 0n || Object.keys(correctedLeftover).length > 1)) {
-            // Recreate change outputs with corrected leftover
-            if (options?.unfrack) {
-              yield* Effect.logDebug("Applying unfrack to corrected change outputs")
-              const recalculatedOutputs = yield* createChangeOutput({
-                leftoverAssets: correctedLeftover,
-                changeAddress: ctx.config.changeAddress,
-                coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte,
-                unfrackOptions: options.unfrack
-              })
-              changeOutputs = [...recalculatedOutputs]
-
-              // Rebuild complete output set with corrected change
-              const updatedAllOutputs = [...currentBaseOutputs, ...changeOutputs]
-
-              // Recalculate fee with corrected outputs
-              const recalculatedFee = yield* calculateFeeIteratively(selectedUtxos, inputs, updatedAllOutputs, {
-                minFeeCoefficient: ctx.config.protocolParameters.minFeeCoefficient,
-                minFeeConstant: ctx.config.protocolParameters.minFeeConstant
-              })
-
-              calculatedFee = recalculatedFee
-              // Update allOutputs for balance verification
-              let allOutputsFixed = updatedAllOutputs
-
-              yield* Effect.logDebug(`Recalculated fee after correction: ${calculatedFee} lovelace`)
-
-              // If fee changed during recalculation, adjust the outputs again
-              if (recalculatedFee !== feeUsedForLeftover) {
-                const feeAdjustment = feeUsedForLeftover - recalculatedFee
-                yield* Effect.logDebug(
-                  `Fee changed during unfrack recalculation. Adjusting outputs by ${feeAdjustment} lovelace`
-                )
-
-                // Add the fee difference to the first change output
-                if (allOutputsFixed.length > currentBaseOutputs.length) {
-                  const firstChangeIndex = currentBaseOutputs.length
-                  allOutputsFixed = [...allOutputsFixed]
-                  allOutputsFixed[firstChangeIndex] = {
-                    ...allOutputsFixed[firstChangeIndex],
-                    assets: {
-                      ...allOutputsFixed[firstChangeIndex].assets,
-                      lovelace: allOutputsFixed[firstChangeIndex].assets.lovelace + feeAdjustment
-                    }
-                  }
-                }
-              }
-
-              // Use corrected outputs for balance check
-              const balanceCheckCorrected = verifyTransactionBalance(selectedUtxos, allOutputsFixed, calculatedFee)
-
-              if (balanceCheckCorrected.sufficient) {
-                // ✅ SUCCESS with corrected change
-                balanceVerificationPassed = true
-                yield* Ref.set(ctx.state.outputs, allOutputsFixed)
-                yield* Effect.logDebug(
-                  `Balance verification passed after correction on attempt ${attempt}. ` +
-                    `Fee: ${calculatedFee}, Change: ${balanceCheckCorrected.change} lovelace`
-                )
-                continue // Skip to next iteration (which will exit since balanceVerificationPassed = true)
-              }
-            } else if (options?.drainTo !== undefined) {
-              // Handle drainTo without unfrack: merge corrected leftover into target output
-              const drainToIndex = options.drainTo
-              const targetOutput = baseOutputs[drainToIndex] // Use ORIGINAL base outputs, not modified ones
-
-              if (!targetOutput) {
-                return yield* Effect.fail(
-                  new TransactionBuilderError({
-                    message: `drainTo index ${drainToIndex} out of bounds after recalculation`
-                  })
-                )
-              }
-
-              // Merge corrected leftover into target output
-              const updatedAssets = Assets.add(targetOutput.assets, correctedLeftover)
-
-              const updatedOutput: UTxO.TxOutput = {
-                ...targetOutput,
-                assets: updatedAssets
-              }
-
-              // Validate that the merged output meets minimum UTxO requirements
-              const mergedMinUtxo = yield* calculateMinimumUtxoLovelace({
-                address: updatedOutput.address,
-                assets: updatedAssets,
-                datum: updatedOutput.datumOption,
-                scriptRef: updatedOutput.scriptRef,
-                coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-              })
-
-              const recalcUpdatedLovelace = Assets.getAsset(updatedAssets, "lovelace")
-              if (recalcUpdatedLovelace < mergedMinUtxo) {
-                return yield* Effect.fail(
-                  new TransactionBuilderError({
-                    message:
-                      `drainTo validation failed after fee recalculation: Merged output at index ${drainToIndex} ` +
-                      `has ${recalcUpdatedLovelace} lovelace but requires minimum ${mergedMinUtxo}. ` +
-                      `The target output has too many assets to absorb the corrected leftover. ` +
-                      `Consider using a different drainTo target or adding more funds.`
-                  })
-                )
-              }
-
-              // Replace the target output
-              const updatedBaseOutputs = [...baseOutputs] // Start from ORIGINAL outputs
-              updatedBaseOutputs[drainToIndex] = updatedOutput
-
-              // Recalculate fee with corrected drainTo output
-              const recalculatedFee = yield* calculateFeeIteratively(selectedUtxos, inputs, updatedBaseOutputs, {
-                minFeeCoefficient: ctx.config.protocolParameters.minFeeCoefficient,
-                minFeeConstant: ctx.config.protocolParameters.minFeeConstant
-              })
-
-              calculatedFee = recalculatedFee
-
-              yield* Effect.logDebug(`Recalculated fee after drainTo correction: ${calculatedFee} lovelace`)
-
-              // If fee changed during recalculation, adjust the output again
-              if (recalculatedFee !== feeUsedForLeftover) {
-                const feeAdjustment = feeUsedForLeftover - recalculatedFee
-                yield* Effect.logDebug(
-                  `Fee changed during recalculation. Adjusting output by ${feeAdjustment} lovelace`
-                )
-                const currentDrainToLovelace = Assets.getAsset(updatedBaseOutputs[drainToIndex].assets, "lovelace")
-                updatedBaseOutputs[drainToIndex] = {
-                  ...updatedBaseOutputs[drainToIndex],
-                  assets: {
-                    ...updatedBaseOutputs[drainToIndex].assets,
-                    lovelace: currentDrainToLovelace + feeAdjustment
-                  }
-                }
-
-                // Re-validate after fee adjustment
-                const adjustedMinUtxo = yield* calculateMinimumUtxoLovelace({
-                  address: updatedBaseOutputs[drainToIndex].address,
-                  assets: updatedBaseOutputs[drainToIndex].assets,
-                  datum: updatedBaseOutputs[drainToIndex].datumOption,
-                  scriptRef: updatedBaseOutputs[drainToIndex].scriptRef,
-                  coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-                })
-
-                const adjustedLovelace = Assets.getAsset(updatedBaseOutputs[drainToIndex].assets, "lovelace")
-                if (adjustedLovelace < adjustedMinUtxo) {
-                  return yield* Effect.fail(
-                    new TransactionBuilderError({
-                      message:
-                        `drainTo validation failed after fee adjustment: Output at index ${drainToIndex} ` +
-                        `has ${adjustedLovelace} lovelace but requires minimum ${adjustedMinUtxo}.`
-                    })
-                  )
-                }
-              }
-
-              // Use corrected outputs for balance check
-              const balanceCheckCorrected = verifyTransactionBalance(selectedUtxos, updatedBaseOutputs, calculatedFee)
-
-              if (balanceCheckCorrected.sufficient) {
-                // ✅ SUCCESS with corrected drainTo
-                balanceVerificationPassed = true
-                yield* Ref.set(ctx.state.outputs, updatedBaseOutputs)
-                yield* Effect.logDebug(
-                  `Balance verification passed after drainTo correction on attempt ${attempt}. ` +
-                    `Fee: ${calculatedFee}, Change: ${balanceCheckCorrected.change} lovelace`
-                )
-                continue // Skip to next iteration (which will exit since balanceVerificationPassed = true)
-              } else {
-                yield* Effect.logWarning(
-                  `Balance check failed after drainTo correction. Shortfall: ${balanceCheckCorrected.shortfall}`
-                )
-              }
-            } else {
-              // Handle simple change output (no unfrack, no drainTo)
-              // Just update the change output's lovelace with the corrected amount
-              if (changeOutputs.length > 0) {
-                const feeDifference = calculatedFee - baseFee
-                yield* Effect.logDebug(`Adjusting simple change output by -${feeDifference} lovelace (fee increased)`)
-
-                changeOutputs = changeOutputs.map((output) => {
-                  const currentOutputLovelace = Assets.getAsset(output.assets, "lovelace")
-                  return {
-                    ...output,
-                    assets: {
-                      ...output.assets,
-                      lovelace: currentOutputLovelace - feeDifference
-                    }
-                  }
-                })
-
-                // Rebuild complete output set with adjusted change
-                const adjustedAllOutputs = [...currentBaseOutputs, ...changeOutputs]
-
-                // Verify the adjusted outputs meet balance
-                const balanceCheckAdjusted = verifyTransactionBalance(selectedUtxos, adjustedAllOutputs, calculatedFee)
-
-                if (balanceCheckAdjusted.sufficient) {
-                  // ✅ SUCCESS with adjusted change
-                  balanceVerificationPassed = true
-                  yield* Ref.set(ctx.state.outputs, adjustedAllOutputs)
-                  yield* Effect.logDebug(
-                    `Balance verification passed after simple change adjustment on attempt ${attempt}. ` +
-                      `Fee: ${calculatedFee}, Adjusted change: ${changeOutputs[0].assets.lovelace} lovelace`
-                  )
-                  continue // Skip to next iteration (which will exit since balanceVerificationPassed = true)
-                } else {
-                  yield* Effect.logWarning(
-                    `Balance check failed after simple change adjustment. Shortfall: ${balanceCheckAdjusted.shortfall}`
-                  )
-                }
-              }
-            }
-          }
-        }
-
-        // Verify balance with actual fee
-        const balanceCheck = verifyTransactionBalance(selectedUtxos, allOutputs, calculatedFee)
-
-        if (balanceCheck.sufficient) {
-          // ✅ SUCCESS: Balance is sufficient
-          balanceVerificationPassed = true
-
-          // Update outputs in state (base + change)
-          yield* Ref.set(ctx.state.outputs, allOutputs)
-
-          yield* Effect.logDebug(
-            `Balance verification passed on attempt ${attempt}. ` +
-              `Fee: ${calculatedFee}, Change: ${balanceCheck.change} lovelace`
-          )
-        } else {
-          // ❌ INSUFFICIENT: Need more UTxOs
-          const shortfall = balanceCheck.shortfall
-
-          if (attempt < MAX_RESELECTION_ATTEMPTS) {
-            yield* Effect.logWarning(
-              `Balance verification failed on attempt ${attempt}. ` +
-                `Shortfall: ${shortfall} lovelace. Selecting more UTxOs...`
-            )
-
-            // Get available UTxOs for reselection
-            const configUtxos = ctx.config.availableUtxos
-            const alreadyCollected = yield* Ref.get(ctx.state.selectedUtxos)
-
-            const availableUtxos = configUtxos.filter(
-              (utxo) =>
-                !alreadyCollected.some(
-                  (collected) => collected.txHash === utxo.txHash && collected.outputIndex === utxo.outputIndex
-                )
-            )
-
-            // Select more UTxOs to cover shortfall
-            const coinSelectionFn = options?.coinSelection
-              ? typeof options.coinSelection === "function"
-                ? options.coinSelection
-                : getCoinSelectionAlgorithm(options.coinSelection)
-              : largestFirstSelection
-
-            const { selectedUtxos: additionalUtxos } = yield* Effect.try({
-              try: () => coinSelectionFn(availableUtxos, { lovelace: shortfall }),
-              catch: (error) =>
-                new TransactionBuilderError({
-                  message: `Reselection failed to cover ${shortfall} lovelace shortfall`,
-                  cause: error
-                })
-            })
-
-            const totalInputsBefore = alreadyCollected.reduce((sum, u) => sum + u.assets.lovelace, 0n)
-            const additionalLovelace = additionalUtxos.reduce((sum, u) => sum + u.assets.lovelace, 0n)
-
-            yield* Effect.logDebug(
-              `Reselection added ${additionalUtxos.length} UTxOs ` +
-                `(${availableUtxos.length} available). ` +
-                `Total inputs: ${totalInputsBefore} → ${totalInputsBefore + additionalLovelace} lovelace`
-            )
-
-            // Add selected UTxOs to state
-            yield* Ref.update(ctx.state.selectedUtxos, (current) => [...current, ...additionalUtxos])
-
-            // Update total input assets
-            for (const utxo of additionalUtxos) {
-              yield* Ref.update(ctx.state.totalInputAssets, (current) => {
-                const updated = { ...current }
-                for (const [unit, amount] of Object.entries(utxo.assets)) {
-                  updated[unit] = (updated[unit] || 0n) + (amount as bigint)
-                }
-                return updated
-              })
-            }
-
-            yield* Effect.logDebug(`Reselection added ${additionalUtxos.length} UTxOs`)
-          } else {
-            // Max attempts reached - fail with detailed error
-            return yield* Effect.fail(
-              new TransactionBuilderError({
-                message:
-                  `Cannot balance transaction after ${MAX_RESELECTION_ATTEMPTS} attempts. ` +
-                  `Final shortfall: ${shortfall} lovelace. ` +
-                  `This may indicate insufficient funds in available UTxOs.`,
-                cause: {
-                  attempts: MAX_RESELECTION_ATTEMPTS,
-                  finalShortfall: shortfall.toString(),
-                  calculatedFee: calculatedFee.toString(),
-                  selectedUtxos: selectedUtxos.length
-                }
-              })
-            )
-          }
-        }
-      }
-
-      // 4. Fee Assignment and Final Assembly
-      // After reselection loop, we have final outputs (with change) and calculated fee
-      const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
-      const finalOutputs = yield* Ref.get(ctx.state.outputs)
-      const fee = calculatedFee
-
-      // 5. Convert UTxOs to TransactionInputs (sorted deterministically)
-      const inputs = yield* buildTransactionInputs(selectedUtxos)
-
-      // 6. Assemble final transaction with calculated fee and final outputs
-      const transaction = yield* assembleTransaction(inputs, finalOutputs, fee)
-
-      // 10. Validate transaction size against protocol limit
-      // Build transaction WITH fake witnesses (same as fee calculation does) for accurate size check
-      const fakeWitnessSet = yield* buildFakeWitnessSet(selectedUtxos)
-
-      yield* Effect.logDebug(
-        `Fake witness set: ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} vkey witnesses, ` + `${inputs.length} inputs`
-      )
-
-      const txWithWitnesses = new Transaction.Transaction({
-        body: transaction.body,
-        witnessSet: fakeWitnessSet,
-        isValid: true,
-        auxiliaryData: null
-      })
-
-      // Get actual CBOR size with fake witnesses
-      const txSizeWithWitnesses = yield* calculateTransactionSize(txWithWitnesses)
-
-      yield* Effect.logDebug(
-        `Transaction size check: ${txSizeWithWitnesses} bytes ` +
-          `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), max=${ctx.config.protocolParameters.maxTxSize} bytes`
-      )
-
-      if (txSizeWithWitnesses > ctx.config.protocolParameters.maxTxSize) {
-        return yield* Effect.fail(
-          new TransactionBuilderError({
-            message:
-              `Transaction size (${txSizeWithWitnesses} bytes) exceeds maximum ` +
-              `allowed (${ctx.config.protocolParameters.maxTxSize} bytes). ` +
-              `Try reducing inputs (${inputs.length}) or outputs (${finalOutputs.length}).`,
-            cause: {
-              txSizeBytes: txSizeWithWitnesses,
-              maxTxSize: ctx.config.protocolParameters.maxTxSize,
-              inputCount: inputs.length,
-              outputCount: finalOutputs.length,
-              suggestion: "Use larger UTxOs or consolidate outputs to reduce transaction size"
-            }
-          })
-        )
-      }
-
-      // TODO Step 4: Build witness set with redeemers and detect required signers
-      // TODO Step 5: Run script evaluation to fill ExUnits
-      // TODO Step 6: Add change output (balancing)
-
-      // Build transaction with fake witnesses for validation
-      const txWithFakeWitnesses = new Transaction.Transaction({
-        body: transaction.body,
-        witnessSet: fakeWitnessSet,
-        isValid: true,
-        auxiliaryData: null
-      })
-
-      // 10. Return minimal SignBuilder stub
-      const signBuilder: SignBuilder = {
-        Effect: {
-          sign: () => Effect.fail(new TransactionBuilderError({ message: "Signing not yet implemented" })),
-          signWithWitness: () =>
-            Effect.fail(new TransactionBuilderError({ message: "Witness signing not yet implemented" })),
-          assemble: () => Effect.fail(new TransactionBuilderError({ message: "Assemble not yet implemented" })),
-          partialSign: () =>
-            Effect.fail(new TransactionBuilderError({ message: "Partial signing not yet implemented" })),
-          getWitnessSet: () => Effect.succeed(transaction.witnessSet),
-          toTransaction: () => Effect.succeed(transaction),
-          toTransactionWithFakeWitnesses: () => Effect.succeed(txWithFakeWitnesses)
-        },
-        sign: () => Promise.reject(new Error("Signing not yet implemented")),
-        signWithWitness: () => Promise.reject(new Error("Witness signing not yet implemented")),
-        assemble: () => Promise.reject(new Error("Assemble not yet implemented")),
-        partialSign: () => Promise.reject(new Error("Partial signing not yet implemented")),
-        getWitnessSet: () => Promise.resolve(transaction.witnessSet),
-        toTransaction: () => Promise.resolve(transaction),
-        toTransactionWithFakeWitnesses: () => Promise.resolve(txWithFakeWitnesses)
-      }
-
-      return signBuilder
-    }).pipe(
-      Effect.provideServiceEffect(
-        TxContext,
-        Effect.gen(function* () {
-          return {
-            config,
-            state: yield* createFreshState(),
-            options: options ?? {}
-          }
-        })
-      ),
-      Effect.mapError(
-        (error) =>
-          new TransactionBuilderError({
-            message: "Build failed",
-            cause: error
-          })
-      )
-    )
-
-  // ============================================================================
-  // State Machine Implementation (Parallel/Experimental)
-  // ============================================================================
-
-  // ============================================================================
-  // EXPERIMENTAL STATE MACHINE IMPLEMENTATION
-  // ============================================================================
-  // This is a parallel implementation to buildEffectCore using state machine pattern.
-  // NOT YET ACTIVE in production - has Context.Tag type system issues to resolve.
-  // TypeScript errors suppressed below as this is experimental/WIP code.
-  // ============================================================================
-
-  // @ts-nocheck - Experimental state machine code below
-
-  /**
-   * Build phases representing the transaction building lifecycle
-   *
-   * Context-driven state machine:
-   * - Being IN a phase means DO that work
-   * - Phases read/write context, return next phase
-   * - selection is reusable (called initially or for reselection)
-   * - Fallbacks (drainTo, burnAsFee) only when attempts exhausted
-   */
-  type BuildPhase =
-    | "selection" // Select coins if needed (checks context)
-    | "changeCreation" // Create change outputs
-    | "feeCalculation" // Calculate fee with change
-    | "balanceVerification" // Verify balance, decide next
-    | "drainTo" // Fallback: merge to existing output
-    | "burnAsFee" // Fallback: burn remaining as fee
-    | "complete" // Done
-
-  /**
-   * Build context carrying state machine execution state
-   * Note: Removed duplication - selectedUtxos/baseOutputs read from TxContext.state
-   */
-  interface BuildContext {
-    /**
-     * Current state machine phase
-     *
-     * Determines which phase executes next:
-     * - `selection`: Select UTxOs to cover outputs + fee
-     * - `changeCreation`: Create change outputs from leftover
-     * - `feeCalculation`: Calculate actual fee with change included
-     * - `balanceVerification`: Verify balance and route to completion/retry/fallback
-     * - `drainTo`: Fallback to merge small leftover into existing output
-     * - `burnAsFee`: Fallback to burn small leftover as extra fee
-     * - `complete`: Terminal state - transaction successfully built
-     */
-    readonly phase: BuildPhase
-
-    /**
-     * Current reselection attempt number (1-based)
-     *
-     * Tracks how many times we've tried to select UTxOs and create change.
-     * Used to prevent infinite loops (MAX_ATTEMPTS = 3).
-     *
-     * Example flow:
-     * - Attempt 1: Select 3 ADA, need change but insufficient → shortfall
-     * - Attempt 2: Select more UTxOs (5 ADA total), create change → success
-     */
-    readonly attempt: number
-
-    /**
-     * Final calculated transaction fee in lovelace
-     *
-     * Fee includes:
-     * - Base transaction structure
-     * - All inputs (from selected UTxOs)
-     * - All outputs (user outputs + change outputs)
-     * - Witness estimates
-     *
-     * Updated after:
-     * - Fee calculation phase (includes change outputs)
-     * - Fee adjustment (when change affects fee)
-     */
-    readonly calculatedFee: bigint
-
-    /**
-     * Amount of lovelace we're short when inputs insufficient
-     *
-     * Calculated by balance verification as the total deficit:
-     * shortfall = (outputs + changeOutputs + fee) - inputs
-     *
-     * This represents ALL missing lovelace, including:
-     * - Output requirements
-     * - Fee payment
-     * - Change output minUTxO needs (for both single and unfrack bundles)
-     *
-     * Used to:
-     * - Trigger reselection (select more UTxOs to cover shortfall)
-     * - Single source of truth for deficit during reselection
-     * - Debug insufficient balance errors
-     * - Track progress across attempts
-     *
-     * Set by: Balance verification when inputs < outputs
-     * Used by: Selection phase during reselection attempts
-     * Reset to: 0n after selection completes
-     */
-    readonly shortfall: bigint
-
-    /**
-     * Change outputs created from leftover assets
-     *
-     * Created in changeCreation phase when:
-     * - Leftover has native assets (MUST create change - ledger rule)
-     * - Leftover ADA >= minUTxO (can create valid change)
-     *
-     * Empty array when:
-     * - Leftover too small (triggers drainTo or burnAsFee)
-     * - No leftover after paying outputs + fee
-     *
-     * Used in:
-     * - Fee calculation (affects transaction size)
-     * - Balance verification (check if change created)
-     */
-    readonly changeOutputs: ReadonlyArray<UTxO.TxOutput>
-
-    /**
-     * Leftover assets AFTER subtracting the fee
-     *
-     * Calculated as: leftoverBeforeFee - calculatedFee
-     * Set in Phase 2 (Change Creation), used in Phase 4+ (Balance Verification, DrainTo, BurnAsFee)
-     *
-     * Purpose:
-     * - Single source of truth for what's available after fee payment
-     * - Eliminates redundant calculations across phases
-     * - Used for minUTxO checks, drainTo validation, burn decisions
-     *
-     * Example: leftoverBeforeFee = 5 ADA, calculatedFee = 0.17 ADA
-     *   → leftoverAfterFee = 4.83 ADA
-     *
-     * Initialized to zero assets before Phase 2 completes
-     *
-     * @since 2.0.0
-     */
-    readonly leftoverAfterFee: Assets.Assets
-
-    /**
-     * Index of output modified by drainTo fallback (optional)
-     *
-     * When leftover < minUTxO and ADA-only:
-     * - DrainTo merges leftover into existing output
-     * - This index tracks which output was modified
-     *
-     * Purpose:
-     * - Validation: Ensure merged output still meets minUTxO
-     * - Debugging: Track which output received extra funds
-     *
-     * Example: drainToIndex = 0 means leftover merged into first output
-     *
-     * Only set when:
-     * - drainTo configured in options
-     * - Leftover < minUTxO
-     * - Leftover is ADA-only (no native assets)
-     */
-    readonly drainToIndex?: number
-
-    /**
-     * Whether unfrack optimization is allowed for this build
-     *
-     * Controls whether ChangeCreation should attempt to create unfracked
-     * change outputs (splitting tokens into multiple bundles).
-     *
-     * Initialized based on options:
-     * - true: If unfrack option is configured
-     * - false: If unfrack option is not configured
-     *
-     * Can be set to false during build if:
-     * - Unfrack attempted but failed due to insufficient lovelace
-     * - Fallback to single change output triggered
-     *
-     * Purpose:
-     * - Allow precise fallback without heuristics
-     * - Try unfrack, detect failure, retry without it
-     * - Prevent re-attempting unfrack after it fails
-     *
-     * @since 2.0.0
-     */
-    readonly canUnfrack: boolean
-  }
-
-  /**
-   * Phase result - describes what to do next.
-   *
-   * Each phase has ONE responsibility: decide what to do next.
-   * Phases read context, do their work, update context, return next phase.
-   *
-   * This pattern enables:
-   * - Single Responsibility: Phases do one thing
-   * - State Reuse: Selection logic reusable from different contexts
-   * - Context-driven: All state in context, no data passing
-   * - Effect-idiomatic: Composable state machine
-   */
-  type PhaseResult = {
-    readonly next: BuildPhase
-  }
-
-  /**
-   * BuildContext service tag
-   */
-  class BuildContextTag extends Context.Tag("BuildContextTag")<BuildContextTag, Ref.Ref<BuildContext>>() {}
-
-  // ============================================================================
-  // V2: CLEAN STATE MACHINE IMPLEMENTATION
-  // ============================================================================
-
-  /**
-   * NEW State Machine V2 - Clean context-driven implementation
-   *
-   * Key principles:
-   * - Start with fee = 0, let balance verification drive everything
-   * - Phases read context, do work, return next phase
-   * - Trust fee convergence (usually 1-2 iterations)
-   * - Selection is reusable
-   * - Fallbacks only when attempts exhausted
-   */
-  const buildEffectCoreStateMachineV2 = (options?: BuildOptions) =>
-    Effect.gen(function* () {
-      const ctx = yield* TxContext
-
-      // Execute all programs to populate initial state
-      yield* Effect.all(programs, { concurrency: "unbounded" })
-
-      // Create initial build context
-      const initialBuildCtx: BuildContext = {
-        phase: "selection" as const,
-        attempt: 0,
-        calculatedFee: 0n, // Start with 0!
-        shortfall: 0n,
-        changeOutputs: [],
-        leftoverAfterFee: { lovelace: 0n },
-        canUnfrack: ctx.options?.unfrack !== undefined
-      }
-
-      const buildCtxRef = yield* Ref.make(initialBuildCtx)
-
-      return yield* Effect.gen(function* () {
-        // State machine loop
-        while (true) {
-          const buildCtx = yield* Ref.get(buildCtxRef)
-
-          if (buildCtx.phase === "complete") {
-            break
-          }
-
-          yield* Effect.logDebug(
-            `[StateMachineV2] Phase: ${buildCtx.phase}, Attempt: ${buildCtx.attempt}, Fee: ${buildCtx.calculatedFee}`
-          )
-
-          // Execute phase
-          yield* executePhaseV2
-        }
-
-        // Build final transaction
-        const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
-        const baseOutputs = yield* Ref.get(ctx.state.outputs)
-        const finalBuildCtx = yield* Ref.get(buildCtxRef)
-
-        yield* Effect.logDebug(
-          `[buildEffectCoreStateMachineV2] Base outputs: ${baseOutputs.length}, ` +
-            `Change outputs: ${finalBuildCtx.changeOutputs.length}`
-        )
-
-        const inputs = yield* buildTransactionInputs(selectedUtxos)
-        const allOutputs = [...baseOutputs, ...finalBuildCtx.changeOutputs]
-
-        yield* Effect.logDebug(`[buildEffectCoreStateMachineV2] Total outputs: ${allOutputs.length}`)
-
-        const transaction = yield* assembleTransaction(inputs, allOutputs, finalBuildCtx.calculatedFee)
-
-        // SAFETY CHECK: Validate transaction size against protocol limit
-        // Build transaction WITH fake witnesses for accurate size check (same as old impl)
-        const fakeWitnessSet = yield* buildFakeWitnessSet(selectedUtxos)
-
-        yield* Effect.logDebug(
-          `[StateMachineV2] Fake witness set: ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} vkey witnesses, ` +
-            `${inputs.length} inputs`
-        )
-
-        const txWithFakeWitnesses = new Transaction.Transaction({
-          body: transaction.body,
-          witnessSet: fakeWitnessSet,
-          isValid: true,
-          auxiliaryData: null
-        })
-
-        // Get actual CBOR size with fake witnesses
-        const txSizeWithWitnesses = yield* calculateTransactionSize(txWithFakeWitnesses)
-
-        yield* Effect.logDebug(
-          `[StateMachineV2] Transaction size: ${txSizeWithWitnesses} bytes ` +
-            `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), ` +
-            `max=${ctx.config.protocolParameters.maxTxSize} bytes`
-        )
-
-        if (txSizeWithWitnesses > ctx.config.protocolParameters.maxTxSize) {
-          return yield* Effect.fail(
-            new TransactionBuilderError({
-              message:
-                `Transaction size (${txSizeWithWitnesses} bytes) exceeds maximum ` +
-                `allowed (${ctx.config.protocolParameters.maxTxSize} bytes). ` +
-                `Try reducing inputs (${inputs.length}) or outputs (${allOutputs.length}).`,
-              cause: {
-                txSizeBytes: txSizeWithWitnesses,
-                maxTxSize: ctx.config.protocolParameters.maxTxSize,
-                inputCount: inputs.length,
-                outputCount: allOutputs.length,
-                suggestion: "Use larger UTxOs or consolidate outputs to reduce transaction size"
-              }
-            })
-          )
-        }
-
-        // Log final build summary
-        yield* Effect.logDebug(
-          `[StateMachineV2] Build complete: ${inputs.length} input(s), ${allOutputs.length} output(s) ` +
-            `(${baseOutputs.length} base + ${finalBuildCtx.changeOutputs.length} change), ` +
-            `Fee: ${finalBuildCtx.calculatedFee} lovelace, Size: ${txSizeWithWitnesses} bytes, Attempts: ${finalBuildCtx.attempt}`
-        )
-
-        // Return SignBuilder (matching old implementation)
-        const signBuilder: SignBuilder = {
-          Effect: {
-            sign: () => Effect.fail(new TransactionBuilderError({ message: "Signing not yet implemented" })),
-            signWithWitness: () =>
-              Effect.fail(new TransactionBuilderError({ message: "Witness signing not yet implemented" })),
-            assemble: () => Effect.fail(new TransactionBuilderError({ message: "Assemble not yet implemented" })),
-            partialSign: () =>
-              Effect.fail(new TransactionBuilderError({ message: "Partial signing not yet implemented" })),
-            getWitnessSet: () => Effect.succeed(transaction.witnessSet),
-            toTransaction: () => Effect.succeed(transaction),
-            toTransactionWithFakeWitnesses: () => Effect.succeed(txWithFakeWitnesses)
-          },
-          sign: () => Promise.reject(new Error("Signing not yet implemented")),
-          signWithWitness: () => Promise.reject(new Error("Witness signing not yet implemented")),
-          assemble: () => Promise.reject(new Error("Assemble not yet implemented")),
-          partialSign: () => Promise.reject(new Error("Partial signing not yet implemented")),
-          getWitnessSet: () => Promise.resolve(transaction.witnessSet),
-          toTransaction: () => Promise.resolve(transaction),
-          toTransactionWithFakeWitnesses: () => Promise.resolve(txWithFakeWitnesses)
-        }
-
-        return signBuilder
-      }).pipe(Effect.provideService(BuildContextTag, buildCtxRef))
-    }).pipe(
-      Effect.provideServiceEffect(
-        TxContext,
-        createFreshState().pipe(Effect.map((state) => ({ config, options: options ?? {}, state })))
-      )
-    )
-
   /**
    * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
    */
@@ -2060,262 +1032,21 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
   }
 
   /**
-   * Phase executor V2 - simpler, just updates phase in context
-   */
-  const executePhaseV2 = Effect.gen(function* () {
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    let result: PhaseResult
-
-    switch (buildCtx.phase) {
-      case "selection":
-        result = yield* phaseSelectionV2
-        break
-
-      case "changeCreation":
-        result = yield* phaseChangeCreationV2
-        break
-
-      case "feeCalculation":
-        result = yield* phaseFeeCalculationV2
-        break
-
-      case "balanceVerification":
-        result = yield* phaseBalanceVerificationV2
-        break
-
-      case "drainTo":
-        result = yield* phaseDrainToV2
-        break
-
-      case "burnAsFee":
-        result = yield* phaseBurnAsFeeV2
-        break
-
-      case "complete":
-        return
-    }
-
-    // Update phase
-    yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, phase: result.next }))
-  })
-
-  /**
-   * V2 Phase 1: Selection
-   * Precisely calculates what's needed based on outputs + calculatedFee
-   */
-  const phaseSelectionV2 = Effect.gen(function* () {
-    const ctx = yield* TxContext
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    yield* Effect.logDebug(`[SelectionV2] Attempt ${buildCtx.attempt + 1}`)
-
-    // Check max attempts
-    if (buildCtx.attempt >= MAX_RESELECTION_ATTEMPTS) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: `Cannot balance after ${MAX_RESELECTION_ATTEMPTS} attempts`,
-          cause: { attempts: buildCtx.attempt, shortfall: buildCtx.shortfall.toString() }
-        })
-      )
-    }
-
-    const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-    const outputAssets = yield* Ref.get(ctx.state.totalOutputAssets)
-
-    // Ensure lovelace field exists for Assets utilities
-    const inputAssetsWithLovelace: Assets.Assets = {
-      ...inputAssets,
-      lovelace: inputAssets.lovelace || 0n
-    }
-
-    // PRECISE calculation: what we need = outputs + fee + shortfall (if retrying)
-    // On first attempt (attempt=0): shortfall is 0n
-    // On retry (attempt>0): shortfall is set by balance verification with the TOTAL deficit
-    //
-    // NOTE: We use ONLY shortfall during reselection, NOT requiredChangeMinUTxO.
-    // The shortfall already accounts for ALL missing lovelace (including change minUTxO needs).
-    // Adding both would double-count!
-    yield* Effect.logDebug(
-      `[SelectionV2] buildCtx.shortfall: ${buildCtx.shortfall}, buildCtx.calculatedFee: ${buildCtx.calculatedFee}`
-    )
-    const totalNeeded: Assets.Assets = {
-      ...outputAssets,
-      lovelace: (outputAssets.lovelace || 0n) + buildCtx.calculatedFee + buildCtx.shortfall
-    }
-
-    // Calculate precise asset delta: needed - available
-    // Positive values = shortfalls (need more), Negative = excess (have more)
-    const assetDelta = Assets.subtract(totalNeeded, inputAssetsWithLovelace)
-
-    // Extract only the shortfalls (positive values)
-    const assetShortfalls = Assets.filter(assetDelta, (_unit, amount) => amount > 0n)
-
-    const needsSelection = !Assets.isEmpty(assetShortfalls)
-
-    yield* Effect.logDebug(
-      `[SelectionV2] Needed: {${formatAssetsForLog(totalNeeded)}}, ` +
-        `Available: {${formatAssetsForLog(inputAssetsWithLovelace)}}, ` +
-        `Shortfalls: {${formatAssetsForLog(assetShortfalls)}}`
-    )
-
-    if (!needsSelection) {
-      yield* Effect.logDebug("[SelectionV2] Assets sufficient")
-      const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
-      yield* Effect.logDebug(
-        `[SelectionV2] Selection complete: ${selectedUtxos.length} UTxO(s) selected, ` +
-          `Total lovelace: ${inputAssets.lovelace || 0n}`
-      )
-    } else {
-      // Perform selection for precise shortfall
-      const shortfallStr = Object.entries(assetShortfalls)
-        .map(([_unit, amount]) => amount.toString())
-        .join(", ")
-      yield* Effect.logDebug(`[SelectionV2] Selecting for shortfall: ${shortfallStr}`)
-
-      const beforeCount = (yield* Ref.get(ctx.state.selectedUtxos)).length
-      yield* performCoinSelectionUpdateState(assetShortfalls)
-      const afterCount = (yield* Ref.get(ctx.state.selectedUtxos)).length
-      const addedCount = afterCount - beforeCount
-
-      const updatedInputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-      yield* Effect.logDebug(
-        `[SelectionV2] Added ${addedCount} UTxO(s), ` +
-          `Total selected: ${afterCount}, ` +
-          `New total lovelace: ${updatedInputAssets.lovelace || 0n}`
-      )
-    }
-
-    // Common path: increment attempt, clear shortfall (we've accounted for it), and proceed to change creation
-    yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, attempt: ctx.attempt + 1, shortfall: 0n }))
-    return { next: "changeCreation" as const }
-  })
-
-  /**
-   * V2 Phase 2: Change Creation
-   *
-   * Creates change outputs using tentative leftover (inputs - outputs - fee).
-   * Each output created is valid (meets minUTxO). Balance phase verifies total sufficiency.
-   */
-  const phaseChangeCreationV2 = Effect.gen(function* () {
-    const ctx = yield* TxContext
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    yield* Effect.logDebug(`[ChangeCreationV2] Fee from context: ${buildCtx.calculatedFee}`)
-
-    // Calculate tentative leftover after fee
-    const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-    const outputAssets = yield* Ref.get(ctx.state.totalOutputAssets)
-    const leftoverBeforeFee = calculateLeftoverAssets(inputAssets, outputAssets)
-
-    const tentativeLeftover: Assets.Assets = {
-      ...leftoverBeforeFee,
-      lovelace: leftoverBeforeFee.lovelace - buildCtx.calculatedFee
-    }
-
-    // Early exit if negative - balance phase will trigger reselection
-    if (tentativeLeftover.lovelace < 0n) {
-      yield* Effect.logDebug(
-        `[ChangeCreationV2] Insufficient lovelace for fee: ${tentativeLeftover.lovelace}. ` +
-          `Skipping change, balance verification will trigger reselection.`
-      )
-
-      yield* Ref.update(buildCtxRef, (ctx) => ({
-        ...ctx,
-        changeOutputs: []
-      }))
-      return { next: "feeCalculation" as const }
-    }
-
-    // Unfrack path: Create multiple outputs
-    if (ctx.options?.unfrack && buildCtx.canUnfrack) {
-      const changeOutputs = yield* createChangeOutputs(tentativeLeftover, ctx)
-
-      yield* Effect.logDebug(`[ChangeCreationV2] Successfully created ${changeOutputs.length} unfracked outputs`)
-
-      // Store outputs and proceed to fee calculation
-      yield* Ref.update(buildCtxRef, (ctx) => ({
-        ...ctx,
-        changeOutputs
-      }))
-      return { next: "feeCalculation" as const }
-    }
-
-    // Single output path: Validate minUTxO requirement
-    const minLovelace = yield* calculateMinimumUtxoLovelace({
-      address: ctx.config.changeAddress,
-      assets: tentativeLeftover,
-      coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-    })
-
-    if (tentativeLeftover.lovelace < minLovelace) {
-      const hasNativeAssets = Object.keys(tentativeLeftover).length > 1
-
-      if (hasNativeAssets) {
-        // Native assets MUST go in change output (ledger rule)
-        // Create placeholder with required minUTxO - balance will detect shortfall
-        yield* Effect.logDebug(
-          `[ChangeCreationV2] Native assets need ${minLovelace} lovelace, only have ${tentativeLeftover.lovelace}. ` +
-            `Creating placeholder change to trigger reselection.`
-        )
-
-        const changeOutputs = [
-          {
-            address: ctx.config.changeAddress,
-            assets: { ...tentativeLeftover, lovelace: minLovelace }
-          }
-        ]
-
-        yield* Ref.update(buildCtxRef, (ctx) => ({
-          ...ctx,
-          changeOutputs
-        }))
-        return { next: "feeCalculation" as const }
-      }
-
-      // Insufficient ADA-only leftover - return empty, balance will handle (drainTo/burn)
-      yield* Effect.logDebug(
-        `[ChangeCreationV2] Insufficient lovelace for change (${tentativeLeftover.lovelace} < ${minLovelace}), returning empty change`
-      )
-
-      yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, changeOutputs: [] }))
-      return { next: "feeCalculation" as const }
-    }
-
-    // Create valid single change output
-    const changeOutput = yield* makeTxOutput({
-      address: ctx.config.changeAddress,
-      assets: tentativeLeftover
-    })
-
-    yield* Effect.logDebug(`[ChangeCreationV2] Created 1 change output with ${tentativeLeftover.lovelace} lovelace`)
-
-    yield* Ref.update(buildCtxRef, (ctx) => ({
-      ...ctx,
-      changeOutputs: [changeOutput]
-    }))
-    return { next: "feeCalculation" as const }
-  })
-
-  /**
    * Helper: Create unfracked change outputs (multiple outputs)
    * Only called when unfrack option is enabled.
    * Returns change outputs array or undefined if unfrack is not viable.
    *
    * @param leftoverAfterFee - Tentative leftover calculated with previous fee estimate
    * @param ctx - Transaction context data
+   * @param changeAddress - Resolved change address for this build
    * @returns ReadonlyArray<TxOutput> or undefined if not viable
    */
   const createChangeOutputs = (
     leftoverAfterFee: Assets.Assets,
-    ctx: TxContextData
-  ): Effect.Effect<
-    ReadonlyArray<UTxO.TxOutput>,
-    TransactionBuilderError
-  > =>
+    ctx: TxContextData,
+    changeAddress: string,
+    coinsPerUtxoByte: bigint
+  ): Effect.Effect<ReadonlyArray<UTxO.TxOutput>, TransactionBuilderError> =>
     Effect.gen(function* () {
       // Empty leftover = no change needed
       if (Assets.isEmpty(leftoverAfterFee)) {
@@ -2324,12 +1055,12 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
       // Create unfracked outputs with proper minUTxO calculation
       const unfrackOptions = ctx.options!.unfrack! // Safe: only called when unfrack is enabled
-      
+
       const changeOutputs = yield* Unfrack.createUnfrackedChangeOutputs(
-        ctx.config.changeAddress,
+        changeAddress,
         leftoverAfterFee,
         unfrackOptions,
-        ctx.config.protocolParameters.coinsPerUtxoByte
+        coinsPerUtxoByte
       ).pipe(
         Effect.mapError(
           (err) =>
@@ -2340,339 +1071,10 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         )
       )
 
-      yield* Effect.logDebug(
-        `[ChangeCreationV2] Created ${changeOutputs.length} unfracked change outputs`
-      )
+      yield* Effect.logDebug(`[ChangeCreationV2] Created ${changeOutputs.length} unfracked change outputs`)
 
       return changeOutputs
     })
-
-  /**
-   * V2 Phase 3: Fee Calculation
-   */
-  const phaseFeeCalculationV2 = Effect.gen(function* () {
-    const ctx = yield* TxContext
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
-    const baseOutputs = yield* Ref.get(ctx.state.outputs)
-    const inputs = yield* buildTransactionInputs(selectedUtxos)
-
-    yield* Effect.logDebug(
-      `[FeeCalculationV2] Starting fee calculation with ${baseOutputs.length} base outputs + ${buildCtx.changeOutputs.length} change outputs`
-    )
-
-    // Calculate fee WITH change outputs
-    const allOutputs = [...baseOutputs, ...buildCtx.changeOutputs]
-    const calculatedFee = yield* calculateFeeIteratively(selectedUtxos, inputs, allOutputs, {
-      minFeeCoefficient: ctx.config.protocolParameters.minFeeCoefficient,
-      minFeeConstant: ctx.config.protocolParameters.minFeeConstant
-    })
-
-    yield* Effect.logDebug(`[FeeCalculationV2] Calculated fee: ${calculatedFee}`)
-
-    // Calculate leftover after fee NOW (after fee is known)
-    const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-    const outputAssets = yield* Ref.get(ctx.state.totalOutputAssets)
-    const leftoverBeforeFee = calculateLeftoverAssets(inputAssets, outputAssets)
-
-    const leftoverAfterFee: Assets.Assets = {
-      ...leftoverBeforeFee,
-      lovelace: leftoverBeforeFee.lovelace - calculatedFee
-    }
-
-    // Store both fee and leftoverAfterFee in context
-    yield* Ref.update(buildCtxRef, (ctx) => ({
-      ...ctx,
-      calculatedFee,
-      leftoverAfterFee
-    }))
-
-    return { next: "balanceVerification" as const }
-  })
-
-  /**
-   * V2 Phase 4: Balance Verification - Decides what to do next
-   */
-  const phaseBalanceVerificationV2 = Effect.gen(function* () {
-    const ctx = yield* TxContext
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    yield* Effect.logDebug(`[BalanceVerificationV2] Starting balance verification (attempt ${buildCtx.attempt})`)
-
-    const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
-    const outputAssets = yield* Ref.get(ctx.state.totalOutputAssets)
-
-    // Calculate total output (outputs + change + fee)
-    const changeTotal = buildCtx.changeOutputs.reduce(
-      (sum, output) => sum + Assets.getAsset(output.assets, "lovelace"),
-      0n
-    )
-
-    const totalOut = outputAssets.lovelace + changeTotal + buildCtx.calculatedFee
-    const totalIn = inputAssets.lovelace
-    const difference = totalOut - totalIn
-
-    yield* Effect.logDebug(`[BalanceVerificationV2] In: ${totalIn}, Out: ${totalOut}, Diff: ${difference}`)
-
-    // Balanced!
-    if (difference === 0n) {
-      yield* Effect.logDebug("[BalanceVerificationV2] Transaction balanced!")
-      return { next: "complete" as const }
-    }
-
-    // Not balanced - decide strategy
-    if (difference < 0n) {
-      // Too much leftover (excess)
-      const excessAmount = -difference
-
-      // Get leftover assets after fee from context
-      const leftoverAssets = buildCtx.leftoverAfterFee
-
-      // Calculate actual minUTxO requirement for these assets
-      const minUtxo = yield* calculateMinimumUtxoLovelace({
-        address: ctx.config.changeAddress,
-        assets: leftoverAssets,
-        coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-      })
-
-      yield* Effect.logDebug(`[BalanceVerificationV2] Excess: ${excessAmount}, MinUTxO: ${minUtxo} for leftover`)
-
-      // If excess is less than minUTxO, can't create valid change output
-      // Use drainTo to merge into existing output
-      if (excessAmount < minUtxo && ctx.options?.drainTo !== undefined) {
-        // MANDATORY: drainTo ONLY works with ADA-only leftover
-        const hasNativeAssets = Object.keys(leftoverAssets).some((k) => k !== "lovelace")
-        if (hasNativeAssets) {
-          return yield* Effect.fail(
-            new TransactionBuilderError({
-              message: `drainTo cannot be used with native assets in leftover. Use change output or unfrack instead.`
-            })
-          )
-        }
-        yield* Effect.logDebug(`[BalanceVerificationV2] Excess < minUTxO, using drainTo`)
-        return { next: "drainTo" as const }
-      }
-
-      // If excess is too small and burn is explicitly allowed
-      if (excessAmount < minUtxo && ctx.options?.onInsufficientChange === "burn") {
-        yield* Effect.logDebug(`[BalanceVerificationV2] Excess < minUTxO, burning as fee`)
-        return { next: "burnAsFee" as const }
-      }
-
-      // If excess is too small but no fallback configured, fail
-      if (excessAmount < minUtxo) {
-        return yield* Effect.fail(
-          new TransactionBuilderError({
-            message:
-              `Change output insufficient: ${excessAmount} lovelace < ${minUtxo} minUTxO. ` +
-              `Configure drainTo to merge with an existing output, or set onInsufficientChange: 'burn' ` +
-              `to explicitly allow burning as extra fee.`,
-            cause: { excessAmount: excessAmount.toString(), minUtxo: minUtxo.toString() }
-          })
-        )
-      }
-
-      // Otherwise recreate change with correct amount
-      yield* Effect.logDebug(`[BalanceVerificationV2] Excess >= minUTxO, recreating change`)
-      return { next: "changeCreation" as const }
-    }
-
-    // Short on lovelace (difference > 0)
-
-    // Strategy 1: Try reselection if attempts remaining
-    if (buildCtx.attempt < MAX_RESELECTION_ATTEMPTS) {
-      yield* Effect.logDebug(`[BalanceVerificationV2] Shortfall: ${difference}, triggering reselection`)
-      yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, shortfall: difference }))
-      return { next: "selection" as const }
-    }
-
-    // Attempts exhausted - try fallbacks
-
-    // Strategy 2: DrainTo if configured
-    if (ctx.options?.drainTo !== undefined) {
-      // MANDATORY: drainTo ONLY works with ADA-only leftover
-      const leftoverAssets = buildCtx.leftoverAfterFee
-      const hasNativeAssets = Object.keys(leftoverAssets).some((k) => k !== "lovelace")
-      if (hasNativeAssets) {
-        return yield* Effect.fail(
-          new TransactionBuilderError({
-            message: `drainTo cannot be used with native assets in leftover. Use change output or unfrack instead.`
-          })
-        )
-      }
-      yield* Effect.logDebug("[BalanceVerificationV2] Attempts exhausted, trying drainTo")
-      return { next: "drainTo" as const }
-    }
-
-    // Strategy 3: Burn as fee (TODO: add allowBurnAsFee to BuildOptions)
-    // if (ctx.options?.allowBurnAsFee && difference < 10_000n) {
-    //   yield* Effect.logDebug("[BalanceVerificationV2] Attempts exhausted, burning as fee")
-    //   return { next: "burnAsFee" as const }
-    // }
-
-    // No fallbacks available
-    return yield* Effect.fail(
-      new TransactionBuilderError({
-        message: `Cannot balance transaction after ${buildCtx.attempt} attempts`,
-        cause: { shortfall: difference.toString(), noFallbacksAvailable: true }
-      })
-    )
-  })
-
-  /**
-   * V2 Phase 5: DrainTo Fallback
-   */
-  const phaseDrainToV2 = Effect.gen(function* () {
-    const ctx = yield* TxContext
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    yield* Effect.logDebug(`[DrainToV2] Starting drainTo fallback (attempt ${buildCtx.attempt})`)
-
-    const drainToIndex = ctx.options?.drainTo
-    if (drainToIndex === undefined) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "drainTo index not configured"
-        })
-      )
-    }
-    const baseOutputs = yield* Ref.get(ctx.state.outputs)
-    const targetOutput = baseOutputs[drainToIndex]
-
-    if (!targetOutput) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: `drainTo index ${drainToIndex} out of bounds`
-        })
-      )
-    }
-
-    // Get leftover after fee from context
-    const leftoverAfterFee = buildCtx.leftoverAfterFee
-
-    // MANDATORY: drainTo ONLY works with ADA-only leftover
-    // Native assets would increase CBOR size -> fee increase -> potential imbalance
-    const hasNativeAssets = Object.keys(leftoverAfterFee).some((k) => k !== "lovelace")
-    if (hasNativeAssets) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: `drainTo cannot be used with native assets in leftover. Use change output or unfrack instead.`
-        })
-      )
-    }
-
-    // Merge leftover into target output
-    const mergedAssets = Assets.add(targetOutput.assets, leftoverAfterFee)
-
-    const mergedOutput: UTxO.TxOutput = {
-      ...targetOutput,
-      assets: mergedAssets
-    }
-
-    // SAFETY CHECK: Validate merged output meets minUTxO requirement
-    // This is critical - the old implementation validates this 3 times!
-    const mergedMinUtxo = yield* calculateMinimumUtxoLovelace({
-      address: mergedOutput.address,
-      assets: mergedAssets,
-      datum: mergedOutput.datumOption,
-      scriptRef: mergedOutput.scriptRef,
-      coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
-    })
-
-    const mergedLovelace = Assets.getAsset(mergedAssets, "lovelace")
-
-    yield* Effect.logDebug(
-      `[DrainToV2] Merged output validation: ${mergedLovelace} lovelace ` + `(minUTxO: ${mergedMinUtxo})`
-    )
-
-    if (mergedLovelace < mergedMinUtxo) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message:
-            `drainTo validation failed: Merged output at index ${drainToIndex} ` +
-            `has ${mergedLovelace} lovelace but requires minimum ${mergedMinUtxo}. ` +
-            `The target output has too many assets to absorb the leftover. ` +
-            `Consider using a different drainTo target or adding more funds.`,
-          cause: {
-            drainToIndex,
-            mergedLovelace: mergedLovelace.toString(),
-            requiredMinUtxo: mergedMinUtxo.toString()
-          }
-        })
-      )
-    }
-
-    // Update outputs
-    yield* Ref.update(ctx.state.outputs, (outputs) => outputs.map((o, i) => (i === drainToIndex ? mergedOutput : o)))
-
-    // Clear change outputs
-    yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, changeOutputs: [] }))
-
-    yield* Effect.logDebug(`[DrainToV2] Successfully merged leftover (validated: ${mergedLovelace} >= ${mergedMinUtxo})`)
-    return { next: "complete" as const }
-  })
-
-  /**
-   * V2 Phase 6: BurnAsFee Fallback
-   */
-  const phaseBurnAsFeeV2 = Effect.gen(function* () {
-    const buildCtxRef = yield* BuildContextTag
-    const buildCtx = yield* Ref.get(buildCtxRef)
-
-    // Get leftover after fee from context
-    const leftoverAfterFee = buildCtx.leftoverAfterFee
-
-    // SAFETY CHECK: Cannot burn leftover when native assets present
-    // Native assets can only be transferred to outputs (ledger rules enforce this)
-    // Attempting to burn without including them in outputs would result in a rejected transaction
-    const hasNativeAssets = Object.keys(leftoverAfterFee).some((k) => k !== "lovelace")
-    if (hasNativeAssets) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message:
-            `Cannot burn leftover as fee: Native assets present and must be transferred to outputs. ` +
-            `Leftover contains: ${JSON.stringify(leftoverAfterFee)}. ` +
-            `Transaction would be rejected by ledger. ` +
-            `Use change output, drainTo, or unfrack to preserve native assets.`
-        })
-      )
-    }
-
-    yield* Effect.logDebug(
-      `[BurnAsFeeV2] Burning ${leftoverAfterFee.lovelace} lovelace as extra fee ` + `(below minUTxO, no native assets)`
-    )
-
-    // Just accept the higher fee, no adjustment needed
-    return { next: "complete" as const }
-  })
-
-  // ============================================================================
-  // END V2 IMPLEMENTATION
-  // ============================================================================
-
-  /**
-   * Helper: Calculate leftover assets (inputs - outputs)
-   */
-  const calculateLeftoverAssets = (
-    inputAssets: Record<string, bigint>,
-    outputAssets: Record<string, bigint>
-  ): Assets.Assets => {
-    const leftover: Assets.Assets = { ...inputAssets, lovelace: inputAssets.lovelace || 0n }
-    for (const [unit, amount] of Object.entries(outputAssets)) {
-      const current = leftover[unit] || 0n
-      const remaining = current - (amount as bigint)
-      if (remaining > 0n) {
-        leftover[unit] = remaining
-      } else {
-        delete leftover[unit]
-      }
-    }
-    return leftover
-  }
 
   // ============================================================================
   // Coin Selection Helper Functions
@@ -2735,7 +1137,9 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       const ctx = yield* TxContext
       const alreadySelected = yield* Ref.get(ctx.state.selectedUtxos)
 
-      const availableUtxos = getAvailableUtxos(ctx.config.availableUtxos, alreadySelected)
+      // Get resolved availableUtxos from context tag
+      const allAvailableUtxos = yield* AvailableUtxosTag
+      const availableUtxos = getAvailableUtxos(allAvailableUtxos, alreadySelected)
       const coinSelectionFn = resolveCoinSelectionFn(ctx.options?.coinSelection)
 
       const { selectedUtxos } = yield* Effect.try({
@@ -2753,23 +1157,19 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     })
 
   // ============================================================================
-  // End of State Machine V2 Implementation
-  // ============================================================================
-
-  // ============================================================================
-  // V3 State Machine Implementation - Mathematical Validation Approach
+  // State Machine Implementation - Mathematical Validation Approach
   // ============================================================================
 
   /**
-   * V3 Build phases
+   * Build phases
    */
-  type V3Phase = "selection" | "changeCreation" | "feeCalculation" | "balance" | "fallback" | "complete"
+  type Phase = "selection" | "changeCreation" | "feeCalculation" | "balance" | "fallback" | "complete"
 
   /**
-   * V3 BuildContext - state machine context
+   * BuildContext - state machine context
    */
-  interface V3BuildContext {
-    readonly phase: V3Phase
+  interface BuildContext {
+    readonly phase: Phase
     readonly attempt: number
     readonly calculatedFee: bigint
     readonly shortfall: bigint
@@ -2778,25 +1178,15 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     readonly canUnfrack: boolean
   }
 
-  /**
-   * V3 BuildContext Tag for Effect Context
-   */
-  const V3BuildContextTag = Context.GenericTag<Ref.Ref<V3BuildContext>>("V3BuildContext")
+  const BuildContextTag = Context.GenericTag<Ref.Ref<BuildContext>>("V3BuildContext")
 
-  /**
-   * V3 Phase result
-   */
-  interface V3PhaseResult {
-    readonly next: V3Phase
+  interface PhaseResult {
+    readonly next: Phase
   }
-
-  // ============================================================================
-  // V3 PHASE: Selection
-  // ============================================================================
 
   const phaseSelectionV3 = Effect.gen(function* () {
     const ctx = yield* TxContext
-    const buildCtxRef = yield* V3BuildContextTag
+    const buildCtxRef = yield* BuildContextTag
     const buildCtx = yield* Ref.get(buildCtxRef)
 
     const inputAssets = yield* Ref.get(ctx.state.totalInputAssets)
@@ -2812,7 +1202,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     // Step 4: Calculate asset delta & extract shortfalls
     const assetDelta = Assets.subtract(totalNeeded, inputAssets)
     const assetShortfalls = Assets.filter(assetDelta, (_unit, amount) => amount > 0n)
-    
+
     // During reselection (shortfall > 0), we need to select MORE lovelace
     // even if inputAssets >= totalNeeded, because the shortfall indicates
     // insufficient lovelace for change output minUTxO requirement
@@ -2852,25 +1242,21 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     // Step 6: Update context and proceed
     yield* Ref.update(buildCtxRef, (ctx) => ({ ...ctx, attempt: ctx.attempt + 1, shortfall: 0n }))
 
-    return { next: "changeCreation" as V3Phase }
+    return { next: "changeCreation" as Phase }
   })
 
-  // ============================================================================
-  // V3 PHASE: Change Creation
-  // ============================================================================
-  
   /**
-   * V3 Change Creation Phase
-   * 
+   * Change Creation Phase
+   *
    * Creates change outputs from leftover assets using a cascading retry strategy.
    * Both unfrack (N outputs) and single output follow the same retry pattern:
    * try with available funds → if insufficient, reselect (up to MAX_ATTEMPTS) → fallback.
-   * 
+   *
    * **Symmetric Retry Flow (Unfrack vs Single Output):**
    * ```
    * UNFRACK (N outputs)                    SINGLE OUTPUT (1 output)
    * ─────────────────────────────────────────────────────────────────
-   * 
+   *
    * Try: Create N outputs                  Try: Create 1 output
    * ↓                                      ↓
    * Check: leftover >= (minUTxO × N)?      Check: leftover >= minUTxO?
@@ -2884,31 +1270,31 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
    *       ├─ (retry/fallback)                ├─ burn (leftover → fee)
    *       └─ ...                             └─ error
    * ```
-   * 
+   *
    * **Detailed Flow:**
    * ```
    * 1. Calculate tentative leftover (inputs - outputs - contextFee)
-   * 
+   *
    * 2. If unfrack enabled and canUnfrack=true:
    *    → Try createUnfrackedChangeOutputs() (N outputs)
    *    → Success: store N outputs, goto FeeCalculation
    *    → Not affordable:
    *       ├─ If attempt < MAX_ATTEMPTS: reselect (add more UTxOs)
    *       └─ If attempt >= MAX_ATTEMPTS: canUnfrack=false, goto step 3
-   * 
+   *
    * 3. Single output approach:
    *    → Create 1 change output with leftover
    *    → Success: store 1 output, goto FeeCalculation
    *    → Not affordable:
    *       ├─ If attempt < MAX_ATTEMPTS: reselect (add more UTxOs)
    *       └─ If attempt >= MAX_ATTEMPTS: goto step 4
-   * 
+   *
    * 4. Insufficient change fallbacks (single-output only):
    *    a. If drainTo specified: merge into existing output
    *    b. If onInsufficientChange="burn": leftover becomes fee
    *    c. If onInsufficientChange="error": throw error
    * ```
-   * 
+   *
    * **Key Principles:**
    * - Unfrack and single output use SAME retry mechanism (reselection up to MAX_ATTEMPTS)
    * - Phase loop handles fee convergence (leftover recalculated each iteration)
@@ -2916,13 +1302,14 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
    * - canUnfrack flag prevents retry loops (once false, stays false)
    * - drainTo and burn are terminal fallbacks (single-output only)
    * - Unfrack outputs bypass drainTo/burn (they're already valid)
-   * 
+   *
    * @returns Next phase to transition to
    */
   const phaseChangeCreationV3 = Effect.gen(function* () {
     const ctx = yield* TxContext
-    const buildCtxRef = yield* V3BuildContextTag
+    const buildCtxRef = yield* BuildContextTag
     const buildCtx = yield* Ref.get(buildCtxRef)
+    const changeAddress = yield* ChangeAddressTag
 
     yield* Effect.logDebug(`[ChangeCreationV3] Fee from context: ${buildCtx.calculatedFee}`)
 
@@ -2951,16 +1338,17 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         shortfall,
         changeOutputs: []
       }))
-      return { next: "selection" as V3Phase }
+      return { next: "selection" as Phase }
     }
 
     // Step 4: Affordability check - verify minimum (single output) is affordable
     // This pre-flight check ensures we can create at least one valid change output
     // before attempting any unfrack strategies
+    const protocolParams = yield* ProtocolParametersTag
     const minLovelaceForSingle = yield* calculateMinimumUtxoLovelace({
-      address: ctx.config.changeAddress,
+      address: changeAddress,
       assets: tentativeLeftover,
-      coinsPerUtxoByte: ctx.config.protocolParameters.coinsPerUtxoByte
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte
     })
 
     if (tentativeLeftover.lovelace < minLovelaceForSingle) {
@@ -2974,7 +1362,8 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
       // Check if we have available UTxOs for reselection
       const alreadySelected = yield* Ref.get(ctx.state.selectedUtxos)
-      const availableUtxos = getAvailableUtxos(ctx.config.availableUtxos, alreadySelected)
+      const allAvailableUtxos = yield* AvailableUtxosTag
+      const availableUtxos = getAvailableUtxos(allAvailableUtxos, alreadySelected)
       const hasMoreUtxos = availableUtxos.length > 0
 
       // Try reselection up to MAX_ATTEMPTS (if UTxOs available)
@@ -2991,7 +1380,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
           changeOutputs: []
         }))
 
-        return { next: "selection" as V3Phase }
+        return { next: "selection" as Phase }
       }
 
       // No more UTxOs OR MAX_ATTEMPTS exhausted - check fallback options
@@ -3042,12 +1431,18 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       }
 
       // Fallback strategies configured - proceed to Fallback phase
-      return { next: "fallback" as V3Phase }
+      return { next: "fallback" as Phase }
     }
 
     // Step 5: Unfrack path (single output IS affordable, try bundles/subdivision)
     if (ctx.options?.unfrack && buildCtx.canUnfrack) {
-      const changeOutputs = yield* createChangeOutputs(tentativeLeftover, ctx)
+      const protocolParams = yield* ProtocolParametersTag
+      const changeOutputs = yield* createChangeOutputs(
+        tentativeLeftover,
+        ctx,
+        changeAddress,
+        protocolParams.coinsPerUtxoByte
+      )
 
       yield* Effect.logDebug(`[ChangeCreationV3] Successfully created ${changeOutputs.length} unfracked outputs`)
 
@@ -3056,13 +1451,13 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         ...ctx,
         changeOutputs
       }))
-      return { next: "feeCalculation" as V3Phase }
+      return { next: "feeCalculation" as Phase }
     }
 
     // Step 6: Single output path - create single change output
     // Affordability already verified in Step 4, so we can create output directly
     const singleOutput: UTxO.TxOutput = {
-      address: ctx.config.changeAddress,
+      address: changeAddress,
       assets: tentativeLeftover,
       datumOption: undefined,
       scriptRef: undefined
@@ -3073,17 +1468,13 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       changeOutputs: [singleOutput]
     }))
 
-    return { next: "feeCalculation" as V3Phase }
+    return { next: "feeCalculation" as Phase }
   })
-
-  // ============================================================================
-  // V3 PHASE: Fee Calculation
-  // ============================================================================
 
   const phaseFeeCalculationV3 = Effect.gen(function* () {
     // Step 1: Get contexts and current state
     const ctx = yield* TxContext
-    const buildCtxRef = yield* V3BuildContextTag
+    const buildCtxRef = yield* BuildContextTag
     const buildCtx = yield* Ref.get(buildCtxRef)
 
     const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
@@ -3100,9 +1491,10 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     const allOutputs = [...baseOutputs, ...buildCtx.changeOutputs]
 
     // Step 4: Calculate fee WITH change outputs
+    const protocolParams = yield* ProtocolParametersTag
     const calculatedFee = yield* calculateFeeIteratively(selectedUtxos, inputs, allOutputs, {
-      minFeeCoefficient: ctx.config.protocolParameters.minFeeCoefficient,
-      minFeeConstant: ctx.config.protocolParameters.minFeeConstant
+      minFeeCoefficient: protocolParams.minFeeCoefficient,
+      minFeeConstant: protocolParams.minFeeConstant
     })
 
     yield* Effect.logDebug(`[FeeCalculationV3] Calculated fee: ${calculatedFee}`)
@@ -3124,17 +1516,13 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       leftoverAfterFee
     }))
 
-    return { next: "balance" as V3Phase }
+    return { next: "balance" as Phase }
   })
-
-  // ============================================================================
-  // V3 PHASE: Balance Verification
-  // ============================================================================
 
   const phaseBalanceV3 = Effect.gen(function* () {
     // Step 1: Get contexts and log start
     const ctx = yield* TxContext
-    const buildCtxRef = yield* V3BuildContextTag
+    const buildCtxRef = yield* BuildContextTag
     const buildCtx = yield* Ref.get(buildCtxRef)
 
     yield* Effect.logDebug(`[BalanceV3] Starting balance verification (attempt ${buildCtx.attempt})`)
@@ -3168,7 +1556,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     // Step 3: Check if balanced (delta is empty) → complete
     if (isBalanced) {
       yield* Effect.logDebug("[BalanceV3] Transaction balanced!")
-      return { next: "complete" as V3Phase }
+      return { next: "complete" as Phase }
     }
 
     // Step 4: Not balanced - check for native assets in delta (shouldn't happen)
@@ -3186,71 +1574,69 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     const deltaLovelace = delta.lovelace
 
     // Excess: inputs > outputs + change + fee
-    // This should NEVER happen with V3's Option B design, EXCEPT:
+    // This should NEVER happen with Option B design, EXCEPT:
     // - Burn strategy: Positive delta is the burned leftover (expected and correct!)
     // - ChangeCreation creates change = tentativeLeftover (when sufficient)
     // - ChangeCreation routes to selection (when insufficient, never returns empty)
     // - Balance should only see: delta = 0 (balanced) or delta < 0 (shortfall) or delta > 0 (burn mode)
-    
+
     if (deltaLovelace > 0n) {
       // Check if this is expected from burn strategy
       const isBurnMode = ctx.options?.onInsufficientChange === "burn" && buildCtx.changeOutputs.length === 0
-      
+
       // Check if this is expected from drainTo strategy
       const isDrainToMode = ctx.options?.drainTo !== undefined && buildCtx.changeOutputs.length === 0
-      
+
       if (isDrainToMode) {
         // DrainTo mode: Merge positive delta (leftover after fee) into target output
         const drainToIndex = ctx.options.drainTo!
         const outputs = yield* Ref.get(ctx.state.outputs)
-        
+
         // Validate drainTo index (should already be validated in Fallback, but double-check)
         if (drainToIndex < 0 || drainToIndex >= outputs.length) {
           return yield* Effect.fail(
             new TransactionBuilderError({
-              message: `[V3 Balance] Invalid drainTo index: ${drainToIndex}. Must be between 0 and ${outputs.length - 1}`,
+              message: `Invalid drainTo index: ${drainToIndex}. Must be between 0 and ${outputs.length - 1}`,
               cause: { drainToIndex, outputCount: outputs.length }
             })
           )
         }
-        
+
         // Merge delta into target output
         const targetOutput = outputs[drainToIndex]
         const newLovelace = targetOutput.assets.lovelace + deltaLovelace
         const newAssets = { ...targetOutput.assets, lovelace: newLovelace }
         const updatedOutput = { ...targetOutput, assets: newAssets }
-        
+
         // Update outputs
         const newOutputs = [...outputs]
         newOutputs[drainToIndex] = updatedOutput
         yield* Ref.set(ctx.state.outputs, newOutputs)
-        
+
         // Recalculate totalOutputAssets
-        const newTotalOutputAssets = newOutputs.reduce(
-          (acc, output) => Assets.merge(acc, output.assets),
-          { lovelace: 0n } as Assets.Assets
-        )
+        const newTotalOutputAssets = newOutputs.reduce((acc, output) => Assets.merge(acc, output.assets), {
+          lovelace: 0n
+        } as Assets.Assets)
         yield* Ref.set(ctx.state.totalOutputAssets, newTotalOutputAssets)
-        
+
         yield* Effect.logDebug(
           `[BalanceV3] DrainTo mode: Merged ${deltaLovelace} lovelace into output[${drainToIndex}]. ` +
             `New output value: ${newLovelace}. Transaction balanced.`
         )
-        return { next: "complete" as V3Phase }
+        return { next: "complete" as Phase }
       } else if (isBurnMode) {
         // Burn mode: Positive delta is the burned leftover (becomes implicit fee)
         yield* Effect.logDebug(
-          `[BalanceV3] Burn mode: ${deltaLovelace} lovelace burned as implicit fee. ` +
-            `Transaction balanced.`
+          `[BalanceV3] Burn mode: ${deltaLovelace} lovelace burned as implicit fee. ` + `Transaction balanced.`
         )
-        return { next: "complete" as V3Phase }
+        return { next: "complete" as Phase }
       } else {
         // Not burn mode or drainTo: This is a bug
         return yield* Effect.fail(
           new TransactionBuilderError({
             message:
-              `[V3 Balance] CRITICAL BUG: Excess lovelace detected (${deltaLovelace}). ` +
-              `V3's Option B design should never produce positive delta. ` +
+              ` CRITICAL BUG: Excess lovelace detected (${deltaLovelace}). ` +
+              `s Option B design should never produce positive delta. ` +
               `This indicates incorrect change creation or fee calculation logic.`,
             cause: {
               delta: formatAssetsForLog(delta),
@@ -3269,28 +1655,25 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     // Shortfall: inputs < outputs + change + fee
     // Return to changeCreation to recreate change with correct fee
     // If leftover < minLovelace, changeCreation will trigger selection
-    
+
     yield* Effect.logDebug(
       `[BalanceV3] Shortfall detected: ${-deltaLovelace} lovelace. ` +
         `Returning to changeCreation to adjust change output.`
     )
 
-    return { next: "changeCreation" as V3Phase }
+    return { next: "changeCreation" as Phase }
   })
 
-  // ============================================================================
-  // V3 PHASE: Fallback
-  // ============================================================================
   // Handles insufficient change scenarios with drain or burn strategies.
   // This phase is reached after MAX_ATTEMPTS exhausted in ChangeCreation.
   // Only applies to ADA-only leftover (native assets cannot be drained/burned).
   // Note: ChangeCreation ensures only ADA-only cases reach this phase.
 
   const phaseFallbackV3 = Effect.gen(function* () {
-    yield* Effect.logDebug("[V3] Phase: Fallback")
+    yield* Effect.logDebug("Phase: Fallback")
 
     const ctx = yield* TxContext
-    const buildCtxRef = yield* V3BuildContextTag
+    const buildCtxRef = yield* BuildContextTag
     // Note: We don't merge the leftover here. Instead, we just clear change outputs
     // and let the balance phase handle the merge after fee calculation.
     // This avoids circular dependency: fee depends on outputs, but drain amount depends on fee.
@@ -3330,7 +1713,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       )
 
       // Go to fee calculation to recalculate without change outputs
-      return { next: "feeCalculation" as V3Phase }
+      return { next: "feeCalculation" as Phase }
     }
 
     // ---------------------------------------------------------------
@@ -3350,7 +1733,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       )
 
       // Go to fee calculation to recalculate fee for transaction without change outputs
-      return { next: "feeCalculation" as V3Phase }
+      return { next: "feeCalculation" as Phase }
     }
 
     // ---------------------------------------------------------------
@@ -3371,19 +1754,65 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     )
   })
 
-  // ============================================================================
-  // V3 Main Build Loop
-  // ============================================================================
-
   const buildEffectCoreV3 = (options?: BuildOptions) =>
     Effect.gen(function* () {
       const _ctx = yield* TxContext
 
-      // 1. Execute all programs to populate state
+      // Resolve protocol parameters once at build start
+      // Priority: BuildOptions override > provider.Effect.getProtocolParameters() > error
+      const protocolParameters: ProtocolParameters = yield* options?.protocolParameters !== undefined
+        ? Effect.succeed(options.protocolParameters)
+        : _ctx.config.provider
+          ? Effect.map(
+              _ctx.config.provider.Effect.getProtocolParameters(),
+              (params): ProtocolParameters => ({
+                minFeeCoefficient: BigInt(params.minFeeA),
+                minFeeConstant: BigInt(params.minFeeB),
+                coinsPerUtxoByte: params.coinsPerUtxoByte,
+                maxTxSize: params.maxTxSize
+              })
+            )
+          : Effect.fail(
+              new TransactionBuilderError({
+                message:
+                  "No protocol parameters provided. Either provide protocolParameters in BuildOptions or provider in config.",
+                cause: null
+              })
+            )
+
+      // Resolve change address once at build start
+      // Priority: BuildOptions override > wallet.Effect.address() > error
+      const changeAddress: string = yield* options?.changeAddress
+        ? Effect.succeed(options.changeAddress)
+        : _ctx.config.wallet
+          ? _ctx.config.wallet.Effect.address()
+          : Effect.fail(
+              new TransactionBuilderError({
+                message:
+                  "No change address provided. Either provide wallet in config or changeAddress in build options.",
+                cause: null
+              })
+            )
+
+      // Resolve available UTxOs once at build start
+      // Priority: BuildOptions override > provider.Effect.getUtxos(wallet.address) > error
+      const availableUtxos: ReadonlyArray<UTxO.UTxO> = yield* options?.availableUtxos
+        ? Effect.succeed(options.availableUtxos)
+        : _ctx.config.wallet && _ctx.config.provider
+          ? Effect.flatMap(_ctx.config.wallet.Effect.address(), (addr) => _ctx.config.provider!.Effect.getUtxos(addr))
+          : Effect.fail(
+              new TransactionBuilderError({
+                message:
+                  "No available UTxOs provided. Either provide wallet+provider in config or availableUtxos in build options.",
+                cause: null
+              })
+            )
+
+      // No need to create resolvedConfig - we provide resolved values via context tags below
+
       yield* Effect.all(programs, { concurrency: "unbounded" })
 
-      // 2. Create initial V3 build context
-      const initialBuildCtx: V3BuildContext = {
+      const initialBuildCtx: BuildContext = {
         phase: "selection" as const,
         attempt: 0,
         calculatedFee: 0n,
@@ -3395,8 +1824,9 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
       const ctxRef = yield* Ref.make(initialBuildCtx)
 
-      // 3. Run V3 state machine
-      yield* Effect.gen(function* () {
+      // Run phase loop and transaction assembly with all services provided
+      const { buildCtx, selectedUtxos, transaction, txWithFakeWitnesses } = yield* Effect.gen(function* () {
+        // Phase loop
         while (true) {
           const buildCtx = yield* Ref.get(ctxRef)
 
@@ -3406,7 +1836,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
           }
 
           // Route to phase
-          let result: V3PhaseResult
+          let result: PhaseResult
 
           switch (buildCtx.phase) {
             case "selection": {
@@ -3435,93 +1865,109 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
             }
 
             default:
-              return yield* Effect.fail(
-                new TransactionBuilderError({ message: `V3: Unknown phase: ${buildCtx.phase}` })
-              )
+              return yield* Effect.fail(new TransactionBuilderError({ message: `Unknown phase: ${buildCtx.phase}` }))
           }
 
           // Update phase
           yield* Ref.update(ctxRef, (c) => ({ ...c, phase: result.next }))
         }
-      }).pipe(Effect.provideService(V3BuildContextTag, ctxRef))
 
-      // 4. Add change outputs to transaction and assemble
-      const buildCtx = yield* Ref.get(ctxRef)
-      const ctx = yield* TxContext
+        // 4. Add change outputs to transaction and assemble
+        const buildCtx = yield* Ref.get(ctxRef)
+        const ctx = yield* TxContext
 
-      yield* Effect.logDebug(`[V3] Build complete - fee: ${buildCtx.calculatedFee}`)
+        yield* Effect.logDebug(`Build complete - fee: ${buildCtx.calculatedFee}`)
 
-      // Add change outputs to the transaction outputs
-      if (buildCtx.changeOutputs.length > 0) {
-        const currentOutputs = yield* Ref.get(ctx.state.outputs)
-        yield* Ref.set(ctx.state.outputs, [...currentOutputs, ...buildCtx.changeOutputs])
+        // Add change outputs to the transaction outputs
+        if (buildCtx.changeOutputs.length > 0) {
+          const currentOutputs = yield* Ref.get(ctx.state.outputs)
+          yield* Ref.set(ctx.state.outputs, [...currentOutputs, ...buildCtx.changeOutputs])
 
-        yield* Effect.logDebug(`[V3] Added ${buildCtx.changeOutputs.length} change output(s) to transaction`)
-      }
+          yield* Effect.logDebug(`Added ${buildCtx.changeOutputs.length} change output(s) to transaction`)
+        }
 
-      // Get final inputs and outputs for transaction assembly
-      const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
-      const allOutputs = yield* Ref.get(ctx.state.outputs)
+        // Get final inputs and outputs for transaction assembly
+        const selectedUtxos = yield* Ref.get(ctx.state.selectedUtxos)
+        const allOutputs = yield* Ref.get(ctx.state.outputs)
 
-      yield* Effect.logDebug(
-        `[V3] Assembling transaction: ${selectedUtxos.length} inputs, ${allOutputs.length} outputs, fee: ${buildCtx.calculatedFee}`
-      )
-
-      // Build transaction inputs and assemble transaction body
-      const inputs = yield* buildTransactionInputs(selectedUtxos)
-      const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
-
-      // SAFETY CHECK: Validate transaction size against protocol limit
-      const fakeWitnessSet = yield* buildFakeWitnessSet(selectedUtxos)
-
-      const txWithFakeWitnesses = new Transaction.Transaction({
-        body: transaction.body,
-        witnessSet: fakeWitnessSet,
-        isValid: true,
-        auxiliaryData: null
-      })
-
-      const txSizeWithWitnesses = yield* calculateTransactionSize(txWithFakeWitnesses)
-
-      yield* Effect.logDebug(
-        `[V3] Transaction size: ${txSizeWithWitnesses} bytes ` +
-          `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), ` +
-          `max=${ctx.config.protocolParameters.maxTxSize} bytes`
-      )
-
-      if (txSizeWithWitnesses > ctx.config.protocolParameters.maxTxSize) {
-        return yield* Effect.fail(
-          new TransactionBuilderError({
-            message:
-              `Transaction size (${txSizeWithWitnesses} bytes) exceeds protocol maximum (${ctx.config.protocolParameters.maxTxSize} bytes). ` +
-              `Consider splitting into multiple transactions.`
-          })
+        yield* Effect.logDebug(
+          `Assembling transaction: ${selectedUtxos.length} inputs, ${allOutputs.length} outputs, fee: ${buildCtx.calculatedFee}`
         )
-      }
 
-      // Return SignBuilder with the assembled transaction
-      const signBuilder: SignBuilder = {
-        Effect: {
-          sign: () => Effect.fail(new TransactionBuilderError({ message: "[V3] Signing not yet implemented" })),
-          signWithWitness: () =>
-            Effect.fail(new TransactionBuilderError({ message: "[V3] Witness signing not yet implemented" })),
-          assemble: () => Effect.fail(new TransactionBuilderError({ message: "[V3] Assemble not yet implemented" })),
-          partialSign: () =>
-            Effect.fail(new TransactionBuilderError({ message: "[V3] Partial signing not yet implemented" })),
-          getWitnessSet: () => Effect.succeed(transaction.witnessSet),
-          toTransaction: () => Effect.succeed(transaction),
-          toTransactionWithFakeWitnesses: () => Effect.succeed(txWithFakeWitnesses)
-        },
-        sign: () => Promise.reject(new Error("[V3] Signing not yet implemented")),
-        signWithWitness: () => Promise.reject(new Error("[V3] Witness signing not yet implemented")),
-        assemble: () => Promise.reject(new Error("[V3] Assemble not yet implemented")),
-        partialSign: () => Promise.reject(new Error("[V3] Partial signing not yet implemented")),
-        getWitnessSet: () => Promise.resolve(transaction.witnessSet),
-        toTransaction: () => Promise.resolve(transaction),
-        toTransactionWithFakeWitnesses: () => Promise.resolve(txWithFakeWitnesses)
-      }
+        // Build transaction inputs and assemble transaction body
+        const inputs = yield* buildTransactionInputs(selectedUtxos)
+        const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
 
-      return signBuilder
+        // SAFETY CHECK: Validate transaction size against protocol limit
+        const fakeWitnessSet = yield* buildFakeWitnessSet(selectedUtxos)
+
+        const txWithFakeWitnesses = new Transaction.Transaction({
+          body: transaction.body,
+          witnessSet: fakeWitnessSet,
+          isValid: true,
+          auxiliaryData: null
+        })
+
+        const txSizeWithWitnesses = yield* calculateTransactionSize(txWithFakeWitnesses)
+        const protocolParams = yield* ProtocolParametersTag
+
+        yield* Effect.logDebug(
+          `Transaction size: ${txSizeWithWitnesses} bytes ` +
+            `(with ${fakeWitnessSet.vkeyWitnesses?.length ?? 0} fake witnesses), ` +
+            `max=${protocolParams.maxTxSize} bytes`
+        )
+
+        if (txSizeWithWitnesses > protocolParams.maxTxSize) {
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message:
+                `Transaction size (${txSizeWithWitnesses} bytes) exceeds protocol maximum (${protocolParams.maxTxSize} bytes). ` +
+                `Consider splitting into multiple transactions.`
+            })
+          )
+        }
+
+        // Return data for final result assembly
+        return {
+          transaction,
+          txWithFakeWitnesses,
+          buildCtx,
+          selectedUtxos
+        }
+      }).pipe(
+        Effect.provideService(BuildContextTag, ctxRef),
+        Effect.provideService(ProtocolParametersTag, protocolParameters),
+        Effect.provideService(ChangeAddressTag, changeAddress),
+        Effect.provideService(AvailableUtxosTag, availableUtxos)
+      )
+
+      // Assemble final result based on wallet capabilities
+      const ctx = yield* TxContext
+      const wallet = ctx.config.wallet
+
+      // Type guard: Check if wallet is signing-capable (has signTx method)
+      const isSigningWallet = wallet && "signTx" in wallet
+
+      if (isSigningWallet) {
+        // Return SignBuilder for signing-capable wallets
+        const signBuilder = makeSignBuilder({
+          transaction,
+          transactionWithFakeWitnesses: txWithFakeWitnesses,
+          fee: buildCtx.calculatedFee,
+          utxos: selectedUtxos,
+          provider: ctx.config.provider!,
+          wallet: wallet as WalletNew.SigningWallet | WalletNew.ApiWallet
+        })
+        return signBuilder
+      } else {
+        // Return TransactionResultBase for read-only wallets
+        const transactionResult = makeTransactionResult({
+          transaction,
+          transactionWithFakeWitnesses: txWithFakeWitnesses,
+          fee: buildCtx.calculatedFee
+        })
+        return transactionResult
+      }
     }).pipe(
       Effect.provideServiceEffect(
         TxContext,
@@ -3534,10 +1980,6 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
         })
       )
     )
-
-  // ============================================================================
-  // End of V3 State Machine Implementation
-  // ============================================================================
 
   // Core Effect logic for chaining
   const chainEffectCore = (options?: BuildOptions) =>
@@ -3592,7 +2034,7 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
       )
     )
 
-  const txBuilder: TransactionBuilder = {
+  const txBuilder: TransactionBuilder<TResult> = {
     // ============================================================================
     // Chainable builder methods - Create ProgramSteps, return same instance
     // ============================================================================
@@ -3616,43 +2058,29 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
     // ============================================================================
 
     buildEffect: (options?: BuildOptions) => {
-      if (options?.useV3) {
-        return buildEffectCoreV3(options)
-      }
-      const buildFn = options?.useStateMachine ? buildEffectCoreStateMachineV2 : buildEffectCore
-      return buildFn(options)
+      return buildEffectCoreV3(options) as unknown as Effect.Effect<
+        TResult,
+        TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+        unknown
+      >
     },
 
     build: (options?: BuildOptions) => {
-      if (options?.useV3) {
-        return Effect.runPromise(
-          buildEffectCoreV3(options).pipe(
-            Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug)))
-          )
-        )
-      }
-      const buildFn = options?.useStateMachine ? buildEffectCoreStateMachineV2 : buildEffectCore
       return Effect.runPromise(
-        buildFn(options).pipe(Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug))))
-      )
+        buildEffectCoreV3(options).pipe(
+          Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug)))
+        )
+      ) as unknown as Promise<TResult>
     },
-
     buildEither: (options?: BuildOptions) => {
-      if (options?.useV3) {
-        return Effect.runPromise(
-          buildEffectCoreV3(options).pipe(
-            Effect.either,
-            Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug)))
-          )
-        )
-      }
-      const buildFn = options?.useStateMachine ? buildEffectCoreStateMachineV2 : buildEffectCore
       return Effect.runPromise(
-        buildFn(options).pipe(
+        buildEffectCoreV3(options).pipe(
           Effect.either,
           Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug)))
         )
-      )
+      ) as unknown as Promise<
+        Either<TResult, TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError>
+      >
     },
 
     // ============================================================================
@@ -3676,9 +2104,3 @@ export const makeTxBuilder = (config: TxBuilderConfig): TransactionBuilder => {
 
   return txBuilder
 }
-
-// ============================================================================
-// Helper Functions - To be implemented
-// ============================================================================
-
-// Implementation functions are imported from TxBuilderImpl.js at top of file

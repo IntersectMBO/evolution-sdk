@@ -23,9 +23,6 @@ const CHANGE_ADDRESS = TESTNET_ADDRESSES[0]
 const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
 const baseConfig: TxBuilderConfig = {
-  protocolParameters: PROTOCOL_PARAMS,
-  changeAddress: CHANGE_ADDRESS,
-  availableUtxos: []
 }
 
 describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
@@ -37,7 +34,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
       createTestUtxo({ txHash: "tx4", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 100_000n })
     ]
 
-    const txBuilder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+    const txBuilder = makeTxBuilder(baseConfig)
 
     // Try to build transaction requiring 5M lovelace (impossible with 400k total)
     await expect(
@@ -46,7 +43,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
           address: RECEIVER_ADDRESS,
           assets: Assets.fromLovelace(5_000_000n)
         })
-        .build({ useV3: true })
+        .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
     ).rejects.toThrow()
   })
 
@@ -140,14 +137,14 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
       [tokenC]: 100n
     }
 
-    const txBuilder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+    const txBuilder = makeTxBuilder(baseConfig)
 
     const signBuilder = await txBuilder
       .payToAddress({
         address: RECEIVER_ADDRESS,
         assets: paymentAssets
       })
-      .build({ useV3: true })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 
@@ -197,7 +194,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
       createTestUtxo({ txHash: "tx2", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 500_000n })
     ]
 
-    const txBuilder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+    const txBuilder = makeTxBuilder(baseConfig)
 
     // Payment that will leave insufficient change with the first UTxO
     const signBuilder = await txBuilder
@@ -205,7 +202,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
         address: RECEIVER_ADDRESS,
         assets: { lovelace: 1_000_000n }
       })
-      .build({ useV3: true })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 
@@ -274,7 +271,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
       })
     ]
 
-    const txBuilder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+    const txBuilder = makeTxBuilder(baseConfig)
 
     // Small payment to leave change with max-length asset names
     const signBuilder = await txBuilder
@@ -282,7 +279,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
         address: RECEIVER_ADDRESS,
         assets: { lovelace: 2_000_000n }
       })
-      .build({ useV3: true })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 
@@ -356,7 +353,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
       createTestUtxo({ txHash: "tx6", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 200_000n })
     ]
 
-    const txBuilder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
+    const txBuilder = makeTxBuilder(baseConfig)
 
     // Payment sized to trigger cascading reselection
     // Initial 2 UTxOs: 4.4M total
@@ -369,7 +366,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
         address: RECEIVER_ADDRESS,
         assets: { lovelace: 4_000_000n } // 4.0 ADA (no native assets in payment)
       })
-      .build({ useV3: true })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 

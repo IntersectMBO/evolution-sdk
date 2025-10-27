@@ -1,5 +1,7 @@
+import { mod } from "@noble/curves/abstract/modular.js"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { bytesToNumberLE } from "@noble/curves/utils.js"
 import { Data, FastCheck, Schema } from "effect"
-import sodium from "libsodium-wrappers-sumo"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
@@ -141,10 +143,13 @@ export const fromPrivateKey = (privateKey: PrivateKey.PrivateKey): VKey => {
   if (privateKeyBytes.length === 64) {
     // CML-compatible extended private key: use first 32 bytes as scalar
     const scalar = privateKeyBytes.slice(0, 32)
-    publicKeyBytes = sodium.crypto_scalarmult_ed25519_base_noclamp(scalar)
+    // Apply modular reduction to ensure scalar is in valid range [0, curve.n)
+    const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
+    const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+    publicKeyBytes = publicKeyPoint.toBytes()
   } else {
-    // Standard 32-byte Ed25519 private key using sodium
-    publicKeyBytes = sodium.crypto_sign_seed_keypair(privateKeyBytes).publicKey
+    // Standard 32-byte Ed25519 private key: derive public key
+    publicKeyBytes = ed25519.getPublicKey(privateKeyBytes)
   }
 
   return new VKey({ bytes: publicKeyBytes })
@@ -168,7 +173,7 @@ export const fromPrivateKey = (privateKey: PrivateKey.PrivateKey): VKey => {
 export const verify = (vkey: VKey, message: Uint8Array, signature: Uint8Array): boolean => {
   // Convert VKey to bytes
   const publicKeyBytes = vkey.bytes
-  return sodium.crypto_sign_verify_detached(signature, message, publicKeyBytes)
+  return ed25519.verify(signature, message, publicKeyBytes)
 }
 
 // ============================================================================

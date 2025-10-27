@@ -12,11 +12,10 @@ import * as FeeValidation from "../src/utils/FeeValidation.js"
 import { createTestUtxo } from "./utils/utxo-helpers.js"
 
 describe("TxBuilder Re-selection Loop", () => {
-  
   // ============================================================================
   // Test Configuration
   // ============================================================================
-  
+
   const PROTOCOL_PARAMS = {
     minFeeCoefficient: 44n,
     minFeeConstant: 155_381n,
@@ -37,9 +36,8 @@ describe("TxBuilder Re-selection Loop", () => {
   const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
   const baseConfig: TxBuilderConfig = {
-    protocolParameters: PROTOCOL_PARAMS,
-    changeAddress: CHANGE_ADDRESS,
-    availableUtxos: []
+    // No wallet/provider - using manual mode
+    // changeAddress and availableUtxos provided via build options
   }
 
   // ============================================================================
@@ -59,14 +57,11 @@ describe("TxBuilder Re-selection Loop", () => {
     expect(validation.difference).toBe(0n)
     
     return validation
-  }
-
-  // ============================================================================
+  }  // ============================================================================
   // Basic Re-selection Tests
   // ============================================================================
 
   describe("Basic Re-selection Scenarios", () => {
-    
     it("should build transaction with single UTxO - sufficient funds", async () => {
       const utxo: UTxO.UTxO = createTestUtxo({
         txHash: "a".repeat(64),
@@ -75,28 +70,32 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 10_000_000n
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(2_000_000n)
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(2_000_000n)
+      })
 
-      const signBuilder = await builder.build({ useV3: true })
+      const signBuilder = await builder.build({
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo],
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
       // Strict expectations - everything is deterministic
       expect(tx.body.inputs.length).toBe(1)
       expect(tx.body.outputs.length).toBe(2) // Payment + change
-      
+
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
       const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
-      
+
       // Strict expectations with deterministic values
       expect(size).toBe(294) // Exact transaction size with 1 witness
       expect(validation.actualFee).toBe(168_317n) // Exact deterministic fee
-      
+
       // Verify exact output amounts
       expect(tx.body.outputs[0].amount.coin).toBe(2_000_000n) // Payment output
       // Change: 10M - 2M payment - 168,317 fee = 7,831,683
@@ -126,13 +125,18 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 1_000_000n
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo1, utxo2, utxo3] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(2_000_000n) // 2 ADA payment
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(2_000_000n) // 2 ADA payment
+      })
 
-      const signBuilder = await builder.build({ drainTo: 0, useV3: true })
+      const signBuilder = await builder.build({
+        drainTo: 0,
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo1, utxo2, utxo3],
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -141,14 +145,14 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.inputs.length).toBe(2) // utxo1 (2.2M) + utxo2 (1M) after reselection
       // Should have 2 outputs: payment + change
       expect(tx.body.outputs.length).toBe(2)
-      
+
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
       const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
-      
+
       expect(size).toBe(330) // 2 inputs, 1 witness, 2 outputs
       expect(validation.actualFee).toBe(169_901n) // Fee for 2-input TX
-      
+
       // Verify exact output amounts - reselection creates proper change output
       expect(tx.body.outputs[0].amount.coin).toBe(2_000_000n) // Payment output
       expect(tx.body.outputs[1].amount.coin).toBe(1_030_099n) // Change output (3.2M - 2M - fee)
@@ -162,13 +166,19 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 1_000_000n
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(2_000_000n) // Requesting 2 ADA
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(2_000_000n) // Requesting 2 ADA
+      })
 
-      await expect(builder.build({ useV3: true })).rejects.toThrow()
+      await expect(
+        builder.build({
+          useV3: true,
+          changeAddress: CHANGE_ADDRESS,
+          availableUtxos: [utxo],
+          protocolParameters: PROTOCOL_PARAMS
+        })
+      ).rejects.toThrow()
     })
 
     it("should handle exact amount with drainTo", async () => {
@@ -184,28 +194,33 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: exactAmount
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(paymentAmount)
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(paymentAmount)
+      })
 
-      const signBuilder = await builder.build({ drainTo: 0, useV3: true })
+      const signBuilder = await builder.build({
+        drainTo: 0,
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo],
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
       expect(tx.body.inputs.length).toBe(1)
       // Should have 1 output (payment with drained amount)
       expect(tx.body.outputs.length).toBe(1)
-      
+
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
       const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
-      
-      // Strict expectations with deterministic values  
+
+      // Strict expectations with deterministic values
       expect(size).toBe(227) // Exact transaction size with 1 witness, drainTo
       expect(validation.actualFee).toBe(165_369n) // Exact fee: 227*44 + 155_381
-      
+
       // Verify exact output amount (payment + drained leftover)
       expect(tx.body.outputs[0].amount.coin).toBe(2_004_631n) // 2_170_000 - 165_369 fee
     })
@@ -213,7 +228,7 @@ describe("TxBuilder Re-selection Loop", () => {
     it("should create change output instead of using drainTo when leftover contains native assets", async () => {
       // Scenario: drainTo is requested, but leftover has native assets
       // Expected: Transaction succeeds by creating proper change output (drainTo fallback skipped for native assets)
-      
+
       const TOKEN_POLICY = "c".repeat(56)
       const TOKEN_NAME_1 = "544f4b454e31" // "TOKEN1" in hex
       const TOKEN_UNIT_1 = `${TOKEN_POLICY}${TOKEN_NAME_1}`
@@ -227,24 +242,29 @@ describe("TxBuilder Re-selection Loop", () => {
         nativeAssets: { [TOKEN_UNIT_1]: 100n }
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          // Payment leaves leftover + token
-          // 3_000_000 - 2_000_000 - fee(~170k) = ~830k leftover + token
-          assets: Assets.fromLovelace(2_000_000n)
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        // Payment leaves leftover + token
+        // 3_000_000 - 2_000_000 - fee(~170k) = ~830k leftover + token
+        assets: Assets.fromLovelace(2_000_000n)
+      })
 
       // DrainTo requested, but should create change output instead (native assets present)
       // Expected: Transaction succeeds with change output preserving native asset
-      const signBuilder = await builder.build({ drainTo: 0, useV3: true })
+      const signBuilder = await builder.build({
+        drainTo: 0,
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo],
+        protocolParameters: PROTOCOL_PARAMS
+      })
       expect(signBuilder).toBeDefined()
-      
+
       const tx = await signBuilder.toTransaction()
-      
+
       // Should have payment + change output (native assets require change, drainTo skipped)
       expect(tx.body.outputs.length).toBe(2)
-      
+
       // Verify we have 1 input
       expect(tx.body.inputs.length).toBe(1)
     })
@@ -255,7 +275,6 @@ describe("TxBuilder Re-selection Loop", () => {
   // ============================================================================
 
   describe("Multi-Asset Re-selection", () => {
-    
     const TOKEN_POLICY = "c".repeat(56)
     const TOKEN_NAME = "544f4b454e" // "TOKEN" in hex
     const TOKEN_UNIT = `${TOKEN_POLICY}${TOKEN_NAME}`
@@ -279,37 +298,41 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       // Pay 2 ADA + 50 tokens
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo1, utxo2] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: {
-            lovelace: 2_000_000n,
-            [TOKEN_UNIT]: 50n
-          }
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: {
+          lovelace: 2_000_000n,
+          [TOKEN_UNIT]: 50n
+        }
+      })
 
-      const signBuilder = await builder.build({ useV3: true })
+      const signBuilder = await builder.build({
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo1, utxo2],
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
       // Should select both inputs
       expect(tx.body.inputs.length).toBe(2)
-      
+
       // Should have payment output + change output with remaining 50 tokens
       expect(tx.body.outputs.length).toBe(2)
-      
+
       // Verify both outputs exist
       expect(tx.body.outputs[0]).toBeDefined()
       expect(tx.body.outputs[1]).toBeDefined()
-      
+
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
       const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
-      
+
       // Strict expectations with deterministic values
       expect(size).toBe(513) // Exact transaction size with 2 witnesses, multi-asset
       expect(validation.actualFee).toBe(177_953n) // Exact fee: 513*44 + 155_381
-      
+
       // Verify exact output amounts (payment output)
       expect(tx.body.outputs[0].amount.coin).toBe(2_000_000n)
       // Change output: initially 2,826,799, adjusted by fee increase of 4,752 = 2,822,047
@@ -320,7 +343,7 @@ describe("TxBuilder Re-selection Loop", () => {
       const TOKEN_POLICY = "c".repeat(56)
       const TOKEN_NAME = "544f4b454e" // "TOKEN" in hex
       const TOKEN_UNIT = `${TOKEN_POLICY}${TOKEN_NAME}`
-      
+
       // UTxO with ONLY ADA (no tokens)
       const utxo1: UTxO.UTxO = createTestUtxo({
         txHash: "a".repeat(64),
@@ -328,7 +351,7 @@ describe("TxBuilder Re-selection Loop", () => {
         address: TESTNET_ADDRESSES[0],
         lovelace: 10_000_000n
       })
-      
+
       // UTxO with tokens (available for coin selection)
       const utxo2: UTxO.UTxO = createTestUtxo({
         txHash: "b".repeat(64),
@@ -337,36 +360,39 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 3_000_000n,
         nativeAssets: { [TOKEN_UNIT]: 200n }
       })
-      
+
       // Config with both utxos available for automatic selection
       const builderConfig: TxBuilderConfig = {
-        ...baseConfig,
-        availableUtxos: [utxo1, utxo2]
+        ...baseConfig
       }
-      
+
       // Payment requires tokens that utxo1 doesn't have
-      const builder = makeTxBuilder(builderConfig)
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: {
-            lovelace: 2_000_000n,
-            [TOKEN_UNIT]: 100n // Requires tokens!
-          }
-        })
-      
-      const signBuilder = await builder.build({ useV3: true })
+      const builder = makeTxBuilder(builderConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: {
+          lovelace: 2_000_000n,
+          [TOKEN_UNIT]: 100n // Requires tokens!
+        }
+      })
+
+      const signBuilder = await builder.build({
+        useV3: true,
+        availableUtxos: [utxo1, utxo2],
+        changeAddress: CHANGE_ADDRESS,
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
-      
+
       // Should automatically select utxo2 to cover the token requirement
       expect(tx.body.inputs.length).toBe(2)
-      
+
       // Should have payment + change output
       expect(tx.body.outputs.length).toBe(2)
-      
+
       // Payment output should have the requested amount
       const paymentOutput = tx.body.outputs[0]
       expect(paymentOutput.amount.coin).toBe(2_000_000n)
-      
+
       // Change output should exist with remaining tokens (200 - 100 = 100)
       const _changeOutput = tx.body.outputs[1]
       // Verify the transaction is valid (coin selection worked correctly)
@@ -378,7 +404,6 @@ describe("TxBuilder Re-selection Loop", () => {
   // ============================================================================
 
   describe("Transaction Size Validation", () => {
-    
     it("should pass size check with same address (1 witness)", async () => {
       // Single address = 1 witness
       const utxos: Array<UTxO.UTxO> = Array.from({ length: 5 }, (_, i) =>
@@ -390,24 +415,28 @@ describe("TxBuilder Re-selection Loop", () => {
         })
       )
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(5_000_000n)
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(5_000_000n) // 5 ADA
+      })
 
-      const signBuilder = await builder.build({ useV3: true })
+      const signBuilder = await builder.build({
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: utxos,
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
-      
+
       const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      
+
       // With automatic coin selection, builder picks 3 UTxOs (6M total) to cover 5M payment + fees
       // Strict expectations with deterministic values
       expect(size).toBe(366) // Exact transaction size with 1 witness, 3 inputs
       expect(validation.actualFee).toBe(171_485n) // Exact fee: 366*44 + 155_381
-      
+
       // Verify transaction structure
       const tx = await signBuilder.toTransaction()
       expect(tx.body.inputs.length).toBe(3) // Coin selection picked 3 UTxOs
@@ -432,23 +461,27 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 5_000_000n
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo1, utxo2] })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(6_000_000n)
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(6_000_000n)
+      })
 
-      const signBuilder = await builder.build({ useV3: true })
+      const signBuilder = await builder.build({
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: [utxo1, utxo2],
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
-      
+
       const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      
+
       // Strict expectations with deterministic values
       expect(size).toBe(431) // Exact transaction size with 2 witnesses, 2 inputs
       expect(validation.actualFee).toBe(174_345n) // Exact fee: 431*44 + 155_381
-      
+
       // Verify transaction structure
       const tx = await signBuilder.toTransaction()
       expect(tx.body.inputs.length).toBe(2)
@@ -463,10 +496,10 @@ describe("TxBuilder Re-selection Loop", () => {
       // With 150+ unique payment credentials, we'll need 150+ witnesses
       // Each witness ~130 bytes, so 150 witnesses = ~19.5KB of witnesses alone
       // Plus transaction body ~3-4KB = should exceed 16KB limit
-      
+
       // Generate 200 unique addresses using KeyHash.arbitrary for payment credentials
       // This ensures payment key addresses (not script addresses)
-      const uniqueAddresses = FastCheck.sample(KeyHash.arbitrary, { seed: 42, numRuns: 200 }).map(keyHash => {
+      const uniqueAddresses = FastCheck.sample(KeyHash.arbitrary, { seed: 42, numRuns: 200 }).map((keyHash) => {
         // Create payment key address structure
         const addressStruct = AddressStructure.AddressStructure.make({
           networkId: 0, // Testnet
@@ -476,7 +509,7 @@ describe("TxBuilder Re-selection Loop", () => {
         // Convert to bech32 string
         return Schema.encodeSync(AddressStructure.FromBech32)(addressStruct)
       })
-      
+
       // Create 150 UTxOs with truly unique addresses
       // This will require 150 unique witnesses when selected
       const utxos: Array<UTxO.UTxO> = uniqueAddresses.slice(0, 150).map((address, i) => {
@@ -488,17 +521,23 @@ describe("TxBuilder Re-selection Loop", () => {
         })
       })
 
-      const builder = makeTxBuilder({ ...baseConfig, availableUtxos: utxos })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          // Request 280M to force selection of 140+ UTxOs (each 2M), which will create 140+ witnesses
-          // This will exceed the 16KB transaction size limit
-          assets: Assets.fromLovelace(280_000_000n)
-        })
+      const builder = makeTxBuilder({ ...baseConfig }).payToAddress({
+        address: RECEIVER_ADDRESS,
+        // Request 280M to force selection of 140+ UTxOs (each 2M), which will create 140+ witnesses
+        // This will exceed the 16KB transaction size limit
+        assets: Assets.fromLovelace(280_000_000n)
+      })
 
       // Should throw error due to transaction size exceeding limit
       // With 140+ unique addresses selected, we get 140+ fake witnesses pushing size over 16384 bytes
-      await expect(builder.build({ useV3: true })).rejects.toThrow(/Transaction size.*16384|Build failed/)
+      await expect(
+        builder.build({
+          useV3: true,
+          changeAddress: CHANGE_ADDRESS,
+          availableUtxos: utxos,
+          protocolParameters: PROTOCOL_PARAMS
+        })
+      ).rejects.toThrow(/Transaction size.*16384|Build failed/)
     })
   })
 
@@ -508,39 +547,37 @@ describe("TxBuilder Re-selection Loop", () => {
 
   describe("Multiple Reselection Attempts", () => {
     it("should trigger multiple reselection attempts with incremental coin selection", async () => {
-
       // Create a mix of UTxO sizes - largest-first will pick bigger ones initially
       const utxos: Array<UTxO.UTxO> = [
         // Large UTxOs (selected first)
         createTestUtxo({ txHash: "a".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 1_500_000n }),
         createTestUtxo({ txHash: "b".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 1_200_000n }),
-        
+
         // Medium UTxOs (for reselection)
         createTestUtxo({ txHash: "c".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 600_000n }),
         createTestUtxo({ txHash: "d".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 600_000n }),
         createTestUtxo({ txHash: "e".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 600_000n }),
-        
+
         // Small UTxOs (for additional reselections if needed)
         createTestUtxo({ txHash: "f".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 400_000n }),
         createTestUtxo({ txHash: "g".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 400_000n }),
         createTestUtxo({ txHash: "h".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 400_000n })
       ]
 
-      // Use makeTxBuilder with availableUtxos to enable coin selection
-      const builderConfig: TxBuilderConfig = {
-        ...baseConfig,
-        availableUtxos: utxos
-      }
-
-      const builder = makeTxBuilder(builderConfig)
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(2_500_000n) // 2.5 ADA payment
-        })
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(2_500_000n) // 2.5 ADA payment
+      })
 
       // Build uses default largest-first algorithm
       // Use drainTo since the change will be small (33K < minUTxO)
-      const signBuilder = await builder.build({ drainTo: 0, useV3: true })
+      const signBuilder = await builder.build({
+        drainTo: 0,
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: utxos,
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -556,10 +593,10 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // 2 outputs: payment + change (change now sufficient for minUTxO)
       expect(tx.body.outputs.length).toBe(2)
-      
+
       // Payment output is exactly 2.5M
       expect(tx.body.outputs[0].amount.coin).toBe(2_500_000n)
-      
+
       // Change output: 3.3M total - 2.5M payment - 171K fee = 628K
       expect(tx.body.outputs[1].amount.coin).toBe(628_515n)
     })
@@ -567,7 +604,7 @@ describe("TxBuilder Re-selection Loop", () => {
     it("should trigger multiple reselection attempts with cascading fee increases", async () => {
       /**
        * Edge Case: Cascading Fee Increases
-       * 
+       *
        * Create many tiny UTxOs where each selection barely covers the payment,
        * causing the algorithm to naturally trigger multiple reselection attempts
        * as fees cascade upward with more inputs.
@@ -575,7 +612,7 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Create 20 small UTxOs, each with just enough to pass minUTxO
       // Using ~350K lovelace each (slightly above minUTxO of ~280K)
-      const tinyUtxos: Array<UTxO.UTxO> = Array.from({ length: 20 }, (_, i) => 
+      const tinyUtxos: Array<UTxO.UTxO> = Array.from({ length: 20 }, (_, i) =>
         createTestUtxo({
           txHash: i.toString().padStart(64, "0"),
           outputIndex: 0,
@@ -587,17 +624,18 @@ describe("TxBuilder Re-selection Loop", () => {
       // Request a payment that will require multiple UTxOs
       // Each UTxO contributes 350K, minus ~2K fee overhead = ~348K net
       // To get 3M payment, need ~9 UTxOs initially, but fee will increase
-      const builder = makeTxBuilder({
-        ...baseConfig,
-        availableUtxos: tinyUtxos
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(3_000_000n) // 3 ADA
       })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(3_000_000n) // 3 ADA
-        })
 
       // Build should succeed after multiple reselection attempts
-      const signBuilder = await builder.build({ useV3: true })
+      const signBuilder = await builder.build({
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: tinyUtxos,
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -623,7 +661,6 @@ describe("TxBuilder Re-selection Loop", () => {
     })
 
     it("should handle reselection with mixed-size UTxOs", async () => {
-
       const utxos: Array<UTxO.UTxO> = [
         // First pass: Large UTxO insufficient by itself
         createTestUtxo({ txHash: "a".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 1_500_000n }),
@@ -638,16 +675,17 @@ describe("TxBuilder Re-selection Loop", () => {
         createTestUtxo({ txHash: "f".repeat(64), outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 400_000n })
       ]
 
-      const builder = makeTxBuilder({
-        ...baseConfig,
-        availableUtxos: utxos
+      const builder = makeTxBuilder(baseConfig).payToAddress({
+        address: RECEIVER_ADDRESS,
+        assets: Assets.fromLovelace(2_500_000n) // 2.5 ADA - requires reselection
       })
-        .payToAddress({
-          address: RECEIVER_ADDRESS,
-          assets: Assets.fromLovelace(2_500_000n) // 2.5 ADA - requires reselection
-        })
 
-      const signBuilder = await builder.build({ useV3: true })
+      const signBuilder = await builder.build({
+        useV3: true,
+        changeAddress: CHANGE_ADDRESS,
+        availableUtxos: utxos,
+        protocolParameters: PROTOCOL_PARAMS
+      })
       const tx = await signBuilder.toTransaction()
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -658,7 +696,7 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Should need at least 2 inputs (1.5M + 0.8M + fee > 2.5M)
       expect(tx.body.inputs.length).toBeGreaterThanOrEqual(2)
-      
+
       // Verify correct payment amount
       expect(tx.body.outputs[0].amount.coin).toBe(2_500_000n)
     })
@@ -673,13 +711,14 @@ describe("TxBuilder Reselection After Change", () => {
     maxTxSize: 16_384
   }
 
-  const CHANGE_ADDRESS = "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
-  const RECEIVER_ADDRESS = "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
+  const CHANGE_ADDRESS =
+    "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
+  const RECEIVER_ADDRESS =
+    "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
 
   const baseConfig: TxBuilderConfig = {
-    protocolParameters: PROTOCOL_PARAMS,
-    changeAddress: CHANGE_ADDRESS,
-    availableUtxos: []
+    // No wallet/provider - using manual mode
+    // changeAddress and availableUtxos provided via build options
   }
 
   /**
@@ -694,13 +733,18 @@ describe("TxBuilder Reselection After Change", () => {
       lovelace: 10_000_000n // 10 ADA
     })
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [largeUtxo] })
-      .payToAddress({
-        address: RECEIVER_ADDRESS,
-        assets: Assets.fromLovelace(5_000_000n) // 5 ADA payment
-      })
+    const builder = makeTxBuilder(baseConfig).payToAddress({
+      address: RECEIVER_ADDRESS,
+      assets: Assets.fromLovelace(5_000_000n) // 5 ADA payment
+    })
 
-    const signBuilder = await builder.build({ useStateMachine: true, useV3: true })
+    const signBuilder = await builder.build({
+      useStateMachine: true,
+      useV3: true,
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [largeUtxo],
+      protocolParameters: PROTOCOL_PARAMS
+    })
     const tx = await signBuilder.toTransaction()
 
     // Verify transaction structure
@@ -728,17 +772,37 @@ describe("TxBuilder Reselection After Change", () => {
    * Verifies that UTxO reselection uses accurate fee calculation that includes change output size.
    */
   it("should reselect UTxOs based on actual fee (after change creation)", async () => {
-    const utxo1: UTxO.UTxO = createTestUtxo({ txHash: "a", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
-    const utxo2: UTxO.UTxO = createTestUtxo({ txHash: "b", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
-    const utxo3: UTxO.UTxO = createTestUtxo({ txHash: "c", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
+    const utxo1: UTxO.UTxO = createTestUtxo({
+      txHash: "a",
+      outputIndex: 0,
+      address: CHANGE_ADDRESS,
+      lovelace: 2_000_000n
+    })
+    const utxo2: UTxO.UTxO = createTestUtxo({
+      txHash: "b",
+      outputIndex: 0,
+      address: CHANGE_ADDRESS,
+      lovelace: 2_000_000n
+    })
+    const utxo3: UTxO.UTxO = createTestUtxo({
+      txHash: "c",
+      outputIndex: 0,
+      address: CHANGE_ADDRESS,
+      lovelace: 2_000_000n
+    })
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo1, utxo2, utxo3] })
-      .payToAddress({
-        address: RECEIVER_ADDRESS,
-        assets: Assets.fromLovelace(3_500_000n) // Needs 2 UTxOs
-      })
+    const builder = makeTxBuilder(baseConfig).payToAddress({
+      address: RECEIVER_ADDRESS,
+      assets: Assets.fromLovelace(3_500_000n) // Needs 2 UTxOs
+    })
 
-    const signBuilder = await builder.build({ useStateMachine: true, useV3: true })
+    const signBuilder = await builder.build({
+      useStateMachine: true,
+      useV3: true,
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [utxo1, utxo2, utxo3],
+      protocolParameters: PROTOCOL_PARAMS
+    })
     const tx = await signBuilder.toTransaction()
 
     // With coin selection: 2 UTxOs (4M) is sufficient for payment (3.5M) + fee (~170K) + change (~330K)
@@ -761,7 +825,7 @@ describe("TxBuilder Reselection After Change", () => {
   it("should account for change output size when it contains native assets", async () => {
     const policyId = "a".repeat(56)
     const assetName = "544f4b454e" // "TOKEN" in hex
-    
+
     const utxoWithAssets: UTxO.UTxO = createTestUtxo({
       txHash: "c",
       outputIndex: 0,
@@ -770,28 +834,33 @@ describe("TxBuilder Reselection After Change", () => {
       nativeAssets: { [`${policyId}${assetName}`]: 1000n } // Native assets increase change size
     })
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxoWithAssets] })
-      .payToAddress({
-        address: RECEIVER_ADDRESS,
-        assets: Assets.fromLovelace(3_000_000n) // Send only lovelace
-      })
+    const builder = makeTxBuilder(baseConfig).payToAddress({
+      address: RECEIVER_ADDRESS,
+      assets: Assets.fromLovelace(3_000_000n) // Send only lovelace
+    })
 
-    const signBuilder = await builder.build({ useStateMachine: true, useV3: true })
+    const signBuilder = await builder.build({
+      useStateMachine: true,
+      useV3: true,
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [utxoWithAssets],
+      protocolParameters: PROTOCOL_PARAMS
+    })
     const tx = await signBuilder.toTransaction()
 
     // Payment output: only lovelace
     expect(tx.body.outputs[0].amount.coin).toBe(3_000_000n)
-    
+
     // Change output: remaining lovelace + ALL native assets
     const changeOutput = tx.body.outputs[1]
-    
+
     // Verify native assets are in change (not burned)
     if (changeOutput.amount._tag === "WithAssets") {
       expect(changeOutput.amount.assets.size).toBeGreaterThan(0)
     } else {
       throw new Error("Expected change output to have native assets")
     }
-    
+
     // Balance equation with native assets
     const expectedChange = 10_000_000n - 3_000_000n - tx.body.fee
     expect(changeOutput.amount.coin).toBe(expectedChange)
@@ -804,16 +873,31 @@ describe("TxBuilder Reselection After Change", () => {
    * Verifies correct fee calculation when using multiple small UTxOs and change output affects transaction size.
    */
   it("should handle case where change output affects fee calculation", async () => {
-    const utxo1: UTxO.UTxO = createTestUtxo({ txHash: "a", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
-    const utxo2: UTxO.UTxO = createTestUtxo({ txHash: "b", outputIndex: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
+    const utxo1: UTxO.UTxO = createTestUtxo({
+      txHash: "a",
+      outputIndex: 0,
+      address: CHANGE_ADDRESS,
+      lovelace: 2_000_000n
+    })
+    const utxo2: UTxO.UTxO = createTestUtxo({
+      txHash: "b",
+      outputIndex: 0,
+      address: CHANGE_ADDRESS,
+      lovelace: 2_000_000n
+    })
 
-    const builder = makeTxBuilder({ ...baseConfig, availableUtxos: [utxo1, utxo2] })
-      .payToAddress({
-        address: RECEIVER_ADDRESS,
-        assets: Assets.fromLovelace(3_000_000n)
-      })
+    const builder = makeTxBuilder(baseConfig).payToAddress({
+      address: RECEIVER_ADDRESS,
+      assets: Assets.fromLovelace(3_000_000n)
+    })
 
-    const signBuilder = await builder.build({ useStateMachine: true, useV3: true })
+    const signBuilder = await builder.build({
+      useStateMachine: true,
+      useV3: true,
+      changeAddress: CHANGE_ADDRESS,
+      availableUtxos: [utxo1, utxo2],
+      protocolParameters: PROTOCOL_PARAMS
+    })
     const tx = await signBuilder.toTransaction()
 
     // Should successfully build

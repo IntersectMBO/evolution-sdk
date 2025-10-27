@@ -1,6 +1,6 @@
 ---
 title: sdk/client/Client.ts
-nav_order: 133
+nav_order: 137
 parent: Modules
 ---
 
@@ -24,6 +24,7 @@ parent: Modules
   - [MinimalClient (interface)](#minimalclient-interface)
   - [MinimalClientEffect (interface)](#minimalclienteffect-interface)
   - [NetworkId (type alias)](#networkid-type-alias)
+  - [PrivateKeyWalletConfig (interface)](#privatekeywalletconfig-interface)
   - [ProviderConfig (type alias)](#providerconfig-type-alias)
   - [ProviderOnlyClient (type alias)](#provideronlyclient-type-alias)
   - [ReadOnlyClient (type alias)](#readonlyclient-type-alias)
@@ -156,13 +157,21 @@ export interface MinimalClient {
     config: T
   ) => T extends SeedWalletConfig
     ? SigningWalletClient
-    : T extends ApiWalletConfig
-      ? ApiWalletClient
-      : ReadOnlyWalletClient
+    : T extends PrivateKeyWalletConfig
+      ? SigningWalletClient
+      : T extends ApiWalletConfig
+        ? ApiWalletClient
+        : ReadOnlyWalletClient
   readonly attach: <TW extends WalletConfig>(
     providerConfig: ProviderConfig,
     walletConfig: TW
-  ) => TW extends SeedWalletConfig ? SigningClient : TW extends ApiWalletConfig ? SigningClient : ReadOnlyClient
+  ) => TW extends SeedWalletConfig
+    ? SigningClient
+    : TW extends PrivateKeyWalletConfig
+      ? SigningClient
+      : TW extends ApiWalletConfig
+        ? SigningClient
+        : ReadOnlyClient
   // Effect namespace for methods with side effects only
   readonly Effect: MinimalClientEffect
 }
@@ -188,6 +197,19 @@ export interface MinimalClientEffect {
 export type NetworkId = "mainnet" | "preprod" | "preview" | number
 ```
 
+## PrivateKeyWalletConfig (interface)
+
+**Signature**
+
+```ts
+export interface PrivateKeyWalletConfig {
+  readonly type: "private-key"
+  readonly paymentKey: string // bech32 ed25519e_sk
+  readonly stakeKey?: string // bech32 ed25519e_sk (optional, for Base addresses)
+  readonly addressType?: "Base" | "Enterprise"
+}
+```
+
 ## ProviderConfig (type alias)
 
 **Signature**
@@ -207,7 +229,13 @@ export type ProviderOnlyClient = EffectToPromiseAPI<Provider.ProviderEffect> & {
   // Combinator methods (pure, no side effects) with type-aware conditional return type
   readonly attachWallet: <T extends WalletConfig>(
     config: T
-  ) => T extends SeedWalletConfig ? SigningClient : T extends ApiWalletConfig ? SigningClient : ReadOnlyClient
+  ) => T extends SeedWalletConfig
+    ? SigningClient
+    : T extends PrivateKeyWalletConfig
+      ? SigningClient
+      : T extends ApiWalletConfig
+        ? SigningClient
+        : ReadOnlyClient
   // Effect namespace - includes all provider methods as Effects
   readonly Effect: Provider.ProviderEffect
 }
@@ -217,15 +245,48 @@ export type ProviderOnlyClient = EffectToPromiseAPI<Provider.ProviderEffect> & {
 
 ReadOnlyClient - can query blockchain + wallet address operations
 
+ReadOnlyClient cannot sign transactions, so newTx() returns a TransactionBuilder
+that yields TransactionResultBase (unsigned transaction only).
+
 **Signature**
 
-```ts
+````ts
 export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => any // TODO: Change to ReadOnlyTransactionBuilder when implementing tx builder
+  /**
+   * Create a new transaction builder for read-only operations.
+   *
+   * Returns a TransactionBuilder that builds unsigned transactions.
+   * The build() methods return TransactionResultBase which provides:
+   * - `.toTransaction()` - Get the unsigned transaction
+   * - `.toTransactionWithFakeWitnesses()` - Get transaction with fake witnesses for fee validation
+   * - `.estimateFee()` - Get the calculated fee
+   *
+   * @param utxos - Optional UTxOs to use for coin selection. If not provided, wallet UTxOs will be fetched automatically when build() is called.
+   * @returns A new TransactionBuilder instance configured with cached protocol parameters and wallet change address.
+   *
+   * @example
+   * ```typescript
+   * // Build unsigned transaction
+   * const result = await readOnlyClient.newTx()
+   *   .payToAddress({ address: "addr...", lovelace: 5000000n })
+   *   .build()
+   *
+   * // Get unsigned transaction for external signing
+   * const unsignedTx = await result.toTransaction()
+   * const txCbor = Transaction.toCBORHex(unsignedTx)
+   *
+   * // Get fee estimate
+   * const fee = await result.estimateFee()
+   * ```
+   *
+   * @since 2.0.0
+   * @category transaction-building
+   */
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => TransactionBuilder<TransactionResultBase>
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: ReadOnlyClientEffect
 }
-```
+````
 
 ## ReadOnlyClientEffect (interface)
 
@@ -350,15 +411,53 @@ export interface SeedWalletConfig {
 
 SigningClient - full functionality: query blockchain + sign + submit
 
+SigningClient has wallet signing capability, so newTx() returns a TransactionBuilder
+that yields SignBuilder (can sign and submit transactions).
+
 **Signature**
 
-```ts
+````ts
 export type SigningClient = EffectToPromiseAPI<SigningClientEffect> & {
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => any // TODO: Change to ReadOnlyTransactionBuilder when implementing tx builder
+  /**
+   * Create a new transaction builder with signing capability.
+   *
+   * Returns a TransactionBuilder that can build and sign transactions.
+   * The build() methods return SignBuilder which provides:
+   * - `.sign()` - Sign and prepare for submission
+   * - `.toTransaction()` - Get the unsigned transaction
+   * - `.toTransactionWithFakeWitnesses()` - Get transaction with fake witnesses for fee validation
+   * - `.estimateFee()` - Get the calculated fee
+   * - `.partialSign()` - Create partial signature for multi-sig
+   * - `.assemble()` - Combine multiple signatures
+   *
+   * UTxOs for coin selection are fetched automatically from the wallet when build() is called.
+   * You can override UTxOs per-build using BuildOptions.availableUtxos.
+   *
+   * @returns A new TransactionBuilder instance configured with cached protocol parameters and wallet change address.
+   *
+   * @example
+   * ```typescript
+   * // Build and sign transaction
+   * const signBuilder = await signingClient.newTx()
+   *   .payToAddress({ address: "addr...", lovelace: 5000000n })
+   *   .build()
+   *
+   * // Sign and submit
+   * const submitBuilder = await signBuilder.sign()
+   * const txHash = await submitBuilder.submit()
+   *
+   * // Or get unsigned transaction
+   * const unsignedTx = await signBuilder.toTransaction()
+   * ```
+   *
+   * @since 2.0.0
+   * @category transaction-building
+   */
+  readonly newTx: () => TransactionBuilder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: SigningClientEffect
 }
-```
+````
 
 ## SigningClientEffect (interface)
 
@@ -396,5 +495,5 @@ export type SigningWalletClient = EffectToPromiseAPI<SigningWalletEffect> & {
 **Signature**
 
 ```ts
-export type WalletConfig = SeedWalletConfig | ReadOnlyWalletConfig | ApiWalletConfig
+export type WalletConfig = SeedWalletConfig | PrivateKeyWalletConfig | ReadOnlyWalletConfig | ApiWalletConfig
 ```
