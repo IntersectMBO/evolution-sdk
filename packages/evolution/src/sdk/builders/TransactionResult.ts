@@ -131,10 +131,6 @@ export interface TransactionResultBase {
  * Provides access to the unsigned transaction, fake-witness transaction for fee validation,
  * and fee estimation.
  * 
- * @param transaction - The unsigned transaction
- * @param transactionWithFakeWitnesses - The transaction with fake witnesses for size validation
- * @param fee - The calculated transaction fee in lovelace
- * 
  * @since 2.0.0
  * @category constructors
  */

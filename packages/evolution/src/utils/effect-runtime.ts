@@ -93,10 +93,6 @@ function cleanErrorChain(error: any): any {
  * }
  * ```
  * 
- * @param effect - The Effect to execute
- * @returns Promise that resolves to the Effect's success value
- * @throws The Effect's error with cleaned stack trace
- * 
  * @since 2.0.0
  * @category utilities
  */

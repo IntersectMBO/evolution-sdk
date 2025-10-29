@@ -48,12 +48,6 @@ export class BlockfrostProvider implements Provider {
   readonly baseUrl: string
   readonly projectId?: string
 
-  /**
-   * Create a new Blockfrost provider instance
-   * 
-   * @param baseUrl - The Blockfrost API base URL (e.g., "https://cardano-mainnet.blockfrost.io/api/v0")
-   * @param projectId - Optional project ID for authenticated requests
-   */
   constructor(baseUrl: string, projectId?: string) {
     this.baseUrl = baseUrl
     this.projectId = projectId
@@ -115,33 +109,24 @@ export class BlockfrostProvider implements Provider {
 
 /**
  * Pre-configured Blockfrost provider for Cardano mainnet
- * @param projectId - Your Blockfrost project ID
- * @returns Configured BlockfrostProvider for mainnet
  */
 export const mainnet = (projectId: string): BlockfrostProvider =>
   new BlockfrostProvider("https://cardano-mainnet.blockfrost.io/api/v0", projectId)
 
 /**
  * Pre-configured Blockfrost provider for Cardano preprod testnet
- * @param projectId - Your Blockfrost project ID for preprod
- * @returns Configured BlockfrostProvider for preprod
  */
 export const preprod = (projectId: string): BlockfrostProvider =>
   new BlockfrostProvider("https://cardano-preprod.blockfrost.io/api/v0", projectId)
 
 /**
  * Pre-configured Blockfrost provider for Cardano preview testnet
- * @param projectId - Your Blockfrost project ID for preview
- * @returns Configured BlockfrostProvider for preview
  */
 export const preview = (projectId: string): BlockfrostProvider =>
   new BlockfrostProvider("https://cardano-preview.blockfrost.io/api/v0", projectId)
 
 /**
  * Create a custom Blockfrost provider with custom base URL
- * @param baseUrl - Custom Blockfrost API base URL
- * @param projectId - Optional project ID
- * @returns Configured BlockfrostProvider
  */
 export const custom = (baseUrl: string, projectId?: string): BlockfrostProvider =>
   new BlockfrostProvider(baseUrl, projectId)

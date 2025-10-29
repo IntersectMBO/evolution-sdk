@@ -68,8 +68,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: additionalUtxos, // Available for re-selection
-        useV3: true,
-        useStateMachine: true,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
@@ -145,8 +143,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: tinyUtxos, // Available but won't be used
-        useV3: true,
-        useStateMachine: true,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
@@ -210,8 +206,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         await builder.build({
           changeAddress: CHANGE_ADDRESS,
           availableUtxos: [], // No more UTxOs available
-          useV3: true,
-          useStateMachine: true,
           protocolParameters: PROTOCOL_PARAMS,
           unfrack: {
             ada: {
@@ -249,8 +243,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [],
-        useV3: true,
-        useStateMachine: true,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
@@ -292,8 +284,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [],
-        useV3: true,
-        useStateMachine: true,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
           ada: {
@@ -332,8 +322,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [],
-        useV3: true,
-        useStateMachine: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -374,8 +362,6 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [],
-        useV3: true,
-        useStateMachine: true,
         onInsufficientChange: "burn",
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {

@@ -237,10 +237,6 @@ export const txOutputToTransactionOutput = (params: {
  * 
  * Use case: Draining wallet by merging leftover into an existing payment output.
  * 
- * @param utxo - The original UTxO output to merge into
- * @param additionalAssets - The additional assets to add
- * @returns Effect with the merged UTxO
- * 
  * @since 2.0.0
  * @category helpers
  */
@@ -343,12 +339,11 @@ export const createPayToAddressProgram = (params: PayToAddressParams) =>
     })
 
     // 2. Add output to state
-    yield* Ref.update(ctx.state.outputs, (outputs) => [...outputs, output])
-
-    // 3. Track total output assets for balancing
-    yield* Ref.update(ctx.state.totalOutputAssets, (currentAssets) => {
-      return Assets.add(currentAssets, params.assets)
-    })
+    yield* Ref.update(ctx, (state) => ({
+      ...state,
+      outputs: [...state.outputs, output],
+      totalOutputAssets: Assets.add(state.totalOutputAssets, params.assets)
+    }))
   })
 
 /**
@@ -391,37 +386,32 @@ export const createCollectFromProgram = (params: CollectFromParams) =>
       )
     }
 
-    // 4. Add UTxOs to selected inputs (Array.concat for immutable append)
-    yield* Ref.update(ctx.state.selectedUtxos, (selected) => {
-      return [...selected, ...params.inputs]
-    })
-
-    // 5. Track redeemer information if spending from scripts
-    if (params.redeemer && scriptUtxos.length > 0) {
-      // Store redeemer data for each script UTxO
-      // Redeemer is indexed by input reference (txHash#outputIndex)
-      // Index field will be set later during witness assembly based on input ordering
-      yield* Ref.update(ctx.state.redeemers, (redeemers) => {
-        const updated = new Map(redeemers)
+    // 4. Add UTxOs to selected inputs and track redeemers and input assets
+    const inputAssets = calculateTotalAssets(params.inputs)
+    
+    yield* Ref.update(ctx, (state) => {
+      let newRedeemers = state.redeemers
+      
+      // 5. Track redeemer information if spending from scripts
+      if (params.redeemer && scriptUtxos.length > 0) {
+        newRedeemers = new Map(state.redeemers)
         scriptUtxos.forEach((utxo) => {
           const inputKey = `${utxo.txHash}#${utxo.outputIndex}`
-          updated.set(inputKey, {
+          newRedeemers.set(inputKey, {
             tag: "spend",
             data: params.redeemer!, // PlutusData CBOR hex
             // exUnits will be filled by script evaluator during build phase
             exUnits: undefined
           })
         })
-        return updated
-      })
-    }
-
-    // 6. Track total input assets for balancing
-    const inputAssets = calculateTotalAssets(params.inputs)
-    
-    // Update state with accumulated input assets
-    yield* Ref.update(ctx.state.totalInputAssets, (currentAssets) => {
-      return Assets.add(currentAssets, inputAssets)
+      }
+      
+      return {
+        ...state,
+        selectedUtxos: [...state.selectedUtxos, ...params.inputs],
+        redeemers: newRedeemers,
+        totalInputAssets: Assets.add(state.totalInputAssets, inputAssets)
+      }
     })
   })
 
@@ -860,11 +850,6 @@ export const calculateFeeIteratively = (
  * Used by the re-selection loop to determine if more UTxOs are needed.
  * 
  * Checks both lovelace AND native assets (tokens/NFTs) to ensure complete balance.
- * 
- * @param selectedUtxos - Currently selected input UTxOs
- * @param outputs - Required transaction outputs
- * @param fee - Calculated transaction fee (lovelace only)
- * @returns Balance status with shortfall and change amounts
  * 
  * @since 2.0.0
  * @category fee-calculation

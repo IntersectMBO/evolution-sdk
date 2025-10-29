@@ -18,6 +18,27 @@ import type { UnfrackOptions } from "./TransactionBuilder.js"
 import { calculateMinimumUtxoLovelace } from "./TxBuilderImpl.js"
 
 // ============================================================================
+// Default Unfrack Options
+// ============================================================================
+
+/**
+ * Default unfrack configuration values.
+ * Applied when UnfrackOptions properties are not provided.
+ */
+const DEFAULT_UNFRACK_OPTIONS = {
+  ada: {
+    subdivideThreshold: 100_000000n,
+    subdividePercentages: [50, 15, 10, 10, 5, 5, 5],
+    maxUtxosToConsolidate: 20
+  },
+  tokens: {
+    bundleSize: 10,
+    isolateFungibles: false,
+    groupNftsByPolicy: false
+  }
+} as const
+
+// ============================================================================
 // Token Classification
 // ============================================================================
 
@@ -322,26 +343,20 @@ export type UnfrackResult = {
  * If either check fails, fall back to spreading the remaining ADA across token bundles.
  * This ensures all outputs are always valid.
  * 
- * @param changeAssets - Complete change value (tokens + available lovelace after fee deduction)
- * @param changeAddress - Address for all change outputs
- * @param coinsPerUtxoByte - Protocol parameter for minUTxO calculation
- * @param config - Unfrack configuration (threshold, bundle size, subdivision percentages)
- * @returns Array of valid change outputs
- * 
  * @since 2.0.0
  * @category builders
  */
 export const createUnfrackedChangeOutputs = (
   changeAddress: string,
   changeAssets: Assets.Assets,
-  options: UnfrackOptions,
+  options: UnfrackOptions = {},
   coinsPerUtxoByte: bigint
 ): Effect.Effect<ReadonlyArray<UTxO.TxOutput>, Error, never> => {
   return Effect.gen(function* () {
-    // Extract config values from options
-    const subdivideThreshold = options.ada?.subdivideThreshold ?? 100_000000n
-    const bundleSize = options.tokens?.bundleSize ?? 10
-    const subdividePercentages = options.ada?.subdividePercentages
+    // Extract config values from options, applying defaults
+    const subdivideThreshold = options.ada?.subdivideThreshold ?? DEFAULT_UNFRACK_OPTIONS.ada.subdivideThreshold
+    const bundleSize = options.tokens?.bundleSize ?? DEFAULT_UNFRACK_OPTIONS.tokens.bundleSize
+    const subdividePercentages = options.ada?.subdividePercentages ?? DEFAULT_UNFRACK_OPTIONS.ada.subdividePercentages
     
     const availableLovelace = Assets.getAsset(changeAssets, "lovelace")
     const tokens = extractTokens(changeAssets)

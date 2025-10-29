@@ -1,6 +1,6 @@
 ---
 title: sdk/builders/TransactionBuilder.ts
-nav_order: 133
+nav_order: 139
 parent: Modules
 ---
 
@@ -32,6 +32,11 @@ double-spending. UTxOs can come from any source (wallet, DeFi protocols, other p
 
 <h2 class="text-delta">Table of contents</h2>
 
+- [builder-interfaces](#builder-interfaces)
+  - [ReadOnlyTransactionBuilder (interface)](#readonlytransactionbuilder-interface)
+  - [SigningTransactionBuilder (interface)](#signingtransactionbuilder-interface)
+  - [TransactionBuilder (type alias)](#transactionbuilder-type-alias)
+  - [TransactionBuilderBase (interface)](#transactionbuilderbase-interface)
 - [config](#config)
   - [ProtocolParameters (interface)](#protocolparameters-interface)
   - [TxBuilderConfig (interface)](#txbuilderconfig-interface)
@@ -39,22 +44,19 @@ double-spending. UTxOs can come from any source (wallet, DeFi protocols, other p
   - [makeTxBuilder](#maketxbuilder)
 - [context](#context)
   - [AvailableUtxosTag (class)](#availableutxostag-class)
+  - [BuildOptionsTag (class)](#buildoptionstag-class)
   - [ChangeAddressTag (class)](#changeaddresstag-class)
   - [ProtocolParametersTag (class)](#protocolparameterstag-class)
   - [TxContext (class)](#txcontext-class)
-  - [TxContextData (interface)](#txcontextdata-interface)
 - [errors](#errors)
   - [EvaluationError (class)](#evaluationerror-class)
   - [TransactionBuilderError (class)](#transactionbuildererror-class)
 - [evaluators](#evaluators)
   - [createUPLCEvaluator](#createuplcevaluator)
-- [interfaces](#interfaces)
-  - [TransactionBuilder (interface)](#transactionbuilder-interface)
 - [model](#model)
+  - [ChainResult (interface)](#chainresult-interface)
   - [EvaluationContext (interface)](#evaluationcontext-interface)
   - [Evaluator (interface)](#evaluator-interface)
-- [options](#options)
-  - [TransactionOptimizations (interface)](#transactionoptimizations-interface)
 - [state](#state)
   - [RedeemerData (interface)](#redeemerdata-interface)
   - [TxBuilderState (interface)](#txbuilderstate-interface)
@@ -63,12 +65,199 @@ double-spending. UTxOs can come from any source (wallet, DeFi protocols, other p
   - [UPLCEvalFunction (type alias)](#uplcevalfunction-type-alias)
 - [utils](#utils)
   - [BuildOptions (interface)](#buildoptions-interface)
-  - [ChainResult (interface)](#chainresult-interface)
+  - [PhaseContextTag (class)](#phasecontexttag-class)
   - [UnfrackAdaOptions (interface)](#unfrackadaoptions-interface)
   - [UnfrackOptions (interface)](#unfrackoptions-interface)
   - [UnfrackTokenOptions (interface)](#unfracktokenoptions-interface)
 
 ---
+
+# builder-interfaces
+
+## ReadOnlyTransactionBuilder (interface)
+
+Transaction builder for read-only wallets (ReadOnlyWallet or undefined).
+
+Builds transactions that cannot be signed. The build() method returns a TransactionResultBase
+which provides query methods like toTransaction() but NOT signing capabilities.
+
+This builder type is returned when makeTxBuilder() is called with a read-only wallet or no wallet.
+Type narrowing happens automatically at construction time - no call-site guards needed.
+
+**Signature**
+
+```ts
+export interface ReadOnlyTransactionBuilder extends TransactionBuilderBase {
+  /**
+   * Execute all queued operations and return a transaction result via Promise.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Can be called multiple times on the same builder instance with independent results.
+   *
+   * @returns Promise<TransactionResultBase> which provides query-only methods
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly build: (options?: BuildOptions) => Promise<TransactionResultBase>
+
+  /**
+   * Execute all queued operations and return a transaction result via Effect.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Suitable for Effect-TS compositional workflows and error handling.
+   *
+   * @returns Effect<TransactionResultBase, ...> which provides query-only methods
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly buildEffect: (
+    options?: BuildOptions
+  ) => Effect.Effect<
+    TransactionResultBase,
+    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+    never
+  >
+
+  /**
+   * Execute all queued operations with explicit error handling via Either.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Returns Either<Result, Error> for pattern-matched error recovery.
+   *
+   * @returns Promise<Either<TransactionResultBase, Error>>
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly buildEither: (
+    options?: BuildOptions
+  ) => Promise<
+    Either<
+      TransactionResultBase,
+      TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError
+    >
+  >
+}
+```
+
+Added in v2.0.0
+
+## SigningTransactionBuilder (interface)
+
+Transaction builder for signing wallets (SigningWallet or ApiWallet).
+
+Builds transactions that can be signed. The build() method returns a SignBuilder
+which provides sign(), signWithWitness(), and other signing capabilities.
+
+This builder type is returned when makeTxBuilder() is called with a signing wallet.
+Type narrowing happens automatically at construction time - no call-site guards needed.
+
+**Signature**
+
+```ts
+export interface SigningTransactionBuilder extends TransactionBuilderBase {
+  /**
+   * Execute all queued operations and return a signing-ready transaction via Promise.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Can be called multiple times on the same builder instance with independent results.
+   *
+   * @returns Promise<SignBuilder> which provides signing capabilities
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly build: (options?: BuildOptions) => Promise<SignBuilder>
+
+  /**
+   * Execute all queued operations and return a signing-ready transaction via Effect.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Suitable for Effect-TS compositional workflows and error handling.
+   *
+   * @returns Effect<SignBuilder, ...> which provides signing capabilities
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly buildEffect: (
+    options?: BuildOptions
+  ) => Effect.Effect<
+    SignBuilder,
+    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+    never
+  >
+
+  /**
+   * Execute all queued operations with explicit error handling via Either.
+   *
+   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
+   * Returns Either<Result, Error> for pattern-matched error recovery.
+   *
+   * @returns Promise<Either<SignBuilder, Error>>
+   *
+   * @since 2.0.0
+   * @category completion-methods
+   */
+  readonly buildEither: (
+    options?: BuildOptions
+  ) => Promise<
+    Either<SignBuilder, TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError>
+  >
+}
+```
+
+Added in v2.0.0
+
+## TransactionBuilder (type alias)
+
+Union type for all transaction builders.
+Use specific types (SigningTransactionBuilder or ReadOnlyTransactionBuilder) when you know the wallet type.
+
+**Signature**
+
+```ts
+export type TransactionBuilder = SigningTransactionBuilder | ReadOnlyTransactionBuilder
+```
+
+Added in v2.0.0
+
+## TransactionBuilderBase (interface)
+
+Base interface for both signing and read-only transaction builders.
+Provides chainable builder methods common to both.
+
+**Signature**
+
+```ts
+export interface TransactionBuilderBase {
+  /**
+   * Append a payment output to the transaction.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
+   *
+   * @since 2.0.0
+   * @category builder-methods
+   */
+  readonly payToAddress: (params: PayToAddressParams) => this
+
+  /**
+   * Specify transaction inputs from provided UTxOs.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
+   *
+   * @since 2.0.0
+   * @category builder-methods
+   */
+  readonly collectFrom: (params: CollectFromParams) => this
+}
+```
+
+Added in v2.0.0
 
 # config
 
@@ -169,15 +358,23 @@ The builder accumulates chainable method calls as deferred ProgramSteps. Calling
 creates fresh state (new Refs) and executes all accumulated programs sequentially, ensuring
 no state pollution between invocations.
 
-Generic type parameter TResult determines what build() returns:
+The return type is determined by the actual wallet provided using conditional types:
 
-- SignBuilder (default): When wallet has signing capability
-- TransactionResultBase: When wallet is read-only
+- SigningTransactionBuilder: When wallet is SigningWallet or ApiWallet
+- ReadOnlyTransactionBuilder: When wallet is ReadOnlyWallet or undefined
+
+Wallet type narrowing happens at construction time based on the wallet's actual type.
+No call-site type narrowing or type guards needed.
+
+Wallet parameter is optional; if omitted, changeAddress and availableUtxos must be
+provided at build time via BuildOptions.
 
 **Signature**
 
 ```ts
-export declare const makeTxBuilder: <TResult = SignBuilder>(config: TxBuilderConfig) => TransactionBuilder<TResult>
+export declare function makeTxBuilder<
+  W extends WalletNew.SigningWallet | WalletNew.ApiWallet | WalletNew.ReadOnlyWallet | undefined
+>(config: Partial<TxBuilderConfig> & { wallet?: W }): TxBuilderResultType<W>
 ```
 
 Added in v2.0.0
@@ -198,6 +395,19 @@ Available to all phase functions via Effect Context.
 
 ```ts
 export declare class AvailableUtxosTag
+```
+
+Added in v2.0.0
+
+## BuildOptionsTag (class)
+
+Context tag providing BuildOptions for the current build.
+Contains build-specific configuration like unfrack, drainTo, onInsufficientChange, etc.
+
+**Signature**
+
+```ts
+export declare class BuildOptionsTag
 ```
 
 Added in v2.0.0
@@ -240,8 +450,8 @@ Added in v2.0.0
 
 ## TxContext (class)
 
-Single Context service providing all transaction building data to programs.
-Combines config (immutable), state (mutable), and options (build-specific).
+Context service providing transaction building state to programs.
+Directly holds the mutable state Ref - config is passed as a regular parameter.
 
 **Signature**
 
@@ -251,27 +461,13 @@ export declare class TxContext
 
 Added in v2.0.0
 
-## TxContextData (interface)
-
-Combined transaction context containing all necessary data for building.
-
-**Signature**
-
-```ts
-export interface TxContextData {
-  readonly config: TxBuilderConfig // Immutable: provider, params, available UTxOs
-  readonly state: TxBuilderState // Mutable: selected UTxOs, outputs, scripts
-  readonly options: BuildOptions // Build-specific: coin selection, evaluator, etc.
-}
-```
-
-Added in v2.0.0
-
 # errors
 
 ## EvaluationError (class)
 
 Error type for failures in script evaluation.
+
+**NOTE: NOT YET IMPLEMENTED** - Reserved for future script evaluation error handling.
 
 **Signature**
 
@@ -298,7 +494,9 @@ Added in v2.0.0
 ## createUPLCEvaluator
 
 Creates an evaluator from a standard UPLC evaluation function.
-The TxBuilder provides protocol parameters and cost models when calling evaluate.
+
+**NOTE: NOT YET IMPLEMENTED** - This function currently returns an evaluator
+that produces dummy data. Reserved for future UPLC script evaluation support.
 
 **Signature**
 
@@ -308,219 +506,33 @@ export declare const createUPLCEvaluator: (_evalFunction: UPLCEvalFunction) => E
 
 Added in v2.0.0
 
-# interfaces
+# model
 
-## TransactionBuilder (interface)
+## ChainResult (interface)
 
-TransactionBuilder with hybrid Effect/Promise API following lucid-evolution pattern.
+Result type for transaction chaining operations.
 
-Architecture:
-
-- Immutable builder instance stores array of ProgramSteps
-- Chainable methods create ProgramSteps and return same builder instance
-- Completion methods (build, chain, etc.) execute all stored ProgramSteps with FRESH state
-- Builder can be reused - each build() call is independent with its own state
-
-Key Design Principle:
-Builder instance never mutates. Programs are deferred Effects that execute later.
-Each build() creates fresh TxBuilderState, executes programs, returns result.
-
-Generic Type Parameter:
-TResult determines the return type of build() methods:
-
-- SignBuilder: When wallet has signing capability (SigningClient)
-- TransactionResultBase: When wallet is read-only (ReadOnlyClient)
-
-Usage Pattern:
-
-```typescript
-const builder = makeTxBuilder(provider, params, costModels, utxos)
-  .payToAddress({ address: "addr1...", assets: { lovelace: 5_000_000n } })
-  .collectFrom({ inputs: [utxo1, utxo2] })
-
-// First build - creates fresh state, executes programs
-const signBuilder1 = await builder.build()
-
-// Second build - NEW fresh state, independent execution
-const signBuilder2 = await builder.build()
-```
+**NOTE: NOT YET IMPLEMENTED** - This interface is reserved for future implementation
+of multi-transaction workflows. Current chain methods return stub implementations.
 
 **Signature**
 
 ```ts
-export interface TransactionBuilder<TResult = SignBuilder> {
-  // ============================================================================
-  // Chainable Builder Methods - Create ProgramSteps, return same builder
-  // ============================================================================
-
-  /**
-   * Append a payment output to the transaction.
-   *
-   * Queues a deferred operation that will be executed when build() is called.
-   * Returns the same builder for method chaining.
-   *
-   * @since 2.0.0
-   * @category builder-methods
-   */
-  readonly payToAddress: (params: PayToAddressParams) => TransactionBuilder<TResult>
-
-  /**
-   * Specify transaction inputs from provided UTxOs.
-   *
-   * Queues a deferred operation that will be executed when build() is called.
-   * Returns the same builder for method chaining.
-   *
-   * @since 2.0.0
-   * @category builder-methods
-   */
-  readonly collectFrom: (params: CollectFromParams) => TransactionBuilder<TResult>
-
-  // Future expansion points for other operations:
-  // readonly mintTokens: (params: MintTokensParams) => TransactionBuilder
-  // readonly delegateStake: (poolId: string) => TransactionBuilder
-  // readonly withdrawRewards: (amount?: Coin.Coin) => TransactionBuilder
-  // readonly addMetadata: (label: string | number, metadata: any) => TransactionBuilder
-  // readonly setValidityInterval: (start?: number, end?: number) => TransactionBuilder
-
-  // ============================================================================
-  // Hybrid Completion Methods - Execute Programs with Fresh State
-  // ============================================================================
-
-  /**
-   * Execute all queued operations and return a signing-ready transaction via Promise.
-   *
-   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
-   * Can be called multiple times on the same builder instance with independent results.
-   *
-   * Returns TResult which is:
-   * - SignBuilder for SigningClient (can sign transactions)
-   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
-   *
-   * @since 2.0.0
-   * @category completion-methods
-   */
-  readonly build: (options?: BuildOptions) => Promise<TResult>
-
-  /**
-   * Execute all queued operations and return a signing-ready transaction via Effect.
-   *
-   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
-   * Suitable for Effect-TS compositional workflows and error handling.
-   *
-   * Error types include WalletError and ProviderError from config Effects.
-   *
-   * Returns TResult which is:
-   * - SignBuilder for SigningClient (can sign transactions)
-   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
-   *
-   * @since 2.0.0
-   * @category completion-methods
-   */
-  readonly buildEffect: (
-    options?: BuildOptions
-  ) => Effect.Effect<
-    TResult,
-    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
-    unknown
-  >
-
-  /**
-   * Execute all queued operations with explicit error handling via Either.
-   *
-   * Creates fresh state and runs all accumulated ProgramSteps sequentially.
-   * Returns Either<TResult, Error> for pattern-matched error recovery.
-   *
-   * Error types include WalletError and ProviderError from config Effects.
-   *
-   * Returns TResult which is:
-   * - SignBuilder for SigningClient (can sign transactions)
-   * - TransactionResultBase for ReadOnlyClient (unsigned transaction only)
-   *
-   * @since 2.0.0
-   * @category completion-methods
-   */
-  readonly buildEither: (
-    options?: BuildOptions
-  ) => Promise<
-    Either<TResult, TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError>
-  >
-
-  // ============================================================================
-  // Transaction Chaining Methods - Multi-transaction workflows
-  // ============================================================================
-
-  /**
-   * Execute queued operations and return result for multi-transaction workflows via Promise.
-   *
-   * Creates fresh state and runs all ProgramSteps. Returns ChainResult containing the transaction,
-   * new UTxOs, and updated available UTxOs for subsequent transactions.
-   *
-   * @since 2.0.0
-   * @category chaining-methods
-   */
-  readonly chain: (options?: BuildOptions) => Promise<ChainResult>
-
-  /**
-   * Execute queued operations and return result for multi-transaction workflows via Effect.
-   *
-   * Creates fresh state and runs all ProgramSteps. Returns ChainResult for Effect-TS workflows
-   * and composable error handling.
-   *
-   * @since 2.0.0
-   * @category chaining-methods
-   */
-  readonly chainEffect: (
-    options?: BuildOptions
-  ) => Effect.Effect<ChainResult, TransactionBuilderError | EvaluationError>
-
-  /**
-   * Execute queued operations with explicit error handling via Either for multi-transaction workflows.
-   *
-   * Creates fresh state and runs all ProgramSteps. Returns Either<ChainResult, Error>
-   * for pattern-matched error recovery in transaction sequences.
-   *
-   * @since 2.0.0
-   * @category chaining-methods
-   */
-  readonly chainEither: (
-    options?: BuildOptions
-  ) => Promise<Either<ChainResult, TransactionBuilderError | EvaluationError>>
-
-  // ============================================================================
-  // Debug Methods - Inspect transaction state during development
-  // ============================================================================
-
-  /**
-   * Execute queued operations without script evaluation or finalization; return partial transaction via Promise.
-   *
-   * Creates fresh state and runs all ProgramSteps. Returns intermediate transaction for inspection.
-   * Useful for debugging transaction assembly and coin selection logic.
-   *
-   * @since 2.0.0
-   * @category debug-methods
-   */
-  readonly buildPartial: () => Promise<Transaction.Transaction>
-
-  /**
-   * Execute queued operations without script evaluation or finalization; return partial transaction via Effect.
-   *
-   * Creates fresh state and runs all ProgramSteps. Returns intermediate transaction for inspection.
-   * Suitable for Effect-TS workflows requiring transaction debugging.
-   *
-   * @since 2.0.0
-   * @category debug-methods
-   */
-  readonly buildPartialEffect: () => Effect.Effect<Transaction.Transaction, TransactionBuilderError, unknown>
+export interface ChainResult {
+  readonly transaction: Transaction.Transaction
+  readonly newOutputs: ReadonlyArray<UTxO.UTxO> // UTxOs created by this transaction
+  readonly updatedUtxos: ReadonlyArray<UTxO.UTxO> // Available UTxOs for next transaction (original - spent + new)
+  readonly spentUtxos: ReadonlyArray<UTxO.UTxO> // UTxOs consumed by this transaction
 }
 ```
 
 Added in v2.0.0
 
-# model
-
 ## EvaluationContext (interface)
 
 Data required by script evaluators: cost models, execution limits, and slot configuration.
+
+**NOTE: NOT YET IMPLEMENTED** - Reserved for future UPLC script evaluation support.
 
 **Signature**
 
@@ -547,8 +559,8 @@ Added in v2.0.0
 
 Interface for evaluating transaction scripts and computing execution units.
 
-When provided to builder configuration, replaces default provider-based evaluation.
-Enables custom evaluation strategies including local UPLC execution.
+**NOTE: NOT YET IMPLEMENTED** - Reserved for future custom script evaluation support.
+When implemented, this will enable custom evaluation strategies including local UPLC execution.
 
 **Signature**
 
@@ -565,24 +577,6 @@ export interface Evaluator {
     additionalUtxos: ReadonlyArray<UTxO.UTxO> | undefined,
     context: EvaluationContext
   ) => Effect.Effect<ReadonlyArray<EvalRedeemer>, EvaluationError>
-}
-```
-
-Added in v2.0.0
-
-# options
-
-## TransactionOptimizations (interface)
-
-Transaction optimization flags for controlling builder behavior.
-
-**Signature**
-
-```ts
-export interface TransactionOptimizations {
-  readonly mergeOutputs?: boolean
-  readonly consolidateInputs?: boolean
-  readonly minimizeFee?: boolean
 }
 ```
 
@@ -613,23 +607,19 @@ Added in v2.0.0
 
 ## TxBuilderState (interface)
 
-Mutable state created FRESH on each build() call.
-Contains all Refs for transaction building state.
-
-Design: Stores SDK types (UTxO.UTxO), converts to core types during build.
-This enables coin selection (needs full UTxO context) while maintaining
-transaction-native assembly.
+Mutable state for transaction building.
+Contains all state needed during transaction construction.
 
 **Signature**
 
 ```ts
 export interface TxBuilderState {
-  readonly selectedUtxos: Ref.Ref<ReadonlyArray<UTxO.UTxO>> // SDK type: Array for ordering, converted at build
-  readonly outputs: Ref.Ref<ReadonlyArray<UTxO.TxOutput>> // Transaction outputs (no txHash/outputIndex yet)
-  readonly scripts: Ref.Ref<Map<string, any>> // Scripts attached to the transaction
-  readonly totalOutputAssets: Ref.Ref<Assets.Assets> // Asset totals for balancing
-  readonly totalInputAssets: Ref.Ref<Assets.Assets> // Asset totals for balancing
-  readonly redeemers: Ref.Ref<Map<string, RedeemerData>> // Redeemer data for script inputs
+  readonly selectedUtxos: ReadonlyArray<UTxO.UTxO> // SDK type: Array for ordering, converted at build
+  readonly outputs: ReadonlyArray<UTxO.TxOutput> // Transaction outputs (no txHash/outputIndex yet)
+  readonly scripts: Map<string, any> // Scripts attached to the transaction
+  readonly totalOutputAssets: Assets.Assets // Asset totals for balancing
+  readonly totalInputAssets: Assets.Assets // Asset totals for balancing
+  readonly redeemers: Map<string, RedeemerData> // Redeemer data for script inputs
 }
 ```
 
@@ -663,9 +653,7 @@ type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext>
 
 Requirements from context:
 
-- TxContext.config: Immutable configuration (provider, protocol params, available UTxOs)
-- TxContext.state: Mutable state (selected UTxOs, outputs, scripts, assets)
-- TxContext.options: Build options (coin selection, evaluator, collateral, etc.)
+- TxContext: Mutable state Ref (selected UTxOs, outputs, scripts, assets)
 
 **Signature**
 
@@ -678,6 +666,8 @@ Added in v2.0.0
 ## UPLCEvalFunction (type alias)
 
 Standard UPLC evaluation function signature (matches UPLC.eval_phase_two_raw).
+
+**NOTE: NOT YET IMPLEMENTED** - Reserved for future UPLC evaluation support.
 
 **Signature**
 
@@ -915,32 +905,15 @@ export interface BuildOptions {
    * @default false
    */
   readonly useStateMachine?: boolean
-
-  /**
-   *
-   * When true, uses simplified 4-phase state machine:
-   * - selection → changeValidation → balanceVerification → fallback → complete
-   *
-   * shares TxContext with V2 but uses mathematical validation approach.
-   *
-   * @experimental
-   * @default false
-   */
-  readonly useV3?: boolean
 }
 ````
 
-## ChainResult (interface)
+## PhaseContextTag (class)
 
 **Signature**
 
 ```ts
-export interface ChainResult {
-  readonly transaction: Transaction.Transaction
-  readonly newOutputs: ReadonlyArray<UTxO.UTxO> // UTxOs created by this transaction
-  readonly updatedUtxos: ReadonlyArray<UTxO.UTxO> // Available UTxOs for next transaction (original - spent + new)
-  readonly spentUtxos: ReadonlyArray<UTxO.UTxO> // UTxOs consumed by this transaction
-}
+export declare class PhaseContextTag
 ```
 
 ## UnfrackAdaOptions (interface)

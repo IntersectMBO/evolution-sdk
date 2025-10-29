@@ -22,10 +22,6 @@ import { TransactionBuilderError } from "./TransactionBuilder.js"
 /**
  * Create a SubmitBuilder instance for a signed transaction.
  * 
- * @param signedTransaction - The signed transaction ready for submission
- * @param witnessSet - The witness set containing signatures
- * @param provider - The provider to submit the transaction to
- * 
  * @since 2.0.0
  * @category constructors
  */

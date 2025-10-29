@@ -43,7 +43,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
           address: RECEIVER_ADDRESS,
           assets: Assets.fromLovelace(5_000_000n)
         })
-        .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+        .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
     ).rejects.toThrow()
   })
 
@@ -144,7 +144,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
         address: RECEIVER_ADDRESS,
         assets: paymentAssets
       })
-      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 
@@ -202,7 +202,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
         address: RECEIVER_ADDRESS,
         assets: { lovelace: 1_000_000n }
       })
-      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 
@@ -279,7 +279,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
         address: RECEIVER_ADDRESS,
         assets: { lovelace: 2_000_000n }
       })
-      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 
@@ -366,7 +366,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
         address: RECEIVER_ADDRESS,
         assets: { lovelace: 4_000_000n } // 4.0 ADA (no native assets in payment)
       })
-      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+      .build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
 
     const tx = await signBuilder.toTransaction()
 

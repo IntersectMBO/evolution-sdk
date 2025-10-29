@@ -157,11 +157,6 @@ export const MaestroEvalResult = Schema.Array(Schema.Unknown)
 // Transformation Utilities
 // ============================================================================
 
-/**
- * Parse decimal from Maestro's rational string format
- * @param rationalStr Format: "numerator/denominator"
- * @returns Decimal number
- */
 export const parseDecimalFromRational = (rationalStr: string): number => {
   const forwardSlashIndex = rationalStr.indexOf("/")
   if (forwardSlashIndex === -1) {

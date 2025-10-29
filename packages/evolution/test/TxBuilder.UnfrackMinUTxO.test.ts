@@ -89,8 +89,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
     const signBuilder = await builder.build({ 
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxo1, utxo2],
-      useV3: true, 
-      useStateMachine: true,
+      
       protocolParameters: PROTOCOL_PARAMS,
       unfrack: {
         tokens: {
@@ -190,8 +189,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
     const signBuilder = await builder.build({ 
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxo1, utxo2, utxo3],
-      useV3: true, 
-      useStateMachine: true,
+      
       protocolParameters: PROTOCOL_PARAMS,
       unfrack: {
         tokens: {
@@ -256,8 +254,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
     const signBuilder = await builder.build({ 
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxo],
-      useV3: true, 
-      useStateMachine: true,
+      
       protocolParameters: PROTOCOL_PARAMS,
       drainTo: 0 // Request drain into first output
     })
@@ -305,8 +302,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
       builder.build({ 
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo],
-        useV3: true, 
-        useStateMachine: true,
+        
         protocolParameters: PROTOCOL_PARAMS,
         onInsufficientChange: "burn"
       })

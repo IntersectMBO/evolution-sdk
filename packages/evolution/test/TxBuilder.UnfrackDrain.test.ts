@@ -145,7 +145,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -154,7 +153,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdividePercentages: [50, 30, 20] // Split into 3 outputs
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -203,7 +201,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -211,7 +208,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdivideThreshold: 100_000_000n // 100 ADA threshold
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -252,7 +248,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -263,7 +258,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdivideThreshold: 100_000_000n // 100 ADA
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -295,7 +289,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -307,7 +300,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdivideThreshold: 100_000_000n
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -339,7 +331,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -351,7 +342,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdivideThreshold: 100_000_000n
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -383,7 +373,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -397,7 +386,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdividePercentages: [40, 25, 15, 10, 10] // Flexible ADA distribution
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -441,11 +429,9 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         // No unfrack options
         protocolParameters: PROTOCOL_PARAMS,
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -482,7 +468,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -494,7 +479,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdividePercentages: [60, 40]
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -538,7 +522,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -546,7 +529,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdivideThreshold: 100_000_000n // 100 ADA (leftover is ~5 ADA)
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -583,7 +565,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0, // Drain into first payment output
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -594,7 +575,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdivideThreshold: 100_000_000n
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -637,7 +617,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -646,7 +625,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdividePercentages: [25, 25, 25, 25]
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -687,7 +665,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -701,7 +678,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdividePercentages: [50, 25, 15, 10] // 4-way split
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
@@ -736,7 +712,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       const signBuilder = await builder.build({
         changeAddress: SOURCE_ADDRESS,
         availableUtxos: utxos,
-        useV3: true,
         drainTo: 0,
         protocolParameters: PROTOCOL_PARAMS,
         unfrack: {
@@ -750,7 +725,6 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
             subdividePercentages: [35, 25, 20, 10, 10] // 5-way split for flexibility
           }
         },
-        useStateMachine: true
       })
 
       const tx = await signBuilder.toTransaction()
