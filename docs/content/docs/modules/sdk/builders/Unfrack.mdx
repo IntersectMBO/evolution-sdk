@@ -1,6 +1,6 @@
 ---
 title: sdk/builders/Unfrack.ts
-nav_order: 136
+nav_order: 142
 parent: Modules
 ---
 
@@ -76,7 +76,7 @@ This ensures all outputs are always valid.
 export declare const createUnfrackedChangeOutputs: (
   changeAddress: string,
   changeAssets: Assets.Assets,
-  options: UnfrackOptions,
+  options: UnfrackOptions | undefined,
   coinsPerUtxoByte: bigint
 ) => Effect.Effect<ReadonlyArray<UTxO.TxOutput>, Error, never>
 ```

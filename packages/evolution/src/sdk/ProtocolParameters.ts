@@ -31,10 +31,7 @@ export type ProtocolParameters = {
 
 /**
  * Calculate the minimum fee for a transaction based on protocol parameters.
- * 
- * @param protocolParams - The current protocol parameters
- * @param txSize - The transaction size in bytes
- * @returns The minimum fee in lovelace
+ *
  */
 export const calculateMinFee = (protocolParams: ProtocolParameters, txSize: number): bigint => {
   return BigInt(protocolParams.minFeeA * txSize + protocolParams.minFeeB)
@@ -42,10 +39,7 @@ export const calculateMinFee = (protocolParams: ProtocolParameters, txSize: numb
 
 /**
  * Calculate the UTxO cost based on the protocol parameters.
- * 
- * @param protocolParams - The current protocol parameters
- * @param utxoSize - The UTxO size in bytes
- * @returns The UTxO cost in lovelace
+ *
  */
 export const calculateUtxoCost = (protocolParams: ProtocolParameters, utxoSize: number): bigint => {
   return protocolParams.coinsPerUtxoByte * BigInt(utxoSize)
@@ -53,10 +47,7 @@ export const calculateUtxoCost = (protocolParams: ProtocolParameters, utxoSize: 
 
 /**
  * Get the cost model for a specific Plutus version.
- * 
- * @param protocolParams - The current protocol parameters
- * @param version - The Plutus version
- * @returns The cost model for the specified version
+ *
  */
 export const getCostModel = (
   protocolParams: ProtocolParameters,
@@ -67,10 +58,7 @@ export const getCostModel = (
 
 /**
  * Check if the protocol parameters support a specific Plutus version.
- * 
- * @param protocolParams - The current protocol parameters
- * @param version - The Plutus version to check
- * @returns True if the version is supported
+ *
  */
 export const supportsPlutusVersion = (
   protocolParams: ProtocolParameters,

@@ -12,9 +12,7 @@ import * as VKey from "../../core/VKey.js"
 import { runEffect } from "../../utils/effect-runtime.js"
 import { hashTransaction } from "../../utils/Hash.js"
 import type * as Address from "../Address.js"
-import type { SignBuilder } from "../builders/SignBuilder.js"
-import { makeTxBuilder, type TransactionBuilder } from "../builders/TransactionBuilder.js"
-import type { TransactionResultBase } from "../builders/TransactionResult.js"
+import { makeTxBuilder, type ReadOnlyTransactionBuilder, type SigningTransactionBuilder } from "../builders/TransactionBuilder.js"
 import * as Blockfrost from "../provider/Blockfrost.js"
 import * as Koios from "../provider/Koios.js"
 import * as Kupmios from "../provider/Kupmios.js"
@@ -196,11 +194,11 @@ const createReadOnlyClient = (
       return provider.getDelegation(rewardAddr)
     },
     // Transaction builder - creates a new builder instance
-    newTx: (): TransactionBuilder<TransactionResultBase> => {
+    newTx: (): ReadOnlyTransactionBuilder => {
       // ReadOnlyWallet provides change address and UTxO fetching via wallet.Effect.address()
       // The wallet is passed to the builder config, which handles address and UTxO resolution automatically
       // Protocol parameters are auto-fetched from provider during build()
-      return makeTxBuilder<TransactionResultBase>({
+      return makeTxBuilder({
         wallet,
         provider
       })
@@ -659,11 +657,11 @@ const createSigningClient = (
     getWalletUtxos,
     getWalletDelegation: () => Effect.runPromise(effectInterface.getWalletDelegation()),
     // Transaction builder - creates a new builder instance
-    newTx: (): TransactionBuilder<SignBuilder> => {
+    newTx: (): SigningTransactionBuilder => {
       // Wallet provides change address and UTxO fetching via wallet.Effect.address()
       // The wallet is passed to the builder config, which handles address and UTxO resolution automatically
       // Protocol parameters are auto-fetched from provider during build()
-      return makeTxBuilder<SignBuilder>({
+      return makeTxBuilder({
         provider, // Pass provider for submission
         wallet // Pass wallet for signing
       })

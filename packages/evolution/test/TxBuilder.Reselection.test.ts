@@ -76,7 +76,6 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       const signBuilder = await builder.build({
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo],
         protocolParameters: PROTOCOL_PARAMS
@@ -132,7 +131,6 @@ describe("TxBuilder Re-selection Loop", () => {
 
       const signBuilder = await builder.build({
         drainTo: 0,
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo1, utxo2, utxo3],
         protocolParameters: PROTOCOL_PARAMS
@@ -173,7 +171,6 @@ describe("TxBuilder Re-selection Loop", () => {
 
       await expect(
         builder.build({
-          useV3: true,
           changeAddress: CHANGE_ADDRESS,
           availableUtxos: [utxo],
           protocolParameters: PROTOCOL_PARAMS
@@ -201,7 +198,6 @@ describe("TxBuilder Re-selection Loop", () => {
 
       const signBuilder = await builder.build({
         drainTo: 0,
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo],
         protocolParameters: PROTOCOL_PARAMS
@@ -253,7 +249,6 @@ describe("TxBuilder Re-selection Loop", () => {
       // Expected: Transaction succeeds with change output preserving native asset
       const signBuilder = await builder.build({
         drainTo: 0,
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo],
         protocolParameters: PROTOCOL_PARAMS
@@ -307,7 +302,6 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       const signBuilder = await builder.build({
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo1, utxo2],
         protocolParameters: PROTOCOL_PARAMS
@@ -376,7 +370,6 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       const signBuilder = await builder.build({
-        useV3: true,
         availableUtxos: [utxo1, utxo2],
         changeAddress: CHANGE_ADDRESS,
         protocolParameters: PROTOCOL_PARAMS
@@ -421,7 +414,6 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       const signBuilder = await builder.build({
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: utxos,
         protocolParameters: PROTOCOL_PARAMS
@@ -467,7 +459,6 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       const signBuilder = await builder.build({
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: [utxo1, utxo2],
         protocolParameters: PROTOCOL_PARAMS
@@ -532,7 +523,6 @@ describe("TxBuilder Re-selection Loop", () => {
       // With 140+ unique addresses selected, we get 140+ fake witnesses pushing size over 16384 bytes
       await expect(
         builder.build({
-          useV3: true,
           changeAddress: CHANGE_ADDRESS,
           availableUtxos: utxos,
           protocolParameters: PROTOCOL_PARAMS
@@ -573,7 +563,6 @@ describe("TxBuilder Re-selection Loop", () => {
       // Use drainTo since the change will be small (33K < minUTxO)
       const signBuilder = await builder.build({
         drainTo: 0,
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: utxos,
         protocolParameters: PROTOCOL_PARAMS
@@ -631,7 +620,6 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Build should succeed after multiple reselection attempts
       const signBuilder = await builder.build({
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: tinyUtxos,
         protocolParameters: PROTOCOL_PARAMS
@@ -681,7 +669,6 @@ describe("TxBuilder Re-selection Loop", () => {
       })
 
       const signBuilder = await builder.build({
-        useV3: true,
         changeAddress: CHANGE_ADDRESS,
         availableUtxos: utxos,
         protocolParameters: PROTOCOL_PARAMS
@@ -739,8 +726,6 @@ describe("TxBuilder Reselection After Change", () => {
     })
 
     const signBuilder = await builder.build({
-      useStateMachine: true,
-      useV3: true,
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [largeUtxo],
       protocolParameters: PROTOCOL_PARAMS
@@ -797,8 +782,6 @@ describe("TxBuilder Reselection After Change", () => {
     })
 
     const signBuilder = await builder.build({
-      useStateMachine: true,
-      useV3: true,
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxo1, utxo2, utxo3],
       protocolParameters: PROTOCOL_PARAMS
@@ -840,8 +823,6 @@ describe("TxBuilder Reselection After Change", () => {
     })
 
     const signBuilder = await builder.build({
-      useStateMachine: true,
-      useV3: true,
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxoWithAssets],
       protocolParameters: PROTOCOL_PARAMS
@@ -892,8 +873,6 @@ describe("TxBuilder Reselection After Change", () => {
     })
 
     const signBuilder = await builder.build({
-      useStateMachine: true,
-      useV3: true,
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxo1, utxo2],
       protocolParameters: PROTOCOL_PARAMS

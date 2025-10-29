@@ -91,7 +91,7 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
 
     // Act & Assert: Should fail with default 'error' strategy
     // This is the SAFE default - prevents accidental fund loss
-    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], useV3: true, protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow()
+    await expect(builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], protocolParameters: PROTOCOL_PARAMS })).rejects.toThrow()
   })
 
   it("should burn leftover as extra fee when onInsufficientChange='burn'", async () => {
@@ -104,7 +104,7 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
       })
 
     // Act: Explicitly consent to burning leftover
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], onInsufficientChange: "burn", useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], onInsufficientChange: "burn", protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -145,7 +145,6 @@ describe("Fallback Precedence: drainTo before onInsufficientChange", () => {
       availableUtxos: [utxo],
       drainTo: 0, // Fallback #1: Drain into first output
       onInsufficientChange: "error", // Fallback #2: Would error, but shouldn't reach here
-      useV3: true,
       protocolParameters: PROTOCOL_PARAMS
     })
 
@@ -182,7 +181,6 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
       changeAddress: CHANGE_ADDRESS,
       availableUtxos: [utxo],
       onInsufficientChange: "error", // Configured but not reached
-      useV3: true,
       protocolParameters: PROTOCOL_PARAMS
     })
 
@@ -217,7 +215,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
       })
 
     // Act: Use drainTo for exact amount scenarios
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], drainTo: 0, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], drainTo: 0, protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -262,7 +260,7 @@ describe("Edge Cases", () => {
 
     // Act: Build with drainTo to merge leftover into payment
     // Total: 2.2 ADA - 2.0 payment - 0.17 fee = 0.03 ADA leftover (insufficient for change)
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, drainTo: 0, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, drainTo: 0, protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -290,7 +288,7 @@ describe("Edge Cases", () => {
       })
 
     // Act: Burn small leftover
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], onInsufficientChange: "burn", useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [utxo], onInsufficientChange: "burn", protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -346,7 +344,7 @@ describe("Multi-Asset minUTxO Calculation", () => {
       })
 
     // Act: Build transaction
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [multiAssetUtxo], useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: [multiAssetUtxo], protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -419,7 +417,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
       })
 
     // Act: Build transaction
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
@@ -471,7 +469,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
       })
 
     // Act
-    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, useV3: true, protocolParameters: PROTOCOL_PARAMS })
+    const signBuilder = await builder.build({ changeAddress: CHANGE_ADDRESS, availableUtxos: utxos, protocolParameters: PROTOCOL_PARAMS })
     const tx = await signBuilder.toTransaction()
     const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 

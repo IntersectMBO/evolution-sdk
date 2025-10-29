@@ -52,13 +52,6 @@ import type { Provider, ProviderEffect } from "./Provider.js"
 export class MaestroProvider implements Provider {
   readonly Effect: ProviderEffect
 
-  /**
-   * Create a new Maestro provider instance
-   *
-   * @param baseUrl - The Maestro API base URL (e.g., "https://api.maestro.org/v1")
-   * @param apiKey - API key for authenticated requests
-   * @param turboSubmit - Optional flag to enable turbo submit (default: false)
-   */
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,

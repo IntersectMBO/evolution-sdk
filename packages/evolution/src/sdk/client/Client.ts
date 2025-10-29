@@ -3,8 +3,7 @@
 
 import { Data, type Effect, type Schedule } from "effect"
 
-import type { TransactionBuilder } from "../builders/TransactionBuilder.js"
-import type { TransactionResultBase } from "../builders/TransactionResult.js"
+import type { ReadOnlyTransactionBuilder, SigningTransactionBuilder } from "../builders/TransactionBuilder.js"
 import type * as Delegation from "../Delegation.js"
 import type * as Provider from "../provider/Provider.js"
 import type { EffectToPromiseAPI } from "../Type.js"
@@ -128,9 +127,6 @@ export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
    * - `.toTransactionWithFakeWitnesses()` - Get transaction with fake witnesses for fee validation
    * - `.estimateFee()` - Get the calculated fee
    *
-   * @param utxos - Optional UTxOs to use for coin selection. If not provided, wallet UTxOs will be fetched automatically when build() is called.
-   * @returns A new TransactionBuilder instance configured with cached protocol parameters and wallet change address.
-   *
    * @example
    * ```typescript
    * // Build unsigned transaction
@@ -149,7 +145,7 @@ export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
    * @since 2.0.0
    * @category transaction-building
    */
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => TransactionBuilder<TransactionResultBase>
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: ReadOnlyClientEffect
 }
@@ -196,7 +192,7 @@ export type SigningClient = EffectToPromiseAPI<SigningClientEffect> & {
    * @since 2.0.0
    * @category transaction-building
    */
-  readonly newTx: () => TransactionBuilder
+  readonly newTx: () => SigningTransactionBuilder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: SigningClientEffect
 }

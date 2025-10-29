@@ -37,13 +37,6 @@ type Wallet = WalletNew.SigningWallet | WalletNew.ApiWallet
 /**
  * Create a SignBuilder instance for a built transaction.
  * 
- * @param transaction - The unsigned transaction (body only, no witnesses)
- * @param transactionWithFakeWitnesses - The transaction with fake witnesses for size validation
- * @param fee - The calculated transaction fee in lovelace
- * @param utxos - The UTxOs that were used as inputs (for wallet to determine required signers)
- * @param wallet - The wallet that will sign the transaction
- * @param provider - The provider to submit the transaction to
- * 
  * @since 2.0.0
  * @category constructors
  */

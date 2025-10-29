@@ -1,6 +1,6 @@
 ---
 title: sdk/client/Client.ts
-nav_order: 137
+nav_order: 143
 parent: Modules
 ---
 
@@ -261,9 +261,6 @@ export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
    * - `.toTransactionWithFakeWitnesses()` - Get transaction with fake witnesses for fee validation
    * - `.estimateFee()` - Get the calculated fee
    *
-   * @param utxos - Optional UTxOs to use for coin selection. If not provided, wallet UTxOs will be fetched automatically when build() is called.
-   * @returns A new TransactionBuilder instance configured with cached protocol parameters and wallet change address.
-   *
    * @example
    * ```typescript
    * // Build unsigned transaction
@@ -282,7 +279,7 @@ export type ReadOnlyClient = EffectToPromiseAPI<ReadOnlyClientEffect> & {
    * @since 2.0.0
    * @category transaction-building
    */
-  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => TransactionBuilder<TransactionResultBase>
+  readonly newTx: (utxos?: ReadonlyArray<UTxO.UTxO>) => ReadOnlyTransactionBuilder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: ReadOnlyClientEffect
 }
@@ -453,7 +450,7 @@ export type SigningClient = EffectToPromiseAPI<SigningClientEffect> & {
    * @since 2.0.0
    * @category transaction-building
    */
-  readonly newTx: () => TransactionBuilder
+  readonly newTx: () => SigningTransactionBuilder
   // Effect namespace - includes all provider + wallet methods as Effects
   readonly Effect: SigningClientEffect
 }
