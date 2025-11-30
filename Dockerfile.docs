@@ -1,0 +1,71 @@
+# Documentation Site Dockerfile
+FROM node:20-alpine AS base
+
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+WORKDIR /app
+
+# Copy workspace config
+COPY pnpm-lock.yaml pnpm-workspace.yaml turbo.json package.json ./
+COPY packages/evolution/package.json ./packages/evolution/
+COPY packages/evolution-devnet/package.json ./packages/evolution-devnet/
+COPY docs/package.json ./docs/
+
+# Install dependencies (skip scripts that need source files)
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
+
+# Copy all source files
+COPY packages ./packages
+COPY docs ./docs
+COPY tsconfig*.json ./
+
+# Now run postinstall scripts
+RUN pnpm install --ignore-scripts=false || true
+
+# Build SDK packages first (required by docs)
+RUN pnpm turbo build --filter=@evolution-sdk/*
+
+# Development stage - runs Next.js dev server
+FROM base AS development
+
+WORKDIR /app/docs
+
+ENV NODE_ENV=development
+
+EXPOSE 3000
+
+CMD ["pnpm", "dev"]
+
+# Production build stage
+FROM base AS builder
+
+# Build documentation for production
+RUN pnpm --filter docs build
+
+# Production runtime stage
+FROM node:20-alpine AS production
+
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+ENV NODE_ENV=production
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+WORKDIR /app
+
+# Copy necessary files for production
+COPY --from=builder /app/docs/.next ./docs/.next
+COPY --from=builder /app/docs/public ./docs/public
+COPY --from=builder /app/docs/package.json ./docs/package.json
+COPY --from=builder /app/docs/next.config.mjs ./docs/next.config.mjs
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+WORKDIR /app/docs
+
+EXPOSE 3000
+
+CMD ["pnpm", "start"]

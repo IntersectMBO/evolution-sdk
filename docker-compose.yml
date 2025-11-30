@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Development environment with hot reload
+  evolution-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    container_name: evolution-sdk-dev
+    volumes:
+      - ./packages:/app/packages
+      - ./demo-server.js:/app/demo-server.js
+      - /app/node_modules
+      - /app/packages/evolution/node_modules
+      - /app/packages/evolution-devnet/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    command: sh -c "pnpm turbo build --filter=@evolution-sdk/* && node demo-server.js"
+    ports:
+      - "3000:3000"
+    networks:
+      - evolution-net
+
+  # Documentation site
+  evolution-docs:
+    build:
+      context: .
+      dockerfile: Dockerfile.docs
+      target: development
+    container_name: evolution-sdk-docs
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./docs:/app/docs
+      - ./packages:/app/packages
+      - /app/node_modules
+      - /app/docs/node_modules
+    environment:
+      - NODE_ENV=development
+    networks:
+      - evolution-net
+
+  # Test runner
+  evolution-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    container_name: evolution-sdk-test
+    volumes:
+      - ./packages:/app/packages
+      - ./coverage:/app/coverage
+    command: pnpm turbo test --filter=@evolution-sdk/*
+    environment:
+      - NODE_ENV=test
+    networks:
+      - evolution-net
+
+  # DevNet - Cardano local network
+  cardano-devnet:
+    image: inputoutput/cardano-node:latest
+    container_name: cardano-devnet-node
+    environment:
+      - CARDANO_NETWORK=preview
+    ports:
+      - "3001:3001"
+    volumes:
+      - cardano-node-data:/data
+    networks:
+      - evolution-net
+
+networks:
+  evolution-net:
+    driver: bridge
+
+volumes:
+  cardano-node-data:

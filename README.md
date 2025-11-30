@@ -71,6 +71,60 @@ console.log("Transaction submitted:", hash)
 npm install @evolution-sdk/evolution
 ```
 
+## 🐳 Docker Quick Start
+
+Run the complete development environment with Docker:
+
+```bash
+# Clone the repository
+git clone https://github.com/IntersectMBO/evolution-sdk.git
+cd evolution-sdk
+
+# Start documentation site at http://localhost:3000
+docker-compose up -d evolution-docs
+
+# Access the documentation at http://localhost:3000/docs
+
+# Or start SDK development environment
+docker-compose up -d evolution-dev
+
+# View logs
+docker-compose logs -f evolution-docs
+
+# Stop containers
+docker-compose down
+
+# Stop and remove volumes
+docker-compose down -v
+```
+
+**Using build helper script:**
+
+```bash
+# Build all images
+./docker-build.sh all
+
+# Build specific images
+./docker-build.sh dev     # Development image
+./docker-build.sh prod    # Production image
+./docker-build.sh docs    # Documentation site
+
+# Run tests in Docker
+./docker-build.sh test
+
+# View help
+./docker-help.sh
+```
+
+**Available containers:**
+- **evolution-docs** - Documentation site (Next.js) on port 3000
+- **evolution-dev** - SDK development with hot reload
+- **cardano-devnet** - Local Cardano blockchain node
+
+For complete Docker documentation, see [DOCKER.md](./DOCKER.md)
+
+---
+
 ## Quick Start
 
 ```typescript
@@ -215,7 +269,7 @@ Evolution SDK provides **125+ core modules** plus SDK utilities, organized into 
 
 ```bash
 # Clone the repository
-git clone https://github.com/no-witness-labs/evolution-sdk.git
+git clone https://github.com/IntersectMBO/evolution-sdk.git
 cd evolution-sdk
 
 # Enter Nix development shell (optional but recommended)
@@ -338,6 +392,26 @@ We love your input! We want to make contributing to Evolution SDK as easy and tr
 
 ### Quick Start for Contributors
 
+**Option 1: Docker (Recommended)**
+
+```bash
+# Clone and start development environment
+git clone https://github.com/IntersectMBO/evolution-sdk.git
+cd evolution-sdk
+
+# Start development with Docker
+docker-compose up -d evolution-dev
+
+# Access the container
+docker exec -it evolution-sdk-dev sh
+
+# Inside container, run commands
+pnpm turbo build
+pnpm turbo test
+```
+
+**Option 2: Local Development**
+
 1. Fork and clone the repository
    ```bash
    git clone https://github.com/IntersectMBO/evolution-sdk.git
@@ -353,6 +427,43 @@ We love your input! We want to make contributing to Evolution SDK as easy and tr
    ```bash
    pnpm turbo dev
    ```
+
+4. Run the documentation site
+   ```bash
+   pnpm docs:dev  # Opens at http://localhost:3000
+   # Then visit http://localhost:3000/docs in your browser
+   ```
+
+5. Make your changes and test them
+   ```bash
+   pnpm turbo test
+   pnpm turbo type-check
+   pnpm turbo lint
+   ```
+
+### Docker Development Workflow
+
+```bash
+# Build development image
+./docker-build.sh dev
+
+# Start all services
+docker-compose up -d
+
+# Access the documentation site
+# Open http://localhost:3000/docs in your browser
+
+# View logs
+docker-compose logs -f evolution-dev
+
+# Run tests in Docker
+./docker-build.sh test
+
+# Stop services
+docker-compose down
+```
+
+See [DOCKER.md](./DOCKER.md) for comprehensive Docker documentation.
 
 4. Make your changes and test them
    ```bash

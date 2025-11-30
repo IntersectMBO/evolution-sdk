@@ -1,0 +1,102 @@
+# Multi-purpose Dockerfile for Evolution SDK
+# Supports: development, testing, and production builds
+
+# ============================================
+# Base Stage - Development & Build
+# ============================================
+FROM node:20-alpine AS base
+
+# Enable corepack + pnpm
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# Install system dependencies
+RUN apk add --no-cache \
+    git \
+    bash \
+    curl \
+    jq \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+# Copy dependency files for layer caching
+COPY pnpm-lock.yaml pnpm-workspace.yaml turbo.json package.json ./
+COPY packages/evolution/package.json ./packages/evolution/
+COPY packages/evolution-devnet/package.json ./packages/evolution-devnet/
+
+# Install dependencies with cache mount
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# ============================================
+# Builder Stage - Production Build
+# ============================================
+FROM base AS builder
+
+# Build all packages
+RUN pnpm turbo build --filter=@evolution-sdk/*
+
+# Prune dev dependencies
+RUN pnpm prune --prod
+
+# ============================================
+# Test Stage - For CI/CD
+# ============================================
+FROM base AS test
+
+# Copy all source for testing
+COPY . .
+
+# Run tests
+CMD ["pnpm", "turbo", "test", "--filter=@evolution-sdk/*"]
+
+# ============================================
+# Production Runtime - Minimal Image
+# ============================================
+FROM node:20-alpine AS production
+
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+ENV NODE_ENV=production
+
+# Install only runtime dependencies
+RUN apk add --no-cache bash curl
+
+WORKDIR /app
+
+# Copy essential files
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-lock.yaml ./
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/turbo.json ./
+COPY --from=builder /app/tsconfig*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD node --version || exit 1
+
+# Default to shell for SDK usage
+CMD ["/bin/bash"]
+
+# ============================================
+# Development Stage - With Hot Reload
+# ============================================
+FROM base AS development
+
+ENV NODE_ENV=development
+
+# Copy everything for development
+COPY . .
+
+# Run dev server
+CMD ["pnpm", "turbo", "dev", "--filter=@evolution-sdk/*"]

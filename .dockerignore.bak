@@ -1,0 +1,75 @@
+# .dockerignore - Optimize build context
+# Reduce image size and build time by excluding unnecessary files
+
+# Dependencies
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.turbo/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Development files
+.git/
+.github/
+.gitignore
+.env*
+.envrc
+!.env.example
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (unless building docs)
+docs/
+*.md
+!packages/*/README.md
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+test/
+tests/
+__tests__/
+__mocks__/
+
+# Config files not needed in container
+.prettierrc*
+.eslintrc*
+eslint.config.*
+.editorconfig
+
+# Misc
+*.log
+.cache/
+temp/
+tmp/
+.specs/
+
+# Nix (if not using)
+flake.nix
+flake.lock
+.envrc
+
+# CI/CD
+.github/
+.changeset/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
