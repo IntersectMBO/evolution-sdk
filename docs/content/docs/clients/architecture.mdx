@@ -276,7 +276,6 @@ export async function buildPayment(
 
 ### Why This Works
 
-### Why This Works
 
 User keys never leave their device. Provider API keys never exposed to frontend. Backend cannot sign transactions (compromised server results in no fund loss). Frontend cannot build transactions alone (no provider access). Both components required for complete transactions. Clean separation of concerns provides scalable architecture.
 
