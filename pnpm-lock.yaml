@@ -100,7 +100,7 @@ importers:
     dependencies:
       '@evolution-sdk/devnet':
         specifier: workspace:*
-        version: link:../packages/evolution-devnet
+        version: link:../packages/devnet
       '@evolution-sdk/evolution':
         specifier: workspace:*
         version: link:../packages/evolution
@@ -240,6 +240,43 @@ importers:
         specifier: ^5.9.2
         version: 5.9.2
 
+  packages/devnet:
+    dependencies:
+      '@effect/platform':
+        specifier: ^0.90.10
+        version: 0.90.10(effect@3.19.3)
+      '@effect/platform-node':
+        specifier: ^0.96.1
+        version: 0.96.1(@effect/cluster@0.48.2(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.44.2(@effect/experimental@0.54.6(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/workflow@0.9.2(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.44.2(@effect/experimental@0.54.6(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(bufferutil@4.1.0)(effect@3.19.3)(utf-8-validate@6.0.6)
+      '@evolution-sdk/aiken-uplc':
+        specifier: workspace:*
+        version: link:../aiken-uplc
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@evolution-sdk/scalus-uplc':
+        specifier: workspace:*
+        version: link:../scalus-uplc
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
+      dockerode:
+        specifier: ^4.0.7
+        version: 4.0.7
+      effect:
+        specifier: ^3.19.3
+        version: 3.19.3
+    devDependencies:
+      '@types/dockerode':
+        specifier: ^3.3.43
+        version: 3.3.43
+      tsx:
+        specifier: ^4.20.4
+        version: 4.20.4
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+
   packages/evolution:
     dependencies:
       '@effect/platform':
@@ -288,43 +325,6 @@ importers:
       tinybench:
         specifier: ^5.0.0
         version: 5.0.0
-      tsx:
-        specifier: ^4.20.4
-        version: 4.20.4
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.2
-
-  packages/evolution-devnet:
-    dependencies:
-      '@effect/platform':
-        specifier: ^0.90.10
-        version: 0.90.10(effect@3.19.3)
-      '@effect/platform-node':
-        specifier: ^0.96.1
-        version: 0.96.1(@effect/cluster@0.48.2(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.44.2(@effect/experimental@0.54.6(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/workflow@0.9.2(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.44.2(@effect/experimental@0.54.6(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(bufferutil@4.1.0)(effect@3.19.3)(utf-8-validate@6.0.6)
-      '@evolution-sdk/aiken-uplc':
-        specifier: workspace:*
-        version: link:../aiken-uplc
-      '@evolution-sdk/evolution':
-        specifier: workspace:*
-        version: link:../evolution
-      '@evolution-sdk/scalus-uplc':
-        specifier: workspace:*
-        version: link:../scalus-uplc
-      '@noble/hashes':
-        specifier: ^1.8.0
-        version: 1.8.0
-      dockerode:
-        specifier: ^4.0.7
-        version: 4.0.7
-      effect:
-        specifier: ^3.19.3
-        version: 3.19.3
-    devDependencies:
-      '@types/dockerode':
-        specifier: ^3.3.43
-        version: 3.3.43
       tsx:
         specifier: ^4.20.4
         version: 4.20.4
@@ -9311,7 +9311,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/tsconfig-utils': 8.40.0(typescript@5.9.2)
       '@typescript-eslint/types': 8.40.0
-      debug: 4.4.1
+      debug: 4.4.3
       typescript: 5.9.2
     transitivePeerDependencies:
       - supports-color
@@ -9330,7 +9330,7 @@ snapshots:
       '@typescript-eslint/types': 8.40.0
       '@typescript-eslint/typescript-estree': 8.40.0(typescript@5.9.2)
       '@typescript-eslint/utils': 8.40.0(eslint@9.34.0(jiti@2.5.1))(typescript@5.9.2)
-      debug: 4.4.1
+      debug: 4.4.3
       eslint: 9.34.0(jiti@2.5.1)
       ts-api-utils: 2.1.0(typescript@5.9.2)
       typescript: 5.9.2
