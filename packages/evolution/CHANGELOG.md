@@ -1,5 +1,13 @@
 # @evolution-sdk/evolution
 
+## 0.3.20
+
+### Patch Changes
+
+- [#168](https://github.com/IntersectMBO/evolution-sdk/pull/168) [`e0245ae`](https://github.com/IntersectMBO/evolution-sdk/commit/e0245ae2d33c1712591bc26504928c6797a6a668) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix BlockfrostEffect.evaluateTx dropping reference scripts from additionalUtxoSet, which caused missingRequiredScripts errors when evaluating transactions that reference unconfirmed UTxOs carrying minting policies.
+
+- [#169](https://github.com/IntersectMBO/evolution-sdk/pull/169) [`eebd2b0`](https://github.com/IntersectMBO/evolution-sdk/commit/eebd2b0c826f25d96244943da1b28f9b2cefd3e4) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix `calculateMinimumUtxoLovelace` to use the Babbage/Conway formula with 160-byte UTxO entry overhead and an exact fixed-point solve to avoid CBOR under-estimation for outputs with script references.
+
 ## 0.3.19
 
 ### Patch Changes

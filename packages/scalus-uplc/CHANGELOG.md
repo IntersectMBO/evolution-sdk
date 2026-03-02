@@ -1,5 +1,14 @@
 # @evolution-sdk/scalus-uplc
 
+## 0.0.10
+
+### Patch Changes
+
+- [#170](https://github.com/IntersectMBO/evolution-sdk/pull/170) [`26dfe7e`](https://github.com/IntersectMBO/evolution-sdk/commit/26dfe7edaebaf38087ccd6d367a226369dda2a01) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix CJS interop: use default import for scalus package to resolve TypeError: Scalus.SlotConfig is not a constructor
+
+- Updated dependencies [[`e0245ae`](https://github.com/IntersectMBO/evolution-sdk/commit/e0245ae2d33c1712591bc26504928c6797a6a668), [`eebd2b0`](https://github.com/IntersectMBO/evolution-sdk/commit/eebd2b0c826f25d96244943da1b28f9b2cefd3e4)]:
+  - @evolution-sdk/evolution@0.3.20
+
 ## 0.0.9
 
 ### Patch Changes

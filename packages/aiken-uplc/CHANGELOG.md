@@ -1,5 +1,14 @@
 # @evolution-sdk/aiken-uplc
 
+## 0.0.12
+
+### Patch Changes
+
+- [#170](https://github.com/IntersectMBO/evolution-sdk/pull/170) [`d139b44`](https://github.com/IntersectMBO/evolution-sdk/commit/d139b4456d46e783e9172b7fcd7c3bf7ae624fc6) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix build to copy WASM bindings (node/ and browser/) into dist/ so the published package resolves correctly
+
+- Updated dependencies [[`e0245ae`](https://github.com/IntersectMBO/evolution-sdk/commit/e0245ae2d33c1712591bc26504928c6797a6a668), [`eebd2b0`](https://github.com/IntersectMBO/evolution-sdk/commit/eebd2b0c826f25d96244943da1b28f9b2cefd3e4)]:
+  - @evolution-sdk/evolution@0.3.20
+
 ## 0.0.11
 
 ### Patch Changes

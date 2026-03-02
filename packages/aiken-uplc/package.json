@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/aiken-uplc",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Aiken UPLC evaluator for Evolution SDK with WASM-based local script evaluation",
   "type": "module",
   "main": "./dist/index.js",
