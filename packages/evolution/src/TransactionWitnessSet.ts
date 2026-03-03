@@ -358,11 +358,20 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
         record.set(4n, CBOR.Tag.make({ tag: 258, value: plutusDataCBOR }))
       }
 
-      // 5: redeemers
+      // 5: redeemers — respect the format that was decoded (map or array)
       if (toA.redeemers && toA.redeemers.length > 0) {
         const redeemersCollection = new Redeemers.Redeemers({ values: [...toA.redeemers] })
-        const redeemersEncoded = yield* ParseResult.encode(Redeemers.FromArrayCDDL)(redeemersCollection)
-        record.set(5n, redeemersEncoded)
+        const format = (toA as any)._redeemersFormat as Redeemers.Format | undefined
+        if (format === "map") {
+          // FromMapCDDL.encode produces array-of-pairs (Schema.Map encoded form);
+          // convert to JS Map so the CBOR encoder writes a major-type-5 map.
+          const redeemersEncoded = yield* ParseResult.encode(Redeemers.FromMapCDDL)(redeemersCollection)
+          const redeemersMap = new Map(redeemersEncoded as Iterable<readonly [CBOR.CBOR, CBOR.CBOR]>)
+          record.set(5n, redeemersMap)
+        } else {
+          const redeemersEncoded = yield* ParseResult.encode(Redeemers.FromArrayCDDL)(redeemersCollection)
+          record.set(5n, redeemersEncoded)
+        }
       }
 
       // 6: plutus_v2_scripts
@@ -462,27 +471,43 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
         witnessSet.plutusData = plutusData
       }
 
-      // 5: redeemers (note: some producers may wrap this in nonempty_set tag 258 even though CDDL doesn't require it)
-      const asRedeemersArray = (
-        value: unknown
-      ): ReadonlyArray<Schema.Schema.Type<typeof Redeemers.ArrayCDDLSchema>[number]> | undefined => {
-        if (value === undefined) return undefined
-        if (CBOR.isTag(value)) {
-          const tag = value as { _tag: "Tag"; tag: number; value: unknown }
-          if (tag.tag !== 258) return undefined
-          if (Array.isArray(tag.value))
-            return tag.value as ReadonlyArray<Schema.Schema.Type<typeof Redeemers.ArrayCDDLSchema>[number]>
-          return undefined
+      // 5: redeemers — Conway CDDL supports both array and map formats:
+      //   redeemers = [ + redeemer ] / { + [tag, index] => [data, ex_units] }
+      let redeemersFormat: Redeemers.Format | undefined
+      const redeemersRaw = fromA.get(5n)
+      if (redeemersRaw !== undefined) {
+        if (redeemersRaw instanceof Map) {
+          // Map format (Conway recommended)
+          // Schema.Map expects array-of-pairs as encoded input, so convert Map → entries array
+          const entries = Array.from((redeemersRaw as Map<CBOR.CBOR, CBOR.CBOR>).entries())
+          const redeemersCollection = yield* ParseResult.decode(Redeemers.FromMapCDDL)(
+            entries as unknown as Schema.Schema.Encoded<typeof Redeemers.FromMapCDDL>
+          )
+          witnessSet.redeemers = [...redeemersCollection.values]
+          redeemersFormat = "map"
+        } else {
+          // Array format (legacy, or tag-258 wrapped)
+          const asRedeemersArray = (
+            value: unknown
+          ): ReadonlyArray<Schema.Schema.Type<typeof Redeemers.ArrayCDDLSchema>[number]> | undefined => {
+            if (CBOR.isTag(value)) {
+              const tag = value as { _tag: "Tag"; tag: number; value: unknown }
+              if (tag.tag !== 258) return undefined
+              if (Array.isArray(tag.value))
+                return tag.value as ReadonlyArray<Schema.Schema.Type<typeof Redeemers.ArrayCDDLSchema>[number]>
+              return undefined
+            }
+            if (Array.isArray(value))
+              return value as ReadonlyArray<Schema.Schema.Type<typeof Redeemers.ArrayCDDLSchema>[number]>
+            return undefined
+          }
+          const redeemersArray = asRedeemersArray(redeemersRaw)
+          if (redeemersArray !== undefined) {
+            const redeemersCollection = yield* ParseResult.decode(Redeemers.FromArrayCDDL)(redeemersArray)
+            witnessSet.redeemers = [...redeemersCollection.values]
+            redeemersFormat = "array"
+          }
         }
-        if (Array.isArray(value))
-          return value as ReadonlyArray<Schema.Schema.Type<typeof Redeemers.ArrayCDDLSchema>[number]>
-        return undefined
-      }
-
-      const redeemersArray = asRedeemersArray(fromA.get(5n))
-      if (redeemersArray !== undefined) {
-        const redeemersCollection = yield* ParseResult.decode(Redeemers.FromArrayCDDL)(redeemersArray)
-        witnessSet.redeemers = [...redeemersCollection.values]
       }
 
       // 6: plutus_v2_scripts
@@ -500,7 +525,11 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       }
 
       // Build the class instance directly to allow fully empty witness sets
-      return new TransactionWitnessSet(witnessSet, { disableValidation: true })
+      const result = new TransactionWitnessSet(witnessSet, { disableValidation: true })
+      if (redeemersFormat !== undefined) {
+        ;(result as any)._redeemersFormat = redeemersFormat
+      }
+      return result
     })
 })
 

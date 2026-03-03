@@ -148,10 +148,7 @@ describe("CBOR Bounded Bytes Chunked Encoding", () => {
 
     it("should encode a large ByteArray in a nested datum structure", () => {
       const largeBytes = new Uint8Array(200).fill(0xde)
-      const datum = Data.constr(0n, [
-        42n,
-        Data.constr(1n, [largeBytes, Bytes.fromHex("cafe")])
-      ])
+      const datum = Data.constr(0n, [42n, Data.constr(1n, [largeBytes, Bytes.fromHex("cafe")])])
 
       const encoded = Data.toCBORHex(datum)
       const decoded = Data.fromCBORHex(encoded)
@@ -191,60 +188,48 @@ describe("CBOR Bounded Bytes Chunked Encoding", () => {
   describe("property-based bounded_bytes verification", () => {
     it("should round-trip arbitrary byte arrays of any size (0..1024)", () => {
       FastCheck.assert(
-        FastCheck.property(
-          FastCheck.uint8Array({ minLength: 0, maxLength: 1024 }),
-          (value) => {
-            const encoded = CBOR.toCBORBytes(CBOR.BoundedBytes.make(value))
-            const decoded = CBOR.fromCBORBytes(encoded, DATA_OPTIONS) as Uint8Array
-            expect(decoded).toEqual(value)
-          }
-        ),
+        FastCheck.property(FastCheck.uint8Array({ minLength: 0, maxLength: 1024 }), (value) => {
+          const encoded = CBOR.toCBORBytes(CBOR.BoundedBytes.make(value))
+          const decoded = CBOR.fromCBORBytes(encoded, DATA_OPTIONS) as Uint8Array
+          expect(decoded).toEqual(value)
+        }),
         { numRuns: 200 }
       )
     })
 
     it("should round-trip arbitrary large ByteArrays through PlutusData", () => {
       FastCheck.assert(
-        FastCheck.property(
-          FastCheck.uint8Array({ minLength: 65, maxLength: 512 }),
-          (value) => {
-            const encoded = Data.toCBORHex(value)
-            const decoded = Data.fromCBORHex(encoded)
-            expect(decoded).toEqual(value)
-          }
-        ),
+        FastCheck.property(FastCheck.uint8Array({ minLength: 65, maxLength: 512 }), (value) => {
+          const encoded = Data.toCBORHex(value)
+          const decoded = Data.fromCBORHex(encoded)
+          expect(decoded).toEqual(value)
+        }),
         { numRuns: 100 }
       )
     })
 
     it("should produce no > 64-byte definite bytestring in any PlutusData encoding", () => {
       FastCheck.assert(
-        FastCheck.property(
-          FastCheck.uint8Array({ minLength: 65, maxLength: 512 }),
-          (value) => {
-            const redeemer = Data.constr(0n, [value])
-            const encodedBytes = Data.toCBORBytes(redeemer)
-            verifyNoBytestringExceeds(encodedBytes, CHUNK_LIMIT)
-          }
-        ),
+        FastCheck.property(FastCheck.uint8Array({ minLength: 65, maxLength: 512 }), (value) => {
+          const redeemer = Data.constr(0n, [value])
+          const encodedBytes = Data.toCBORBytes(redeemer)
+          verifyNoBytestringExceeds(encodedBytes, CHUNK_LIMIT)
+        }),
         { numRuns: 100 }
       )
     })
 
     it("should match: <= 64 bytes -> definite, > 64 bytes -> chunked", () => {
       FastCheck.assert(
-        FastCheck.property(
-          FastCheck.uint8Array({ minLength: 1, maxLength: 256 }),
-          (value) => {
-            const encoded = CBOR.toCBORBytes(CBOR.BoundedBytes.make(value))
-            if (value.length <= 64) {
-              expect(encoded[0]).not.toBe(0x5f)
-            } else {
-              expect(encoded[0]).toBe(0x5f)
-              expect(encoded[encoded.length - 1]).toBe(0xff)
-            }
+        FastCheck.property(FastCheck.uint8Array({ minLength: 1, maxLength: 256 }), (value) => {
+          const encoded = CBOR.toCBORBytes(CBOR.BoundedBytes.make(value))
+          if (value.length <= 64) {
+            expect(encoded[0]).not.toBe(0x5f)
+          } else {
+            expect(encoded[0]).toBe(0x5f)
+            expect(encoded[encoded.length - 1]).toBe(0xff)
           }
-        ),
+        }),
         { numRuns: 500 }
       )
     })

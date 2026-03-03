@@ -898,8 +898,14 @@ const encodeBoundedBytesSync = (value: Uint8Array): Uint8Array => {
     else headerLen = 3
     const out = new Uint8Array(headerLen + length)
     if (length < 24) out[0] = 0x40 + length
-    else if (length < 256) { out[0] = 0x58; out[1] = length }
-    else { out[0] = 0x59; out[1] = length >> 8; out[2] = length & 0xff }
+    else if (length < 256) {
+      out[0] = 0x58
+      out[1] = length
+    } else {
+      out[0] = 0x59
+      out[1] = length >> 8
+      out[2] = length & 0xff
+    }
     out.set(value, headerLen)
     return out
   }
@@ -1234,6 +1240,19 @@ const encodeFloatSync = (value: number, options: CodecOptions): Uint8Array => {
     return out
   }
 }
+
+/**
+ * Decode a single CBOR item at a given byte offset, returning the decoded value and the new offset.
+ * Useful for extracting raw byte slices from CBOR-encoded data without re-encoding.
+ *
+ * @since 2.0.0
+ * @category decoding
+ */
+export const decodeItemWithOffset = (
+  data: Uint8Array,
+  offset: number,
+  options: CodecOptions = CML_DEFAULT_OPTIONS
+): { item: CBOR; newOffset: number } => decodeItemAt(data, offset, options)
 
 // Decode (sync)
 export const internalDecodeSync = (data: Uint8Array, options: CodecOptions = DEFAULT_OPTIONS): CBOR => {

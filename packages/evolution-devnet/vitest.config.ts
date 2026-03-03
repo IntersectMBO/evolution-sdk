@@ -18,12 +18,6 @@ export default defineConfig({
     },
     // Devnet tests are slow but should not be retried — flakiness here is a real infra failure
     retry: 0,
-    exclude: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/temp/**",
-      "**/.direnv/**",
-      "**/.{idea,git,cache,output,temp}/**"
-    ]
+    exclude: ["**/node_modules/**", "**/dist/**", "**/temp/**", "**/.direnv/**", "**/.{idea,git,cache,output,temp}/**"]
   }
 })

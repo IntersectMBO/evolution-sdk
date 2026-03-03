@@ -1270,9 +1270,7 @@ describe("TxBuilder Script Handling", () => {
   })
 
   it("should build a transaction with a >64-byte redeemer field using bounded_bytes encoding", async () => {
-    const alwaysSucceedValidator = plutusJson.validators.find(
-      (v) => v.title === "always_succeed.always_succeed.spend"
-    )!
+    const alwaysSucceedValidator = plutusJson.validators.find((v) => v.title === "always_succeed.always_succeed.spend")!
     const alwaysSucceedV3 = new PlutusV3.PlutusV3({ bytes: Bytes.fromHex(alwaysSucceedValidator.compiledCode) })
     const scriptHash = ScriptHash.fromScript(alwaysSucceedV3)
     const scriptAddress = Schema.encodeSync(CoreAddress.FromBech32)(
