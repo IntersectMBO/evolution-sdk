@@ -8,11 +8,7 @@ export default defineConfig({
     hookTimeout: 30000,
     teardownTimeout: 30000,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true
-      }
-    },
+    maxWorkers: 1,
     retry: 2,
     bail: 1,
     exclude: [

@@ -11,11 +11,7 @@ export default defineConfig({
     // Serialize all test files — each file creates its own cluster (cardano-node + kupo + ogmios)
     // Running them concurrently exhausts Docker resources on CI / local machines
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true
-      }
-    },
+    maxWorkers: 1,
     // Devnet tests are slow but should not be retried — flakiness here is a real infra failure
     retry: 0,
     exclude: [
