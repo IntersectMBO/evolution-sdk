@@ -169,7 +169,8 @@ function generateTSchema(
           // Empty constructor - use configured style
           if (config.emptyConstructorStyle === "Literal") {
             const tag = constructorDef.title || definitionKey || "Unit"
-            const indexOpt = constructorDef.index && constructorDef.index !== 0 ? `, { index: ${constructorDef.index} }` : ""
+            const indexOpt =
+              constructorDef.index && constructorDef.index !== 0 ? `, { index: ${constructorDef.index} }` : ""
             return `TSchema.Literal("${tag}" as const${indexOpt})`
           }
           return "TSchema.Struct({})"
@@ -337,7 +338,8 @@ function generateTSchema(
         if (fields.length === 0) {
           // Use constructor title, then definition key, then fallback to "Unit"
           const tag = constructorMember.title || definitionKey || "Unit"
-          const indexOpt = constructorMember.index && constructorMember.index !== 0 ? `, { index: ${constructorMember.index} }` : ""
+          const indexOpt =
+            constructorMember.index && constructorMember.index !== 0 ? `, { index: ${constructorMember.index} }` : ""
           return `TSchema.Literal("${tag}" as const${indexOpt})`
         }
 
@@ -731,9 +733,9 @@ export function generateTypeScript(
 
       // Use flattened name for primitives (handles $ and / characters)
       const primitiveName = getTypeName(fullName)
-      
+
       const schemaDefinition = generateTSchema(def, blueprint.definitions, config, "", "", primitiveName)
-      
+
       // Add JSDoc comment
       if ("title" in def && def.title) {
         lines.push("/**")

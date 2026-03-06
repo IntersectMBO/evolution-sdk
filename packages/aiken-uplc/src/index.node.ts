@@ -1,11 +1,17 @@
 /**
- * Node.js entry point - uses Node.js WASM target
+ * Node.js entry point - uses synchronous WASM initialization via initSync
  *
  * @packageDocumentation
  */
 
+import { readFileSync } from "node:fs"
+
 import { makeEvaluator } from "./Evaluator.js"
-import * as wasmModule from "./node/aiken_uplc.js"
+import { eval_phase_two_raw,initSync } from "./web/aiken_uplc.js"
+
+// Initialize WASM synchronously using the .wasm file from disk
+const wasmPath = new URL("./web/aiken_uplc_bg.wasm", import.meta.url)
+initSync({ module: readFileSync(wasmPath) })
 
 /**
  * Create an Aiken UPLC evaluator for Evolution SDK (Node.js).
@@ -36,4 +42,4 @@ import * as wasmModule from "./node/aiken_uplc.js"
  *   })
  * ```
  */
-export const createAikenEvaluator = makeEvaluator(wasmModule)
+export const createAikenEvaluator = makeEvaluator({ eval_phase_two_raw })

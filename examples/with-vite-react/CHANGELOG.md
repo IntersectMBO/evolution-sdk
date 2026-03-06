@@ -1,5 +1,12 @@
 # evolution-vite-react-example
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [[`a4fbd49`](https://github.com/IntersectMBO/evolution-sdk/commit/a4fbd49410b65a831d3d84091cfe11ba6b730ee8)]:
+  - @evolution-sdk/evolution@0.3.22
+
 ## 0.1.7
 
 ### Patch Changes

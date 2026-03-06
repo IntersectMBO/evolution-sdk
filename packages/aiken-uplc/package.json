@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/aiken-uplc",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "Aiken UPLC evaluator for Evolution SDK with WASM-based local script evaluation",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,9 +33,9 @@
     "dist/**/*.wasm"
   ],
   "scripts": {
-    "build:wasm": "rm -rf src/browser src/node && cd rust && wasm-pack build --target bundler --out-dir ../src/browser && wasm-pack build --target nodejs --out-dir ../src/node && pnpm clean-wasm",
-    "clean-wasm": "rm -f src/browser/.gitignore src/browser/package.json src/node/.gitignore src/node/package.json",
-    "build": "tsc -b tsconfig.build.json && cp -r src/node/. dist/node && cp -r src/browser/. dist/browser",
+    "build:wasm": "rm -rf src/bundler src/web && cd rust && wasm-pack build --target bundler --out-dir ../src/bundler && wasm-pack build --target web --out-dir ../src/web && pnpm clean-wasm",
+    "clean-wasm": "rm -f src/bundler/.gitignore src/bundler/package.json src/web/.gitignore src/web/package.json",
+    "build": "tsc -b tsconfig.build.json && cp -r src/web/. dist/web && cp -r src/bundler/. dist/bundler",
     "dev": "tsc -b tsconfig.build.json --watch",
     "type-check": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,mjs}\"",

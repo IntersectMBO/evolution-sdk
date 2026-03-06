@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.3.22
+
+### Patch Changes
+
+- [#174](https://github.com/IntersectMBO/evolution-sdk/pull/174) [`a4fbd49`](https://github.com/IntersectMBO/evolution-sdk/commit/a4fbd49410b65a831d3d84091cfe11ba6b730ee8) Thanks [@hadelive](https://github.com/hadelive)! - byte-level vkey witness merging
+
 ## 0.3.21
 
 ### Patch Changes

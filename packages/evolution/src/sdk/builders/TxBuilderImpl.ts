@@ -1569,9 +1569,7 @@ export const calculateMinimumUtxoLovelace = (params: {
   coinsPerUtxoByte: bigint
 }): Effect.Effect<bigint, TransactionBuilderError> =>
   Effect.gen(function* () {
-    const calculateRequiredLovelace = (
-      lovelace: bigint
-    ): Effect.Effect<bigint, TransactionBuilderError> =>
+    const calculateRequiredLovelace = (lovelace: bigint): Effect.Effect<bigint, TransactionBuilderError> =>
       Effect.gen(function* () {
         const assetsForSizing = CoreAssets.withLovelace(params.assets, lovelace)
 
