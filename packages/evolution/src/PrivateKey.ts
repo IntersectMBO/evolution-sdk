@@ -274,6 +274,10 @@ export const derive = (privateKey: PrivateKey, path: string): PrivateKey => {
  *
  * @example
  * ```ts
+ * import * as PrivateKey from "@evolution-sdk/evolution/PrivateKey"
+ *
+ * const mnemonic = PrivateKey.generateMnemonic()
+ *
  * // Payment key (default: account 0, index 0)
  * const paymentKey = PrivateKey.fromMnemonicCardano(mnemonic)
  *
