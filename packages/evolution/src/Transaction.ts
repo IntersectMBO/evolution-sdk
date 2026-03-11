@@ -355,6 +355,24 @@ export const addVKeyWitnessesHex = (
 }
 
 // ============================================================================
+// Raw body bytes extraction
+// ============================================================================
+
+/**
+ * Extract the original body bytes from a raw transaction CBOR byte array.
+ * A Cardano transaction is a 4-element CBOR array: `[body, witnessSet, isValid, auxiliaryData]`.
+ * This returns the raw body bytes without decoding/re-encoding, preserving the exact CBOR encoding.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const extractBodyBytes = (txBytes: Uint8Array): Uint8Array => {
+  const arrHdr = cborHeaderSize(txBytes, 0)
+  const { newOffset: bodyEnd } = CBOR.decodeItemWithOffset(txBytes, arrHdr)
+  return txBytes.subarray(arrHdr, bodyEnd)
+}
+
+// ============================================================================
 // Domain-level witness addition
 // ============================================================================
 

@@ -432,7 +432,9 @@ describe("PrivateKey CML Compatibility", () => {
       const paymentKey = PrivateKey.fromMnemonicCardano(testMnemonic)
 
       // Derive via Bip32PrivateKey (the known-correct path used by createClient)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
       const { mnemonicToEntropy } = require("@scure/bip39") as typeof import("@scure/bip39")
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
       const { wordlist } = require("@scure/bip39/wordlists/english") as typeof import("@scure/bip39/wordlists/english")
       const entropy = mnemonicToEntropy(testMnemonic, wordlist)
       const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy as unknown as Uint8Array, "")

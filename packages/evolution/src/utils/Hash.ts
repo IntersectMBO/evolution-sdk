@@ -22,6 +22,15 @@ export const hashTransaction = (body: TransactionBody.TransactionBody): Transact
 }
 
 /**
+ * Compute the transaction body hash from raw CBOR bytes, preserving original encoding.
+ * Uses `Transaction.extractBodyBytes` to avoid the decode→re-encode round-trip.
+ */
+export const hashTransactionRaw = (bodyBytes: Uint8Array): TransactionHash.TransactionHash => {
+  const digest = blake2b(bodyBytes, { dkLen: 32 })
+  return new TransactionHash.TransactionHash({ hash: digest })
+}
+
+/**
  * script_data per CDDL (Conway)
  *
  * ```
