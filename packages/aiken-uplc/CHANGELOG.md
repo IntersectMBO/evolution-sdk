@@ -1,5 +1,12 @@
 # @evolution-sdk/aiken-uplc
 
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies [[`37bd6fe`](https://github.com/IntersectMBO/evolution-sdk/commit/37bd6fe86eba7de12e7d77f072fe71f386ef7194)]:
+  - @evolution-sdk/evolution@0.3.24
+
 ## 0.0.15
 
 ### Patch Changes

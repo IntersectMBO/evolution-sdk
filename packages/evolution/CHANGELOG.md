@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.3.24
+
+### Patch Changes
+
+- [#193](https://github.com/IntersectMBO/evolution-sdk/pull/193) [`37bd6fe`](https://github.com/IntersectMBO/evolution-sdk/commit/37bd6fe86eba7de12e7d77f072fe71f386ef7194) Thanks [@hadelive](https://github.com/hadelive)! - fix preserve original CBOR bytes when signing hex transactions
+
 ## 0.3.23
 
 ### Patch Changes
