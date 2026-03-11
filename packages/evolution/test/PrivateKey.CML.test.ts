@@ -1,6 +1,7 @@
 import * as CML from "@dcspark/cardano-multiplatform-lib-nodejs"
 import { describe, expect, it } from "vitest"
 
+import * as Bip32PrivateKey from "../src/Bip32PrivateKey"
 import * as PrivateKey from "../src/PrivateKey"
 import * as VKey from "../src/VKey"
 
@@ -419,6 +420,49 @@ describe("PrivateKey CML Compatibility", () => {
       const evolutionSigForCml = CML.Ed25519Signature.from_raw_bytes(evolutionSignature.bytes)
       const crossVerifyCml = cmlPublicKey.verify(message, evolutionSigForCml)
       expect(crossVerifyCml).toBe(true)
+    })
+  })
+
+  describe("fromMnemonicCardano", () => {
+    const testMnemonic =
+      "fault emerge ignore athlete extend awful elevator version anchor print balance asset exit main lawn embrace fresh stock marine exhibit plug bulb brown own"
+
+    it("should produce the same key as Bip32PrivateKey derivation", () => {
+      // Derive via fromMnemonicCardano
+      const paymentKey = PrivateKey.fromMnemonicCardano(testMnemonic)
+
+      // Derive via Bip32PrivateKey (the known-correct path used by createClient)
+      const { mnemonicToEntropy } = require("@scure/bip39") as typeof import("@scure/bip39")
+      const { wordlist } = require("@scure/bip39/wordlists/english") as typeof import("@scure/bip39/wordlists/english")
+      const entropy = mnemonicToEntropy(testMnemonic, wordlist)
+      const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy as unknown as Uint8Array, "")
+      const paymentNode = Bip32PrivateKey.derive(rootXPrv, Bip32PrivateKey.CardanoPath.paymentIndices(0, 0))
+      const expected = Bip32PrivateKey.toPrivateKey(paymentNode)
+
+      expect(PrivateKey.toHex(paymentKey)).toBe(PrivateKey.toHex(expected))
+    })
+
+    it("should derive different keys for payment vs stake roles", () => {
+      const paymentKey = PrivateKey.fromMnemonicCardano(testMnemonic, { role: 0 })
+      const stakeKey = PrivateKey.fromMnemonicCardano(testMnemonic, { role: 2 })
+
+      expect(PrivateKey.toHex(paymentKey)).not.toBe(PrivateKey.toHex(stakeKey))
+    })
+
+    it("should produce a key different from the deprecated fromMnemonic + derive", () => {
+      // The old (broken) path
+      const oldRoot = PrivateKey.fromMnemonic(testMnemonic)
+      const oldKey = PrivateKey.derive(oldRoot, PrivateKey.CardanoPath.payment())
+
+      // The new (correct) path
+      const newKey = PrivateKey.fromMnemonicCardano(testMnemonic)
+
+      // These MUST differ — the old path uses secp256k1, the new uses Ed25519
+      expect(PrivateKey.toHex(oldKey)).not.toBe(PrivateKey.toHex(newKey))
+    })
+
+    it("should throw on invalid mnemonic", () => {
+      expect(() => PrivateKey.fromMnemonicCardano("invalid mnemonic")).toThrow("Invalid mnemonic phrase")
     })
   })
 })

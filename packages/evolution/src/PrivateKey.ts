@@ -9,6 +9,7 @@ import * as BIP39 from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as Bip32PrivateKey from "./Bip32PrivateKey.js"
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
 import * as Bytes64 from "./Bytes64.js"
@@ -235,8 +236,11 @@ export const validateMnemonic = (mnemonic: string): boolean => BIP39.validateMne
 
 /**
  * Create a PrivateKey from a mnemonic phrase (sync version that throws PrivateKeyError).
- * All errors are normalized to PrivateKeyError with contextual information.
  *
+ * **WARNING**: This uses secp256k1 BIP32 derivation (`@scure/bip32`), NOT Cardano's
+ * BIP32-Ed25519. For Cardano key derivation, use {@link fromMnemonicCardano} instead.
+ *
+ * @deprecated Use {@link fromMnemonicCardano} for Cardano, or `Bip32PrivateKey` for full control.
  * @since 2.0.0
  * @category bip39
  */
@@ -248,8 +252,11 @@ export const fromMnemonic = (mnemonic: string, password?: string): PrivateKey =>
 
 /**
  * Derive a child private key using BIP32 path (sync version that throws PrivateKeyError).
- * All errors are normalized to PrivateKeyError with contextual information.
  *
+ * **WARNING**: This uses secp256k1 BIP32 derivation (`@scure/bip32`), NOT Cardano's
+ * BIP32-Ed25519. For Cardano key derivation, use {@link fromMnemonicCardano} instead.
+ *
+ * @deprecated Use {@link fromMnemonicCardano} for Cardano, or `Bip32PrivateKey` for full control.
  * @since 2.0.0
  * @category bip32
  */
@@ -257,6 +264,46 @@ export const derive = (privateKey: PrivateKey, path: string): PrivateKey => {
   return E.getOrThrowWith(Either.derive(privateKey, path), (error) => {
     throw error
   })
+}
+
+/**
+ * Derive a Cardano payment or stake key from a mnemonic using BIP32-Ed25519.
+ *
+ * This is the correct way to derive Cardano keys from a mnemonic. It uses the
+ * Icarus/V2 BIP32-Ed25519 derivation scheme, matching CML and cardano-cli behavior.
+ *
+ * @example
+ * ```ts
+ * // Payment key (default: account 0, index 0)
+ * const paymentKey = PrivateKey.fromMnemonicCardano(mnemonic)
+ *
+ * // Stake key
+ * const stakeKey = PrivateKey.fromMnemonicCardano(mnemonic, { role: 2 })
+ *
+ * // Custom account/index
+ * const key = PrivateKey.fromMnemonicCardano(mnemonic, { account: 1, index: 3 })
+ * ```
+ *
+ * @since 2.0.0
+ * @category cardano
+ */
+export const fromMnemonicCardano = (
+  mnemonic: string,
+  options?: { account?: number; role?: 0 | 2; index?: number; password?: string },
+): PrivateKey => {
+  if (!validateMnemonic(mnemonic)) {
+    throw new PrivateKeyError("Invalid mnemonic phrase")
+  }
+  const entropy = BIP39.mnemonicToEntropy(mnemonic, wordlist)
+  // mnemonicToEntropy returns hex string; fromBip39Entropy accepts it via pbkdf2
+  const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy as unknown as Uint8Array, options?.password ?? "")
+  const indices = Bip32PrivateKey.CardanoPath.indices(
+    options?.account ?? 0,
+    options?.role ?? 0,
+    options?.index ?? 0,
+  )
+  const childNode = Bip32PrivateKey.derive(rootXPrv, indices)
+  return Bip32PrivateKey.toPrivateKey(childNode)
 }
 
 // ============================================================================
@@ -281,6 +328,12 @@ export const sign = (privateKey: PrivateKey, message: Uint8Array): Ed25519Signat
 /**
  * Cardano BIP44 derivation path utilities.
  *
+ * **WARNING**: These paths are only useful with BIP32-Ed25519 derivation
+ * (`Bip32PrivateKey`). Using them with {@link derive} (which uses secp256k1 BIP32)
+ * will produce incorrect keys. Use {@link fromMnemonicCardano} or
+ * `Bip32PrivateKey.CardanoPath` instead.
+ *
+ * @deprecated Use {@link fromMnemonicCardano} or `Bip32PrivateKey.CardanoPath`.
  * @since 2.0.0
  * @category cardano
  */
