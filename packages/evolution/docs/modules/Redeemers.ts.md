@@ -12,19 +12,34 @@ parent: Modules
 
 - [arbitrary](#arbitrary)
   - [arbitrary](#arbitrary-1)
+- [constructors](#constructors)
+  - [makeRedeemerMap](#makeredeemermap)
 - [encoding](#encoding)
   - [toCBORBytes](#tocborbytes)
   - [toCBORBytesMap](#tocborbytesmap)
   - [toCBORHex](#tocborhex)
   - [toCBORHexMap](#tocborhexmap)
 - [model](#model)
-  - [Format (type alias)](#format-type-alias)
-  - [Redeemers (class)](#redeemers-class)
+  - [RedeemerArray (class)](#redeemerarray-class)
+    - [toArray (method)](#toarray-method)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+  - [RedeemerKey (type alias)](#redeemerkey-type-alias)
+  - [RedeemerMap (class)](#redeemermap-class)
+    - [get (method)](#get-method)
+    - [toArray (method)](#toarray-method-1)
+    - [toJSON (method)](#tojson-method-1)
+    - [toString (method)](#tostring-method-1)
+    - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method-1)
+    - [[Equal.symbol] (method)](#equalsymbol-method-1)
+    - [[Hash.symbol] (method)](#hashsymbol-method-1)
+  - [RedeemerValue (class)](#redeemervalue-class)
+    - [[Equal.symbol] (method)](#equalsymbol-method-2)
+    - [[Hash.symbol] (method)](#hashsymbol-method-2)
+  - [Redeemers (type alias)](#redeemers-type-alias)
 - [parsing](#parsing)
   - [fromCBORBytes](#fromcborbytes)
   - [fromCBORBytesMap](#fromcborbytesmap)
@@ -41,6 +56,9 @@ parent: Modules
   - [FromCDDL](#fromcddl)
   - [FromMapCDDL](#frommapcddl)
   - [MapCDDLSchema](#mapcddlschema)
+  - [Redeemers](#redeemers)
+- [utilities](#utilities)
+  - [keyToString](#keytostring)
 
 ---
 
@@ -48,12 +66,26 @@ parent: Modules
 
 ## arbitrary
 
-FastCheck arbitrary for Redeemers.
+FastCheck arbitrary for Redeemers — generates both map and array variants.
 
 **Signature**
 
 ```ts
-export declare const arbitrary: FastCheck.Arbitrary<Redeemers>
+export declare const arbitrary: FastCheck.Arbitrary<RedeemerMap | RedeemerArray>
+```
+
+Added in v2.0.0
+
+# constructors
+
+## makeRedeemerMap
+
+Create a `RedeemerMap` from an array of `Redeemer` objects.
+
+**Signature**
+
+```ts
+export declare const makeRedeemerMap: (redeemers: ReadonlyArray<Redeemer.Redeemer>) => RedeemerMap
 ```
 
 Added in v2.0.0
@@ -62,90 +94,83 @@ Added in v2.0.0
 
 ## toCBORBytes
 
-Encode Redeemers to CBOR bytes (array format).
+Encode to CBOR bytes (array format).
 
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: Redeemers, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (data: RedeemerArray, options?: CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
 
 ## toCBORBytesMap
 
-Encode Redeemers to CBOR bytes (map format).
+Encode to CBOR bytes (map format).
 
 **Signature**
 
 ```ts
-export declare const toCBORBytesMap: (data: Redeemers, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytesMap: (data: RedeemerMap, options?: CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
 
 ## toCBORHex
 
-Encode Redeemers to CBOR hex string (array format).
+Encode to CBOR hex string (array format).
 
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: Redeemers, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (data: RedeemerArray, options?: CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
 
 ## toCBORHexMap
 
-Encode Redeemers to CBOR hex string (map format).
+Encode to CBOR hex string (map format).
 
 **Signature**
 
 ```ts
-export declare const toCBORHexMap: (data: Redeemers, options?: CBOR.CodecOptions) => string
+export declare const toCBORHexMap: (data: RedeemerMap, options?: CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
 
 # model
 
-## Format (type alias)
+## RedeemerArray (class)
 
-Encoding format for redeemers collection.
+Redeemers in legacy array format.
 
-Conway CDDL supports two formats:
+Mirrors the CDDL:
 
 ```
-; Flat Array support is included for backwards compatibility and
-; will be removed in the next era. It is recommended for tools to
-; adopt using a Map instead of Array going forward.
-redeemers =
-  [ + redeemer ]
-  / { + [tag : redeemer_tag, index : uint .size 4] => [ data : plutus_data, ex_units : ex_units ] }
+[ + redeemer ]
 ```
 
-- "array": Legacy flat array format - backwards compatible, will be deprecated
-- "map": New map format - recommended for Conway+
+Backwards compatible — will be deprecated in the next era.
+Prefer `RedeemerMap` for new transactions.
 
 **Signature**
 
 ```ts
-export type Format = "array" | "map"
+export declare class RedeemerArray
 ```
 
 Added in v2.0.0
 
-## Redeemers (class)
+### toArray (method)
 
-Redeemers collection based on Conway CDDL specification.
-
-Represents a collection of redeemers that can be encoded in either array or map format.
+Convert to an array of `Redeemer` objects (identity for array format).
 
 **Signature**
 
 ```ts
-export declare class Redeemers
+toArray(): ReadonlyArray<Redeemer.Redeemer>
 ```
 
 Added in v2.0.0
@@ -190,52 +215,194 @@ toString(): string
 [Hash.symbol](): number
 ```
 
-# parsing
+## RedeemerKey (type alias)
 
-## fromCBORBytes
+A redeemer map key: `[tag, index]`.
 
-Parse Redeemers from CBOR bytes (array format).
+Mirrors the CDDL: `[tag : redeemer_tag, index : uint .size 4]`
 
 **Signature**
 
 ```ts
-export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOptions) => Redeemers
+export type RedeemerKey = readonly [Redeemer.RedeemerTag, bigint]
+```
+
+Added in v2.0.0
+
+## RedeemerMap (class)
+
+Redeemers in map format (Conway recommended).
+
+Mirrors the CDDL exactly:
+
+```
+{ + [tag : redeemer_tag, index : uint .size 4] => [ data : plutus_data, ex_units : ex_units ] }
+```
+
+The map is keyed by `[tag, index]` tuples. Note: JS Map uses reference
+equality for non-primitive keys, so lookups by tuple won't work — use
+`get()` or `toArray()` helpers instead.
+
+**Signature**
+
+```ts
+export declare class RedeemerMap
+```
+
+Added in v2.0.0
+
+### get (method)
+
+Look up a redeemer entry by tag and index.
+
+**Signature**
+
+```ts
+get(tag: Redeemer.RedeemerTag, index: bigint): RedeemerValue | undefined
+```
+
+Added in v2.0.0
+
+### toArray (method)
+
+Convert to an array of `Redeemer` objects (convenience for consumers).
+
+**Signature**
+
+```ts
+toArray(): ReadonlyArray<Redeemer.Redeemer>
+```
+
+Added in v2.0.0
+
+### toJSON (method)
+
+**Signature**
+
+```ts
+toJSON()
+```
+
+### toString (method)
+
+**Signature**
+
+```ts
+toString(): string
+```
+
+### [Inspectable.NodeInspectSymbol] (method)
+
+**Signature**
+
+```ts
+[Inspectable.NodeInspectSymbol](): unknown
+```
+
+### [Equal.symbol] (method)
+
+**Signature**
+
+```ts
+[Equal.symbol](that: unknown): boolean
+```
+
+### [Hash.symbol] (method)
+
+**Signature**
+
+```ts
+[Hash.symbol](): number
+```
+
+## RedeemerValue (class)
+
+A redeemer map entry value: `[data, ex_units]`.
+
+Mirrors the CDDL: `[data : plutus_data, ex_units : ex_units]`
+
+**Signature**
+
+```ts
+export declare class RedeemerValue
+```
+
+Added in v2.0.0
+
+### [Equal.symbol] (method)
+
+**Signature**
+
+```ts
+[Equal.symbol](that: unknown): boolean
+```
+
+### [Hash.symbol] (method)
+
+**Signature**
+
+```ts
+[Hash.symbol](): number
+```
+
+## Redeemers (type alias)
+
+Union type: `RedeemerMap | RedeemerArray`
+
+**Signature**
+
+```ts
+export type Redeemers = typeof Redeemers.Type
+```
+
+Added in v2.0.0
+
+# parsing
+
+## fromCBORBytes
+
+Parse from CBOR bytes (array format).
+
+**Signature**
+
+```ts
+export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOptions) => RedeemerArray
 ```
 
 Added in v2.0.0
 
 ## fromCBORBytesMap
 
-Parse Redeemers from CBOR bytes (map format).
+Parse from CBOR bytes (map format).
 
 **Signature**
 
 ```ts
-export declare const fromCBORBytesMap: (bytes: Uint8Array, options?: CBOR.CodecOptions) => Redeemers
+export declare const fromCBORBytesMap: (bytes: Uint8Array, options?: CBOR.CodecOptions) => RedeemerMap
 ```
 
 Added in v2.0.0
 
 ## fromCBORHex
 
-Parse Redeemers from CBOR hex string (array format).
+Parse from CBOR hex string (array format).
 
 **Signature**
 
 ```ts
-export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => Redeemers
+export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => RedeemerArray
 ```
 
 Added in v2.0.0
 
 ## fromCBORHexMap
 
-Parse Redeemers from CBOR hex string (map format).
+Parse from CBOR hex string (map format).
 
 **Signature**
 
 ```ts
-export declare const fromCBORHexMap: (hex: string, options?: CBOR.CodecOptions) => Redeemers
+export declare const fromCBORHexMap: (hex: string, options?: CBOR.CodecOptions) => RedeemerMap
 ```
 
 Added in v2.0.0
@@ -244,9 +411,7 @@ Added in v2.0.0
 
 ## ArrayCDDLSchema
 
-CDDL schema for Redeemers in array format.
-
-`redeemers = [ + redeemer ]`
+CDDL schema for array format: `[ + redeemer ]`
 
 **Signature**
 
@@ -267,19 +432,16 @@ Added in v2.0.0
 
 ## CDDLSchema
 
-Default CDDL schema for Redeemers (array format).
+Default CDDL schema (map format — Conway recommended).
 
 **Signature**
 
 ```ts
-export declare const CDDLSchema: Schema.Array$<
-  Schema.Tuple<
-    [
-      Schema.SchemaClass<bigint, bigint, never>,
-      Schema.SchemaClass<bigint, bigint, never>,
-      Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-      Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-    ]
+export declare const CDDLSchema: Schema.MapFromSelf<
+  Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
+  Schema.Tuple2<
+    Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
+    Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
   >
 >
 ```
@@ -288,7 +450,7 @@ Added in v2.0.0
 
 ## FromArrayCDDL
 
-CDDL transformation schema for Redeemers array format.
+CDDL transformation for array format → `RedeemerArray`.
 
 **Signature**
 
@@ -304,7 +466,7 @@ export declare const FromArrayCDDL: Schema.transformOrFail<
       ]
     >
   >,
-  Schema.SchemaClass<Redeemers, Redeemers, never>,
+  Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
   never
 >
 ```
@@ -313,7 +475,7 @@ Added in v2.0.0
 
 ## FromCBORBytes
 
-CBOR bytes transformation schema for Redeemers (array format).
+CBOR bytes schema for array format.
 
 **Signature**
 
@@ -337,7 +499,7 @@ export declare const FromCBORBytes: (
         ]
       >
     >,
-    Schema.SchemaClass<Redeemers, Redeemers, never>,
+    Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
     never
   >
 >
@@ -347,7 +509,7 @@ Added in v2.0.0
 
 ## FromCBORBytesMap
 
-CBOR bytes transformation schema for Redeemers (map format).
+CBOR bytes schema for map format.
 
 **Signature**
 
@@ -361,14 +523,14 @@ export declare const FromCBORBytesMap: (
     never
   >,
   Schema.transformOrFail<
-    Schema.Map$<
+    Schema.MapFromSelf<
       Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
       Schema.Tuple2<
         Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
         Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
       >
     >,
-    Schema.SchemaClass<Redeemers, Redeemers, never>,
+    Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
     never
   >
 >
@@ -378,7 +540,7 @@ Added in v2.0.0
 
 ## FromCBORHex
 
-CBOR hex transformation schema for Redeemers (array format).
+CBOR hex schema for array format.
 
 **Signature**
 
@@ -404,7 +566,7 @@ export declare const FromCBORHex: (
           ]
         >
       >,
-      Schema.SchemaClass<Redeemers, Redeemers, never>,
+      Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
       never
     >
   >
@@ -415,7 +577,7 @@ Added in v2.0.0
 
 ## FromCBORHexMap
 
-CBOR hex transformation schema for Redeemers (map format).
+CBOR hex schema for map format.
 
 **Signature**
 
@@ -431,14 +593,14 @@ export declare const FromCBORHexMap: (
       never
     >,
     Schema.transformOrFail<
-      Schema.Map$<
+      Schema.MapFromSelf<
         Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
         Schema.Tuple2<
           Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
           Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
         >
       >,
-      Schema.SchemaClass<Redeemers, Redeemers, never>,
+      Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
       never
     >
   >
@@ -449,23 +611,20 @@ Added in v2.0.0
 
 ## FromCDDL
 
-Default CDDL transformation (array format).
+Default CDDL transformation (map format).
 
 **Signature**
 
 ```ts
 export declare const FromCDDL: Schema.transformOrFail<
-  Schema.Array$<
-    Schema.Tuple<
-      [
-        Schema.SchemaClass<bigint, bigint, never>,
-        Schema.SchemaClass<bigint, bigint, never>,
-        Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-        Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-      ]
+  Schema.MapFromSelf<
+    Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
+    Schema.Tuple2<
+      Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
+      Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
     >
   >,
-  Schema.SchemaClass<Redeemers, Redeemers, never>,
+  Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
   never
 >
 ```
@@ -474,20 +633,20 @@ Added in v2.0.0
 
 ## FromMapCDDL
 
-CDDL transformation schema for Redeemers map format.
+CDDL transformation for map format → `RedeemerMap`.
 
 **Signature**
 
 ```ts
 export declare const FromMapCDDL: Schema.transformOrFail<
-  Schema.Map$<
+  Schema.MapFromSelf<
     Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
     Schema.Tuple2<
       Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
       Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
     >
   >,
-  Schema.SchemaClass<Redeemers, Redeemers, never>,
+  Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
   never
 >
 ```
@@ -496,20 +655,49 @@ Added in v2.0.0
 
 ## MapCDDLSchema
 
-CDDL schema for Redeemers in map format.
+CDDL schema for map format: `{ + [tag, index] => [data, ex_units] }`
 
-`{ + [tag, index] => [data, ex_units] }`
+Uses `MapFromSelf` (not `Map`) so the Encoded type is a JS Map — matching
+how `CBOR.FromBytes` represents CBOR major-type-5 maps at runtime.
+This is the same pattern used by Withdrawals, Mint, MultiAsset, CostModel.
 
 **Signature**
 
 ```ts
-export declare const MapCDDLSchema: Schema.Map$<
+export declare const MapCDDLSchema: Schema.MapFromSelf<
   Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
   Schema.Tuple2<
     Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
     Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
   >
 >
+```
+
+Added in v2.0.0
+
+## Redeemers
+
+Union schema for redeemers — accepts either map or array format.
+Follows the Credential pattern: `Credential = Union(KeyHash, ScriptHash)`.
+
+**Signature**
+
+```ts
+export declare const Redeemers: Schema.Union<[typeof RedeemerMap, typeof RedeemerArray]>
+```
+
+Added in v2.0.0
+
+# utilities
+
+## keyToString
+
+Create a string key from a RedeemerKey for lookup convenience.
+
+**Signature**
+
+```ts
+export declare const keyToString: ([tag, index]: RedeemerKey) => string
 ```
 
 Added in v2.0.0

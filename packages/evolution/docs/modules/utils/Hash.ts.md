@@ -11,28 +11,15 @@ parent: Modules
 <h2 class="text-delta">Table of contents</h2>
 
 - [utils](#utils)
-  - [RedeemersFormat (type alias)](#redeemersformat-type-alias)
   - [computeTotalExUnits](#computetotalexunits)
   - [hashAuxiliaryData](#hashauxiliarydata)
   - [hashScriptData](#hashscriptdata)
   - [hashTransaction](#hashtransaction)
+  - [hashTransactionRaw](#hashtransactionraw)
 
 ---
 
 # utils
-
-## RedeemersFormat (type alias)
-
-Format for encoding redeemers in the script data hash.
-
-- "array": Legacy format `[ + redeemer ]` (Shelley-Babbage)
-- "map": Conway format `{ + [tag, index] => [data, ex_units] }`
-
-**Signature**
-
-```ts
-export type RedeemersFormat = "array" | "map"
-```
 
 ## computeTotalExUnits
 
@@ -58,6 +45,9 @@ export declare const hashAuxiliaryData: (aux: AuxiliaryData.AuxiliaryData) => Au
 
 Compute script_data_hash using standard module encoders.
 
+Accepts the concrete `Redeemers` union type — encoding format is determined
+by `_tag` (`RedeemerMap` → map CBOR, `RedeemerArray` → array CBOR).
+
 The payload format per CDDL spec is raw concatenation (not a CBOR structure):
 
 ```
@@ -68,10 +58,9 @@ redeemers_bytes || datums_bytes || language_views_bytes
 
 ```ts
 export declare const hashScriptData: (
-  redeemers: ReadonlyArray<Redeemer.Redeemer>,
+  redeemers: Redeemers.Redeemers,
   costModels: CostModel.CostModels,
   datums?: ReadonlyArray<Data.Data>,
-  format?: RedeemersFormat,
   options?: CBOR.CodecOptions
 ) => ScriptDataHash.ScriptDataHash
 ```
@@ -84,4 +73,15 @@ Compute the transaction body hash (blake2b-256 over CBOR of body).
 
 ```ts
 export declare const hashTransaction: (body: TransactionBody.TransactionBody) => TransactionHash.TransactionHash
+```
+
+## hashTransactionRaw
+
+Compute the transaction body hash from raw CBOR bytes, preserving original encoding.
+Uses `Transaction.extractBodyBytes` to avoid the decode→re-encode round-trip.
+
+**Signature**
+
+```ts
+export declare const hashTransactionRaw: (bodyBytes: Uint8Array) => TransactionHash.TransactionHash
 ```

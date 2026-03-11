@@ -13,13 +13,14 @@ parent: Modules
 - [arbitrary](#arbitrary)
   - [arbitrary](#arbitrary-1)
 - [bip32](#bip32)
-  - [derive](#derive)
+  - [~~derive~~](#derive)
 - [bip39](#bip39)
-  - [fromMnemonic](#frommnemonic)
+  - [~~fromMnemonic~~](#frommnemonic)
   - [generateMnemonic](#generatemnemonic)
   - [validateMnemonic](#validatemnemonic)
 - [cardano](#cardano)
-  - [CardanoPath](#cardanopath)
+  - [~~CardanoPath~~](#cardanopath)
+  - [fromMnemonicCardano](#frommnemoniccardano)
 - [cryptography](#cryptography)
   - [sign](#sign)
   - [toPublicKey](#topublickey)
@@ -70,10 +71,12 @@ Added in v2.0.0
 
 # bip32
 
-## derive
+## ~~derive~~
 
 Derive a child private key using BIP32 path (sync version that throws PrivateKeyError).
-All errors are normalized to PrivateKeyError with contextual information.
+
+**WARNING**: This uses secp256k1 BIP32 derivation (`@scure/bip32`), NOT Cardano's
+BIP32-Ed25519. For Cardano key derivation, use `fromMnemonicCardano` instead.
 
 **Signature**
 
@@ -85,10 +88,12 @@ Added in v2.0.0
 
 # bip39
 
-## fromMnemonic
+## ~~fromMnemonic~~
 
 Create a PrivateKey from a mnemonic phrase (sync version that throws PrivateKeyError).
-All errors are normalized to PrivateKeyError with contextual information.
+
+**WARNING**: This uses secp256k1 BIP32 derivation (`@scure/bip32`), NOT Cardano's
+BIP32-Ed25519. For Cardano key derivation, use `fromMnemonicCardano` instead.
 
 **Signature**
 
@@ -124,9 +129,14 @@ Added in v2.0.0
 
 # cardano
 
-## CardanoPath
+## ~~CardanoPath~~
 
 Cardano BIP44 derivation path utilities.
+
+**WARNING**: These paths are only useful with BIP32-Ed25519 derivation
+(`Bip32PrivateKey`). Using them with `derive` (which uses secp256k1 BIP32)
+will produce incorrect keys. Use `fromMnemonicCardano` or
+`Bip32PrivateKey.CardanoPath` instead.
 
 **Signature**
 
@@ -136,6 +146,41 @@ export declare const CardanoPath: {
   payment: (account?: number, index?: number) => string
   stake: (account?: number, index?: number) => string
 }
+```
+
+Added in v2.0.0
+
+## fromMnemonicCardano
+
+Derive a Cardano payment or stake key from a mnemonic using BIP32-Ed25519.
+
+This is the correct way to derive Cardano keys from a mnemonic. It uses the
+Icarus/V2 BIP32-Ed25519 derivation scheme, matching CML and cardano-cli behavior.
+
+**Signature**
+
+```ts
+export declare const fromMnemonicCardano: (
+  mnemonic: string,
+  options?: { account?: number; role?: 0 | 2; index?: number; password?: string }
+) => PrivateKey
+```
+
+**Example**
+
+```ts
+import * as PrivateKey from "@evolution-sdk/evolution/PrivateKey"
+
+const mnemonic = PrivateKey.generateMnemonic()
+
+// Payment key (default: account 0, index 0)
+const paymentKey = PrivateKey.fromMnemonicCardano(mnemonic)
+
+// Stake key
+const stakeKey = PrivateKey.fromMnemonicCardano(mnemonic, { role: 2 })
+
+// Custom account/index
+const key = PrivateKey.fromMnemonicCardano(mnemonic, { account: 1, index: 3 })
 ```
 
 Added in v2.0.0

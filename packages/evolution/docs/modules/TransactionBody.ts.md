@@ -14,9 +14,13 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [conversion](#conversion)
   - [fromCBORBytes](#fromcborbytes)
+  - [fromCBORBytesWithFormat](#fromcborbyteswithformat)
   - [fromCBORHex](#fromcborhex)
+  - [fromCBORHexWithFormat](#fromcborhexwithformat)
   - [toCBORBytes](#tocborbytes)
+  - [toCBORBytesWithFormat](#tocborbyteswithformat)
   - [toCBORHex](#tocborhex)
+  - [toCBORHexWithFormat](#tocborhexwithformat)
 - [model](#model)
   - [TransactionBody (class)](#transactionbody-class)
     - [toJSON (method)](#tojson-method)
@@ -66,6 +70,18 @@ export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOpti
 
 Added in v2.0.0
 
+## fromCBORBytesWithFormat
+
+Parse a TransactionBody from CBOR bytes and return the root format tree.
+
+**Signature**
+
+```ts
+export declare const fromCBORBytesWithFormat: (bytes: Uint8Array) => CBOR.DecodedWithFormat<TransactionBody>
+```
+
+Added in v2.0.0
+
 ## fromCBORHex
 
 Convert CBOR hex string to TransactionBody.
@@ -74,6 +90,18 @@ Convert CBOR hex string to TransactionBody.
 
 ```ts
 export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => TransactionBody
+```
+
+Added in v2.0.0
+
+## fromCBORHexWithFormat
+
+Parse a TransactionBody from CBOR hex string and return the root format tree.
+
+**Signature**
+
+```ts
+export declare const fromCBORHexWithFormat: (hex: string) => CBOR.DecodedWithFormat<TransactionBody>
 ```
 
 Added in v2.0.0
@@ -90,6 +118,18 @@ export declare const toCBORBytes: (data: TransactionBody, options?: CBOR.CodecOp
 
 Added in v2.0.0
 
+## toCBORBytesWithFormat
+
+Convert a TransactionBody to CBOR bytes using an explicit root format tree.
+
+**Signature**
+
+```ts
+export declare const toCBORBytesWithFormat: (data: TransactionBody, format: CBOR.CBORFormat) => Uint8Array
+```
+
+Added in v2.0.0
+
 ## toCBORHex
 
 Convert TransactionBody to CBOR hex string.
@@ -98,6 +138,18 @@ Convert TransactionBody to CBOR hex string.
 
 ```ts
 export declare const toCBORHex: (data: TransactionBody, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
+## toCBORHexWithFormat
+
+Convert a TransactionBody to CBOR hex string using an explicit root format tree.
+
+**Signature**
+
+```ts
+export declare const toCBORHexWithFormat: (data: TransactionBody, format: CBOR.CBORFormat) => string
 ```
 
 Added in v2.0.0
@@ -195,10 +247,7 @@ CDDL schema for TransactionBody struct structure.
 **Signature**
 
 ```ts
-export declare const CDDLSchema: Schema.MapFromSelf<
-  typeof Schema.BigIntFromSelf,
-  Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>
->
+export declare const CDDLSchema: Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>
 ```
 
 Added in v2.0.0
@@ -220,7 +269,7 @@ export declare const FromCBORBytes: (
     never
   >,
   Schema.transformOrFail<
-    Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>,
+    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
     Schema.SchemaClass<TransactionBody, TransactionBody, never>,
     never
   >
@@ -249,7 +298,7 @@ export declare const FromCBORHex: (
     >
   >,
   Schema.transformOrFail<
-    Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>,
+    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
     Schema.SchemaClass<TransactionBody, TransactionBody, never>,
     never
   >
@@ -266,7 +315,7 @@ Added in v2.0.0
 
 ```ts
 export declare const FromCDDL: Schema.transformOrFail<
-  Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>,
+  Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
   Schema.SchemaClass<TransactionBody, TransactionBody, never>,
   never
 >

@@ -238,9 +238,9 @@ export const validateMnemonic = (mnemonic: string): boolean => BIP39.validateMne
  * Create a PrivateKey from a mnemonic phrase (sync version that throws PrivateKeyError).
  *
  * **WARNING**: This uses secp256k1 BIP32 derivation (`@scure/bip32`), NOT Cardano's
- * BIP32-Ed25519. For Cardano key derivation, use {@link fromMnemonicCardano} instead.
+ * BIP32-Ed25519. For Cardano key derivation, use `fromMnemonicCardano` instead.
  *
- * @deprecated Use {@link fromMnemonicCardano} for Cardano, or `Bip32PrivateKey` for full control.
+ * @deprecated Use `fromMnemonicCardano` for Cardano, or `Bip32PrivateKey` for full control.
  * @since 2.0.0
  * @category bip39
  */
@@ -254,9 +254,9 @@ export const fromMnemonic = (mnemonic: string, password?: string): PrivateKey =>
  * Derive a child private key using BIP32 path (sync version that throws PrivateKeyError).
  *
  * **WARNING**: This uses secp256k1 BIP32 derivation (`@scure/bip32`), NOT Cardano's
- * BIP32-Ed25519. For Cardano key derivation, use {@link fromMnemonicCardano} instead.
+ * BIP32-Ed25519. For Cardano key derivation, use `fromMnemonicCardano` instead.
  *
- * @deprecated Use {@link fromMnemonicCardano} for Cardano, or `Bip32PrivateKey` for full control.
+ * @deprecated Use `fromMnemonicCardano` for Cardano, or `Bip32PrivateKey` for full control.
  * @since 2.0.0
  * @category bip32
  */
@@ -333,11 +333,11 @@ export const sign = (privateKey: PrivateKey, message: Uint8Array): Ed25519Signat
  * Cardano BIP44 derivation path utilities.
  *
  * **WARNING**: These paths are only useful with BIP32-Ed25519 derivation
- * (`Bip32PrivateKey`). Using them with {@link derive} (which uses secp256k1 BIP32)
- * will produce incorrect keys. Use {@link fromMnemonicCardano} or
+ * (`Bip32PrivateKey`). Using them with `derive` (which uses secp256k1 BIP32)
+ * will produce incorrect keys. Use `fromMnemonicCardano` or
  * `Bip32PrivateKey.CardanoPath` instead.
  *
- * @deprecated Use {@link fromMnemonicCardano} or `Bip32PrivateKey.CardanoPath`.
+ * @deprecated Use `fromMnemonicCardano` or `Bip32PrivateKey.CardanoPath`.
  * @since 2.0.0
  * @category cardano
  */
