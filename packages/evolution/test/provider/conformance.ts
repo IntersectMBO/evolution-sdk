@@ -15,6 +15,7 @@ import {
   preprodScriptAddress,
   preprodStakeAddress,
   preprodTxHash,
+  previewTxHash,
 } from "./fixtures/constants.js"
 
 /**
@@ -95,9 +96,13 @@ export function registerConformanceTests(factory: () => Provider) {
     expect(datum).toBeDefined()
   })
 
-  it("awaitTx", { timeout: 120_000 }, async () => {
+  it("awaitTx", { timeout: 200_000 }, async () => {
     const confirmed = await provider.awaitTx(preprodTxHash())
     expect(confirmed).toBe(true)
+  })
+
+  it("awaitTx rejects for preview-only tx on preprod", { timeout: 10_000 }, async () => {
+    await expect(provider.awaitTx(previewTxHash(), 1000, 5000)).rejects.toThrow()
   })
 
   // submitTx and evaluateTx require a valid signed CBOR tx — skipped until we have tx fixtures

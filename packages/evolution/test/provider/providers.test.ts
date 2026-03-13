@@ -8,13 +8,14 @@
  * Add keys to `.env.test.local` at the workspace root (gitignored).
  * See `.env.test.local.example` for available variables.
  */
-import { describe } from "vitest"
+import { describe, expect, it } from "vitest"
 
 import { BlockfrostProvider } from "../../src/sdk/provider/Blockfrost.js"
 import { Koios } from "../../src/sdk/provider/Koios.js"
 import { KupmiosProvider } from "../../src/sdk/provider/Kupmios.js"
 import { MaestroProvider } from "../../src/sdk/provider/Maestro.js"
 import { registerConformanceTests } from "./conformance.js"
+import { previewTxHash } from "./fixtures/constants.js"
 
 const isConfigured = (value: string | undefined, placeholder?: string) =>
   Boolean(value && value.trim() !== "" && value !== placeholder)
@@ -29,6 +30,7 @@ const parseHeaderJson = (value: string | undefined) => {
 }
 
 const KOIOS_URL = process.env.KOIOS_PREPROD_URL ?? "https://preprod.koios.rest/api/v1"
+const KOIOS_PREVIEW_URL = process.env.KOIOS_PREVIEW_URL ?? "https://preview.koios.rest/api/v1"
 const BLOCKFROST_URL = process.env.BLOCKFROST_PREPROD_URL ?? "https://cardano-preprod.blockfrost.io/api/v0"
 const BLOCKFROST_KEY = process.env.BLOCKFROST_PREPROD_KEY
 const MAESTRO_URL = process.env.MAESTRO_PREPROD_URL ?? "https://preprod.gomaestro-api.org/v1"
@@ -45,6 +47,18 @@ const OGMIOS_HEADER = parseHeaderJson(process.env.KUPMIOS_OGMIOS_HEADER_JSON) ??
 // ── Koios (no API key) ────────────────────────────────────────────────────────
 describe.skipIf(!process.env.KOIOS_ENABLED)("Koios", () => {
   registerConformanceTests(() => new Koios(KOIOS_URL))
+})
+
+// ── Koios preview: awaitTx with Haskell show string asset_list ────────────────
+// Opt-in via KOIOS_PREVIEW_ENABLED. The tx is confirmed on preview and Koios returns
+// a Haskell show string for the collateral output's asset_list. This test fails
+// without the InputOutputSchema fix.
+describe.skipIf(!process.env.KOIOS_PREVIEW_ENABLED)("Koios (preview)", () => {
+  it("awaitTx succeeds for tx with Haskell show string asset_list", { timeout: 200_000 }, async () => {
+    const koios = new Koios(KOIOS_PREVIEW_URL)
+    const confirmed = await koios.awaitTx(previewTxHash())
+    expect(confirmed).toBe(true)
+  })
 })
 
 // ── Blockfrost ────────────────────────────────────────────────────────────────

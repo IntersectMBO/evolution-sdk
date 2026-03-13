@@ -28,6 +28,11 @@ export const PREPROD_STAKE_ADDRESS_BECH32 =
 export const PREPROD_TX_HASH_HEX =
   "23f94840ca94f7bb0a5a2b28e5b6a77e61d0414c7427e03d6c4d57b13d5e49b4"
 
+/** Preview-only tx whose collateral output has a Haskell show string asset_list.
+ *  Does NOT exist on preprod — used to test awaitTx timeout behavior. */
+export const PREVIEW_TX_HASH_HEX =
+  "bfab055361b02a6da919525bfd0447773c640c4e7d65e84783fb3f3b03675688"
+
 /** Datum hash from the oracle UTxO above */
 export const PREPROD_DATUM_HASH_HEX =
   "facfe6aa45fa8023a97a3f13afb823f3966313533f6d68821e65d8431b5a4918"
@@ -49,6 +54,8 @@ export const preprodStakeAddress = () =>
   RewardAddress.RewardAddress.make(PREPROD_STAKE_ADDRESS_BECH32)
 
 export const preprodTxHash = () => TransactionHash.fromHex(PREPROD_TX_HASH_HEX)
+
+export const previewTxHash = () => TransactionHash.fromHex(PREVIEW_TX_HASH_HEX)
 
 export const preprodDatumHash = () => DatumHash.fromHex(PREPROD_DATUM_HASH_HEX)
 
