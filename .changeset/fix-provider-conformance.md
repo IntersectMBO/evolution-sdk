@@ -16,3 +16,11 @@ Fix several provider mapping bugs that caused incorrect or missing data in `getD
 **Blockfrost**
 
 - `getDatum`: was calling `/scripts/datum/{hash}` which returns only the data hash — should be `/scripts/datum/{hash}/cbor` to get the actual CBOR-encoded datum value. Switched endpoint and response schema to `BlockfrostDatumCbor`.
+
+**Koios (asset_list)**
+
+- `awaitTx` / `getTxInfo`: Koios sometimes returns `collateral_output.asset_list` as a Haskell show-formatted string instead of a JSON array. The schema now tolerates strings by coercing them to `null`.
+
+**All providers**
+
+- `awaitTx`: added an optional `timeout` parameter (third argument) so callers can control how long to wait before giving up. Each provider has a sensible default (Blockfrost: 300s, others: 160s). Maestro previously had no timeout at all.
