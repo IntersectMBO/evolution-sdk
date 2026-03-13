@@ -152,7 +152,12 @@ export const InputOutputSchema = Schema.Struct({
     })
   ),
   reference_script: Schema.NullOr(ReferenceScriptSchema),
-  asset_list: Schema.Array(AssetSchema)
+  // Koios can return asset_list as a Haskell show-formatted string on some endpoints (e.g. collateral
+  // outputs with many assets). Treat any string as null to avoid a parse failure in those cases.
+  asset_list: Schema.Union(
+    Schema.NullOr(Schema.Array(AssetSchema)),
+    Schema.transform(Schema.String, Schema.Null, { decode: () => null, encode: () => "" })
+  )
 })
 
 export interface InputOutput extends Schema.Schema.Type<typeof InputOutputSchema> {}

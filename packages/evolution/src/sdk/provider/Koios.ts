@@ -55,8 +55,11 @@ export class Koios implements Provider {
 
   getDatum = (datumHash: Parameters<Provider["getDatum"]>[0]) => Effect.runPromise(this.Effect.getDatum(datumHash))
 
-  awaitTx = (txHash: Parameters<Provider["awaitTx"]>[0], checkInterval?: Parameters<Provider["awaitTx"]>[1]) =>
-    Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
+  awaitTx = (
+    txHash: Parameters<Provider["awaitTx"]>[0],
+    checkInterval?: Parameters<Provider["awaitTx"]>[1],
+    timeout?: Parameters<Provider["awaitTx"]>[2]
+  ) => Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval, timeout))
 
   submitTx = (tx: Parameters<Provider["submitTx"]>[0]) => Effect.runPromise(this.Effect.submitTx(tx))
 

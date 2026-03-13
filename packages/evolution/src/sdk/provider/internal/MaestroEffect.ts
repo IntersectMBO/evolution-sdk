@@ -260,7 +260,8 @@ export const getDatum = (baseUrl: string, apiKey: string) => (datumHash: DatumHa
  * Wait for transaction confirmation
  */
 export const awaitTx =
-  (baseUrl: string, apiKey: string) => (txHash: TransactionHash.TransactionHash, checkInterval?: number) => {
+  (baseUrl: string, apiKey: string) =>
+  (txHash: TransactionHash.TransactionHash, checkInterval?: number, timeout: number = 160_000) => {
     const txHashHex = TransactionHash.toHex(txHash)
     return Effect.gen(function* () {
       const interval = checkInterval || 5000 // Default 5 seconds
@@ -289,7 +290,9 @@ export const awaitTx =
         // Wait before checking again
         yield* Effect.sleep(`${interval} millis`)
       }
-    })
+    }).pipe(Effect.timeout(timeout), Effect.catchAllCause(
+      (cause) => new ProviderError({ cause, message: "Failed to await transaction confirmation" })
+    ))
   }
 
 // ============================================================================

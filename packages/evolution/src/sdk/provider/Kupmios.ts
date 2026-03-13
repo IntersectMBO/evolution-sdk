@@ -67,8 +67,11 @@ export class KupmiosProvider implements Provider {
 
   getDatum = (datumHash: Parameters<Provider["getDatum"]>[0]) => Effect.runPromise(this.Effect.getDatum(datumHash))
 
-  awaitTx = (txHash: Parameters<Provider["awaitTx"]>[0], checkInterval?: Parameters<Provider["awaitTx"]>[1]) =>
-    Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval))
+  awaitTx = (
+    txHash: Parameters<Provider["awaitTx"]>[0],
+    checkInterval?: Parameters<Provider["awaitTx"]>[1],
+    timeout?: Parameters<Provider["awaitTx"]>[2]
+  ) => Effect.runPromise(this.Effect.awaitTx(txHash, checkInterval, timeout))
 
   evaluateTx = (tx: Parameters<Provider["evaluateTx"]>[0], additionalUTxOs?: Parameters<Provider["evaluateTx"]>[1]) =>
     Effect.runPromise(this.Effect.evaluateTx(tx, additionalUTxOs))

@@ -402,7 +402,7 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
   })
 
 export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<string, string> }) =>
-  Effect.fn("awaitTx")(function* (txHash: TransactionHash.TransactionHash, checkInterval = 5000) {
+  Effect.fn("awaitTx")(function* (txHash: TransactionHash.TransactionHash, checkInterval = 5000, timeout = 160_000) {
     const txHashHex = TransactionHash.toHex(txHash)
     const pattern = `${kupoUrl}/matches/*@${txHashHex}?unspent`
     const schema = Schema.Array(Kupo.UTxOSchema).annotations({
@@ -416,7 +416,7 @@ export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<s
         schedule: Schedule.exponential(checkInterval),
         until: (result) => result.length > 0
       }),
-      Effect.timeout(160_000),
+      Effect.timeout(timeout),
       Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to await transaction" })),
       Effect.as(true)
     )

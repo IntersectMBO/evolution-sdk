@@ -268,7 +268,7 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
 
 export const awaitTx =
   (baseUrl: string, token?: string) =>
-  (txHash: TransactionHash.TransactionHash, checkInterval = 20000) =>
+  (txHash: TransactionHash.TransactionHash, checkInterval = 20000, timeout = 160_000) =>
     Effect.gen(function* () {
       const txHashHex = TransactionHash.toHex(txHash)
       const body = {
@@ -284,7 +284,7 @@ export const awaitTx =
           schedule: Schedule.exponential(checkInterval),
           until: (result) => result.length > 0
         }),
-        Effect.timeout(160_000),
+        Effect.timeout(timeout),
         Effect.catchAllCause(
           (cause) => new Provider.ProviderError({ cause, message: "Failed to await transaction confirmation" })
         ),

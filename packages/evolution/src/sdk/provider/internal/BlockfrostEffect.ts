@@ -579,7 +579,7 @@ export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: Dat
  */
 export const awaitTx =
   (baseUrl: string, projectId?: string) =>
-  (txHash: TransactionHash.TransactionHash, checkInterval: number = 5000) => {
+  (txHash: TransactionHash.TransactionHash, checkInterval: number = 5000, timeout: number = 300_000) => {
     const txHashHex = TransactionHash.toHex(txHash)
     const checkTx = withRateLimit(
       HttpUtils.get(
@@ -592,13 +592,11 @@ export const awaitTx =
       )
     )
 
-    // Poll every checkInterval milliseconds until transaction is found
-    const pollSchedule = Schedule.fixed(`${checkInterval} millis`).pipe(
-      Schedule.compose(Schedule.recurs(60)) // Max 60 attempts (5 minutes with 5s interval)
-    )
-
-    return Effect.retry(checkTx, pollSchedule).pipe(
-      Effect.orElse(() => Effect.succeed(false)) // Return false if not found after max attempts
+    return Effect.retry(checkTx, Schedule.fixed(`${checkInterval} millis`)).pipe(
+      Effect.timeout(timeout),
+      Effect.catchAllCause(
+        (cause) => new ProviderError({ cause, message: "Failed to await transaction confirmation" })
+      )
     )
   }
 
