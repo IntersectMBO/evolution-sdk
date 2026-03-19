@@ -22,7 +22,7 @@ const address = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmlu
 const utxos = await client.getUtxos(address)
 
 for (const utxo of utxos) {
-  console.log("UTxO:", utxo.transactionId, "#", utxo.outputIndex)
+  console.log("UTxO:", utxo.transactionId, "#", utxo.index)
   console.log("  Lovelace:", utxo.assets.lovelace)
 }
 ```

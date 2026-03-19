@@ -44,8 +44,8 @@ const tx = await client
 
 Datum hashes store only a 32-byte hash in the output. The full datum must be provided when spending:
 
-```typescript twoslash
-import { Address, Assets, Data, DatumHash, createClient } from "@evolution-sdk/evolution"
+```typescript
+import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -53,16 +53,16 @@ const client = createClient({
   wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
 })
 
-// Compute datum hash
+// Compute datum hash from PlutusData
 const datum = Data.constr(0n, [5000000n])
-const hash = Data.hashData(datum)
+const datumHash = Data.hashData(datum)
 
 const tx = await client
   .newTx()
   .payToAddress({
     address: Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qnmqsyu"),
     assets: Assets.fromLovelace(10_000_000n),
-    datum: new DatumHash.DatumHash({ hash })
+    datum: datumHash // DatumHash returned by hashData
   })
   .build()
 ```
@@ -164,8 +164,8 @@ const scriptAddress = Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t
 const utxos = await client.getUtxos(scriptAddress)
 
 for (const utxo of utxos) {
-  if (utxo.datum) {
-    // Inline datum is available directly
+  if (utxo.datumOption) {
+    // datumOption is InlineDatum or DatumHash
     console.log("UTxO has datum attached")
   }
 }

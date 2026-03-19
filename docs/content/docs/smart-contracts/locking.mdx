@@ -45,7 +45,7 @@ console.log("Locked funds at:", txHash)
 For real contracts, define your datum with TSchema for type safety:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, Data, TSchema, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Bytes, Data, InlineDatum, TSchema, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
