@@ -9,7 +9,7 @@ Integration tests run against a local devnet cluster, validating the full transa
 
 ## Test Setup Pattern
 
-```typescript twoslash
+```typescript
 import { describe, it, beforeAll, afterAll, expect } from "vitest"
 import { Cluster, Config, Genesis } from "@evolution-sdk/devnet"
 import { Address, Assets, createClient, type SigningClient } from "@evolution-sdk/evolution"
@@ -17,6 +17,7 @@ import { Address, Assets, createClient, type SigningClient } from "@evolution-sd
 describe("Transaction Tests", () => {
   let cluster: Cluster.Cluster
   let client: SigningClient
+  let genesisConfig: any
 
   beforeAll(async () => {
     const mnemonic = "test test test test test test test test test test test test test test test test test test test test test test test sauce"
@@ -28,15 +29,17 @@ describe("Transaction Tests", () => {
 
     const addressHex = Address.toHex(await wallet.address())
 
+    genesisConfig = {
+      ...Config.DEFAULT_SHELLEY_GENESIS,
+      slotLength: 0.02,
+      epochLength: 50,
+      initialFunds: { [addressHex]: 10_000_000_000_000 }
+    }
+
     cluster = await Cluster.make({
       clusterName: "test-suite-" + Date.now(),
       ports: { node: 3001, submit: 3002 },
-      shelleyGenesis: {
-        ...Config.DEFAULT_SHELLEY_GENESIS,
-        slotLength: 0.02,
-        epochLength: 50,
-        initialFunds: { [addressHex]: 10_000_000_000_000 }
-      },
+      shelleyGenesis: genesisConfig,
       kupo: { enabled: true, port: 1442 },
       ogmios: { enabled: true, port: 1337 }
     })
@@ -62,7 +65,7 @@ describe("Transaction Tests", () => {
 
   it("should submit simple payment", async () => {
     // Genesis UTxOs are NOT indexed by Kupo — must provide them explicitly
-    const genesisUtxos = await Genesis.calculateUtxosFromConfig(/* genesisConfig */)
+    const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
 
     const signBuilder = await client
       .newTx()
@@ -85,7 +88,7 @@ describe("Transaction Tests", () => {
 
 **Extended timeouts**: Cluster startup needs 180s, individual tests need 30-60s.
 
-**Genesis UTxOs**: Genesis UTxOs are NOT indexed by Kupo. Use `Genesis.calculateUtxosFromConfig()` and pass via `build({ availableUtxos })` for first transactions.
+**Genesis UTxOs**: Genesis UTxOs are NOT indexed by Kupo. Use `Genesis.calculateUtxosFromConfig()` and pass via `build({ availableUtxos })` for first transactions. Once genesis UTxOs are spent, subsequent outputs are indexed normally.
 
 **Unique cluster names**: Use timestamps to avoid port conflicts when running tests in parallel.
 

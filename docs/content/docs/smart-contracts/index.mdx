@@ -25,7 +25,7 @@ Smart contract interaction in Cardano involves three concepts:
 
 **Locking** (sending funds to a script):
 ```typescript twoslash
-import { Address, Assets, Data, TSchema, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, InlineDatum, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -39,7 +39,7 @@ const tx = await client
   .payToAddress({
     address: Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qnmqsyu"),
     assets: Assets.fromLovelace(10_000_000n),
-    datum: { type: "inline", value: Data.constr(0n, []) }
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, []) })
   })
   .build()
 

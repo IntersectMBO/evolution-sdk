@@ -14,7 +14,7 @@ This is the first half of any smart contract interaction — you lock funds, the
 Send ADA to a script address with an inline datum:
 
 ```typescript twoslash
-import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, InlineDatum, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -31,7 +31,7 @@ const tx = await client
   .payToAddress({
     address: scriptAddress,
     assets: Assets.fromLovelace(10_000_000n), // 10 ADA
-    datum: { type: "inline", value: Data.constr(0n, []) }
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, []) })
   })
   .build()
 
@@ -78,7 +78,7 @@ const tx = await client
   .payToAddress({
     address: scriptAddress,
     assets: Assets.fromLovelace(25_000_000n),
-    datum: { type: "inline", value: datum }
+    datum: new InlineDatum.InlineDatum({ data: datum })
   })
   .build()
 
@@ -91,7 +91,7 @@ const txHash = await signed.submit()
 Lock both ADA and native tokens to a script:
 
 ```typescript twoslash
-import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, InlineDatum, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -117,7 +117,7 @@ const tx = await client
   .payToAddress({
     address: scriptAddress,
     assets,
-    datum: { type: "inline", value: Data.constr(0n, [100n]) }
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, [100n]) })
   })
   .build()
 
@@ -130,7 +130,7 @@ await signed.submit()
 Store a script on-chain alongside the locked funds. Other transactions can reference this script instead of including it directly:
 
 ```typescript twoslash
-import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, InlineDatum, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -149,7 +149,7 @@ const tx = await client
   .payToAddress({
     address: scriptAddress,
     assets: Assets.fromLovelace(10_000_000n),
-    datum: { type: "inline", value: Data.constr(0n, []) },
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, []) }),
     script: validatorScript // Store script in UTxO for reference
   })
   .build()
@@ -163,7 +163,7 @@ await signed.submit()
 Lock funds to multiple script addresses in a single transaction:
 
 ```typescript twoslash
-import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, InlineDatum, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -179,12 +179,12 @@ const tx = await client
   .payToAddress({
     address: escrowAddress,
     assets: Assets.fromLovelace(10_000_000n),
-    datum: { type: "inline", value: Data.constr(0n, [1735689600000n]) }
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, [1735689600000n]) })
   })
   .payToAddress({
     address: vestingAddress,
     assets: Assets.fromLovelace(50_000_000n),
-    datum: { type: "inline", value: Data.constr(0n, [1735776000000n, 5000000n]) }
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, [1735776000000n, 5000000n]) })
   })
   .build()
 

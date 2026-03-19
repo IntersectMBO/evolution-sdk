@@ -21,7 +21,7 @@ Evolution SDK supports two ways to attach datums to outputs:
 Inline datums embed the full data in the output. The spending transaction can read it directly without needing to provide the datum separately:
 
 ```typescript twoslash
-import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, InlineDatum, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -35,7 +35,7 @@ const tx = await client
   .payToAddress({
     address: Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qnmqsyu"),
     assets: Assets.fromLovelace(10_000_000n),
-    datum: { type: "inline", value: Data.constr(0n, [5000000n, 1735689600000n]) }
+    datum: new InlineDatum.InlineDatum({ data: Data.constr(0n, [5000000n, 1735689600000n]) })
   })
   .build()
 ```
@@ -45,7 +45,7 @@ const tx = await client
 Datum hashes store only a 32-byte hash in the output. The full datum must be provided when spending:
 
 ```typescript twoslash
-import { Address, Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Data, DatumHash, createClient } from "@evolution-sdk/evolution"
 
 const client = createClient({
   network: "preprod",
@@ -55,14 +55,14 @@ const client = createClient({
 
 // Compute datum hash
 const datum = Data.constr(0n, [5000000n])
-const datumHash = Data.hashData(datum)
+const hash = Data.hashData(datum)
 
 const tx = await client
   .newTx()
   .payToAddress({
     address: Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qnmqsyu"),
     assets: Assets.fromLovelace(10_000_000n),
-    datum: { type: "hash", value: datumHash }
+    datum: new DatumHash.DatumHash({ hash })
   })
   .build()
 ```
