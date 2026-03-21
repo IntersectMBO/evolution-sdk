@@ -4,6 +4,8 @@
     "index",
     "first-transaction",
     "simple-payment",
-    "multi-output"
+    "multi-output",
+    "chaining",
+    "retry-safe"
   ]
 }

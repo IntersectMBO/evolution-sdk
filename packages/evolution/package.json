@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/evolution",
-  "version": "0.3.19",
+  "version": "0.3.30",
   "description": "A modern TypeScript SDK for Cardano blockchain development",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,7 +45,6 @@
   "devDependencies": {
     "@dcspark/cardano-multiplatform-lib-nodejs": "^6.2.0",
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
-    "@types/dockerode": "^3.3.43",
     "tinybench": "^5.0.0",
     "tsx": "^4.20.4",
     "typescript": "^5.9.2"
@@ -60,7 +59,6 @@
     "@scure/bip39": "^1.6.0",
     "@types/bip39": "^3.0.4",
     "bip39": "^3.1.0",
-    "dockerode": "^4.0.7",
     "effect": "^3.19.3"
   },
   "keywords": [

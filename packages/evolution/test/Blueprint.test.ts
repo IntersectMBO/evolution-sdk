@@ -107,6 +107,40 @@ describe("Blueprint", () => {
     })
   })
 
+  describe("Codegen - Recursive Types", () => {
+    it("should parse multisig/MultiSig and its linked List definition", () => {
+      const result = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)
+
+      // Aiken encodes List<MultiSig> as a separate List$multisig/MultiSig definition
+      expect(result.definitions["multisig/MultiSig"]).toBeDefined()
+      expect(result.definitions["List$multisig/MultiSig"]).toBeDefined()
+    })
+
+    it("List$multisig/MultiSig items should $ref back to multisig~1MultiSig", () => {
+      const result = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)
+
+      const listDef = result.definitions["List$multisig/MultiSig"] as {
+        dataType: string
+        items: { $ref: string }
+      }
+      expect(listDef.dataType).toBe("list")
+      expect(listDef.items.$ref).toBe("#/definitions/multisig~1MultiSig")
+    })
+
+    it("should emit Schema.suspend for the recursive list item without double-wrapping", () => {
+      const blueprint = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)
+      const config = createCodegenConfig()
+      const code = generateTypeScript(blueprint, config)
+
+      // Recursive $ref must use a typed thunk with Data.Constr — no untyped () => form
+      expect(code).toContain("Schema.suspend((): Schema.Schema<")
+      expect(code).toContain("Data.Constr")
+
+      // Must not double-wrap: Schema.suspend inside Schema.suspend
+      expect(code).not.toContain("Schema.suspend((): Schema.Schema<Schema.suspend")
+    })
+  })
+
   describe("Codegen - Constructor Index", () => {
     it("should emit { index } for single-variant Literal with non-zero index (Never)", () => {
       const blueprint = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)

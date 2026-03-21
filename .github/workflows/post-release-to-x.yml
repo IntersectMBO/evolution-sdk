@@ -6,6 +6,10 @@ on:
     types: [completed]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  models: read
+
 jobs:
   notify:
     runs-on: ubuntu-latest
@@ -16,172 +20,126 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get latest release with changes
-        id: release
+      - name: Collect recent releases
+        id: releases
         run: |
-          # Get the latest @evolution-sdk release with actual changes (not just dependency updates)
-          RELEASES=$(gh api /repos/${{ github.repository }}/releases --jq '[.[] | select(.tag_name | startswith("@evolution-sdk/"))]')
+          # Fetch @evolution-sdk releases created in the last hour with real changes
+          URL=""
+          FOUND="false"
+          : > /tmp/release-notes.md
 
-          # Variables to track packages
-          FALLBACK_TAG=""
-          FALLBACK_URL=""
-          FALLBACK_VERSION=""
-          EVOLUTION_TAG=""
-          EVOLUTION_URL=""
-          EVOLUTION_VERSION=""
+          RELEASES=$(gh api /repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.tag_name | startswith("@evolution-sdk/"))]')
+
+          NOW=$(date +%s)
 
           for i in $(seq 0 10); do
-            RELEASE=$(echo $RELEASES | jq ".[$i]")
-            if [ "$RELEASE" = "null" ]; then
-              break
-            fi
+            RELEASE=$(echo "$RELEASES" | jq ".[$i]")
+            [ "$RELEASE" = "null" ] && break
 
-            CREATED=$(echo $RELEASE | jq -r .created_at)
-            CREATED_TIMESTAMP=$(date -d "$CREATED" +%s)
-            NOW=$(date +%s)
-            AGE=$((NOW - CREATED_TIMESTAMP))
+            CREATED=$(echo "$RELEASE" | jq -r .created_at)
+            CREATED_TS=$(date -d "$CREATED" +%s)
+            AGE=$((NOW - CREATED_TS))
 
-            # If created in last hour, check if it has real changes (not just dependency updates)
-            if [ $AGE -lt 3600 ]; then
-              BODY=$(echo $RELEASE | jq -r .body)
-              RELEASE_TAG=$(echo $RELEASE | jq -r .tag_name)
-              RELEASE_URL=$(echo $RELEASE | jq -r .html_url)
+            # Only consider releases from the last hour (same batch)
+            [ $AGE -ge 3600 ] && continue
 
-              # Check for actual changes (not just "Updated dependencies")
-              CHANGES_SECTION=$(echo "$BODY" | grep -A 100 "Patch Changes\|Minor Changes\|Major Changes" | tail -n +2)
-              REAL_CHANGES=$(echo "$CHANGES_SECTION" | grep -v "Updated dependencies" | grep -v "^[[:space:]]*-[[:space:]]*@" | grep -v "^[[:space:]]*$" | head -1)
+            BODY=$(echo "$RELEASE" | jq -r .body)
+            TAG=$(echo "$RELEASE" | jq -r .tag_name)
+            RELEASE_URL=$(echo "$RELEASE" | jq -r .html_url)
 
-              if [ -n "$REAL_CHANGES" ]; then
-                # Extract version number (remove scoped package prefix)
-                VERSION=${RELEASE_TAG##*@}
+            # Skip releases that are only dependency bumps
+            REAL=$(echo "$BODY" \
+              | grep -A 100 "Patch Changes\|Minor Changes\|Major Changes" \
+              | tail -n +2 \
+              | grep -v "Updated dependencies" \
+              | grep -v "^[[:space:]]*-[[:space:]]*@" \
+              | grep -v "^[[:space:]]*$" \
+              | head -1)
 
-                # Check if this is the main evolution package
-                if [[ "$RELEASE_TAG" == "@evolution-sdk/evolution@"* ]]; then
-                  if [ -z "$EVOLUTION_TAG" ]; then
-                    EVOLUTION_TAG=$RELEASE_TAG
-                    EVOLUTION_URL=$RELEASE_URL
-                    EVOLUTION_VERSION=$VERSION
-                  fi
-                else
-                  # Save as fallback if we haven't found one yet
-                  if [ -z "$FALLBACK_TAG" ]; then
-                    FALLBACK_TAG=$RELEASE_TAG
-                    FALLBACK_URL=$RELEASE_URL
-                    FALLBACK_VERSION=$VERSION
-                  fi
-                fi
+            if [ -n "$REAL" ]; then
+              FOUND="true"
+              echo "### ${TAG}" >> /tmp/release-notes.md
+              echo "$BODY" >> /tmp/release-notes.md
+              echo "" >> /tmp/release-notes.md
+              # Prefer the evolution package URL
+              if [[ "$TAG" == "@evolution-sdk/evolution@"* ]] || [ -z "$URL" ]; then
+                URL="$RELEASE_URL"
               fi
             fi
           done
 
-          # Prioritize evolution package, fall back to other packages
-          if [ -n "$EVOLUTION_TAG" ]; then
-            echo "tag=$EVOLUTION_TAG" >> $GITHUB_OUTPUT
-            echo "url=$EVOLUTION_URL" >> $GITHUB_OUTPUT
-            echo "version=$EVOLUTION_VERSION" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
-          elif [ -n "$FALLBACK_TAG" ]; then
-            echo "tag=$FALLBACK_TAG" >> $GITHUB_OUTPUT
-            echo "url=$FALLBACK_URL" >> $GITHUB_OUTPUT
-            echo "version=$FALLBACK_VERSION" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
-          else
-            echo "found=false" >> $GITHUB_OUTPUT
-          fi
+          echo "found=$FOUND" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract code from CHANGELOG
-        if: steps.release.outputs.found == 'true'
-        id: extract
-        run: |
-          VERSION="${{ steps.release.outputs.version }}"
-
-          # Extract first code block from this version's section
-          awk -v ver="$VERSION" '
-            index($0, "## " ver) == 1 { found_version=1; next }
-            found_version && /^## [0-9]/ { exit }
-            found_version && /```typescript/ { in_code=1; next }
-            found_version && /```/ && in_code { exit }
-            in_code { print }
-          ' packages/evolution/CHANGELOG.md > /tmp/snippet.ts
-
-          if [ -s /tmp/snippet.ts ]; then
-            echo "has_code=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_code=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Setup Node.js
-        if: steps.release.outputs.found == 'true' && steps.extract.outputs.has_code == 'true'
+        if: steps.releases.outputs.found == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
-      - name: Generate code image
-        if: steps.release.outputs.found == 'true' && steps.extract.outputs.has_code == 'true'
+      - name: Generate tweets with AI
+        if: steps.releases.outputs.found == 'true'
+        id: ai
         run: |
-          npx -y carbon-now-cli /tmp/snippet.ts \
-            --save-to . \
-            --save-as release-snippet \
-            --headless \
-            --settings '{"theme":"blackboard","backgroundColor":"#FD4B1B","windowTheme":"none","windowControls":true,"fontFamily":"JetBrains Mono","fontSize":"14px","lineNumbers":false,"paddingVertical":"40px","paddingHorizontal":"40px","dropShadow":true,"dropShadowOffsetY":"10px","dropShadowBlurRadius":"30px","exportSize":"2x","watermark":false}'
+          RESULT=$(RELEASE_NOTES="$(cat /tmp/release-notes.md)" \
+            RELEASE_URL="${{ steps.releases.outputs.url }}" \
+            GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            node .github/scripts/generate-release-tweet.mjs)
+          {
+            echo 'tweets<<EOF'
+            echo "$RESULT"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Post to X with image
-        if: steps.release.outputs.found == 'true' && steps.extract.outputs.has_code == 'true'
-        run: |
-          npm install twitter-api-v2
-          node -e "
-            const { TwitterApi } = require('twitter-api-v2');
-            const client = new TwitterApi({
-              appKey: process.env.TWITTER_API_KEY,
-              appSecret: process.env.TWITTER_API_SECRET,
-              accessToken: process.env.TWITTER_ACCESS_TOKEN,
-              accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
-            });
-            (async () => {
-              const mediaId = await client.v1.uploadMedia('./release-snippet.png');
-              await client.v2.tweet({
-                text: 'Evolution SDK v${{ steps.release.outputs.version }} out now\n${{ steps.release.outputs.url }}\nHappy building!',
-                media: { media_ids: [mediaId] }
-              });
-            })()
-              .then(() => process.exit(0))
-              .catch(err => {
-                console.error(err);
-                process.exit(1);
-              });
-          "
-        env:
-          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
-
-      - name: Post to X without image
-        if: steps.release.outputs.found == 'true' && steps.extract.outputs.has_code == 'false'
+      - name: Post thread to X
+        if: steps.releases.outputs.found == 'true'
         run: |
           npm install twitter-api-v2@1
           node -e "
             const { TwitterApi } = require('twitter-api-v2');
+
             const client = new TwitterApi({
               appKey: process.env.TWITTER_API_KEY,
               appSecret: process.env.TWITTER_API_SECRET,
               accessToken: process.env.TWITTER_ACCESS_TOKEN,
               accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
             });
+
             (async () => {
-              await client.v2.tweet({
-                text: 'Evolution SDK v${{ steps.release.outputs.version }} out now\n${{ steps.release.outputs.url }}\nHappy building!'
-              });
+              const payload = JSON.parse(process.env.TWEETS_JSON);
+              const tweets = payload.tweets;
+
+              if (!tweets || tweets.length === 0) {
+                console.log('No tweets to post (release was dependency-only).');
+                return;
+              }
+
+              // Post first tweet
+              let lastTweet = await client.v2.tweet({ text: tweets[0] });
+              console.log('Posted tweet 1/' + tweets.length + ': ' + tweets[0]);
+
+              // Post remaining tweets as replies (thread)
+              for (let i = 1; i < tweets.length; i++) {
+                lastTweet = await client.v2.tweet({
+                  text: tweets[i],
+                  reply: { in_reply_to_tweet_id: lastTweet.data.id }
+                });
+                console.log('Posted tweet ' + (i + 1) + '/' + tweets.length + ': ' + tweets[i]);
+              }
+
+              console.log('Thread posted successfully.');
             })()
               .then(() => process.exit(0))
               .catch(err => {
-                console.error(err);
+                console.error('Twitter API error:', err);
                 process.exit(1);
               });
           "
         env:
+          TWEETS_JSON: ${{ steps.ai.outputs.tweets }}
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
           TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
           TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}

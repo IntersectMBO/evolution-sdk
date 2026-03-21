@@ -618,18 +618,21 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
 
       const tx = await signBuilder.toTransaction()
 
-      // Strict deterministic expectations - respects min UTxO when subdividing small amounts
+      // Strict deterministic expectations - respects min UTxO when subdividing small amounts.
+      // With the correct Babbage/Conway min UTxO formula (160-byte overhead + fixed-point),
+      // each subdivided output (~0.46 ADA) would be below min UTxO (~0.97 ADA),
+      // so the builder correctly falls back to a single change output.
       expect(tx.body.inputs.length).toBe(1)
-      expect(tx.body.outputs.length).toBe(5) // Exact: 1 payment + 4 subdivided outputs
-      expect(tx.body.fee).toBe(176_721n) // Exact deterministic fee (485 bytes * 44 + 155_381, 5 outputs save 10 bytes)
+      expect(tx.body.outputs.length).toBe(2) // Exact: 1 payment + 1 change (subdivision skipped — below min UTxO)
+      expect(tx.body.fee).toBe(168_141n) // Exact deterministic fee for 2-output tx
 
-      // Calculate actual minimum UTxO for ADA-only output
-      const actualMinUtxo = 172_400n
+      // Verify change output gets all remaining ADA (3 ADA - 1 ADA payment - fee)
+      const changeOutput = tx.body.outputs[1]
+      expect(changeOutput.assets.lovelace).toBe(1_831_859n) // 3_000_000 - 1_000_000 - 168_141
 
-      // All outputs should meet minimum
-      tx.body.outputs.forEach((output) => {
-        expect(output.assets.lovelace).toBeGreaterThanOrEqual(actualMinUtxo)
-      })
+      // Payment and change already verified with exact values above
+      expect(tx.body.outputs[0].assets.lovelace).toBe(1_000_000n)
+      expect(tx.body.outputs[1].assets.lovelace).toBe(1_831_859n)
     })
   })
 

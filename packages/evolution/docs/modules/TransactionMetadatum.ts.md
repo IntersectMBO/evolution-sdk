@@ -20,6 +20,8 @@ parent: Modules
 - [encoding](#encoding)
   - [toCBORBytes](#tocborbytes)
   - [toCBORHex](#tocborhex)
+- [equality](#equality)
+  - [equals](#equals)
 - [model](#model)
   - [List (type alias)](#list-type-alias)
   - [Map (type alias)](#map-type-alias)
@@ -37,8 +39,6 @@ parent: Modules
   - [MapSchema](#mapschema)
   - [TextSchema](#textschema)
   - [TransactionMetadatumSchema](#transactionmetadatumschema)
-- [utilities](#utilities)
-  - [equals](#equals)
 - [utils](#utils)
   - [arbitrary](#arbitrary)
 
@@ -140,6 +140,22 @@ Convert a TransactionMetadatum to CBOR hex string.
 
 ```ts
 export declare const toCBORHex: (data: TransactionMetadatum, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
+# equality
+
+## equals
+
+Schema-derived structural equality for TransactionMetadatum values.
+Handles maps, lists, ints, bytes, and text via the
+recursive TransactionMetadatumSchema definition — no hand-rolled comparison needed.
+
+**Signature**
+
+```ts
+export declare const equals: (a: TransactionMetadatum, b: TransactionMetadatum) => boolean
 ```
 
 Added in v2.0.0
@@ -432,20 +448,6 @@ export declare const TransactionMetadatumSchema: Schema.Union<
     Schema.SchemaClass<string, string, never>
   ]
 >
-```
-
-Added in v2.0.0
-
-# utilities
-
-## equals
-
-Check if two TransactionMetadatum instances are equal.
-
-**Signature**
-
-```ts
-export declare const equals: (a: TransactionMetadatum, b: TransactionMetadatum) => boolean
 ```
 
 Added in v2.0.0

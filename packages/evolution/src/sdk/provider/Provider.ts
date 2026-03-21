@@ -118,7 +118,8 @@ export interface ProviderEffect {
    */
   readonly awaitTx: (
     txHash: TransactionHash.TransactionHash,
-    checkInterval?: number
+    checkInterval?: number,
+    timeout?: number
   ) => Effect.Effect<boolean, ProviderError>
   /**
    * Submit a signed transaction to the blockchain.

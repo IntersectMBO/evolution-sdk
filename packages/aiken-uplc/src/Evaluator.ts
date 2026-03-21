@@ -18,7 +18,22 @@ import * as TxOut from "@evolution-sdk/evolution/TxOut"
 import type * as UTxO from "@evolution-sdk/evolution/UTxO"
 import { Effect } from "effect"
 
-import type * as WasmLoader from "./WasmLoader.js"
+/**
+ * WASM module interface for Aiken UPLC evaluator
+ */
+export interface WasmModule {
+  eval_phase_two_raw(
+    tx_bytes: Uint8Array,
+    utxos_x: Array<Uint8Array>,
+    utxos_y: Array<Uint8Array>,
+    cost_mdls: Uint8Array,
+    initial_budget_n: bigint,
+    initial_budget_d: bigint,
+    slot_x: bigint,
+    slot_y: bigint,
+    slot_z: number
+  ): Array<Uint8Array>
+}
 
 /**
  * Parse Aiken UPLC error string into ScriptFailure array.
@@ -119,7 +134,7 @@ function evalRedeemerFromCBOR(bytes: Uint8Array): EvalRedeemer.EvalRedeemer {
 /**
  * Create Aiken evaluator - accepts WASM module
  */
-export function makeEvaluator(wasmModule: WasmLoader.WasmModule): TransactionBuilder.Evaluator {
+export function makeEvaluator(wasmModule: WasmModule): TransactionBuilder.Evaluator {
   return {
     evaluate: (
       tx: Transaction.Transaction,

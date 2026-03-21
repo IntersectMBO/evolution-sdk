@@ -171,9 +171,9 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
     // Verify redeemers with evaluated exUnits
     expect(tx.witnessSet.redeemers).toBeDefined()
-    expect(tx.witnessSet.redeemers!.length).toBe(1)
+    expect(tx.witnessSet.redeemers!.size).toBe(1)
 
-    const redeemer = tx.witnessSet.redeemers![0]
+    const redeemer = tx.witnessSet.redeemers!.toArray()[0]
     expect(redeemer.tag).toBe("mint")
     expect(redeemer.exUnits.mem).toBeGreaterThan(0n)
     expect(redeemer.exUnits.steps).toBeGreaterThan(0n)

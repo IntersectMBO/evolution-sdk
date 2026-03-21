@@ -78,6 +78,7 @@ export const postUint8Array = <A, I>(
 
     const response = yield* HttpClient.execute(request)
     const filteredResponse = yield* filterStatusOk(response)
-    const json = yield* filteredResponse.json
-    return yield* Schema.decodeUnknown(schema)(json)
+    // Try JSON first, fall back to plain text for endpoints that return unquoted strings (e.g. Dolos /tx/submit)
+    const decoded = yield* filteredResponse.json.pipe(Effect.orElse(() => filteredResponse.text))
+    return yield* Schema.decodeUnknown(schema)(decoded)
   }).pipe(Effect.provide(FetchHttpClient.layer))

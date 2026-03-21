@@ -258,10 +258,11 @@ describe("TxBuilder RedeemerBuilder", () => {
 
     // Verify we have 4 redeemers: 3 spends + 1 mint
     expect(spendTx.witnessSet.redeemers).toBeDefined()
-    expect(spendTx.witnessSet.redeemers!.length).toBe(4)
+    expect(spendTx.witnessSet.redeemers!.size).toBe(4)
 
-    const spendRedeemers = spendTx.witnessSet.redeemers!.filter((r) => r.tag === "spend")
-    const mintRedeemers = spendTx.witnessSet.redeemers!.filter((r) => r.tag === "mint")
+    const allRedeemers = spendTx.witnessSet.redeemers!.toArray()
+    const spendRedeemers = allRedeemers.filter((r) => r.tag === "spend")
+    const mintRedeemers = allRedeemers.filter((r) => r.tag === "mint")
 
     expect(spendRedeemers.length).toBe(3)
     expect(mintRedeemers.length).toBe(1)

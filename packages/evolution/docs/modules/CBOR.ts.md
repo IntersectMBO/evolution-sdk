@@ -20,17 +20,41 @@ parent: Modules
   - [CML_DATA_DEFAULT_OPTIONS](#cml_data_default_options)
   - [CML_DEFAULT_OPTIONS](#cml_default_options)
   - [STRUCT_FRIENDLY_OPTIONS](#struct_friendly_options)
+- [decoding](#decoding)
+  - [decodeItemWithOffset](#decodeitemwithoffset)
 - [encoding](#encoding)
   - [toCBORBytes](#tocborbytes)
+  - [toCBORBytesWithFormat](#tocborbyteswithformat)
   - [toCBORHex](#tocborhex)
+  - [toCBORHexWithFormat](#tocborhexwithformat)
+- [equality](#equality)
+  - [equals](#equals)
 - [errors](#errors)
   - [CBORError (class)](#cborerror-class)
 - [model](#model)
+  - [BoundedBytes](#boundedbytes)
+  - [ByteSize (type alias)](#bytesize-type-alias)
   - [CBOR (type alias)](#cbor-type-alias)
+  - [CBORFormat (type alias)](#cborformat-type-alias)
+  - [CBORFormat (namespace)](#cborformat-namespace)
+    - [Array (type alias)](#array-type-alias)
+    - [Bytes (type alias)](#bytes-type-alias)
+    - [Map (type alias)](#map-type-alias)
+    - [NInt (type alias)](#nint-type-alias)
+    - [Simple (type alias)](#simple-type-alias)
+    - [Tag (type alias)](#tag-type-alias)
+    - [Text (type alias)](#text-type-alias)
+    - [UInt (type alias)](#uint-type-alias)
   - [CodecOptions (type alias)](#codecoptions-type-alias)
+  - [DecodedWithFormat (type alias)](#decodedwithformat-type-alias)
+  - [LengthEncoding (type alias)](#lengthencoding-type-alias)
+  - [StringEncoding (type alias)](#stringencoding-type-alias)
 - [parsing](#parsing)
   - [fromCBORBytes](#fromcborbytes)
+  - [fromCBORBytesWithFormat](#fromcborbyteswithformat)
   - [fromCBORHex](#fromcborhex)
+  - [fromCBORHexWithFormat](#fromcborhexwithformat)
+  - [internalDecodeWithFormatSync](#internaldecodewithformatsync)
 - [schemas](#schemas)
   - [CBORSchema](#cborschema)
   - [FromBytes](#frombytes)
@@ -68,14 +92,17 @@ parent: Modules
 
 ## AIKEN_DEFAULT_OPTIONS
 
-Aiken-compatible CBOR encoding options
+Aiken-compatible CBOR encoding options.
 
-Matches the encoding used by Aiken's cbor.serialise():
+Matches the encoding produced by `cbor.serialise()` in Aiken:
 
-- Indefinite-length arrays (9f...ff)
+- Indefinite-length arrays (`9f...ff`)
 - Maps encoded as arrays of pairs (not CBOR maps)
-- Strings as bytearrays (major type 2, not 3)
-- Constructor tags: 121-127 for indices 0-6, then 1280+ for 7+
+- Strings as byte arrays (major type 2, not 3)
+- Constructor tags: 121–127 for indices 0–6, then 1280+ for 7+
+
+PlutusData byte strings are chunked per the Conway `bounded_bytes` rule
+via the `BoundedBytes` CBOR node, independent of these codec options.
 
 **Signature**
 
@@ -169,7 +196,11 @@ Added in v1.0.0
 
 ## CML_DATA_DEFAULT_OPTIONS
 
-Default CBOR encoding option for Data
+Default CBOR encoding options for PlutusData.
+
+Uses indefinite-length arrays and maps. The `bounded_bytes` constraint
+(Conway CDDL: byte strings ≤ 64 bytes) is enforced at the data-type layer
+via the `BoundedBytes` CBOR node, independent of these codec options.
 
 **Signature**
 
@@ -203,6 +234,25 @@ export declare const STRUCT_FRIENDLY_OPTIONS: CodecOptions
 
 Added in v2.0.0
 
+# decoding
+
+## decodeItemWithOffset
+
+Decode a single CBOR item at a given byte offset, returning the decoded value and the new offset.
+Useful for extracting raw byte slices from CBOR-encoded data without re-encoding.
+
+**Signature**
+
+```ts
+export declare const decodeItemWithOffset: (
+  data: Uint8Array,
+  offset: number,
+  options?: CodecOptions
+) => { item: CBOR; newOffset: number }
+```
+
+Added in v2.0.0
+
 # encoding
 
 ## toCBORBytes
@@ -217,6 +267,18 @@ export declare const toCBORBytes: (value: CBOR, options?: CodecOptions) => Uint8
 
 Added in v1.0.0
 
+## toCBORBytesWithFormat
+
+Convert a CBOR value to CBOR bytes using an explicit root format tree.
+
+**Signature**
+
+```ts
+export declare const toCBORBytesWithFormat: (value: CBOR, format: CBORFormat) => Uint8Array
+```
+
+Added in v2.0.0
+
 ## toCBORHex
 
 Convert a CBOR value to CBOR hex string.
@@ -228,6 +290,36 @@ export declare const toCBORHex: (value: CBOR, options?: CodecOptions) => string
 ```
 
 Added in v1.0.0
+
+## toCBORHexWithFormat
+
+Convert a CBOR value to CBOR hex string using an explicit root format tree.
+
+**Signature**
+
+```ts
+export declare const toCBORHexWithFormat: (value: CBOR, format: CBORFormat) => string
+```
+
+Added in v2.0.0
+
+# equality
+
+## equals
+
+Schema-derived structural equivalence for CBOR values.
+Handles Uint8Array, Array, Map, Tag and all primitives via the
+recursive CBORSchema definition — no hand-rolled comparison needed.
+
+Derived once at module init; at call time it's a plain function.
+
+**Signature**
+
+```ts
+export declare const equals: (a: CBOR, b: CBOR) => boolean
+```
+
+Added in v2.0.0
 
 # errors
 
@@ -244,6 +336,41 @@ export declare class CBORError
 Added in v1.0.0
 
 # model
+
+## BoundedBytes
+
+`BoundedBytes` CBOR node — represents a PlutusData byte string that must comply
+with the Conway CDDL constraint `bounded_bytes = bytes .size (0..64)`.
+
+The encoding rule is unconditional and options-independent:
+
+- ≤ 64 bytes → definite-length CBOR bytes
+- > 64 bytes → indefinite-length 64-byte chunked byte string (`0x5f` + chunks + `0xff`)
+
+Use `BoundedBytes.make` to construct the node; the encoder handles the rest.
+
+**Signature**
+
+```ts
+export declare const BoundedBytes: {
+  readonly make: (bytes: Uint8Array) => CBOR
+  readonly is: (value: CBOR) => value is { _tag: "BoundedBytes"; bytes: Uint8Array }
+}
+```
+
+Added in v2.0.0
+
+## ByteSize (type alias)
+
+Width of a CBOR integer argument: inline (0), 1-byte, 2-byte, 4-byte, or 8-byte.
+
+**Signature**
+
+```ts
+export type ByteSize = 0 | 1 | 2 | 4 | 8
+```
+
+Added in v2.0.0
 
 ## CBOR (type alias)
 
@@ -263,10 +390,130 @@ export type CBOR =
   | boolean // boolean values
   | null // null value
   | undefined // undefined value
-  | number
+  | number // floating point numbers
+  | { _tag: "BoundedBytes"; bytes: Uint8Array }
 ```
 
 Added in v1.0.0
+
+## CBORFormat (type alias)
+
+Tagged discriminated union capturing how each CBOR node was originally
+serialized. Every variant carries a `_tag` discriminant. Encoding-detail
+fields are optional — absent means "use canonical / minimal default".
+
+**Signature**
+
+```ts
+export type CBORFormat =
+  | CBORFormat.UInt
+  | CBORFormat.NInt
+  | CBORFormat.Bytes
+  | CBORFormat.Text
+  | CBORFormat.Array
+  | CBORFormat.Map
+  | CBORFormat.Tag
+  | CBORFormat.Simple
+```
+
+Added in v2.0.0
+
+## CBORFormat (namespace)
+
+Added in v2.0.0
+
+### Array (type alias)
+
+Array (major 4). `length` absent → definite, minimal length header.
+
+**Signature**
+
+```ts
+export type Array = {
+  readonly _tag: "array"
+  readonly length?: LengthEncoding
+  readonly children: ReadonlyArray<CBORFormat>
+}
+```
+
+### Bytes (type alias)
+
+Byte string (major 2). `encoding` absent → definite, minimal length.
+
+**Signature**
+
+```ts
+export type Bytes = { readonly _tag: "bytes"; readonly encoding?: StringEncoding }
+```
+
+### Map (type alias)
+
+Map (major 5). `keyOrder` stores CBOR-encoded key bytes for serializable ordering.
+
+**Signature**
+
+```ts
+export type Map = {
+  readonly _tag: "map"
+  readonly length?: LengthEncoding
+  readonly keyOrder?: ReadonlyArray<Uint8Array>
+  readonly entries: ReadonlyArray<readonly [CBORFormat, CBORFormat]>
+}
+```
+
+### NInt (type alias)
+
+Negative integer (major 1). `byteSize` absent → minimal encoding.
+
+**Signature**
+
+```ts
+export type NInt = { readonly _tag: "nint"; readonly byteSize?: ByteSize }
+```
+
+### Simple (type alias)
+
+Simple value or float (major 7). No encoding choices to preserve.
+
+**Signature**
+
+```ts
+export type Simple = { readonly _tag: "simple" }
+```
+
+### Tag (type alias)
+
+Tag (major 6). `width` absent → minimal tag header.
+
+**Signature**
+
+```ts
+export type Tag = {
+  readonly _tag: "tag"
+  readonly width?: ByteSize
+  readonly child: CBORFormat
+}
+```
+
+### Text (type alias)
+
+Text string (major 3). `encoding` absent → definite, minimal length.
+
+**Signature**
+
+```ts
+export type Text = { readonly _tag: "text"; readonly encoding?: StringEncoding }
+```
+
+### UInt (type alias)
+
+Unsigned integer (major 0). `byteSize` absent → minimal encoding.
+
+**Signature**
+
+```ts
+export type UInt = { readonly _tag: "uint"; readonly byteSize?: ByteSize }
+```
 
 ## CodecOptions (type alias)
 
@@ -295,6 +542,50 @@ export type CodecOptions =
 
 Added in v1.0.0
 
+## DecodedWithFormat (type alias)
+
+Decoded value paired with its captured root format tree.
+
+**Signature**
+
+```ts
+export type DecodedWithFormat<A> = {
+  value: A
+  format: CBORFormat
+}
+```
+
+Added in v2.0.0
+
+## LengthEncoding (type alias)
+
+Container length encoding style captured during decode.
+
+**Signature**
+
+```ts
+export type LengthEncoding = { readonly tag: "indefinite" } | { readonly tag: "definite"; readonly byteSize: ByteSize }
+```
+
+Added in v2.0.0
+
+## StringEncoding (type alias)
+
+Byte/text string encoding style captured during decode.
+
+**Signature**
+
+```ts
+export type StringEncoding =
+  | { readonly tag: "definite"; readonly byteSize: ByteSize }
+  | {
+      readonly tag: "indefinite"
+      readonly chunks: ReadonlyArray<{ readonly length: number; readonly byteSize: ByteSize }>
+    }
+```
+
+Added in v2.0.0
+
 # parsing
 
 ## fromCBORBytes
@@ -309,6 +600,18 @@ export declare const fromCBORBytes: (bytes: Uint8Array, options?: CodecOptions) 
 
 Added in v1.0.0
 
+## fromCBORBytesWithFormat
+
+Parse a CBOR value from CBOR bytes and return the root format tree.
+
+**Signature**
+
+```ts
+export declare const fromCBORBytesWithFormat: (bytes: Uint8Array) => DecodedWithFormat<CBOR>
+```
+
+Added in v2.0.0
+
 ## fromCBORHex
 
 Parse a CBOR value from CBOR hex string.
@@ -320,6 +623,30 @@ export declare const fromCBORHex: (hex: string, options?: CodecOptions) => CBOR
 ```
 
 Added in v1.0.0
+
+## fromCBORHexWithFormat
+
+Parse a CBOR value from CBOR hex string and return the root format tree.
+
+**Signature**
+
+```ts
+export declare const fromCBORHexWithFormat: (hex: string) => DecodedWithFormat<CBOR>
+```
+
+Added in v2.0.0
+
+## internalDecodeWithFormatSync
+
+Decode CBOR bytes and return both the decoded value and the root format tree.
+
+**Signature**
+
+```ts
+export declare const internalDecodeWithFormatSync: (data: Uint8Array) => DecodedWithFormat<CBOR>
+```
+
+Added in v2.0.0
 
 # schemas
 
@@ -385,6 +712,7 @@ export declare const match: <R>(
     null: () => R
     undefined: () => R
     float: (value: number) => R
+    boundedBytes: (value: Uint8Array) => R
   }
 ) => R
 ```
@@ -524,7 +852,7 @@ export declare const internalDecodeSync: (data: Uint8Array, options?: CodecOptio
 **Signature**
 
 ```ts
-export declare const internalEncodeSync: (value: CBOR, options?: CodecOptions) => Uint8Array
+export declare const internalEncodeSync: (value: CBOR, options?: CodecOptions, fmt?: CBORFormat) => Uint8Array
 ```
 
 ## isArray

@@ -1,5 +1,104 @@
 # @evolution-sdk/devnet
 
+## 1.1.30
+
+### Patch Changes
+
+- Updated dependencies [[`19829c7`](https://github.com/IntersectMBO/evolution-sdk/commit/19829c7c6e1cd1ac3a33fb180e4482016791dcd5)]:
+  - @evolution-sdk/evolution@0.3.30
+  - @evolution-sdk/aiken-uplc@0.0.22
+  - @evolution-sdk/scalus-uplc@0.0.20
+
+## 1.1.29
+
+### Patch Changes
+
+- Updated dependencies [[`03e4dea`](https://github.com/IntersectMBO/evolution-sdk/commit/03e4deaace5a98a2def15ebb088262160c77cd2c)]:
+  - @evolution-sdk/evolution@0.3.29
+  - @evolution-sdk/aiken-uplc@0.0.21
+  - @evolution-sdk/scalus-uplc@0.0.19
+
+## 1.1.28
+
+### Patch Changes
+
+- Updated dependencies [[`76bbaa2`](https://github.com/IntersectMBO/evolution-sdk/commit/76bbaa2d1cebb40a52a037b23cd80f1fef20388d)]:
+  - @evolution-sdk/evolution@0.3.28
+  - @evolution-sdk/aiken-uplc@0.0.20
+  - @evolution-sdk/scalus-uplc@0.0.18
+
+## 1.1.27
+
+### Patch Changes
+
+- Updated dependencies [[`9701411`](https://github.com/IntersectMBO/evolution-sdk/commit/9701411a17a4a2ef4d9b6c3547d3314801ec616c), [`78e8fd7`](https://github.com/IntersectMBO/evolution-sdk/commit/78e8fd756021c69cecd810d3a95ed34af721ce56)]:
+  - @evolution-sdk/evolution@0.3.27
+  - @evolution-sdk/aiken-uplc@0.0.19
+  - @evolution-sdk/scalus-uplc@0.0.17
+
+## 1.1.26
+
+### Patch Changes
+
+- Updated dependencies [[`619c52b`](https://github.com/IntersectMBO/evolution-sdk/commit/619c52bd843d45e3062cfe3a7a49438c181e45d7), [`3685736`](https://github.com/IntersectMBO/evolution-sdk/commit/3685736ec8fb7b536d88d7ef4044846a8cebb52f)]:
+  - @evolution-sdk/evolution@0.3.26
+  - @evolution-sdk/aiken-uplc@0.0.18
+  - @evolution-sdk/scalus-uplc@0.0.16
+
+## 1.1.25
+
+### Patch Changes
+
+- Updated dependencies [[`24f1d59`](https://github.com/IntersectMBO/evolution-sdk/commit/24f1d59ee64dfb9ca0d2f73f8c5afe9b41a09816), [`277df7b`](https://github.com/IntersectMBO/evolution-sdk/commit/277df7be130609c16a4e44c023de0bce637a4fd4), [`536eeb3`](https://github.com/IntersectMBO/evolution-sdk/commit/536eeb37ec734db2547da4fc597f5466dd94c12a)]:
+  - @evolution-sdk/evolution@0.3.25
+  - @evolution-sdk/aiken-uplc@0.0.17
+  - @evolution-sdk/scalus-uplc@0.0.15
+
+## 1.1.24
+
+### Patch Changes
+
+- Updated dependencies [[`37bd6fe`](https://github.com/IntersectMBO/evolution-sdk/commit/37bd6fe86eba7de12e7d77f072fe71f386ef7194)]:
+  - @evolution-sdk/evolution@0.3.24
+  - @evolution-sdk/aiken-uplc@0.0.16
+  - @evolution-sdk/scalus-uplc@0.0.14
+
+## 1.1.23
+
+### Patch Changes
+
+- Updated dependencies [[`2a0c360`](https://github.com/IntersectMBO/evolution-sdk/commit/2a0c3603fbb3405c3b1e0d6e51935f28ed035611), [`64b1383`](https://github.com/IntersectMBO/evolution-sdk/commit/64b1383aa34f23df0a776438f870ef57fb9d290e)]:
+  - @evolution-sdk/evolution@0.3.23
+  - @evolution-sdk/aiken-uplc@0.0.15
+  - @evolution-sdk/scalus-uplc@0.0.13
+
+## 1.1.22
+
+### Patch Changes
+
+- Updated dependencies [[`a4fbd49`](https://github.com/IntersectMBO/evolution-sdk/commit/a4fbd49410b65a831d3d84091cfe11ba6b730ee8)]:
+  - @evolution-sdk/evolution@0.3.22
+  - @evolution-sdk/aiken-uplc@0.0.14
+  - @evolution-sdk/scalus-uplc@0.0.12
+
+## 1.1.21
+
+### Patch Changes
+
+- Updated dependencies [[`38a460f`](https://github.com/IntersectMBO/evolution-sdk/commit/38a460f7a58212a42c720e3d165456bdee9ce505)]:
+  - @evolution-sdk/evolution@0.3.21
+  - @evolution-sdk/aiken-uplc@0.0.13
+  - @evolution-sdk/scalus-uplc@0.0.11
+
+## 1.1.20
+
+### Patch Changes
+
+- Updated dependencies [[`d139b44`](https://github.com/IntersectMBO/evolution-sdk/commit/d139b4456d46e783e9172b7fcd7c3bf7ae624fc6), [`e0245ae`](https://github.com/IntersectMBO/evolution-sdk/commit/e0245ae2d33c1712591bc26504928c6797a6a668), [`eebd2b0`](https://github.com/IntersectMBO/evolution-sdk/commit/eebd2b0c826f25d96244943da1b28f9b2cefd3e4), [`26dfe7e`](https://github.com/IntersectMBO/evolution-sdk/commit/26dfe7edaebaf38087ccd6d367a226369dda2a01)]:
+  - @evolution-sdk/aiken-uplc@0.0.12
+  - @evolution-sdk/evolution@0.3.20
+  - @evolution-sdk/scalus-uplc@0.0.10
+
 ## 1.1.19
 
 ### Patch Changes

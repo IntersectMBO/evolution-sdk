@@ -8,6 +8,7 @@ import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Data from "../src/Data.js"
 import * as Redeemer from "../src/Redeemer.js"
+import * as Redeemers from "../src/Redeemers.js"
 import * as ScriptDataHash from "../src/ScriptDataHash.js"
 import * as TransactionBody from "../src/TransactionBody.js"
 import * as TransactionHash from "../src/TransactionHash.js"
@@ -105,8 +106,9 @@ describe("UtilsHash helpers CML parity", () => {
 
     FastCheck.assert(
       FastCheck.property(redeemersArb, datumsOptArb, smallCostModels, (redeemers, datums, costModels) => {
-        // Evolution
-        const evolution = UtilsHash.hashScriptData(redeemers, costModels, datums)
+        // Evolution — use RedeemerArray (CML uses array format)
+        const redeemerArray = new Redeemers.RedeemerArray({ value: [...redeemers] })
+        const evolution = UtilsHash.hashScriptData(redeemerArray, costModels, datums)
         const evolutionHex = ScriptDataHash.toHex(evolution)
 
         // Build CML inputs from Evolution CBOR encodings
@@ -186,7 +188,7 @@ describe("UtilsHash helpers CML parity", () => {
       PlutusV3: new CostModel.CostModel({ costs: [] })
     })
 
-    const redeemers: ReadonlyArray<Redeemer.Redeemer> = []
+    const redeemers = new Redeemers.RedeemerArray({ value: [] })
     const evolution = UtilsHash.hashScriptData(redeemers, cms)
     const evolutionHex = ScriptDataHash.toHex(evolution)
 
@@ -199,7 +201,7 @@ describe("UtilsHash helpers CML parity", () => {
   })
 
   it("special case parity: redeemers=[], datums non-empty", () => {
-    const redeemers: ReadonlyArray<Redeemer.Redeemer> = []
+    const redeemers = new Redeemers.RedeemerArray({ value: [] })
     const datums: ReadonlyArray<Data.Data> = [Data.fromCBORHex("d87980")] // Constr(0,[])
     const costModels = new CostModel.CostModels({
       PlutusV1: new CostModel.CostModel({ costs: [] }),

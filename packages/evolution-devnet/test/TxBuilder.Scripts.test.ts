@@ -198,9 +198,9 @@ describe("TxBuilder Script Handling", () => {
 
     // Verify redeemers with evaluated exUnits
     expect(tx.witnessSet.redeemers).toBeDefined()
-    expect(tx.witnessSet.redeemers!.length).toBe(1)
+    expect(tx.witnessSet.redeemers!.size).toBe(1)
 
-    const redeemer = tx.witnessSet.redeemers![0]
+    const redeemer = tx.witnessSet.redeemers!.toArray()[0]
     expect(redeemer.tag).toBe("spend")
     expect(redeemer.exUnits.mem).toBeGreaterThan(0n) // mem > 0
     expect(redeemer.exUnits.steps).toBeGreaterThan(0n) // steps > 0
@@ -264,9 +264,9 @@ describe("TxBuilder Script Handling", () => {
 
     // Verify redeemers with evaluated exUnits
     expect(tx.witnessSet.redeemers).toBeDefined()
-    expect(tx.witnessSet.redeemers!.length).toBe(1)
+    expect(tx.witnessSet.redeemers!.size).toBe(1)
 
-    const redeemer = tx.witnessSet.redeemers![0]
+    const redeemer = tx.witnessSet.redeemers!.toArray()[0]
     expect(redeemer.tag).toBe("spend")
     expect(redeemer.exUnits.mem).toBe(1100n)
     expect(redeemer.exUnits.steps).toBe(160100n)
@@ -331,9 +331,9 @@ describe("TxBuilder Script Handling", () => {
 
     // Verify redeemers with evaluated exUnits
     expect(tx.witnessSet.redeemers).toBeDefined()
-    expect(tx.witnessSet.redeemers!.length).toBe(1)
+    expect(tx.witnessSet.redeemers!.size).toBe(1)
 
-    const redeemer = tx.witnessSet.redeemers![0]
+    const redeemer = tx.witnessSet.redeemers!.toArray()[0]
     expect(redeemer.tag).toBe("spend")
     expect(redeemer.exUnits.mem).toBe(1100n)
     expect(redeemer.exUnits.steps).toBe(160100n)
@@ -1270,9 +1270,7 @@ describe("TxBuilder Script Handling", () => {
   })
 
   it("should build a transaction with a >64-byte redeemer field using bounded_bytes encoding", async () => {
-    const alwaysSucceedValidator = plutusJson.validators.find(
-      (v) => v.title === "always_succeed.always_succeed.spend"
-    )!
+    const alwaysSucceedValidator = plutusJson.validators.find((v) => v.title === "always_succeed.always_succeed.spend")!
     const alwaysSucceedV3 = new PlutusV3.PlutusV3({ bytes: Bytes.fromHex(alwaysSucceedValidator.compiledCode) })
     const scriptHash = ScriptHash.fromScript(alwaysSucceedV3)
     const scriptAddress = Schema.encodeSync(CoreAddress.FromBech32)(
@@ -1314,8 +1312,8 @@ describe("TxBuilder Script Handling", () => {
     const tx = await signBuilder.toTransaction()
 
     expect(tx.witnessSet.redeemers).toBeDefined()
-    expect(tx.witnessSet.redeemers!.length).toBe(1)
-    const redeemer = tx.witnessSet.redeemers![0]
+    expect(tx.witnessSet.redeemers!.size).toBe(1)
+    const redeemer = tx.witnessSet.redeemers!.toArray()[0]
     expect(redeemer.tag).toBe("spend")
     expect(redeemer.exUnits.mem).toBeGreaterThan(0n)
     expect(redeemer.exUnits.steps).toBeGreaterThan(0n)

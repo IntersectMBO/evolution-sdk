@@ -10,15 +10,16 @@ import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
+import * as Script from "../../../Script.js"
+import * as ScriptRef from "../../../ScriptRef.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
+import * as TxOut from "../../../TxOut.js"
 import type * as CoreUTxO from "../../../UTxO.js"
-import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import { ProviderError } from "../Provider.js"
 import * as HttpUtils from "./HttpUtils.js"
 import * as Maestro from "./Maestro.js"
-import * as Ogmios from "./Ogmios.js"
 
 // ============================================================================
 // Helper Functions
@@ -43,13 +44,15 @@ const createHeadersWithAmounts = (apiKey: string): Record<string, string> => ({
 })
 
 /**
- * Wrap HTTP errors into ProviderError following Kupmios pattern
+ * Wrap errors into ProviderError
  */
-const wrapError = (operation: string) => (error: unknown) =>
-  new ProviderError({
-    message: `Failed to ${operation}`,
-    cause: error
-  })
+const wrapError = (operation: string) => (cause: unknown) =>
+  Effect.fail(
+    new ProviderError({
+      message: `Maestro ${operation} failed`,
+      cause
+    })
+  )
 
 // ============================================================================
 // Configuration
@@ -65,8 +68,12 @@ const TIMEOUT = 10_000 // 10 seconds timeout for requests
  * Get protocol parameters from Maestro
  */
 export const getProtocolParameters = (baseUrl: string, apiKey: string) =>
-  HttpUtils.get(`${baseUrl}/protocol-parameters`, Maestro.MaestroProtocolParameters, createHeaders(apiKey)).pipe(
-    Effect.map(Maestro.transformProtocolParameters),
+  HttpUtils.get(
+    `${baseUrl}/protocol-parameters`,
+    Maestro.MaestroTimestampedResponse(Maestro.MaestroProtocolParameters),
+    createHeaders(apiKey)
+  ).pipe(
+    Effect.map((response) => Maestro.transformProtocolParameters(response.data)),
     Effect.timeout(TIMEOUT),
     Effect.catchAll(wrapError("get protocol parameters"))
   )
@@ -81,11 +88,15 @@ export const getProtocolParameters = (baseUrl: string, apiKey: string) =>
 export const getUtxos =
   (baseUrl: string, apiKey: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) =>
     Effect.gen(function* () {
-      // Extract address string from Address or Credential
-      const addressStr =
-        addressOrCredential instanceof CoreAddress.Address
-          ? CoreAddress.toBech32(addressOrCredential)
-          : addressOrCredential.hash // Use credential hash directly
+      if (!(addressOrCredential instanceof CoreAddress.Address)) {
+        return yield* Effect.fail(
+          new ProviderError({
+            message: "Maestro provider does not support credential-based UTxO queries. Pass a full Address instead.",
+            cause: "Unsupported operation"
+          })
+        )
+      }
+      const addressStr = CoreAddress.toBech32(addressOrCredential)
 
       // Get all pages of UTxOs
       const allUtxos = yield* getUtxosWithPagination(`${baseUrl}/addresses/${addressStr}/utxos`, apiKey)
@@ -100,22 +111,23 @@ export const getUtxosWithUnit =
   (baseUrl: string, apiKey: string) =>
   (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) =>
     Effect.gen(function* () {
-      // For Maestro, we get UTxOs by unit and then filter by address if needed
-      // This is different from address-first approach but matches the API design
-      const allUtxos = yield* getUtxosWithPagination(`${baseUrl}/assets/${unit}/utxos`, apiKey)
+      // Use address endpoint and filter by unit client-side,
+      // because /assets/{unit}/utxos returns a simplified response without full UTxO details
+      if (!(addressOrCredential instanceof CoreAddress.Address)) {
+        return yield* Effect.fail(
+          new ProviderError({
+            message: "Maestro provider does not support credential-based UTxO queries. Pass a full Address instead.",
+            cause: "Unsupported operation"
+          })
+        )
+      }
+      const addressStr = CoreAddress.toBech32(addressOrCredential)
 
-      // Transform UTxOs first
-      const transformedUtxos = allUtxos.map(Maestro.transformUTxO)
+      const allUtxos = yield* getUtxosWithPagination(`${baseUrl}/addresses/${addressStr}/utxos`, apiKey)
 
-      // Filter by address if addressOrCredential is provided
-      const addressStr =
-        addressOrCredential instanceof CoreAddress.Address
-          ? CoreAddress.toBech32(addressOrCredential)
-          : addressOrCredential.hash
-
-      // Filter UTxOs that belong to the specified address/credential
-      // Use CoreAddress.toBech32 to convert Core Address to string for comparison
-      return transformedUtxos.filter((utxo) => CoreAddress.toBech32(utxo.address) === addressStr)
+      // Filter raw Maestro UTxOs for unit match before transforming
+      const matching = allUtxos.filter((u) => u.assets.some((a) => a.unit === unit))
+      return matching.map(Maestro.transformUTxO)
     })
 
 /**
@@ -124,19 +136,31 @@ export const getUtxosWithUnit =
 export const getUtxosByOutRef =
   (baseUrl: string, apiKey: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
     Effect.gen(function* () {
-      // Maestro supports batch UTxO resolution via POST with output references
-      const outputReferences = Array.from(inputs).map(
-        (input) => `${TransactionHash.toHex(input.transactionId)}#${Number(input.index)}`
-      )
+      // Group by tx_hash to minimize API calls
+      const byTxHash = new Map<string, Array<number>>()
+      for (const input of inputs) {
+        const hash = TransactionHash.toHex(input.transactionId)
+        const indices = byTxHash.get(hash) ?? []
+        indices.push(Number(input.index))
+        byTxHash.set(hash, indices)
+      }
 
-      const response = yield* HttpUtils.postJson(
-        `${baseUrl}/utxos/batch`,
-        { output_references: outputReferences },
-        Schema.Array(Maestro.MaestroUTxO),
-        createHeadersWithAmounts(apiKey)
-      ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("get UTxOs by outRef")))
+      const results: Array<Schema.Schema.Type<typeof Maestro.MaestroUTxO>> = []
 
-      return response.map(Maestro.transformUTxO)
+      for (const [txHash, indices] of byTxHash) {
+        const tx = yield* HttpUtils.get(
+          `${baseUrl}/transactions/${txHash}`,
+          Maestro.MaestroTimestampedResponse(Maestro.MaestroTransaction),
+          createHeadersWithAmounts(apiKey)
+        ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("get UTxOs by outRef")))
+
+        for (const idx of indices) {
+          const output = tx.data.outputs.find((o) => o.index === idx)
+          if (output) results.push(output)
+        }
+      }
+
+      return results.map(Maestro.transformUTxO)
     })
 
 // ============================================================================
@@ -147,8 +171,12 @@ export const getUtxosByOutRef =
  * Get delegation info for a credential
  */
 export const getDelegation = (baseUrl: string, apiKey: string) => (rewardAddress: string) =>
-  HttpUtils.get(`${baseUrl}/accounts/${rewardAddress}`, Maestro.MaestroDelegation, createHeaders(apiKey)).pipe(
-    Effect.map(Maestro.transformDelegation),
+  HttpUtils.get(
+    `${baseUrl}/accounts/${rewardAddress}`,
+    Maestro.MaestroTimestampedResponse(Maestro.MaestroDelegation),
+    createHeaders(apiKey)
+  ).pipe(
+    Effect.map((response) => Maestro.transformDelegation(response.data)),
     Effect.timeout(TIMEOUT),
     Effect.catchAll(wrapError("get delegation"))
   )
@@ -188,28 +216,36 @@ export const evaluateTx =
   (baseUrl: string, apiKey: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) =>
     Effect.gen(function* () {
       const txCborHex = Transaction.toCBORHex(tx)
-      // Use Ogmios format for additional UTxOs
-      const ogmiosUtxos = additionalUTxOs ? Ogmios.toOgmiosUTxOs(additionalUTxOs) : undefined
+      const additionalUtxos = additionalUTxOs?.map((utxo) => {
+        const txOut = new TxOut.TransactionOutput({
+          address: utxo.address,
+          assets: utxo.assets,
+          datumOption: utxo.datumOption,
+          scriptRef: utxo.scriptRef
+            ? new ScriptRef.ScriptRef({ bytes: Bytes.fromHex(Script.toCBORHex(utxo.scriptRef)) })
+            : undefined
+        })
+
+        return {
+          tx_hash: TransactionHash.toHex(utxo.transactionId),
+          index: Number(utxo.index),
+          txout_cbor: TxOut.toCBORHex(txOut)
+        }
+      })
 
       const requestBody = {
-        transaction: txCborHex,
-        ...(ogmiosUtxos && {
-          additional_utxo_set: ogmiosUtxos.map((utxo) => ({
-            txHash: utxo.transaction.id,
-            outputIndex: utxo.index
-          }))
-        })
+        cbor: txCborHex,
+        ...(additionalUtxos && additionalUtxos.length > 0 ? { additional_utxos: additionalUtxos } : {})
       }
 
       const response = yield* HttpUtils.postJson(
-        `${baseUrl}/evaluate`,
+        `${baseUrl}/transactions/evaluate`,
         requestBody,
-        Schema.Array(Schema.Any), // Will need proper evaluation response schema
+        Maestro.MaestroEvalResult,
         createHeaders(apiKey)
       ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("evaluate transaction")))
 
-      // Transform response to match Evolution SDK format
-      return response as Array<EvalRedeemer>
+      return Maestro.transformEvaluationResult(response)
     })
 
 /**
@@ -217,14 +253,14 @@ export const evaluateTx =
  */
 export const getUtxoByUnit = (baseUrl: string, apiKey: string) => (unit: string) =>
   Effect.gen(function* () {
-    // Get first UTxO containing this unit
-    const utxos = yield* getUtxosWithPagination(
-      `${baseUrl}/assets/${unit}/utxos`,
-      apiKey,
-      1 // Just get the first one
+    // Get the first UTxO reference from the asset endpoint (simplified response)
+    const refs = yield* HttpUtils.get(
+      `${baseUrl}/assets/${unit}/utxos?count=1`,
+      Maestro.MaestroPaginatedResponse(Maestro.MaestroAssetUTxORef),
+      createHeadersWithAmounts(apiKey)
     ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("get UTxO by unit")))
 
-    if (utxos.length === 0) {
+    if (refs.data.length === 0) {
       return yield* Effect.fail(
         new ProviderError({
           cause: new Error("No UTxO found for unit"),
@@ -233,7 +269,23 @@ export const getUtxoByUnit = (baseUrl: string, apiKey: string) => (unit: string)
       )
     }
 
-    return Maestro.transformUTxO(utxos[0])
+    const ref = refs.data[0]
+
+    // Resolve the full UTxO via the address endpoint and filter by tx_hash + index
+    const allUtxos = yield* getUtxosWithPagination(`${baseUrl}/addresses/${ref.address}/utxos`, apiKey)
+
+    const match = allUtxos.find((u) => u.tx_hash === ref.tx_hash && u.index === ref.index)
+
+    if (!match) {
+      return yield* Effect.fail(
+        new ProviderError({
+          cause: new Error("No UTxO found for unit"),
+          message: "UTxO not found"
+        })
+      )
+    }
+
+    return Maestro.transformUTxO(match)
   })
 
 /**
@@ -244,23 +296,26 @@ export const getDatum = (baseUrl: string, apiKey: string) => (datumHash: DatumHa
     const datumHashHex = Bytes.toHex(datumHash.hash)
     const response = yield* HttpUtils.get(
       `${baseUrl}/datums/${datumHashHex}`,
-      Schema.Struct({
-        bytes: Schema.String
-      }),
+      Maestro.MaestroTimestampedResponse(
+        Schema.Struct({
+          bytes: Schema.String
+        })
+      ),
       {
         "api-key": apiKey,
         accept: "application/json"
       }
     ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("get datum")))
 
-    return Schema.decodeSync(PlutusData.FromCBORHex())(response.bytes)
+    return Schema.decodeSync(PlutusData.FromCBORHex())(response.data.bytes)
   })
 
 /**
  * Wait for transaction confirmation
  */
 export const awaitTx =
-  (baseUrl: string, apiKey: string) => (txHash: TransactionHash.TransactionHash, checkInterval?: number) => {
+  (baseUrl: string, apiKey: string) =>
+  (txHash: TransactionHash.TransactionHash, checkInterval?: number, timeout: number = 160_000) => {
     const txHashHex = TransactionHash.toHex(txHash)
     return Effect.gen(function* () {
       const interval = checkInterval || 5000 // Default 5 seconds
@@ -269,27 +324,26 @@ export const awaitTx =
         // Check if transaction exists and is confirmed
         const result = yield* HttpUtils.get(
           `${baseUrl}/transactions/${txHashHex}`,
-          Schema.Struct({
-            hash: Schema.String,
-            block: Schema.optional(
-              Schema.Struct({
-                hash: Schema.String,
-                slot: Schema.Number
-              })
-            )
-          }),
+          Maestro.MaestroTimestampedResponse(
+            Schema.Struct({
+              tx_hash: Schema.String,
+              block_hash: Schema.String
+            })
+          ),
           createHeaders(apiKey)
-        ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("await transaction")), Effect.either)
+        ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("awaitTx")), Effect.either)
 
-        // If successful and we have a block, transaction is confirmed
-        if (result._tag === "Right" && result.right.block) {
+        // If successful and we have a block_hash, transaction is confirmed
+        if (result._tag === "Right" && result.right.data.block_hash) {
           return true
         }
 
         // Wait before checking again
         yield* Effect.sleep(`${interval} millis`)
       }
-    })
+    }).pipe(Effect.timeout(timeout), Effect.catchAllCause(
+      (cause) => Effect.fail(new ProviderError({ cause, message: "Maestro awaitTx failed" }))
+    ))
   }
 
 // ============================================================================

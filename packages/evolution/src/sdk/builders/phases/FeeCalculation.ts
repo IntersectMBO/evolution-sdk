@@ -85,11 +85,15 @@ export const executeFeeCalculation = (): Effect.Effect<
       priceStep: protocolParams.priceStep
     })
 
-    yield* Effect.logDebug(`[FeeCalculation] Base fee (includes ref script size): ${baseFee}`)
+    yield* Effect.logDebug(`[FeeCalculation] Base fee: ${baseFee}`)
 
-    // Step 4a: Add tiered reference script fee for all reference scripts
-    const refScriptFee = yield* calculateReferenceScriptFee(state.referenceInputs)
-    yield* Effect.logDebug(`[FeeCalculation] Tiered reference script fee: ${refScriptFee}`)
+    // Step 4a: Add reference script fee for scripts on spent inputs and reference inputs
+    const costPerByte = protocolParams.minFeeRefScriptCostPerByte ?? 44
+    const refScriptFee = yield* calculateReferenceScriptFee(
+      [...state.selectedUtxos, ...state.referenceInputs],
+      costPerByte
+    )
+    yield* Effect.logDebug(`[FeeCalculation] Reference script fee: ${refScriptFee}`)
 
     const calculatedFee = baseFee + refScriptFee
     yield* Effect.logDebug(`[FeeCalculation] Total fee: ${calculatedFee}`)

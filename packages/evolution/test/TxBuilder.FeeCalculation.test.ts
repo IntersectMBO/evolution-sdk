@@ -5,6 +5,7 @@ import * as CoreAssets from "../src/Assets/index.js"
 import {
   calculateLeftoverAssets,
   calculateMinimumFee,
+  tierRefScriptFee,
   validateTransactionBalance
 } from "../src/sdk/builders/TxBuilderImpl.js"
 
@@ -425,6 +426,52 @@ describe("TxBuilder Fee Calculation", () => {
       expect(CoreAssets.lovelaceOf(leftover)).toBe(4_800_000n)
       // Only policy3.asset3 has leftover (300-200=100), others are exact match
       expect(CoreAssets.getUnits(leftover).length).toBe(2) // lovelace + policy3.asset3
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // tierRefScriptFee — direct port of cardano-ledger's tierRefScriptFee
+  // ---------------------------------------------------------------------------
+  describe("tierRefScriptFee", () => {
+    const MULTIPLIER = 1.2
+    const STRIDE = 25_600
+    const BASE = 44 // minFeeRefScriptCostPerByte on devnet
+
+    it("should return 0 for 0 bytes", () => {
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 0)).toBe(0n)
+    })
+
+    it("should use base price for scripts within first tier", () => {
+      // 132 bytes × 44 = 5808
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 132)).toBe(5808n)
+    })
+
+    it("should handle exactly one full tier", () => {
+      // 25600 × 44 = 1,126,400
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 25_600)).toBe(1_126_400n)
+    })
+
+    it("should apply 1.2× multiplier for second tier", () => {
+      // tier1: 25600 × 44 = 1,126,400
+      // tier2: 1 × 52.8 = 52.8
+      // floor(1,126,452.8) = 1,126,452
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 25_601)).toBe(1_126_452n)
+    })
+
+    it("should handle two full tiers", () => {
+      // tier1: 25600 × 44 = 1,126,400
+      // tier2: 25600 × 52.8 = 1,351,680
+      // floor(2,478,080) = 2,478,080
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 51_200)).toBe(2_478_080n)
+    })
+
+    it("should handle four tiers with partial last", () => {
+      // tier1: 25600 × 44       = 1,126,400
+      // tier2: 25600 × 52.8     = 1,351,680
+      // tier3: 25600 × 63.36    = 1,622,016
+      // tier4: 23200 × 76.032   = 1,763,942.4
+      // floor(5,864,038.4) = 5,864,038
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 100_000)).toBe(5_864_038n)
     })
   })
 })

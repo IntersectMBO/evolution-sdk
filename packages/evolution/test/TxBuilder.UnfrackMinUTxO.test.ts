@@ -227,7 +227,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
       transactionId: "a".repeat(64),
       index: 0,
       address: CHANGE_ADDRESS,
-      lovelace: 3_000_000n, // 3.0 ADA - sufficient for outputs + fee + changeMinUTxO
+      lovelace: 4_000_000n, // 4.0 ADA - sufficient for outputs + fee + corrected changeMinUTxO (~1.14M)
       nativeAssets: {
         [`${POLICY_ID}${ASSET_NAME_HEX}`]: 1n
       }

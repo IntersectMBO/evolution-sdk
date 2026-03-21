@@ -18,6 +18,7 @@ import type * as PlutusV2 from "../../PlutusV2.js"
 import type * as PlutusV3 from "../../PlutusV3.js"
 import * as PolicyId from "../../PolicyId.js"
 import * as Redeemer from "../../Redeemer.js"
+import * as Redeemers from "../../Redeemers.js"
 import type * as RewardAccount from "../../RewardAccount.js"
 import * as CoreScript from "../../Script.js"
 import * as ScriptDataHash from "../../ScriptDataHash.js"
@@ -138,44 +139,73 @@ export const calculateTotalAssets = (utxos: ReadonlyArray<CoreUTxO.UTxO> | Set<C
 /**
  * Calculate reference script fees using tiered pricing.
  *
- * Reference scripts stored on-chain incur additional fees based on their size:
- * - First 25KB:  15 lovelace/byte
- * - Next 25KB:   25 lovelace/byte
- * - Next 150KB: 100 lovelace/byte
- * - Maximum: 200KB total
+ * Direct port of the Cardano ledger's `tierRefScriptFee` function.
+ * Each `sizeIncrement`-byte chunk is priced at `curTierPrice` per byte,
+ * then `curTierPrice *= multiplier` for the next chunk. Final result: `floor(total)`.
  *
- * @param referenceInputs - UTxOs containing reference scripts
+ * @since 2.0.0
+ * @category helpers
+ */
+export const tierRefScriptFee = (multiplier: number, sizeIncrement: number, baseFee: number, totalSize: number): bigint => {
+  let acc = 0
+  let curTierPrice = baseFee
+  let remaining = totalSize
+
+  while (remaining >= sizeIncrement) {
+    acc += sizeIncrement * curTierPrice
+    curTierPrice *= multiplier
+    remaining -= sizeIncrement
+  }
+  acc += remaining * curTierPrice
+
+  return BigInt(Math.floor(acc))
+}
+
+/**
+ * Calculate reference script fees using tiered pricing.
+ *
+ * Matches the Cardano node's `tierRefScriptFee` from Conway ledger:
+ * - Stride: 25,600 bytes (hardcoded, becomes a protocol param post-Conway)
+ * - Multiplier: 1.2× per tier (hardcoded, becomes a protocol param post-Conway)
+ * - Base cost: `minFeeRefScriptCostPerByte` protocol parameter
+ *
+ * For each 25,600-byte chunk the price per byte increases by 1.2×.
+ * The final (partial) chunk is charged proportionally. Result is `floor(total)`.
+ *
+ * The Cardano node sums scriptRef sizes from both spent inputs and reference
+ * inputs (`txNonDistinctRefScriptsSize`), so callers must pass both.
+ *
+ * @param utxos - All UTxOs (spent inputs + reference inputs) to scan for scriptRefs
+ * @param costPerByte - The minFeeRefScriptCostPerByte protocol parameter
  * @returns Total reference script fee in lovelace
  *
  * @since 2.0.0
  * @category helpers
  */
 export const calculateReferenceScriptFee = (
-  referenceInputs: ReadonlyArray<CoreUTxO.UTxO>
+  utxos: ReadonlyArray<CoreUTxO.UTxO>,
+  costPerByte: number
 ): Effect.Effect<bigint, TransactionBuilderError> =>
   Effect.gen(function* () {
-    // Calculate total reference script size in bytes (both native and Plutus)
-    // Per ADR 2024-08-14_009: "Native scripts that are used as reference scripts also contribute their size to this calculation"
     let totalScriptSize = 0
 
-    for (const utxo of referenceInputs) {
+    for (const utxo of utxos) {
       if (utxo.scriptRef) {
         const scriptBytes = CoreScript.toCBOR(utxo.scriptRef).length
         totalScriptSize += scriptBytes
         const scriptType = utxo.scriptRef._tag === "NativeScript" ? "Native" : "Plutus"
-        yield* Effect.logDebug(`[RefScriptFee] ${scriptType} script in ref input: ${scriptBytes} bytes`)
+        yield* Effect.logDebug(`[RefScriptFee] ${scriptType} script: ${scriptBytes} bytes`)
       }
     }
 
-    // No reference scripts = no tiered fee
     if (totalScriptSize === 0) {
       return 0n
     }
 
     yield* Effect.logDebug(`[RefScriptFee] Total reference script size: ${totalScriptSize} bytes`)
 
-    // Check maximum size limit (200KB)
     if (totalScriptSize > 200_000) {
+      // maxRefScriptSizePerTx from Conway ledger rules (CIP-0069 / CIP-0112)
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: `Total reference script size (${totalScriptSize} bytes) exceeds maximum limit of 200,000 bytes`
@@ -183,26 +213,8 @@ export const calculateReferenceScriptFee = (
       )
     }
 
-    // Calculate tiered fees for all reference scripts
-    let fee = 0n
-    let remainingSize = totalScriptSize
-    let tierIndex = 0
-    const tierPrices = [15, 25, 100] // lovelace per byte for each tier
-    const tierSize = 25_000 // 25KB per tier
-
-    while (remainingSize > 0 && tierIndex < 3) {
-      const bytesInThisTier = Math.min(remainingSize, tierSize)
-      const tierFee = BigInt(Math.ceil(bytesInThisTier * tierPrices[tierIndex]!))
-      fee += tierFee
-      yield* Effect.logDebug(
-        `[RefScriptFee] Tier ${tierIndex + 1}: ${bytesInThisTier} bytes × ${tierPrices[tierIndex]} lovelace/byte = ${tierFee} lovelace`
-      )
-
-      remainingSize -= tierSize
-      tierIndex++
-    }
-
-    yield* Effect.logDebug(`[RefScriptFee] Total tiered fee (Plutus only): ${fee} lovelace`)
+    const fee = tierRefScriptFee(1.2, 25_600, costPerByte, totalScriptSize)
+    yield* Effect.logDebug(`[RefScriptFee] Tiered fee: ${fee} lovelace`)
 
     return fee
   })
@@ -654,6 +666,7 @@ export const assembleTransaction = (
 
     // Compute scriptDataHash if there are Plutus scripts (redeemers present)
     let scriptDataHash: ReturnType<typeof hashScriptData> | undefined
+    let redeemersConcrete: Redeemers.RedeemerMap | undefined
     if (redeemers.length > 0) {
       // Get config to access provider for full protocol parameters
       const config = yield* TxBuilderConfigTag
@@ -679,7 +692,8 @@ export const assembleTransaction = (
 
       // Only include cost models for Plutus versions actually used in the transaction
       // The scriptDataHash must use the same languages as the node will compute
-      // Check both witness set scripts AND reference scripts
+      // Check: 1) witness set scripts (attachScript), 2) reference inputs (readFrom),
+      // 3) spent UTxO scriptRefs (inline scripts on inputs being consumed)
       let hasPlutusV1 = plutusV1Scripts.length > 0
       let hasPlutusV2 = plutusV2Scripts.length > 0
       let hasPlutusV3 = plutusV3Scripts.length > 0
@@ -688,6 +702,25 @@ export const assembleTransaction = (
       for (const refUtxo of state.referenceInputs) {
         if (refUtxo.scriptRef) {
           switch (refUtxo.scriptRef._tag) {
+            case "PlutusV1":
+              hasPlutusV1 = true
+              break
+            case "PlutusV2":
+              hasPlutusV2 = true
+              break
+            case "PlutusV3":
+              hasPlutusV3 = true
+              break
+          }
+        }
+      }
+
+      // Also check spent UTxOs for inline scriptRef (scripts embedded in the UTxO itself)
+      // When a script-locked UTxO carries its own script as scriptRef, the node uses that
+      // script for validation. The SDK must include the corresponding language's cost model.
+      for (const utxo of state.selectedUtxos) {
+        if (utxo.scriptRef) {
+          switch (utxo.scriptRef._tag) {
             case "PlutusV1":
               hasPlutusV1 = true
               break
@@ -720,16 +753,15 @@ export const assembleTransaction = (
       })
 
       // Compute the hash of script data (redeemers + optional datums + cost models)
-      const buildOpts = yield* BuildOptionsTag
-      const scriptDataFmt = buildOpts.scriptDataFormat ?? "array"
+      // Use the same concrete Redeemers type that goes into the witness set
+      redeemersConcrete = Redeemers.makeRedeemerMap(redeemers)
       scriptDataHash = hashScriptData(
-        redeemers,
+        redeemersConcrete,
         costModels,
-        plutusDataArray.length > 0 ? plutusDataArray : undefined,
-        scriptDataFmt
+        plutusDataArray.length > 0 ? plutusDataArray : undefined
       )
       yield* Effect.logDebug(
-        `[Assembly] Computed scriptDataHash (format=${scriptDataFmt}): ${scriptDataHash.hash.toString()}`
+        `[Assembly] Computed scriptDataHash: ${scriptDataHash.hash.toString()}`
       )
     }
 
@@ -814,7 +846,7 @@ export const assembleTransaction = (
       bootstrapWitnesses: [],
       plutusV1Scripts,
       plutusData: plutusDataArray,
-      redeemers,
+      redeemers: redeemers.length > 0 ? redeemersConcrete : undefined,
       plutusV2Scripts,
       plutusV3Scripts
     })
@@ -1121,16 +1153,17 @@ export const buildFakeWitnessSet = (
     // Build fake redeemers from state.redeemers for accurate size estimation
     // Redeemers contribute to transaction size and must be included in fee calculation
     const fakeRedeemers: Array<Redeemer.Redeemer> = []
+    let fakeIndex = 0n
     for (const [_key, redeemerData] of state.redeemers) {
       // Use placeholder exUnits if not yet evaluated (will be updated after UPLC evaluation)
       const exUnits = redeemerData.exUnits ?? { mem: 0n, steps: 0n }
 
-      // Create a redeemer with index 0 - the actual index will be computed in assembly
-      // For fee calculation, we just need accurate CBOR size estimation
+      // Use unique placeholder indices — actual indices will be computed in assembly.
+      // For fee calculation, we just need accurate CBOR size estimation.
       fakeRedeemers.push(
         new Redeemer.Redeemer({
           tag: redeemerData.tag,
-          index: 0n, // Placeholder, will be set correctly in assembly
+          index: fakeIndex++, // Unique placeholder, will be set correctly in assembly
           data: redeemerData.data,
           exUnits: new Redeemer.ExUnits({ mem: exUnits.mem, steps: exUnits.steps })
         })
@@ -1143,7 +1176,7 @@ export const buildFakeWitnessSet = (
       bootstrapWitnesses: [],
       plutusV1Scripts,
       plutusData: [],
-      redeemers: fakeRedeemers,
+      redeemers: fakeRedeemers.length > 0 ? Redeemers.makeRedeemerMap(fakeRedeemers) : undefined,
       plutusV2Scripts,
       plutusV3Scripts
     })
@@ -1213,10 +1246,12 @@ export const calculateFeeIteratively = (
     }
 
     // Check if Plutus scripts are present (need scriptDataHash for accurate size)
+    // Must check: witness set scripts, redeemers (covers scriptRef spending), and reference input scripts
     const hasPlutusScripts =
       (fakeWitnessSet.plutusV1Scripts && fakeWitnessSet.plutusV1Scripts.length > 0) ||
       (fakeWitnessSet.plutusV2Scripts && fakeWitnessSet.plutusV2Scripts.length > 0) ||
-      (fakeWitnessSet.plutusV3Scripts && fakeWitnessSet.plutusV3Scripts.length > 0)
+      (fakeWitnessSet.plutusV3Scripts && fakeWitnessSet.plutusV3Scripts.length > 0) ||
+      state.redeemers.size > 0
 
     // Create placeholder scriptDataHash if Plutus scripts are present
     // This is needed for accurate size estimation (32 bytes + CBOR overhead)
@@ -1310,19 +1345,9 @@ export const calculateFeeIteratively = (
       // Calculate size
       const size = yield* calculateTransactionSize(transaction)
 
-      // Add reference script sizes to transaction size for base fee calculation
-      // Despite ADR docs, actual node behavior includes ref scripts in tx size for base fee
-      let refScriptSize = 0
-      for (const utxo of state.referenceInputs) {
-        if (utxo.scriptRef) {
-          const scriptBytes = CoreScript.toCBOR(utxo.scriptRef).length
-          refScriptSize += scriptBytes
-        }
-      }
-      const sizeWithRefScripts = size + refScriptSize
-
-      // Calculate base fee based on size including reference scripts
-      const baseFee = calculateMinimumFee(sizeWithRefScripts, {
+      // Calculate base fee from serialized transaction size
+      // Note: reference script fees are a separate additive component, NOT included in base fee
+      const baseFee = calculateMinimumFee(size, {
         minFeeCoefficient: protocolParams.minFeeCoefficient,
         minFeeConstant: protocolParams.minFeeConstant
       })
@@ -1504,8 +1529,33 @@ export const calculateLeftoverAssets = (params: {
 }
 
 /**
+ * Constant overhead in bytes for a UTxO entry in the ledger state.
+ * Accounts for the transaction hash (32 bytes) and output index that are
+ * part of the UTxO key but not serialized in the transaction output itself.
+ *
+ * @see Babbage ledger spec: utxoEntrySizeWithoutVal = 160
+ * @since 2.0.0
+ * @category constants
+ */
+const UTXO_ENTRY_OVERHEAD_BYTES = 160n
+
+/**
+ * Maximum iterations for exact min-UTxO fixed-point solving.
+ * In practice this converges in 1-3 iterations because only lovelace CBOR
+ * width changes can affect output size.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+const MAX_MIN_UTXO_ITERATIONS = 10
+
+/**
  * Calculate minimum ADA required for a UTxO based on its actual CBOR size.
- * Uses the Babbage-era formula: coinsPerUtxoByte * utxoSize.
+ * Uses the Babbage/Conway-era formula: coinsPerUtxoByte * (160 + serializedOutputSize).
+ *
+ * The 160-byte constant accounts for the UTxO entry overhead in the ledger state
+ * (transaction hash + index). A lovelace placeholder is used during CBOR encoding
+ * to ensure the coin field width matches the final result.
  *
  * This function creates a temporary TransactionOutput, encodes it to CBOR,
  * and calculates the exact size to determine the minimum lovelace required.
@@ -1521,26 +1571,47 @@ export const calculateMinimumUtxoLovelace = (params: {
   coinsPerUtxoByte: bigint
 }): Effect.Effect<bigint, TransactionBuilderError> =>
   Effect.gen(function* () {
-    // Create a temporary TransactionOutput to calculate its CBOR size
-    const tempOutput = yield* txOutputToTransactionOutput({
-      address: params.address,
-      assets: params.assets,
-      datum: params.datum,
-      scriptRef: params.scriptRef
-    })
+    const calculateRequiredLovelace = (lovelace: bigint): Effect.Effect<bigint, TransactionBuilderError> =>
+      Effect.gen(function* () {
+        const assetsForSizing = CoreAssets.withLovelace(params.assets, lovelace)
 
-    // Encode to CBOR bytes to get the actual size
-    const cborBytes = yield* Effect.try({
-      try: () => TxOut.toCBORBytes(tempOutput),
-      catch: (error) =>
-        new TransactionBuilderError({
-          message: "Failed to encode output to CBOR for min UTxO calculation",
-          cause: error
+        const tempOutput = yield* txOutputToTransactionOutput({
+          address: params.address,
+          assets: assetsForSizing,
+          datum: params.datum,
+          scriptRef: params.scriptRef
         })
-    })
 
-    // Calculate minimum lovelace: coinsPerUtxoByte * size
-    return params.coinsPerUtxoByte * BigInt(cborBytes.length)
+        const cborBytes = yield* Effect.try({
+          try: () => TxOut.toCBORBytes(tempOutput),
+          catch: (error) =>
+            new TransactionBuilderError({
+              message: "Failed to encode output to CBOR for min UTxO calculation",
+              cause: error
+            })
+        })
+
+        return params.coinsPerUtxoByte * (UTXO_ENTRY_OVERHEAD_BYTES + BigInt(cborBytes.length))
+      })
+
+    // Exact fixed-point solve for minUTxO:
+    // required = f(lovelace), where f uses serialized size that depends on lovelace.
+    // We iterate until required value stabilizes.
+    let currentLovelace = 0n
+
+    for (let i = 0; i < MAX_MIN_UTXO_ITERATIONS; i++) {
+      const requiredLovelace = yield* calculateRequiredLovelace(currentLovelace)
+      if (requiredLovelace === currentLovelace) {
+        return requiredLovelace
+      }
+      currentLovelace = requiredLovelace
+    }
+
+    return yield* Effect.fail(
+      new TransactionBuilderError({
+        message: `Minimum UTxO calculation did not converge within ${MAX_MIN_UTXO_ITERATIONS} iterations`
+      })
+    )
   })
 
 /**

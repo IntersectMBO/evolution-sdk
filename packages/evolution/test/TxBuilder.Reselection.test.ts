@@ -230,13 +230,13 @@ describe("TxBuilder Re-selection Loop", () => {
       const TOKEN_NAME_1 = "544f4b454e31" // "TOKEN1" in hex
 
       // UTxO with sufficient lovelace + token
-      let assets = CoreAssets.fromLovelace(3_000_000n)
+      let assets = CoreAssets.fromLovelace(5_000_000n)
       assets = CoreAssets.addByHex(assets, TOKEN_POLICY, TOKEN_NAME_1, 100n)
       const utxo = createCoreTestUtxo({
         transactionId: "a".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 3_000_000n
+        lovelace: 5_000_000n
       })
       const utxoWithTokens = new CoreUTxO.UTxO({ ...utxo, assets })
 
@@ -426,18 +426,19 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
 
-      // With automatic coin selection, builder picks 3 UTxOs (6M total) to cover 5M payment + fees
+      // With corrected minUTxO calculation, builder picks 4 UTxOs (8M total)
+      // to cover 5M payment, fees, and valid change output requirements
       // Strict expectations with deterministic values
-      expect(size).toBe(362) // Exact transaction size with 1 witness, 3 inputs (2 outputs save 4 bytes)
-      expect(validation.actualFee).toBe(171_309n) // Exact fee: 362*44 + 155_381
+      expect(size).toBe(398) // Exact transaction size with 1 witness, 4 inputs
+      expect(validation.actualFee).toBe(172_893n) // Exact fee: 398*44 + 155_381
 
       // Verify transaction structure
       const tx = await signBuilder.toTransaction()
-      expect(tx.body.inputs.length).toBe(3) // Coin selection picked 3 UTxOs
+      expect(tx.body.inputs.length).toBe(4) // Coin selection picked 4 UTxOs
       expect(tx.body.outputs.length).toBe(2) // Payment + change
       expect(tx.body.outputs[0].assets.lovelace).toBe(5_000_000n) // Payment
-      // Change: 6M - 5M - 171,309 fee = 828,691
-      expect(tx.body.outputs[1].assets.lovelace).toBe(828_691n)
+      // Change: 8M - 5M - 172,893 fee = 2,827,107
+      expect(tx.body.outputs[1].assets.lovelace).toBe(2_827_107n)
     })
 
     it("should pass size check with 2 different addresses (2 witnesses)", async () => {
@@ -578,9 +579,9 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Largest-first picks 1.5M + 1.2M = 2.7M initially (for 2.5M payment)
-      // Leftover 200K < minUTxO (288K), triggers reselection
-      // Reselection adds 600K UTxO → 3 total inputs
-      expect(tx.body.inputs.length).toBe(3)
+      // Correct minUTxO calculation triggers additional reselection steps
+      // and selects one more input for valid change
+      expect(tx.body.inputs.length).toBe(4)
 
       // 2 outputs: payment + change (change now sufficient for minUTxO)
       expect(tx.body.outputs.length).toBe(2)
@@ -588,8 +589,8 @@ describe("TxBuilder Re-selection Loop", () => {
       // Payment output is exactly 2.5M
       expect(tx.body.outputs[0].assets.lovelace).toBe(2_500_000n)
 
-      // Change output: 3.3M total - 2.5M payment - actual fee = change
-      expect(tx.body.outputs[1].assets.lovelace).toBe(628_691n)
+      // Change output: 3.9M total - 2.5M payment - actual fee = change
+      expect(tx.body.outputs[1].assets.lovelace).toBe(1_227_107n)
     })
 
     it("should trigger multiple reselection attempts with cascading fee increases", async () => {
@@ -636,8 +637,7 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Should have selected many inputs due to small UTxO sizes
       // With 350K per UTxO and 3M payment + ~198K fee needed, should need at least 10 inputs
-      expect(tx.body.inputs.length).toBeGreaterThanOrEqual(10)
-      expect(tx.body.inputs.length).toBeLessThanOrEqual(20) // Adjusted upper bound
+      expect(tx.body.inputs.length).toBe(12)
 
       // Verify outputs: payment + change
       expect(tx.body.outputs.length).toBe(2)
@@ -684,7 +684,7 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Should need at least 2 inputs (1.5M + 0.8M + fee > 2.5M)
-      expect(tx.body.inputs.length).toBeGreaterThanOrEqual(2)
+      expect(tx.body.inputs.length).toBe(5)
 
       // Verify correct payment amount
       expect(tx.body.outputs[0].assets.lovelace).toBe(2_500_000n)
@@ -750,9 +750,8 @@ describe("TxBuilder Reselection After Change", () => {
     const totalOutput = tx.body.outputs[0].assets.lovelace + changeOutput.assets.lovelace
     expect(10_000_000n).toBe(totalOutput + tx.body.fee)
 
-    // Fee should be reasonable
-    expect(tx.body.fee).toBeGreaterThan(155_000n) // > minFeeConstant
-    expect(tx.body.fee).toBeLessThan(500_000n) // < 0.5 ADA
+    // Fee should be exact
+    expect(tx.body.fee).toBe(168_141n)
   })
 
   /**
@@ -790,9 +789,9 @@ describe("TxBuilder Reselection After Change", () => {
     })
     const tx = await signBuilder.toTransaction()
 
-    // With coin selection: 2 UTxOs (4M) is sufficient for payment (3.5M) + fee (~170K) + change (~330K)
-    // Coin selection picks the optimal number of UTxOs needed
-    expect(tx.body.inputs.length).toBe(2)
+    // With corrected minUTxO calculation, 2 UTxOs no longer leave enough valid change,
+    // so reselection adds one more input.
+    expect(tx.body.inputs.length).toBe(3)
     expect(tx.body.outputs.length).toBe(2) // payment + change
 
     // Balance equation must hold
@@ -800,8 +799,7 @@ describe("TxBuilder Reselection After Change", () => {
     const totalOutput = tx.body.outputs.reduce((sum, out) => sum + out.assets.lovelace, 0n)
     expect(totalInput).toBe(totalOutput + tx.body.fee)
 
-    expect(tx.body.fee).toBeGreaterThan(155_000n)
-    expect(tx.body.fee).toBeLessThan(400_000n)
+    expect(tx.body.fee).toBe(171_309n)
   })
 
   /**
@@ -841,7 +839,7 @@ describe("TxBuilder Reselection After Change", () => {
 
     // Verify native assets are in change (not burned)
     if (changeOutput.assets.multiAsset !== undefined) {
-      expect(changeOutput.assets.multiAsset.map.size).toBeGreaterThan(0)
+      expect(changeOutput.assets.multiAsset.map.size).toBe(1)
     } else {
       throw new Error("Expected change output to have native assets")
     }
@@ -850,8 +848,8 @@ describe("TxBuilder Reselection After Change", () => {
     const expectedChange = 10_000_000n - 3_000_000n - tx.body.fee
     expect(changeOutput.assets.lovelace).toBe(expectedChange)
 
-    // Fee should be higher due to larger change output
-    expect(tx.body.fee).toBeGreaterThan(PROTOCOL_PARAMS.minFeeConstant)
+    // Fee should be exact (larger than minFeeConstant due to change output with native assets)
+    expect(tx.body.fee).toBe(169_989n)
   })
 
   /**
@@ -868,7 +866,7 @@ describe("TxBuilder Reselection After Change", () => {
       transactionId: "b".repeat(64),
       index: 0,
       address: CHANGE_ADDRESS,
-      lovelace: 2_000_000n
+      lovelace: 2_400_000n
     })
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
@@ -888,13 +886,16 @@ describe("TxBuilder Reselection After Change", () => {
     expect(tx.body.outputs.length).toBe(2) // payment + change
 
     // Balance equation must hold
-    const totalInput = tx.body.inputs.reduce((sum, _) => sum + 2_000_000n, 0n)
+    const totalInput = tx.body.inputs.reduce((sum, input) => {
+      if (input.transactionId === utxo1.transactionId) return sum + utxo1.assets.lovelace
+      if (input.transactionId === utxo2.transactionId) return sum + utxo2.assets.lovelace
+      return sum
+    }, 0n)
     const totalOutput = tx.body.outputs.reduce((sum, out) => sum + out.assets.lovelace, 0n)
     expect(totalInput).toBe(totalOutput + tx.body.fee)
 
-    // Change output should exist
+    // Change output should exist with exact value
     const changeOutput = tx.body.outputs[1]
-    expect(changeOutput.assets.lovelace).toBeGreaterThan(0n)
-    expect(changeOutput.assets.lovelace).toBeLessThan(1_000_000n) // Reasonable change amount
+    expect(changeOutput.assets.lovelace).toBe(1_230_275n)
   })
 })

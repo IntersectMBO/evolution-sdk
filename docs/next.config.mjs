@@ -3,6 +3,7 @@ import { createMDX } from "fumadocs-mdx/next"
 const withMDX = createMDX()
 
 const isCI = !!process.env.GITHUB_ACTIONS
+const basePath = isCI ? '/evolution-sdk' : ''
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
@@ -10,8 +11,11 @@ const config = {
   output: 'export',
   distDir: 'out',
   // when running in CI for GitHub Pages, set basePath/assetPrefix
-  basePath: isCI ? '/evolution-sdk' : '',
-  assetPrefix: isCI ? '/evolution-sdk' : '',
+  basePath,
+  assetPrefix: basePath,
+  env: {
+    NEXT_PUBLIC_BASE_PATH: basePath,
+  },
   trailingSlash: true,
   images: {
     unoptimized: true,

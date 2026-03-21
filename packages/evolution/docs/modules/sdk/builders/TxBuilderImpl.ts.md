@@ -33,6 +33,7 @@ parent: Modules
   - [makeTxOutput](#maketxoutput)
   - [mergeAssetsIntoOutput](#mergeassetsintooutput)
   - [mergeAssetsIntoUTxO](#mergeassetsintoutxo)
+  - [tierRefScriptFee](#tierrefscriptfee)
 - [validation](#validation)
   - [calculateLeftoverAssets](#calculateleftoverassets)
   - [validateTransactionBalance](#validatetransactionbalance)
@@ -87,7 +88,11 @@ Added in v2.0.0
 ## calculateMinimumUtxoLovelace
 
 Calculate minimum ADA required for a UTxO based on its actual CBOR size.
-Uses the Babbage-era formula: coinsPerUtxoByte \* utxoSize.
+Uses the Babbage/Conway-era formula: coinsPerUtxoByte \* (160 + serializedOutputSize).
+
+The 160-byte constant accounts for the UTxO entry overhead in the ledger state
+(transaction hash + index). A lovelace placeholder is used during CBOR encoding
+to ensure the coin field width matches the final result.
 
 This function creates a temporary TransactionOutput, encodes it to CBOR,
 and calculates the exact size to determine the minimum lovelace required.
@@ -248,18 +253,24 @@ Added in v2.0.0
 
 Calculate reference script fees using tiered pricing.
 
-Reference scripts stored on-chain incur additional fees based on their size:
+Matches the Cardano node's `tierRefScriptFee` from Conway ledger:
 
-- First 25KB: 15 lovelace/byte
-- Next 25KB: 25 lovelace/byte
-- Next 150KB: 100 lovelace/byte
-- Maximum: 200KB total
+- Stride: 25,600 bytes (hardcoded, becomes a protocol param post-Conway)
+- Multiplier: 1.2× per tier (hardcoded, becomes a protocol param post-Conway)
+- Base cost: `minFeeRefScriptCostPerByte` protocol parameter
+
+For each 25,600-byte chunk the price per byte increases by 1.2×.
+The final (partial) chunk is charged proportionally. Result is `floor(total)`.
+
+The Cardano node sums scriptRef sizes from both spent inputs and reference
+inputs (`txNonDistinctRefScriptsSize`), so callers must pass both.
 
 **Signature**
 
 ```ts
 export declare const calculateReferenceScriptFee: (
-  referenceInputs: ReadonlyArray<CoreUTxO.UTxO>
+  utxos: ReadonlyArray<CoreUTxO.UTxO>,
+  costPerByte: number
 ) => Effect.Effect<bigint, TransactionBuilderError>
 ```
 
@@ -371,6 +382,27 @@ export declare const mergeAssetsIntoUTxO: (
   utxo: CoreUTxO.UTxO,
   additionalAssets: CoreAssets.Assets
 ) => Effect.Effect<CoreUTxO.UTxO, never>
+```
+
+Added in v2.0.0
+
+## tierRefScriptFee
+
+Calculate reference script fees using tiered pricing.
+
+Direct port of the Cardano ledger's `tierRefScriptFee` function.
+Each `sizeIncrement`-byte chunk is priced at `curTierPrice` per byte,
+then `curTierPrice *= multiplier` for the next chunk. Final result: `floor(total)`.
+
+**Signature**
+
+```ts
+export declare const tierRefScriptFee: (
+  multiplier: number,
+  sizeIncrement: number,
+  baseFee: number,
+  totalSize: number
+) => bigint
 ```
 
 Added in v2.0.0

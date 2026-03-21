@@ -18,6 +18,7 @@ parent: Modules
 - [schemas](#schemas)
   - [ByteArray](#bytearray)
   - [Integer](#integer)
+  - [PlutusData](#plutusdata)
 - [utils](#utils)
   - [Array](#array)
   - [Array (interface)](#array-interface)
@@ -32,6 +33,7 @@ parent: Modules
   - [Map (interface)](#map-interface)
   - [NullOr](#nullor)
   - [NullOr (interface)](#nullor-interface)
+  - [PlutusData (interface)](#plutusdata-interface)
   - [Struct](#struct)
   - [Struct (interface)](#struct-interface)
   - [StructOptions (interface)](#structoptions-interface)
@@ -129,6 +131,21 @@ This enables withSchema compatibility by using the Data type schema directly.
 
 ```ts
 export declare const Integer: Integer
+```
+
+Added in v2.0.0
+
+## PlutusData
+
+Opaque PlutusData schema for use inside TSchema combinators.
+Represents an arbitrary PlutusData value that passes through encoding unchanged.
+
+Use this when a field can hold any PlutusData without a specific schema.
+
+**Signature**
+
+```ts
+export declare const PlutusData: PlutusData
 ```
 
 Added in v2.0.0
@@ -296,6 +313,14 @@ Added in v2.0.0
 ```ts
 export interface NullOr<S extends Schema.Schema.All>
   extends Schema.transform<Schema.SchemaClass<Data.Constr, Data.Constr, never>, Schema.NullOr<S>> {}
+```
+
+## PlutusData (interface)
+
+**Signature**
+
+```ts
+export interface PlutusData extends Schema.Schema<Data.Data, Data.Data, never> {}
 ```
 
 ## Struct

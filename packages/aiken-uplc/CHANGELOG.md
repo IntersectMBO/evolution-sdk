@@ -1,5 +1,86 @@
 # @evolution-sdk/aiken-uplc
 
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies [[`19829c7`](https://github.com/IntersectMBO/evolution-sdk/commit/19829c7c6e1cd1ac3a33fb180e4482016791dcd5)]:
+  - @evolution-sdk/evolution@0.3.30
+
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [[`03e4dea`](https://github.com/IntersectMBO/evolution-sdk/commit/03e4deaace5a98a2def15ebb088262160c77cd2c)]:
+  - @evolution-sdk/evolution@0.3.29
+
+## 0.0.20
+
+### Patch Changes
+
+- Updated dependencies [[`76bbaa2`](https://github.com/IntersectMBO/evolution-sdk/commit/76bbaa2d1cebb40a52a037b23cd80f1fef20388d)]:
+  - @evolution-sdk/evolution@0.3.28
+
+## 0.0.19
+
+### Patch Changes
+
+- Updated dependencies [[`9701411`](https://github.com/IntersectMBO/evolution-sdk/commit/9701411a17a4a2ef4d9b6c3547d3314801ec616c), [`78e8fd7`](https://github.com/IntersectMBO/evolution-sdk/commit/78e8fd756021c69cecd810d3a95ed34af721ce56)]:
+  - @evolution-sdk/evolution@0.3.27
+
+## 0.0.18
+
+### Patch Changes
+
+- Updated dependencies [[`619c52b`](https://github.com/IntersectMBO/evolution-sdk/commit/619c52bd843d45e3062cfe3a7a49438c181e45d7), [`3685736`](https://github.com/IntersectMBO/evolution-sdk/commit/3685736ec8fb7b536d88d7ef4044846a8cebb52f)]:
+  - @evolution-sdk/evolution@0.3.26
+
+## 0.0.17
+
+### Patch Changes
+
+- Updated dependencies [[`24f1d59`](https://github.com/IntersectMBO/evolution-sdk/commit/24f1d59ee64dfb9ca0d2f73f8c5afe9b41a09816), [`277df7b`](https://github.com/IntersectMBO/evolution-sdk/commit/277df7be130609c16a4e44c023de0bce637a4fd4), [`536eeb3`](https://github.com/IntersectMBO/evolution-sdk/commit/536eeb37ec734db2547da4fc597f5466dd94c12a)]:
+  - @evolution-sdk/evolution@0.3.25
+
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies [[`37bd6fe`](https://github.com/IntersectMBO/evolution-sdk/commit/37bd6fe86eba7de12e7d77f072fe71f386ef7194)]:
+  - @evolution-sdk/evolution@0.3.24
+
+## 0.0.15
+
+### Patch Changes
+
+- [#182](https://github.com/IntersectMBO/evolution-sdk/pull/182) [`64b1383`](https://github.com/IntersectMBO/evolution-sdk/commit/64b1383aa34f23df0a776438f870ef57fb9d290e) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Node.js ESM compatibility by switching WASM loading from CJS `--target nodejs` to ESM `--target web` with `initSync`.
+
+- Updated dependencies [[`2a0c360`](https://github.com/IntersectMBO/evolution-sdk/commit/2a0c3603fbb3405c3b1e0d6e51935f28ed035611)]:
+  - @evolution-sdk/evolution@0.3.23
+
+## 0.0.14
+
+### Patch Changes
+
+- Updated dependencies [[`a4fbd49`](https://github.com/IntersectMBO/evolution-sdk/commit/a4fbd49410b65a831d3d84091cfe11ba6b730ee8)]:
+  - @evolution-sdk/evolution@0.3.22
+
+## 0.0.13
+
+### Patch Changes
+
+- Updated dependencies [[`38a460f`](https://github.com/IntersectMBO/evolution-sdk/commit/38a460f7a58212a42c720e3d165456bdee9ce505)]:
+  - @evolution-sdk/evolution@0.3.21
+
+## 0.0.12
+
+### Patch Changes
+
+- [#170](https://github.com/IntersectMBO/evolution-sdk/pull/170) [`d139b44`](https://github.com/IntersectMBO/evolution-sdk/commit/d139b4456d46e783e9172b7fcd7c3bf7ae624fc6) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix build to copy WASM bindings (node/ and browser/) into dist/ so the published package resolves correctly
+
+- Updated dependencies [[`e0245ae`](https://github.com/IntersectMBO/evolution-sdk/commit/e0245ae2d33c1712591bc26504928c6797a6a668), [`eebd2b0`](https://github.com/IntersectMBO/evolution-sdk/commit/eebd2b0c826f25d96244943da1b28f9b2cefd3e4)]:
+  - @evolution-sdk/evolution@0.3.20
+
 ## 0.0.11
 
 ### Patch Changes

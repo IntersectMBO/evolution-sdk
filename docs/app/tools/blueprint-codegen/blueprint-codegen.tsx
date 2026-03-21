@@ -12,7 +12,7 @@ export function BlueprintCodegen() {
   const [error, setError] = useState<string | null>(null)
   const [optionStyle, setOptionStyle] = useState<"NullOr" | "UndefinedOr" | "Union">("UndefinedOr")
   const [moduleStrategy, setModuleStrategy] = useState<"flat" | "namespaced">("namespaced")
-  const [forceVariant, setForceVariant] = useState(true)
+  const [unionStyle, setUnionStyle] = useState<"Variant" | "Struct" | "TaggedStruct">("Variant")
 
   const generateTypes = async () => {
     setError(null)
@@ -33,8 +33,7 @@ export function BlueprintCodegen() {
       const config = createCodegenConfig({
         optionStyle,
         moduleStrategy,
-        forceVariant,
-        useSuspend: false,
+        unionStyle,
         useRelativeRefs: true,
         emptyConstructorStyle: "Literal"
       })
@@ -75,7 +74,8 @@ export function BlueprintCodegen() {
 
   const loadSample = async () => {
     try {
-      const response = await fetch("/evolution-sdk/sample-blueprint.json")
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
+      const response = await fetch(`${basePath}/sample-blueprint.json`)
       if (!response.ok) {
         throw new Error("Failed to load sample blueprint")
       }
@@ -139,21 +139,19 @@ export function BlueprintCodegen() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="force-variant" className="text-sm font-medium leading-none">
-                  Force Variant
+                <label htmlFor="union-style" className="text-sm font-medium leading-none">
+                  Union Style
                 </label>
-                <div className="flex items-center h-10">
-                  <input
-                    id="force-variant"
-                    type="checkbox"
-                    checked={forceVariant}
-                    onChange={(e) => setForceVariant(e.target.checked)}
-                    className="h-4 w-4 rounded border-input"
-                  />
-                  <label htmlFor="force-variant" className="ml-2 text-sm text-muted-foreground">
-                    Use Variant for all unions
-                  </label>
-                </div>
+                <select
+                  id="union-style"
+                  value={unionStyle}
+                  onChange={(e) => setUnionStyle(e.target.value as any)}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="Variant">Variant</option>
+                  <option value="Struct">Struct (verbose)</option>
+                  <option value="TaggedStruct">TaggedStruct</option>
+                </select>
               </div>
             </div>
 

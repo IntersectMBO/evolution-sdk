@@ -4,6 +4,7 @@ import * as CoreAddress from "../../Address.js"
 import * as Bytes from "../../Bytes.js"
 import * as KeyHash from "../../KeyHash.js"
 import type * as NativeScripts from "../../NativeScripts.js"
+import type * as Network from "../../Network.js"
 import * as PrivateKey from "../../PrivateKey.js"
 import * as CoreRewardAccount from "../../RewardAccount.js"
 import * as CoreRewardAddress from "../../RewardAddress.js"
@@ -12,7 +13,7 @@ import * as Transaction from "../../Transaction.js"
 import * as TransactionHash from "../../TransactionHash.js"
 import * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
 import { runEffectPromise } from "../../utils/effect-runtime.js"
-import { hashTransaction } from "../../utils/Hash.js"
+import { hashTransaction, hashTransactionRaw } from "../../utils/Hash.js"
 import * as CoreUTxO from "../../UTxO.js"
 import * as VKey from "../../VKey.js"
 import {
@@ -108,6 +109,29 @@ const toWalletNetwork = (networkId: NetworkId): WalletNew.Network => {
 }
 
 /**
+ * Map NetworkId to Network type for slot configuration resolution.
+ * Returns the correct Network variant so resolveSlotConfig picks the right preset.
+ *
+ * @since 2.0.0
+ * @category transformation
+ */
+const toBuilderNetwork = (networkId: NetworkId): Network.Network => {
+  if (typeof networkId === "number") {
+    return networkId === 1 ? "Mainnet" : "Preview"
+  }
+  switch (networkId) {
+    case "mainnet":
+      return "Mainnet"
+    case "preprod":
+      return "Preprod"
+    case "preview":
+      return "Preview"
+    default:
+      return "Mainnet"
+  }
+}
+
+/**
  * Construct read-only wallet from network, payment address, and optional reward address.
  *
  * @since 2.0.0
@@ -192,6 +216,7 @@ const createReadOnlyClient = (
       return makeTxBuilder({
         wallet,
         provider,
+        network: toBuilderNetwork(network),
         slotConfig
       })
     },
@@ -378,7 +403,11 @@ const createSigningWallet = (network: WalletNew.Network, config: SeedWalletConfi
         })
 
         // Build witnesses for keys we have
-        const txHash = hashTransaction(tx.body)
+        // When input is a hex string, hash the original CBOR bytes to preserve encoding.
+        // Re-encoding via hashTransaction(tx.body) can produce different bytes and a wrong hash.
+        const txHash = typeof txOrHex === "string"
+          ? hashTransactionRaw(Transaction.extractBodyBytes(Bytes.fromHex(txOrHex)))
+          : hashTransaction(tx.body)
         const msg = txHash.hash
 
         const witnesses: Array<TransactionWitnessSet.VKeyWitness> = []
@@ -465,7 +494,9 @@ const createPrivateKeyWallet = (
           referenceUtxos
         })
 
-        const txHash = hashTransaction(tx.body)
+        const txHash = typeof txOrHex === "string"
+          ? hashTransactionRaw(Transaction.extractBodyBytes(Bytes.fromHex(txOrHex)))
+          : hashTransaction(tx.body)
         const msg = txHash.hash
 
         const witnesses: Array<TransactionWitnessSet.VKeyWitness> = []
@@ -676,12 +707,19 @@ const createSigningClient = (
         ? createPrivateKeyWallet(walletNetwork, walletConfig)
         : createApiWallet(walletNetwork, walletConfig)
 
-  // Enhanced signTx that automatically fetches reference UTxOs from the network
+  // Enhanced signTx that automatically fetches reference UTxOs from the network.
+  // Passes the original txOrHex through to wallet.Effect.signTx to preserve CBOR bytes for hashing.
   const signTxWithAutoFetch = (
     txOrHex: Transaction.Transaction | string,
     context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
   ): Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletNew.WalletError> =>
     Effect.gen(function* () {
+      // If referenceUtxos already provided, pass original txOrHex through
+      if (context?.referenceUtxos && context.referenceUtxos.length > 0) {
+        return yield* wallet.Effect.signTx(txOrHex, context)
+      }
+
+      // Decode to Transaction only if we need to check for reference inputs
       const tx =
         typeof txOrHex === "string"
           ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex())(txOrHex).pipe(
@@ -691,15 +729,9 @@ const createSigningClient = (
             )
           : txOrHex
 
-      // If referenceUtxos already provided, use them directly
-      if (context?.referenceUtxos && context.referenceUtxos.length > 0) {
-        return yield* wallet.Effect.signTx(tx, context)
-      }
-
       // Auto-fetch reference UTxOs from the network if the transaction has reference inputs
       let referenceUtxos: ReadonlyArray<CoreUTxO.UTxO> = []
       if (tx.body.referenceInputs && tx.body.referenceInputs.length > 0) {
-        // Fetch reference UTxOs from the provider
         referenceUtxos = yield* provider.Effect.getUtxosByOutRef(tx.body.referenceInputs).pipe(
           Effect.mapError(
             (e) => new WalletNew.WalletError({ message: `Failed to fetch reference UTxOs: ${e.message}`, cause: e })
@@ -707,7 +739,8 @@ const createSigningClient = (
         )
       }
 
-      return yield* wallet.Effect.signTx(tx, { ...context, referenceUtxos })
+      // Pass original txOrHex through to preserve CBOR bytes for hashing
+      return yield* wallet.Effect.signTx(txOrHex, { ...context, referenceUtxos })
     })
 
   const effectInterface = {
@@ -748,6 +781,7 @@ const createSigningClient = (
       return makeTxBuilder({
         provider, // Pass provider for submission
         wallet, // Pass wallet for signing
+        network: toBuilderNetwork(network),
         slotConfig // Pass slot config for time conversion
       })
     },

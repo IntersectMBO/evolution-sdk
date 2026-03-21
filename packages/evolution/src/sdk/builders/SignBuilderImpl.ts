@@ -230,7 +230,7 @@ export const makeSignBuilder = (params: {
               plutusV2Scripts: [...(acc.plutusV2Scripts ?? []), ...(ws.plutusV2Scripts ?? [])],
               plutusV3Scripts: [...(acc.plutusV3Scripts ?? []), ...(ws.plutusV3Scripts ?? [])],
               plutusData: [...(acc.plutusData ?? []), ...(ws.plutusData ?? [])],
-              redeemers: [...(acc.redeemers ?? [])]
+              redeemers: acc.redeemers
             }),
           // Start from transaction's witness set (NOT empty) to preserve attached scripts
           new TransactionWitnessSet.TransactionWitnessSet({
@@ -241,7 +241,7 @@ export const makeSignBuilder = (params: {
             plutusV2Scripts: transaction.witnessSet.plutusV2Scripts ?? [],
             plutusV3Scripts: transaction.witnessSet.plutusV3Scripts ?? [],
             plutusData: transaction.witnessSet.plutusData ?? [],
-            redeemers: transaction.witnessSet.redeemers ?? []
+            redeemers: transaction.witnessSet.redeemers
           })
         )
 

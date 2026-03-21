@@ -1,5 +1,115 @@
 # @evolution-sdk/evolution
 
+## 0.3.30
+
+### Patch Changes
+
+- [#215](https://github.com/IntersectMBO/evolution-sdk/pull/215) [`19829c7`](https://github.com/IntersectMBO/evolution-sdk/commit/19829c7c6e1cd1ac3a33fb180e4482016791dcd5) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Blueprint codegen now supports recursive type schemas — Plutus types that reference themselves
+  directly or through an intermediate type (e.g. `MultiSig` containing a `List<MultiSig>` field).
+  Cyclic references are emitted as typed `Schema.suspend` thunks where the encoded type `I` is
+  inferred by recursively walking the blueprint definition graph rather than hardcoded to `Data.Constr`:
+  `list` → `readonly ItemEncoded[]`, `map` → `globalThis.Map<Data.Data, Data.Data>`,
+  `bytes` → `Uint8Array`, `integer` → `bigint`, `constructor` and union → `Data.Constr`,
+  `$ref` followed transitively up to depth 10. The previous hardcoded `Data.Constr` caused a
+  TypeScript invariance error for any recursive field referencing a list type.
+
+  Several other codegen correctness and API improvements ship in the same release:
+  - **Namespace emission ordering** — the group-by-namespace emitter is replaced by a streaming emitter
+    that walks a global topological sort and opens/closes namespace blocks on demand. TypeScript namespace
+    merging handles split declarations transparently. This fixes cases where a type was emitted before
+    its cross-namespace dependency (e.g. `Option.OfStakeCredential` appearing before `Cardano.Address.StakeCredential`).
+  - **Cyclic type emit pattern** — cyclic types now emit a `export type X = ...` / `export const X = ...`
+    pair with no outer `Schema.suspend` wrapper and no `as` cast. Only the inner field references that
+    close the cycle use typed thunks: `Schema.suspend((): Schema.Schema<T, I> => T)`.
+  - **`unionStyle` config** — `CodegenConfig` gains `unionStyle: "Variant" | "Struct" | "TaggedStruct"`
+    in place of the removed `forceVariant` and `useSuspend` fields. `Struct` emits
+    `TSchema.Struct({ Tag: TSchema.Struct({...}, { flatFields: true }) }, { flatInUnion: true })`,
+    `TaggedStruct` emits `TSchema.TaggedStruct("Tag", {...}, { flatInUnion: true })`,
+    and `Variant` emits `TSchema.Variant({ Tag: {...} })`.
+  - **Import hygiene** — generated files emit `import { Schema } from "@evolution-sdk/evolution"`
+    only when cyclic types are present, rather than always importing from `effect` directly.
+    `CodegenConfig.imports.effect` is replaced by `imports.schema`.
+
+## 0.3.29
+
+### Patch Changes
+
+- [#210](https://github.com/IntersectMBO/evolution-sdk/pull/210) [`03e4dea`](https://github.com/IntersectMBO/evolution-sdk/commit/03e4deaace5a98a2def15ebb088262160c77cd2c) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Blockfrost evaluateTx failing on multi-asset UTxOs by correcting the value format sent to the Ogmios endpoint. Standardize error handling across all providers with consistent catchAll + wrapError pattern. Add JSONWSP fault detection to Blockfrost evaluation responses. Accept both CBOR tag-258 and plain array encodings in TransactionBody decoding.
+
+## 0.3.28
+
+### Patch Changes
+
+- [#208](https://github.com/IntersectMBO/evolution-sdk/pull/208) [`76bbaa2`](https://github.com/IntersectMBO/evolution-sdk/commit/76bbaa2d1cebb40a52a037b23cd80f1fef20388d) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Koios `getProtocolParameters` returning stale epoch data on preview by explicitly ordering `epoch_params` descending
+
+## 0.3.27
+
+### Patch Changes
+
+- [#203](https://github.com/IntersectMBO/evolution-sdk/pull/203) [`9701411`](https://github.com/IntersectMBO/evolution-sdk/commit/9701411a17a4a2ef4d9b6c3547d3314801ec616c) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix `awaitTx` failing with a `ParseError` when Koios returns `asset_list` as a Haskell show-formatted string on collateral outputs. Add configurable `timeout` parameter to `awaitTx` across all providers (Koios, Blockfrost, Maestro, Kupmios).
+
+- [#204](https://github.com/IntersectMBO/evolution-sdk/pull/204) [`78e8fd7`](https://github.com/IntersectMBO/evolution-sdk/commit/78e8fd756021c69cecd810d3a95ed34af721ce56) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Pass network to TxBuilder so testnet slot configs resolve correctly instead of always defaulting to Mainnet.
+
+## 0.3.26
+
+### Patch Changes
+
+- [#201](https://github.com/IntersectMBO/evolution-sdk/pull/201) [`619c52b`](https://github.com/IntersectMBO/evolution-sdk/commit/619c52bd843d45e3062cfe3a7a49438c181e45d7) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Script transactions with certificate or withdrawal redeemers evaluated via Blockfrost no longer spam warning logs or loop indefinitely. Blockfrost's Ogmios v5 JSONWSP format returns `"certificate:N"` and `"withdrawal:N"` as redeemer pointer keys; these are now normalized to the canonical `"cert"` and `"reward"` tags before evaluation matching. Unmatched redeemer tags from any evaluator now fail immediately instead of silently leaving ExUnits at zero.
+
+- [#200](https://github.com/IntersectMBO/evolution-sdk/pull/200) [`3685736`](https://github.com/IntersectMBO/evolution-sdk/commit/3685736ec8fb7b536d88d7ef4044846a8cebb52f) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix several provider mapping bugs that caused incorrect or missing data in `getDelegation`, `getDatum`, and `getUtxos` responses.
+
+  **Koios**
+  - `getDelegation`: was decoding the pool ID with `PoolKeyHash.FromHex` but Koios returns a bech32 `pool1…` string — switched to `PoolKeyHash.FromBech32`
+  - `getUtxos`: `datumOption` and `scriptRef` fields were never populated — all UTxOs returned `datumOption: null, scriptRef: null` regardless of on-chain state. Now correctly maps inline datums, datum hashes, and native/Plutus script references.
+
+  **Kupmios (Ogmios)**
+  - `getDelegation`: the Ogmios v6 response is an array, but the code was using `Object.values(result)[0]` which silently produced wrong data on some responses. Switched to `result[0]`. Also corrected the field path from `delegate.id` to `stakePool.id` to match the v6 schema, and decoded the bech32 pool ID through `Schema.decode(PoolKeyHash.FromBech32)` so the return type satisfies `Provider.Delegation`.
+
+  **Blockfrost**
+  - `getDatum`: was calling `/scripts/datum/{hash}` which returns only the data hash — should be `/scripts/datum/{hash}/cbor` to get the actual CBOR-encoded datum value. Switched endpoint and response schema to `BlockfrostDatumCbor`.
+
+## 0.3.25
+
+### Patch Changes
+
+- [#198](https://github.com/IntersectMBO/evolution-sdk/pull/198) [`24f1d59`](https://github.com/IntersectMBO/evolution-sdk/commit/24f1d59ee64dfb9ca0d2f73f8c5afe9b41a09816) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Filter out UTxOs with an empty `tx_hash` in Blockfrost `getUtxos` and `getUtxosWithUnit` to prevent a `ParseError` crash when providers like Dolos return malformed entries
+
+- [#183](https://github.com/IntersectMBO/evolution-sdk/pull/183) [`277df7b`](https://github.com/IntersectMBO/evolution-sdk/commit/277df7be130609c16a4e44c023de0bce637a4fd4) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Handle plain-text responses in `postUint8Array` for compatibility with backends that return unquoted strings from `POST /tx/submit`
+
+- [#192](https://github.com/IntersectMBO/evolution-sdk/pull/192) [`536eeb3`](https://github.com/IntersectMBO/evolution-sdk/commit/536eeb37ec734db2547da4fc597f5466dd94c12a) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `addVKeyWitnessesBytes` now uses the WithFormat round-trip to merge witnesses, preserving original CBOR encoding rather than performing manual byte surgery.
+
+## 0.3.24
+
+### Patch Changes
+
+- [#193](https://github.com/IntersectMBO/evolution-sdk/pull/193) [`37bd6fe`](https://github.com/IntersectMBO/evolution-sdk/commit/37bd6fe86eba7de12e7d77f072fe71f386ef7194) Thanks [@hadelive](https://github.com/hadelive)! - fix preserve original CBOR bytes when signing hex transactions
+
+## 0.3.23
+
+### Patch Changes
+
+- [#191](https://github.com/IntersectMBO/evolution-sdk/pull/191) [`2a0c360`](https://github.com/IntersectMBO/evolution-sdk/commit/2a0c3603fbb3405c3b1e0d6e51935f28ed035611) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add CBOR encoding preservation for bit-perfect round-trip fidelity and redesign Redeemers as a discriminated union (RedeemerMap + RedeemerArray)
+
+## 0.3.22
+
+### Patch Changes
+
+- [#174](https://github.com/IntersectMBO/evolution-sdk/pull/174) [`a4fbd49`](https://github.com/IntersectMBO/evolution-sdk/commit/a4fbd49410b65a831d3d84091cfe11ba6b730ee8) Thanks [@hadelive](https://github.com/hadelive)! - byte-level vkey witness merging
+
+## 0.3.21
+
+### Patch Changes
+
+- [#175](https://github.com/IntersectMBO/evolution-sdk/pull/175) [`38a460f`](https://github.com/IntersectMBO/evolution-sdk/commit/38a460f7a58212a42c720e3d165456bdee9ce505) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix scriptDataHash integrity mismatch when spending UTxOs carrying inline scriptRef (e.g. PlutusV3) via `collectFrom()` without `attachScript()` or `readFrom()`. Also correct tiered reference-script fee calculation to match the Conway ledger formula (stride 25,600 bytes, 1.2× multiplier per tier, `minFeeRefScriptCostPerByte` protocol parameter).
+
+## 0.3.20
+
+### Patch Changes
+
+- [#168](https://github.com/IntersectMBO/evolution-sdk/pull/168) [`e0245ae`](https://github.com/IntersectMBO/evolution-sdk/commit/e0245ae2d33c1712591bc26504928c6797a6a668) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix BlockfrostEffect.evaluateTx dropping reference scripts from additionalUtxoSet, which caused missingRequiredScripts errors when evaluating transactions that reference unconfirmed UTxOs carrying minting policies.
+
+- [#169](https://github.com/IntersectMBO/evolution-sdk/pull/169) [`eebd2b0`](https://github.com/IntersectMBO/evolution-sdk/commit/eebd2b0c826f25d96244943da1b28f9b2cefd3e4) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix `calculateMinimumUtxoLovelace` to use the Babbage/Conway formula with 160-byte UTxO entry overhead and an exact fixed-point solve to avoid CBOR under-estimation for outputs with script references.
+
 ## 0.3.19
 
 ### Patch Changes

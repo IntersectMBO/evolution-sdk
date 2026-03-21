@@ -127,6 +127,79 @@ function resolveReference(refName: string, currentNamespace: string, config: Cod
 }
 
 /**
+ * Recursively infer the TypeScript-level encoded type string for a blueprint schema definition.
+ *
+ * This corresponds to the `I` (Encoded) type parameter in `Schema.Schema<A, I, R>` and is used
+ * to write accurate `Schema.suspend((): Schema.Schema<A, I> => ref)` thunk annotations for cyclic
+ * types. The encoded type is the Plutus Data wire format that the TSchema combinator operates on.
+ *
+ * Mapping (blueprint schema → TSchema combinator → encoded type):
+ *   constructor / anyOf (union)  → TSchema.Struct / TSchema.Union  → Data.Constr
+ *   bytes                        → TSchema.ByteArray                → Uint8Array
+ *   integer                      → TSchema.Integer                  → bigint
+ *   list                         → TSchema.Array                    → readonly ItemEncoded[]
+ *   map                          → TSchema.Map                      → globalThis.Map<Data.Data, Data.Data>
+ *   $ref                         → (lookup + recurse)
+ *   Data / unknown               → TSchema.PlutusData               → Data.Data
+ */
+function inferEncodedTypeString(
+  def: BlueprintTypes.SchemaDefinitionType,
+  definitions: Record<string, BlueprintTypes.SchemaDefinitionType>,
+  depth = 0
+): string {
+  if (depth > 10) return "Data.Data"
+
+  if ("$ref" in def) {
+    const refName = def.$ref.replace("#/definitions/", "").replace(/~1/g, "/").replace(/~0/g, "~")
+    if (refName === "Data") return "Data.Data"
+    const refDef = definitions[refName]
+    return refDef ? inferEncodedTypeString(refDef, definitions, depth + 1) : "Data.Data"
+  }
+
+  if ("title" in def && def.title === "Data") return "Data.Data"
+
+  if ("anyOf" in def) return "Data.Constr"
+
+  if ("dataType" in def) {
+    switch (def.dataType) {
+      case "constructor":
+        return "Data.Constr"
+      case "bytes":
+        return "Uint8Array"
+      case "integer":
+        return "bigint"
+      case "list": {
+        const listDef = def as BlueprintTypes.ListDefinitionType
+        if (!listDef.items) return "ReadonlyArray<Data.Data>"
+        const itemEnc = inferEncodedTypeString(
+          listDef.items as BlueprintTypes.SchemaDefinitionType,
+          definitions,
+          depth + 1
+        )
+        return `ReadonlyArray<${itemEnc}>`
+      }
+      case "map":
+        // TSchema.Map encodes from/to globalThis.Map<Data.Data, Data.Data> regardless of K/V
+        return "globalThis.Map<Data.Data, Data.Data>"
+    }
+  }
+
+  return "Data.Data"
+}
+
+/**
+ * Returns the encoded (Plutus Data) type string for a cyclic suspend thunk annotation.
+ */
+function getEncodedType(
+  refName: string,
+  definitions: Record<string, BlueprintTypes.SchemaDefinitionType>
+): string {
+  const def = definitions[refName]
+  if (!def) return "Data.Data"
+  return inferEncodedTypeString(def, definitions)
+}
+
+/**
  * Generate TSchema code for a schema definition
  */
 function generateTSchema(
@@ -135,7 +208,8 @@ function generateTSchema(
   config: CodegenConfig,
   currentNamespace: string = "",
   indent: string = config.indent,
-  definitionKey?: string
+  definitionKey?: string,
+  cyclicNames: Set<string> = new Set()
 ): string {
   // Handle schema references
   if ("$ref" in def) {
@@ -145,7 +219,7 @@ function generateTSchema(
     if (refName === "Data") return "PlutusData"
 
     const refId = resolveReference(refName, currentNamespace, config)
-    return config.useSuspend ? `Schema.suspend(() => ${refId})` : refId
+    return cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refId}, ${getEncodedType(refName, definitions)}> => ${refId})` : refId
   }
 
   // Handle Data type (opaque plutus data)
@@ -169,7 +243,8 @@ function generateTSchema(
           // Empty constructor - use configured style
           if (config.emptyConstructorStyle === "Literal") {
             const tag = constructorDef.title || definitionKey || "Unit"
-            const indexOpt = constructorDef.index && constructorDef.index !== 0 ? `, { index: ${constructorDef.index} }` : ""
+            const indexOpt =
+              constructorDef.index && constructorDef.index !== 0 ? `, { index: ${constructorDef.index} }` : ""
             return `TSchema.Literal("${tag}" as const${indexOpt})`
           }
           return "TSchema.Struct({})"
@@ -193,14 +268,16 @@ function generateTSchema(
             const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
             // Use lazy reference for recursive types
             const refId = resolveReference(refName, currentNamespace, config)
-            fieldSchema = config.useSuspend ? `Schema.suspend(() => ${refId})` : refId
+            fieldSchema = cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refId}, ${getEncodedType(refName, definitions)}> => ${refId})` : refId
           } else if (field.schema) {
             fieldSchema = generateTSchema(
               field.schema,
               definitions,
               config,
               currentNamespace,
-              indent + config.indent + config.indent
+              indent + config.indent + config.indent,
+              undefined,
+              cyclicNames
             )
           } else {
             fieldSchema = "PlutusData"
@@ -224,10 +301,11 @@ function generateTSchema(
           definitions,
           config,
           currentNamespace,
-          indent
+          indent,
+          undefined,
+          cyclicNames
         )
-        // Wrap in Schema.suspend to handle forward references
-        return config.useSuspend ? `TSchema.Array(Schema.suspend(() => ${itemType}))` : `TSchema.Array(${itemType})`
+        return `TSchema.Array(${itemType})`
       }
 
       case "map": {
@@ -244,19 +322,20 @@ function generateTSchema(
           definitions,
           config,
           currentNamespace,
-          indent
+          indent,
+          undefined,
+          cyclicNames
         )
         const valueType = generateTSchema(
           valuesSchema as BlueprintTypes.SchemaDefinitionType,
           definitions,
           config,
           currentNamespace,
-          indent
+          indent,
+          undefined,
+          cyclicNames
         )
-        // Wrap in Schema.suspend to handle forward references
-        return config.useSuspend
-          ? `TSchema.Map(Schema.suspend(() => ${keyType}), Schema.suspend(() => ${valueType}))`
-          : `TSchema.Map(${keyType}, ${valueType})`
+        return `TSchema.Map(${keyType}, ${valueType})`
       }
 
       default:
@@ -302,11 +381,9 @@ function generateTSchema(
           const refPath = field.$ref.replace("#/definitions/", "")
           const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
           const refIdentifier = resolveReference(refName, currentNamespace, config)
-          // Only wrap in Schema.suspend if config allows and it's not a primitive
-          const isPrimitive = refIdentifier === "ByteArray" || refIdentifier === "Int" || refIdentifier === "PlutusData"
-          innerType = isPrimitive || !config.useSuspend ? refIdentifier : `Schema.suspend(() => ${refIdentifier})`
+          innerType = cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refIdentifier}, ${getEncodedType(refName, definitions)}> => ${refIdentifier})` : refIdentifier
         } else if (field.schema) {
-          innerType = generateTSchema(field.schema, definitions, config, currentNamespace, indent)
+          innerType = generateTSchema(field.schema, definitions, config, currentNamespace, indent, undefined, cyclicNames)
         } else {
           innerType = "PlutusData"
         }
@@ -337,7 +414,8 @@ function generateTSchema(
         if (fields.length === 0) {
           // Use constructor title, then definition key, then fallback to "Unit"
           const tag = constructorMember.title || definitionKey || "Unit"
-          const indexOpt = constructorMember.index && constructorMember.index !== 0 ? `, { index: ${constructorMember.index} }` : ""
+          const indexOpt =
+            constructorMember.index && constructorMember.index !== 0 ? `, { index: ${constructorMember.index} }` : ""
           return `TSchema.Literal("${tag}" as const${indexOpt})`
         }
 
@@ -352,14 +430,16 @@ function generateTSchema(
             const refPath = field.$ref.replace("#/definitions/", "")
             const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
             const refId = resolveReference(refName, currentNamespace, config)
-            fieldSchema = config.useSuspend ? `Schema.suspend(() => ${refId})` : refId
+            fieldSchema = cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refId}, ${getEncodedType(refName, definitions)}> => ${refId})` : refId
           } else if (field.schema) {
             fieldSchema = generateTSchema(
               field.schema,
               definitions,
               config,
               currentNamespace,
-              indent + config.indent + config.indent
+              indent + config.indent + config.indent,
+              undefined,
+              cyclicNames
             )
           } else {
             fieldSchema = "PlutusData"
@@ -371,12 +451,6 @@ function generateTSchema(
         return `TSchema.Struct({\n${fieldSchemas.join(",\n")}\n${indent}${config.indent}})`
       }
 
-      // Check if all variants have at least one named field
-      const allHaveNamedFields = unionDef.anyOf.every((member) => {
-        const constructorMember = member as BlueprintTypes.ConstructorDefinitionType
-        return constructorMember.fields?.some((f) => f.title)
-      })
-
       // Get the type title for custom field name lookup
       const typeTitle = "title" in def ? (def as { title?: string }).title : undefined
 
@@ -386,13 +460,18 @@ function generateTSchema(
         return constructorMember.fields?.length === 0
       })
 
-      // Use Union with mixed Struct/Literal if there are empty constructors and Literal style is preferred
-      const useUnionWithLiterals = hasEmptyConstructors && config.emptyConstructorStyle === "Literal"
+      // When TaggedStruct style is selected and there are empty constructors with Literal style,
+      // use the Union-with-literals path instead of plain TaggedStruct.
+      const useUnionWithLiterals = hasEmptyConstructors && config.emptyConstructorStyle === "Literal" && config.unionStyle !== "Variant"
 
-      // Use Variant if fields are named OR if forceVariant is enabled (and not using Union with Literals)
-      if ((allHaveNamedFields || config.forceVariant) && !useUnionWithLiterals) {
-        // Generate Variant with named tags and fields
-        const variantFields: Array<string> = []
+      const useVariant = config.unionStyle === "Variant"
+      const useExplicitUnion = config.unionStyle === "Struct"
+
+      if ((useVariant || useExplicitUnion) && !useUnionWithLiterals) {
+        // Generate Variant or explicit Union — both use object-key discriminant ({ TagName: { ...fields } })
+        const variantFields: Array<string> = []   // for Variant output
+        const explicitUnionMembers: Array<string> = [] // for Union output
+
         for (const member of unionDef.anyOf) {
           const constructorMember = member as BlueprintTypes.ConstructorDefinitionType
           const tag = constructorMember.title!
@@ -428,14 +507,16 @@ function generateTSchema(
               const refPath = field.$ref.replace("#/definitions/", "")
               const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
               const refId = resolveReference(refName, currentNamespace, config)
-              fieldSchema = config.useSuspend ? `Schema.suspend(() => ${refId})` : refId
+              fieldSchema = cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refId}, ${getEncodedType(refName, definitions)}> => ${refId})` : refId
             } else if (field.schema) {
               fieldSchema = generateTSchema(
                 field.schema,
                 definitions,
                 config,
                 currentNamespace,
-                indent + config.indent + config.indent + config.indent
+                indent + config.indent + config.indent + config.indent,
+                undefined,
+                cyclicNames
               )
             } else {
               fieldSchema = "PlutusData"
@@ -444,12 +525,26 @@ function generateTSchema(
             fieldSchemas.push(`${fieldName}: ${fieldSchema}`)
           }
 
-          variantFields.push(
-            `${indent}${config.indent}${config.indent}${tag}: {\n${fieldSchemas.map((f) => `${indent}${config.indent}${config.indent}${config.indent}${f}`).join(",\n")}\n${indent}${config.indent}${config.indent}}`
-          )
+          if (useVariant) {
+            variantFields.push(
+              `${indent}${config.indent}${config.indent}${tag}: {\n${fieldSchemas.map((f) => `${indent}${config.indent}${config.indent}${config.indent}${f}`).join(",\n")}\n${indent}${config.indent}${config.indent}}`
+            )
+          } else {
+            // Explicit Union style: TSchema.Struct({ TagName: TSchema.Struct({ ...fields }, { flatFields: true }) }, { flatInUnion: true })
+            const innerFieldsStr =
+              fieldSchemas.length > 0
+                ? `{\n${fieldSchemas.map((f) => `${indent}${config.indent}${config.indent}${config.indent}${f}`).join(",\n")}\n${indent}${config.indent}${config.indent}}`
+                : "{}"
+            explicitUnionMembers.push(
+              `${indent}${config.indent}TSchema.Struct({ ${tag}: TSchema.Struct(${innerFieldsStr}, { flatFields: true }) }, { flatInUnion: true })`
+            )
+          }
         }
 
-        return `TSchema.Variant({\n${variantFields.join(",\n")}\n${indent}${config.indent}})`
+        if (useVariant) {
+          return `TSchema.Variant({\n${variantFields.join(",\n")}\n${indent}${config.indent}})`
+        }
+        return `TSchema.Union(\n${explicitUnionMembers.join(",\n")}\n${indent})`
       } else if (useUnionWithLiterals) {
         // Generate Union with mixed TSchema.Struct and TSchema.Literal for empty constructors
         const unionMembers: Array<string> = []
@@ -487,14 +582,16 @@ function generateTSchema(
               const refPath = field.$ref.replace("#/definitions/", "")
               const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
               const refId = resolveReference(refName, currentNamespace, config)
-              fieldSchema = config.useSuspend ? `Schema.suspend(() => ${refId})` : refId
+              fieldSchema = cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refId}, ${getEncodedType(refName, definitions)}> => ${refId})` : refId
             } else if (field.schema) {
               fieldSchema = generateTSchema(
                 field.schema,
                 definitions,
                 config,
                 currentNamespace,
-                indent + config.indent + config.indent
+                indent + config.indent + config.indent,
+                undefined,
+                cyclicNames
               )
             } else {
               fieldSchema = "PlutusData"
@@ -530,14 +627,16 @@ function generateTSchema(
               const refPath = field.$ref.replace("#/definitions/", "")
               const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
               const refId = resolveReference(refName, currentNamespace, config)
-              fieldSchema = config.useSuspend ? `Schema.suspend(() => ${refId})` : refId
+              fieldSchema = cyclicNames.has(refName) ? `Schema.suspend((): Schema.Schema<${refId}, ${getEncodedType(refName, definitions)}> => ${refId})` : refId
             } else if (field.schema) {
               fieldSchema = generateTSchema(
                 field.schema,
                 definitions,
                 config,
                 currentNamespace,
-                indent + config.indent + config.indent
+                indent + config.indent + config.indent,
+                undefined,
+                cyclicNames
               )
             } else {
               fieldSchema = "PlutusData"
@@ -557,7 +656,7 @@ function generateTSchema(
 
     // Otherwise use regular Union
     const members = def.anyOf.map((memberDef) =>
-      generateTSchema(memberDef, definitions, config, currentNamespace, indent)
+      generateTSchema(memberDef, definitions, config, currentNamespace, indent, undefined, cyclicNames)
     )
     return `TSchema.Union(\n${indent}  ${members.join(`,\n${indent}  `)}\n${indent})`
   }
@@ -631,19 +730,138 @@ function extractDependencies(
 }
 
 /**
- * Topologically sort definitions to ensure dependencies come first
+ * Generate a TypeScript type string for a blueprint schema definition.
+ * Used to emit explicit `type` aliases before recursive `const` declarations.
+ */
+function generateTSType(
+  def: BlueprintTypes.SchemaDefinitionType,
+  definitions: Record<string, BlueprintTypes.SchemaDefinitionType>,
+  currentNamespace: string,
+  config: CodegenConfig,
+  visitedRefs: Set<string> = new Set()
+): string {
+  if ("$ref" in def) {
+    const refPath = (def as { $ref: string }).$ref.replace("#/definitions/", "")
+    const refName = refPath.replace(/~1/g, "/").replace(/~0/g, "~")
+    if (refName === "Data") return "unknown"
+    // Cycle — use the qualified type name we will declare
+    if (visitedRefs.has(refName)) {
+      return resolveReference(refName, currentNamespace, config)
+    }
+    const refDef = definitions[refName]
+    if (!refDef) return "unknown"
+    const newVisited = new Set(visitedRefs)
+    newVisited.add(refName)
+    return generateTSType(refDef, definitions, getNamespacePath(refName), config, newVisited)
+  }
+
+  if ("dataType" in def) {
+    switch ((def as { dataType: string }).dataType) {
+      case "bytes":
+        return "Uint8Array"
+      case "integer":
+        return "bigint"
+      case "list": {
+        const listDef = def as BlueprintTypes.ListDefinitionType
+        const itemType = listDef.items
+          ? generateTSType(
+              listDef.items as BlueprintTypes.SchemaDefinitionType,
+              definitions,
+              currentNamespace,
+              config,
+              visitedRefs
+            )
+          : "unknown"
+        return `ReadonlyArray<${itemType}>`
+      }
+      case "map": {
+        const mapDef = def as BlueprintTypes.MapDefinitionType
+        const keyType = mapDef.keys
+          ? generateTSType(
+              mapDef.keys as BlueprintTypes.SchemaDefinitionType,
+              definitions,
+              currentNamespace,
+              config,
+              visitedRefs
+            )
+          : "unknown"
+        const valType = mapDef.values
+          ? generateTSType(
+              mapDef.values as BlueprintTypes.SchemaDefinitionType,
+              definitions,
+              currentNamespace,
+              config,
+              visitedRefs
+            )
+          : "unknown"
+        return `ReadonlyMap<${keyType}, ${valType}>`
+      }
+      case "constructor": {
+        const ctorDef = def as BlueprintTypes.ConstructorDefinitionType
+        if (!ctorDef.fields || ctorDef.fields.length === 0) return "Record<string, never>"
+        const fieldStrings = ctorDef.fields.map((f) => {
+          const fname = (f as { title?: string }).title ?? "field"
+          let ftype: string
+          if ("$ref" in f) {
+            ftype = generateTSType(f as BlueprintTypes.SchemaDefinitionType, definitions, currentNamespace, config, visitedRefs)
+          } else if ("schema" in f && (f as { schema?: BlueprintTypes.SchemaDefinitionType }).schema) {
+            ftype = generateTSType(
+              (f as { schema: BlueprintTypes.SchemaDefinitionType }).schema,
+              definitions,
+              currentNamespace,
+              config,
+              visitedRefs
+            )
+          } else {
+            ftype = "unknown"
+          }
+          return `readonly ${fname}: ${ftype}`
+        })
+        return `{ ${fieldStrings.join("; ")} }`
+      }
+    }
+  }
+
+  if ("anyOf" in def) {
+    const unionDef = def as BlueprintTypes.UnionDefinitionType
+    if ((def as { title?: string }).title === "Bool") return "boolean"
+    const variants = unionDef.anyOf.map((variant) => {
+      const ctorDef = variant as BlueprintTypes.ConstructorDefinitionType
+      if ((ctorDef as { dataType?: string }).dataType !== "constructor") {
+        return generateTSType(variant, definitions, currentNamespace, config, visitedRefs)
+      }
+      const title = (ctorDef as { title?: string }).title ?? "Unknown"
+      if (!ctorDef.fields || ctorDef.fields.length === 0) {
+        return `{ readonly ${title}: Record<string, never> }`
+      }
+      const inner = generateTSType(variant, definitions, currentNamespace, config, visitedRefs)
+      return `{ readonly ${title}: ${inner} }`
+    })
+    return variants.join(" | ")
+  }
+
+  return "unknown"
+}
+
+/**
+ * Topologically sort definitions to ensure dependencies come first.
+ * Also returns the set of definition names that participate in a cycle.
  */
 function topologicalSort(
   definitions: Record<string, BlueprintTypes.SchemaDefinitionType>
-): Array<[string, BlueprintTypes.SchemaDefinitionType]> {
+): { sorted: Array<[string, BlueprintTypes.SchemaDefinitionType]>; cyclicNames: Set<string> } {
   const sorted: Array<[string, BlueprintTypes.SchemaDefinitionType]> = []
   const visited = new Set<string>()
   const visiting = new Set<string>()
+  const cyclicNames = new Set<string>()
 
   function visit(name: string): void {
     if (visited.has(name)) return
     if (visiting.has(name)) {
-      // Circular dependency detected - skip to avoid infinite loop
+      // Circular dependency detected — mark everything in the current visiting stack
+      for (const inStack of visiting) {
+        cyclicNames.add(inStack)
+      }
       return
     }
 
@@ -668,7 +886,7 @@ function topologicalSort(
     visit(name)
   }
 
-  return sorted
+  return { sorted, cyclicNames }
 }
 
 /**
@@ -680,14 +898,18 @@ export function generateTypeScript(
 ): string {
   const lines: Array<string> = []
 
+  // Topologically sort definitions to ensure dependencies come first
+  // (must happen before imports so we know if cyclic types exist)
+  const { cyclicNames, sorted: sortedDefinitions } = topologicalSort(blueprint.definitions)
+
   // File header
   lines.push("/**")
   lines.push(` * Generated from Blueprint: ${blueprint.preamble.title}`)
   lines.push(` * @generated - Do not edit manually`)
   lines.push(" */")
   lines.push("")
-  if (config.imports.effect) {
-    lines.push(config.imports.effect)
+  if (cyclicNames.size > 0) {
+    lines.push(config.imports.schema)
   }
   lines.push(config.imports.data)
   lines.push(config.imports.tschema)
@@ -701,9 +923,6 @@ export function generateTypeScript(
   lines.push("// PlutusData schema (referenced by Data type)")
   lines.push("export const PlutusData = TSchema.PlutusData")
   lines.push("")
-
-  // Topologically sort definitions to ensure dependencies come first
-  const sortedDefinitions = topologicalSort(blueprint.definitions)
 
   if (config.moduleStrategy === "namespaced") {
     // First, topologically sort ALL definitions globally
@@ -731,9 +950,9 @@ export function generateTypeScript(
 
       // Use flattened name for primitives (handles $ and / characters)
       const primitiveName = getTypeName(fullName)
-      
-      const schemaDefinition = generateTSchema(def, blueprint.definitions, config, "", "", primitiveName)
-      
+
+      const schemaDefinition = generateTSchema(def, blueprint.definitions, config, "", "", primitiveName, cyclicNames)
+
       // Add JSDoc comment
       if ("title" in def && def.title) {
         lines.push("/**")
@@ -748,77 +967,73 @@ export function generateTypeScript(
       lines.push("")
     }
 
-    // Group namespaced types by namespace while preserving topological order
-    const namespaceGroups = new Map<string, Array<[string, BlueprintTypes.SchemaDefinitionType]>>()
-    for (const [fullName, def] of namespacedTypes) {
-      const namespacePath = getNamespacePath(fullName)
-      if (!namespaceGroups.has(namespacePath)) {
-        namespaceGroups.set(namespacePath, [])
+    // Emit types in global topological order, opening/closing namespace blocks as each
+    // type's namespace changes. TypeScript namespace declaration merging (handled by esbuild/tsc)
+    // safely merges repeated same-namespace blocks, giving correct runtime initialization order
+    // even when two namespaces have a mutual dependency (e.g. Option ↔ Cardano.Address).
+    let currentNs = ""
+    let nsIndent = ""
+
+    const closeCurrentNs = (): void => {
+      if (!currentNs) return
+      const levels = currentNs.split("/")
+      for (let i = levels.length - 1; i >= 0; i--) {
+        nsIndent = nsIndent.slice(0, -2)
+        lines.push(`${nsIndent}}`)
       }
-      namespaceGroups.get(namespacePath)!.push([fullName, def])
+      lines.push("")
+      currentNs = ""
+      nsIndent = ""
     }
 
-    // Track which namespaces have been opened/closed
-    const openNamespaces: Array<string> = []
-    let currentIndent = ""
+    const openNs = (ns: string): void => {
+      currentNs = ns
+      for (const level of ns.split("/")) {
+        const nsName = level.charAt(0).toUpperCase() + level.slice(1)
+        lines.push(`${nsIndent}export namespace ${nsName} {`)
+        nsIndent += "  "
+      }
+    }
 
-    // Generate types in topological order, opening/closing namespaces as needed
     for (const [fullName, typeDef] of namespacedTypes) {
-      const namespacePath = getNamespacePath(fullName)
-      const nsLevels = namespacePath.split("/")
-      const fullNsPath = nsLevels.join("/")
-
-      // Check if we need to close any namespaces
-      while (openNamespaces.length > 0 && !fullNsPath.startsWith(openNamespaces.join("/"))) {
-        openNamespaces.pop()
-        currentIndent = currentIndent.slice(0, -2)
-        lines.push(`${currentIndent}}`)
-        lines.push("")
+      const ns = getNamespacePath(fullName)
+      if (ns !== currentNs) {
+        closeCurrentNs()
+        openNs(ns)
       }
 
-      // Check if we need to open any new namespaces
-      for (let i = 0; i < nsLevels.length; i++) {
-        const partialPath = nsLevels.slice(0, i + 1).join("/")
-        if (!openNamespaces.join("/").startsWith(partialPath) || openNamespaces.length <= i) {
-          const nsName = nsLevels[i].charAt(0).toUpperCase() + nsLevels[i].slice(1)
-          lines.push(`${currentIndent}export namespace ${nsName} {`)
-          currentIndent += "  "
-          openNamespaces.push(nsLevels[i])
-        }
-      }
-
-      // Generate the type
       const typeName = getTypeName(fullName)
+      const isCyclic = cyclicNames.has(fullName)
       const schemaDefinition = generateTSchema(
         typeDef,
         blueprint.definitions,
         config,
-        namespacePath, // current namespace for relative refs
-        currentIndent,
-        typeName
+        ns,
+        nsIndent + (isCyclic ? config.indent : ""),
+        typeName,
+        cyclicNames
       )
 
-      // Add JSDoc comment
       if ("title" in typeDef && typeDef.title) {
-        lines.push(`${currentIndent}/**`)
-        lines.push(`${currentIndent} * ${typeDef.title}`)
+        lines.push(`${nsIndent}/**`)
+        lines.push(`${nsIndent} * ${typeDef.title}`)
         if ("description" in typeDef && typeDef.description) {
-          lines.push(`${currentIndent} * ${typeDef.description}`)
+          lines.push(`${nsIndent} * ${typeDef.description}`)
         }
-        lines.push(`${currentIndent} */`)
+        lines.push(`${nsIndent} */`)
       }
 
-      lines.push(`${currentIndent}export const ${typeName} = ${schemaDefinition}`)
+      if (isCyclic) {
+        const tsType = generateTSType(typeDef, blueprint.definitions, ns, config, new Set([fullName]))
+        lines.push(`${nsIndent}export type ${typeName} = ${tsType}`)
+        lines.push(`${nsIndent}export const ${typeName} = ${schemaDefinition}`)
+      } else {
+        lines.push(`${nsIndent}export const ${typeName} = ${schemaDefinition}`)
+      }
       lines.push("")
     }
 
-    // Close any remaining open namespaces
-    while (openNamespaces.length > 0) {
-      openNamespaces.pop()
-      currentIndent = currentIndent.slice(0, -2)
-      lines.push(`${currentIndent}}`)
-      lines.push("")
-    }
+    closeCurrentNs()
   } else {
     // Flat mode (original behavior)
     for (const [name, def] of sortedDefinitions) {
@@ -828,7 +1043,16 @@ export function generateTypeScript(
       }
 
       const schemaName = toIdentifier(name)
-      const schemaDefinition = generateTSchema(def, blueprint.definitions, config, "", "", schemaName)
+      const isCyclic = cyclicNames.has(name)
+      const schemaDefinition = generateTSchema(
+        def,
+        blueprint.definitions,
+        config,
+        "",
+        isCyclic ? config.indent : "",
+        schemaName,
+        cyclicNames
+      )
 
       // Add JSDoc comment
       if ("title" in def && def.title) {
@@ -840,7 +1064,13 @@ export function generateTypeScript(
         lines.push(" */")
       }
 
-      lines.push(`export const ${schemaName} = ${schemaDefinition}`)
+      if (isCyclic) {
+        const tsType = generateTSType(def, blueprint.definitions, "", config, new Set([name]))
+        lines.push(`export type ${schemaName} = ${tsType}`)
+        lines.push(`export const ${schemaName} = ${schemaDefinition}`)
+      } else {
+        lines.push(`export const ${schemaName} = ${schemaDefinition}`)
+      }
       lines.push("")
     }
   }

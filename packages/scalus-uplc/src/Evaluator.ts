@@ -11,7 +11,7 @@ import * as TransactionInput from "@evolution-sdk/evolution/TransactionInput"
 import * as TxOut from "@evolution-sdk/evolution/TxOut"
 import type * as UTxO from "@evolution-sdk/evolution/UTxO"
 import { Effect, Schema } from "effect"
-import * as Scalus from "scalus"
+import ScalusLib from "scalus"
 
 /**
  * Build CBOR-encoded map of TransactionInput → TransactionOutput from UTxOs.
@@ -91,11 +91,11 @@ export function makeEvaluator(): TransactionBuilder.Evaluator {
         )
 
         // Scalus-specific slot config
-        const slotConfig = new Scalus.SlotConfig(Number(zeroTime), Number(zeroSlot), slotLength)
+        const slotConfig = new ScalusLib.SlotConfig(Number(zeroTime), Number(zeroSlot), slotLength)
 
         yield* Effect.logDebug("[Scalus UPLC] Calling evalPlutusScripts...")
         const redeemers = yield* Effect.try({
-          try: () => Scalus.Scalus.evalPlutusScripts(txBytes, utxosBytes, slotConfig, costModels),
+          try: () => ScalusLib.Scalus.evalPlutusScripts(txBytes, utxosBytes, slotConfig, costModels),
           catch: (error) => {
             // Scalus error messages and evaluation logs, if any, are available to form an exception
             const errorObj = error as any

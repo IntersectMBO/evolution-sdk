@@ -56,7 +56,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
           transactionId: "b".repeat(64),
           index: 0,
           address: CHANGE_ADDRESS,
-          lovelace: 2_000_000n // 2 ADA to make bundles affordable
+          lovelace: 5_000_000n // 5 ADA to make bundles affordable (corrected minUTxO ~1.1M per token output)
         })
       ]
 
@@ -89,12 +89,12 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const paymentOutput = tx.body.outputs[0]
       expect(paymentOutput.assets.lovelace).toBe(100_000n)
 
-      // Verify all change outputs meet minUTxO
+      // Verify all change outputs meet minUTxO (corrected Babbage/Conway formula)
       const changeOutputs = tx.body.outputs.slice(1)
-      for (const output of changeOutputs) {
-        // Each output should have at least ~289k lovelace (minUTxO for ADA-only or with tokens)
-        expect(output.assets.lovelace).toBeGreaterThanOrEqual(288_770n)
-      }
+      expect(changeOutputs[0].assets.lovelace).toBe(1_150_770n)
+      expect(changeOutputs[1].assets.lovelace).toBe(1_150_770n)
+      expect(changeOutputs[2].assets.lovelace).toBe(1_155_080n)
+      expect(changeOutputs[3].assets.lovelace).toBe(2_259_487n)
 
       // Verify token distribution: all 3 tokens should be preserved in change outputs
       let totalTokenTypes = 0
@@ -116,7 +116,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
 
   describe("Immediate fallback to single output when bundles unaffordable", () => {
     it("should fall back to single change output without reselection when bundles barely unaffordable", async () => {
-      let initialAssets = CoreAssets.fromLovelace(1_500_000n)
+      let initialAssets = CoreAssets.fromLovelace(2_500_000n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_A, toHex("TOKEN1"), 100n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_B, toHex("TOKEN2"), 200n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_C, toHex("TOKEN3"), 300n)
@@ -124,7 +124,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         transactionId: "c".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 1_500_000n
+        lovelace: 2_500_000n
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
@@ -163,14 +163,17 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       const paymentOutput = tx.body.outputs[0]
       expect(paymentOutput.assets.lovelace).toBe(100_000n)
 
-      // Verify change output has exact correct amount after fee convergence
-      // Input: 1,500,000, Payment: 100,000, Fee: 173,553 (for 1 output)
-      // Expected change: 1,500,000 - 100,000 - 173,553 = 1,226,447
+      // Verify change output has correct amount after fee convergence
+      // Input: 2,500,000, Payment: 100,000, Fee: exact
+      // Expected change: 2,500,000 - 100,000 - fee
       const changeOutput = tx.body.outputs[1]
-      expect(changeOutput.assets.lovelace).toBe(1_226_447n)
+      expect(changeOutput.assets.lovelace).toBe(2_226_447n)
 
-      // Verify fee is correct for single-output transaction
+      // Verify fee is exact for single-output transaction
       expect(tx.body.fee).toBe(173_553n)
+
+      // Balance equation must hold
+      expect(changeOutput.assets.lovelace + paymentOutput.assets.lovelace + tx.body.fee).toBe(2_500_000n)
 
       // Verify all 3 tokens are in the single change output
       let totalTokenTypes = 0
@@ -224,7 +227,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
 
   describe("Subdivision strategy when remaining ADA above threshold", () => {
     it("should create separate ADA output when remaining above subdivideThreshold", async () => {
-      let initialAssets = CoreAssets.fromLovelace(4_100_000n)
+      let initialAssets = CoreAssets.fromLovelace(7_000_000n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_A, toHex("TOKEN1"), 100n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_B, toHex("TOKEN2"), 200n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_C, toHex("TOKEN3"), 300n)
@@ -232,7 +235,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         transactionId: "2".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 4_100_000n
+        lovelace: 7_000_000n
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
@@ -264,7 +267,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
 
   describe("Spread strategy when remaining ADA below threshold", () => {
     it("should spread remaining lovelace across token bundles when below subdivideThreshold", async () => {
-      let initialAssets = CoreAssets.fromLovelace(3_000_000n)
+      let initialAssets = CoreAssets.fromLovelace(5_000_000n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_A, toHex("TOKEN1"), 100n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_B, toHex("TOKEN2"), 200n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_C, toHex("TOKEN3"), 300n)
@@ -272,7 +275,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         transactionId: "3".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 3_000_000n
+        lovelace: 5_000_000n
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
