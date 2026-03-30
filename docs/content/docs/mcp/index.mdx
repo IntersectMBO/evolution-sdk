@@ -1,0 +1,198 @@
+---
+title: MCP Server
+description: Model Context Protocol server exposing Evolution SDK to AI agents
+---
+
+# MCP Server
+
+The Evolution SDK ships an HTTP-based [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes the full SDK surface — addresses, transactions, governance, smart contracts, devnet management, and more — as callable tools for AI agents and LLM-powered workflows.
+
+## What is the MCP Server?
+
+`@evolution-sdk/mcp` wraps Evolution SDK functionality into **66 tools** that any MCP-compatible client can invoke over HTTP or stdio. The server starts automatically after installation and listens at `http://localhost:10000/mcp`, so AI assistants such as GitHub Copilot, Claude, Cursor, and other MCP clients can build, encode, sign, and submit Cardano transactions without writing code directly.
+
+The server supports two transports:
+- **HTTP** — StreamableHTTP server for network-accessible MCP (default)
+- **stdio** — JSON-RPC over stdin/stdout for clients that spawn the server process directly
+
+The server is stateless for pure SDK operations (codecs, hashing, address building) and stateful where needed (client sessions, transaction builder flows, devnet cluster management).
+
+## When to Use the MCP Server
+
+**AI-Assisted Development**: Let your coding assistant construct addresses, encode CBOR, build transactions, and query devnet state through natural language.
+
+**Rapid Prototyping**: Explore the SDK API surface interactively — build a transaction output, hash it, wrap it in a script reference — all through tool calls without compiling TypeScript.
+
+**Automated Pipelines**: Integrate Cardano operations into LLM-driven CI/CD or testing workflows that communicate via the MCP protocol.
+
+**Education & Exploration**: Understand how Cardano primitives fit together by asking an AI agent to walk through address creation, datum encoding, or governance proposal construction step by step.
+
+## Installation
+
+```bash
+pnpm add @evolution-sdk/mcp
+```
+
+The package runs a `postinstall` bootstrap that registers and starts the server as a background process. After installation completes the HTTP server is reachable at:
+
+| Endpoint | URL |
+|----------|-----|
+| MCP | `http://localhost:10000/mcp` |
+| Health | `http://localhost:10000/health` |
+
+If automatic startup cannot be completed (e.g. inside a Docker build), installation still succeeds and prints a manual fallback command:
+
+```bash
+# HTTP server (default)
+node packages/evolution-mcp/dist/bin.js serve
+
+# Stdio transport
+node packages/evolution-mcp/dist/bin.js stdio
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EVOLUTION_MCP_HOST` | `127.0.0.1` | Bind address |
+| `EVOLUTION_MCP_PORT` | `10000` | Bind port |
+| `EVOLUTION_MCP_PATH` | `/mcp` | MCP route |
+| `EVOLUTION_MCP_HEALTH_PATH` | `/health` | Health check route |
+| `EVOLUTION_MCP_SKIP_POSTINSTALL` | — | Set to `1` to skip install-time bootstrap |
+| `EVOLUTION_MCP_POSTINSTALL_STRICT` | — | Set to `1` to fail install if bootstrap fails |
+
+## Tool Categories
+
+The 66 tools are organized into the following categories:
+
+### Meta / Introspection (3 tools)
+Query SDK version, enumerate exported modules, destroy session handles, and retrieve server runtime statistics.
+
+### Codecs & Encoding (8 tools)
+Stateless CBOR encode/decode for Address, Assets, Plutus Data, identifiers, and hashes. A **generic typed-export codec** covering 40+ SDK modules (Transaction, WitnessSet, Script, Certificate, Value, etc.) with `fromCBORHex`/`toCBORHex`. Bech32/bytes encoding. Structured Plutus data codecs for OutputReference, Credential, Address, Lovelace, and CIP-68 metadata.
+
+### Workflow (7 tools)
+End-to-end transaction lifecycle — create client sessions, attach providers and wallets (via unified `client_attach`), invoke provider queries, open transaction builders, build with optional Plutus evaluation, and sign/submit via unified `result_call`.
+
+### Cryptography (5 tools)
+BIP-39 mnemonic generation and BIP32-Ed25519 key derivation, BIP32 HD key export/import, CIP-8/CIP-30 message signing and verification, Ed25519 signature encode/decode/validate.
+
+### Governance & Certificates (10 tools)
+Anchors, Certificates (pre-Conway and Conway era), VotingProcedures, GovernanceActions (all CIP-1694 types), ProposalProcedures, DRep tools (creation, Bech32, CBOR), DRep certificates, Committee certificates, Constitution, and Protocol Parameter Updates.
+
+### Transaction Primitives (9 tools)
+TransactionInput, TransactionOutput, TransactionBody construction, Mint for minting/burning tokens, Withdrawals for reward claiming, Redeemer/ExUnits building, Redeemers collection (Conway map format), ProposalProcedures collection, and ScriptRef tag-24 wrapping.
+
+### Value & Assets (5 tools)
+Create ADA-only or multi-asset Values with arithmetic, Assets construction and merge, CIP-67 unit/label tools, Coin arithmetic with overflow protection, and Plutus script-level Value maps.
+
+### Scripts (4 tools)
+Native script building/analysis, Script union wrapping (NativeScript/PlutusV1-V3), UPLC script inspection and parameter application, and UPLC evaluator discovery.
+
+### Address Types (3 tools)
+Build Base/Enterprise/Reward addresses from credentials, PointerAddress construction, and Byron-era address decoding.
+
+### Data & Hashing (2 tools)
+Plutus Data construction (`constr`/`int`/`bytes`/`list`/`map`) with pattern matching, and Blake2b-256 hashing.
+
+### Blueprints (2 tools)
+CIP-57 Plutus blueprint parsing and TypeScript codegen.
+
+### Network & Time (2 tools)
+Network name/ID mapping and slot-to-Unix/Unix-to-slot conversion with per-network config.
+
+### Metadata & Credentials (2 tools)
+Transaction metadata/AuxiliaryData construction and credential creation (key-hash/script-hash).
+
+### Other (3 tools)
+UTxO set operations, full PoolParams for stake pool registration, and fee validation.
+
+### Devnet (1 tool)
+Docker-based local Cardano cluster management — create, start, stop, remove, query genesis UTxOs, query epochs, execute commands, and inspect default config.
+
+## Usage with MCP Clients
+
+### Claude Desktop
+
+Add the following to your Claude Desktop MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "evolution-sdk": {
+      "url": "http://localhost:10000/mcp"
+    }
+  }
+}
+```
+
+### VS Code (GitHub Copilot)
+
+Add to your VS Code `settings.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "evolution-sdk": {
+        "type": "http",
+        "url": "http://localhost:10000/mcp"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to your Cursor MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "evolution-sdk": {
+      "url": "http://localhost:10000/mcp"
+    }
+  }
+}
+```
+
+### Any MCP Client
+
+The server speaks standard MCP over both HTTP (StreamableHTTP) and stdio (JSON-RPC over stdin/stdout). For HTTP clients, point at `http://localhost:10000/mcp`. For stdio clients, configure the command:
+
+```json
+{
+  "mcpServers": {
+    "evolution-sdk": {
+      "command": "node",
+      "args": ["packages/evolution-mcp/dist/bin.js", "stdio"]
+    }
+  }
+}
+```
+
+## Example Interactions
+
+Once connected, you can ask your AI assistant things like:
+
+- *"Create a testnet enterprise address from this key hash"*
+- *"Encode this Plutus datum to CBOR hex"*
+- *"Build a transaction with these inputs and outputs, then hash it"*
+- *"Start a local devnet cluster and fund my test address"*
+- *"Parse this CIP-57 blueprint and generate TypeScript bindings"*
+- *"Build a governance proposal for a treasury withdrawal"*
+- *"What modules does Evolution SDK export?"*
+
+The AI agent translates your request into the appropriate tool calls and returns structured results.
+
+## Package Coverage
+
+The MCP server covers all four workspace packages:
+
+| Package | Description |
+|---------|-------------|
+| `@evolution-sdk/evolution` | Core SDK — addresses, transactions, governance, cryptography |
+| `@evolution-sdk/aiken-uplc` | Aiken UPLC evaluator |
+| `@evolution-sdk/scalus-uplc` | Scalus UPLC evaluator |
+| `@evolution-sdk/devnet` | Local Cardano development network via Docker |

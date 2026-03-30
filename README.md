@@ -122,12 +122,17 @@ Evolution SDK is built as a **single package** with a clean, modular structure t
 ```
 evolution-sdk/
 ├── 📦 packages/
-│   └── evolution/           # Main SDK package
+│   ├── evolution/           # Main SDK package
+│   │   ├── src/
+│   │   │   ├── Address.ts   # Address utilities
+│   │   │   ├── Transaction.ts # Transaction building
+│   │   │   ├── Devnet/      # Development network tools
+│   │   │   └── ...
+│   │   └── dist/            # Compiled output
+│   └── evolution-mcp/       # MCP server
 │       ├── src/
-│       │   ├── Address.ts   # Address utilities
-│       │   ├── Transaction.ts # Transaction building
-│       │   ├── Devnet/      # Development network tools
-│       │   └── ...
+│       │   ├── server.ts    # 66 MCP tools
+│       │   └── bin.ts       # HTTP entrypoint
 │       └── dist/            # Compiled output
 ├── docs/                    # Documentation
 ├── turbo.json              # Turbo configuration
@@ -140,6 +145,7 @@ evolution-sdk/
 | Package                                            | Description                                                                  | Status                                                                                                                     | Documentation                            |
 | -------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | [`@evolution-sdk/evolution`](./packages/evolution) | Complete Cardano SDK with address management, transactions, and DevNet tools | In Development | [README](./packages/evolution/README.md) |
+| [`@evolution-sdk/mcp`](./packages/evolution-mcp) | MCP server exposing 66 SDK tools to AI agents over HTTP | In Development | [README](./packages/evolution-mcp/README.md) |
 
 ### Core Features
 
@@ -208,6 +214,9 @@ Evolution SDK provides **125+ core modules** plus SDK utilities, organized into 
 
 ### Development Tools (2 modules)
 - `Devnet`, `DevnetDefault` - Local development network with custom configuration, automated testing, transaction simulation, and performance monitoring
+
+### MCP Server (66 tools)
+- `@evolution-sdk/mcp` - HTTP-based [Model Context Protocol](https://modelcontextprotocol.io) server at `localhost:10000/mcp` exposing the full SDK surface to AI agents (GitHub Copilot, Claude, Cursor, and any MCP client). Covers addresses, transactions, governance, smart contracts, CBOR codecs, key derivation, devnet management, and end-to-end transaction workflows.
 
 ## Development
 

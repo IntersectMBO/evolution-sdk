@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.src.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo",
+    "outDir": "dist",
+    "types": ["node"],
+    "rootDir": "src",
+    "stripInternal": true
+  },
+  "exclude": ["test"]
+}

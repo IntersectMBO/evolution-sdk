@@ -1,0 +1,89 @@
+{
+  "name": "@evolution-sdk/mcp",
+  "version": "0.1.0",
+  "description": "HTTP MCP server for Evolution SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "evolution-mcp": "./dist/bin.js"
+  },
+  "sideEffects": [],
+  "tags": [
+    "typescript",
+    "mcp",
+    "http",
+    "cardano",
+    "sdk"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts",
+    "./internal/*": null,
+    "./*/index": null
+  },
+  "files": [
+    "src/**/*.ts",
+    "scripts/**/*.mjs",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "dev": "tsc -b tsconfig.build.json --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,mjs}\"",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo .tsbuildinfo",
+    "postinstall": "node ./scripts/postinstall.mjs"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.90.10",
+    "@effect/platform-node": "^0.96.1",
+    "@evolution-sdk/aiken-uplc": "workspace:*",
+    "@evolution-sdk/devnet": "workspace:*",
+    "@evolution-sdk/evolution": "workspace:*",
+    "@evolution-sdk/scalus-uplc": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "effect": "^3.19.3",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "cardano",
+    "evolution",
+    "sdk",
+    "http"
+  ],
+  "homepage": "https://github.com/IntersectMBO/evolution-sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IntersectMBO/evolution-sdk.git",
+    "directory": "packages/evolution-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/IntersectMBO/evolution-sdk/issues"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./dist/index.js",
+      "./*": "./dist/*.js",
+      "./internal/*": null,
+      "./*/index": null
+    }
+  }
+}
