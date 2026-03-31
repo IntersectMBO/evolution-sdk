@@ -14,10 +14,10 @@ Choose Blockfrost for quick setup with hosted infrastructure, or Kupmios for sel
 Blockfrost offers hosted infrastructure with a free tier, perfect for development and small-scale applications. Setup takes minutes—just get an API key and connect.
 
 ```ts twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, preprod } from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -41,10 +41,10 @@ const client = createClient({
 Run your own Cardano node infrastructure for complete control and privacy. Kupmios combines Kupo (UTxO indexing) and Ogmios (node queries) for a fully local setup. Ideal for production applications that need guaranteed uptime and don't want external dependencies.
 
 ```ts twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, preprod } from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "kupmios",
     kupoUrl: "http://localhost:1442",
@@ -79,11 +79,11 @@ Use Blockfrost for rapid prototyping and development. Switch to Kupmios when you
 The beauty of Evolution SDK's provider abstraction: your transaction code doesn't change. Only the configuration does:
 
 ```ts twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, preprod } from "@evolution-sdk/evolution";
 
 // Start with Blockfrost
 const blockfrostClient = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -98,7 +98,7 @@ const blockfrostClient = createClient({
 
 // Switch to Kupmios
 const kupmiosClient = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "kupmios",
     kupoUrl: "http://localhost:1442",
@@ -126,7 +126,7 @@ OGMIOS_URL=http://localhost:1337
 Then in your code:
 
 ```ts twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, preprod } from "@evolution-sdk/evolution";
 
 const provider = process.env.BLOCKFROST_API_KEY
   ? {
@@ -141,7 +141,7 @@ const provider = process.env.BLOCKFROST_API_KEY
     };
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider,
   wallet: {
     type: "seed",

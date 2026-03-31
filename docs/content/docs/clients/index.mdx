@@ -30,10 +30,12 @@ Different combinations create different client types with distinct capabilities.
 All clients use `createClient` with different configurations:
 
 ```typescript
+import { mainnet, preprod, preview, defineChain } from "@evolution-sdk/evolution";
+
 createClient({
-  network: "mainnet" | "preprod" | "preview",
-  provider?: ProviderConfig,  // Optional
-  wallet?: WalletConfig       // Optional
+  chain: mainnet | preprod | preview,  // or a custom chain via defineChain(...)
+  provider?: ProviderConfig,           // Optional
+  wallet?: WalletConfig                // Optional
 })
 ```
 
