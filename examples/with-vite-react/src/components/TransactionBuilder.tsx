@@ -1,7 +1,7 @@
 import { useCardano } from "@cardano-foundation/cardano-connect-with-wallet"
 import { NetworkType } from "@cardano-foundation/cardano-connect-with-wallet-core"
 import { useState } from "react"
-import { Address, Assets, createClient, TransactionHash } from "@evolution-sdk/evolution"
+import { Address, Assets, createClient, mainnet, preprod, preview, TransactionHash } from "@evolution-sdk/evolution"
 
 export default function TransactionBuilder() {
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -46,8 +46,9 @@ export default function TransactionBuilder() {
         throw new Error("Failed to enable wallet")
       }
 
-      // Determine network ID and provider config
-      const networkId = networkEnv // "preprod", "preview", or "mainnet"
+      // Determine chain from environment variable
+      const chainMap = { mainnet, preprod, preview } as const
+      const chain = chainMap[networkEnv as keyof typeof chainMap] ?? preprod
 
       // Configure Blockfrost provider based on network
       const blockfrostUrls = {
@@ -58,13 +59,13 @@ export default function TransactionBuilder() {
 
       const providerConfig = {
         type: "blockfrost" as const,
-        baseUrl: blockfrostUrls[networkId as keyof typeof blockfrostUrls],
+        baseUrl: blockfrostUrls[networkEnv as keyof typeof blockfrostUrls],
         projectId: import.meta.env.VITE_BLOCKFROST_PROJECT_ID || ""
       }
 
       // Create client with wallet and provider
       const client = createClient({
-        network: networkId,
+        chain,
         provider: providerConfig,
         wallet: { type: "api", api }
       })
