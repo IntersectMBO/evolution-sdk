@@ -49,13 +49,11 @@ const makeAnchor = (url: string) =>
 
 describe("TxBuilder Vote Validator (script DRep)", () => {
   let devnetCluster: Cluster.Cluster | undefined
-  let slotConfig: Cluster.SlotConfig | undefined
 
   const createTestClient = (accountIndex: number = 0) => {
-    if (!slotConfig) throw new Error("slotConfig not initialized")
+    if (!devnetCluster) throw new Error("Cluster not initialized")
     return createClient({
-      network: 0,
-      slotConfig,
+      chain: Cluster.getChain(devnetCluster),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1453",
@@ -74,7 +72,7 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
   beforeAll(async () => {
     const accounts = [0, 1].map((accountIndex) =>
       createClient({
-        network: 0,
+        chain: Cluster.BOOTSTRAP_CHAIN,
         wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
       })
     )
@@ -102,8 +100,6 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
       kupo: { enabled: true, port: 1453, logLevel: "Info" },
       ogmios: { enabled: true, port: 1343, logLevel: "info" }
     })
-
-    slotConfig = Cluster.getSlotConfig(devnetCluster)
 
     await Cluster.start(devnetCluster)
     await new Promise((r) => setTimeout(r, 3_000))

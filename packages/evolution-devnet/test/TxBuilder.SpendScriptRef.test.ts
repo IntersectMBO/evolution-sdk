@@ -39,7 +39,7 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
 
   const createTestClient = () =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1454",
@@ -52,7 +52,7 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
     expect(ScriptHash.toHex(alwaysSucceedScriptHash)).toBe(ALWAYS_SUCCEED_HASH)
 
     const testClient = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
     })
 

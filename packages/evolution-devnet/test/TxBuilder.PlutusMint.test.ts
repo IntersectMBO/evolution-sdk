@@ -66,7 +66,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
   const createTestClient = () =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1444",
@@ -84,7 +84,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
     expect(calculatedPolicyId).toBe(SIMPLE_MINT_POLICY_ID_HEX)
 
     const testClient = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
     })
 
