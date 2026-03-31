@@ -4,11 +4,9 @@ import * as CoreAddress from "../../Address.js"
 import * as Bytes from "../../Bytes.js"
 import * as KeyHash from "../../KeyHash.js"
 import type * as NativeScripts from "../../NativeScripts.js"
-import type * as Network from "../../Network.js"
 import * as PrivateKey from "../../PrivateKey.js"
 import * as CoreRewardAccount from "../../RewardAccount.js"
 import * as CoreRewardAddress from "../../RewardAddress.js"
-import type * as Time from "../../Time/index.js"
 import * as Transaction from "../../Transaction.js"
 import * as TransactionHash from "../../TransactionHash.js"
 import * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
@@ -28,12 +26,12 @@ import * as Maestro from "../provider/Maestro.js"
 import * as Provider from "../provider/Provider.js"
 import * as Derivation from "../wallet/Derivation.js"
 import * as WalletNew from "../wallet/WalletNew.js"
+import type { Chain } from "./Chain.js"
 import {
   type ApiWalletClient,
   type ApiWalletConfig,
   type MinimalClient,
   type MinimalClientEffect,
-  type NetworkId,
   type PrivateKeyWalletConfig,
   type ProviderConfig,
   type ProviderOnlyClient,
@@ -62,72 +60,6 @@ const createProvider = (config: ProviderConfig): Provider.Provider => {
       return new Maestro.MaestroProvider(config.baseUrl, config.apiKey, config.turboSubmit)
     case "koios":
       return new Koios.Koios(config.baseUrl, config.token)
-  }
-}
-
-/**
- * Map NetworkId to numeric representation.
- * "mainnet" → 1, "preprod"/"preview" → 0, numeric values pass through unchanged.
- *
- * @since 2.0.0
- * @category transformation
- */
-const normalizeNetworkId = (network: NetworkId): number => {
-  if (typeof network === "number") return network
-  switch (network) {
-    case "mainnet":
-      return 1
-    case "preprod":
-      return 0
-    case "preview":
-      return 0
-    default:
-      return 0
-  }
-}
-
-/**
- * Map NetworkId to wallet network enumeration.
- * Returns "Mainnet" for numeric 1 or string "mainnet"; returns "Testnet" otherwise.
- *
- * @since 2.0.0
- * @category transformation
- */
-const toWalletNetwork = (networkId: NetworkId): WalletNew.Network => {
-  if (typeof networkId === "number") {
-    return networkId === 1 ? "Mainnet" : "Testnet"
-  }
-  switch (networkId) {
-    case "mainnet":
-      return "Mainnet"
-    case "preprod":
-    case "preview":
-      return "Testnet"
-    default:
-      return "Testnet"
-  }
-}
-
-/**
- * Map NetworkId to Network type for slot configuration resolution.
- * Returns the correct Network variant so resolveSlotConfig picks the right preset.
- *
- * @since 2.0.0
- * @category transformation
- */
-const toBuilderNetwork = (networkId: NetworkId): Network.Network => {
-  if (typeof networkId === "number") {
-    return networkId === 1 ? "Mainnet" : "Preview"
-  }
-  switch (networkId) {
-    case "mainnet":
-      return "Mainnet"
-    case "preprod":
-      return "Preprod"
-    case "preview":
-      return "Preview"
-    default:
-      return "Mainnet"
   }
 }
 
@@ -163,22 +95,17 @@ const createReadOnlyWallet = (
  * @since 2.0.0
  * @category constructors
  */
-const createReadOnlyWalletClient = (network: NetworkId, config: ReadOnlyWalletConfig): ReadOnlyWalletClient => {
-  const walletNetwork = toWalletNetwork(network)
+const createReadOnlyWalletClient = (chain: Chain, config: ReadOnlyWalletConfig): ReadOnlyWalletClient => {
+  const walletNetwork = chain.id === 1 ? "Mainnet" : "Testnet"
   const wallet = createReadOnlyWallet(walletNetwork, config.address, config.rewardAddress)
-  const networkId = normalizeNetworkId(network)
 
   return {
-    // Direct Promise properties from wallet
     address: wallet.address,
     rewardAddress: wallet.rewardAddress,
-    // Metadata
-    networkId,
-    // Combinator methods
+    chain,
     attachProvider: (providerConfig) => {
-      return createReadOnlyClient(network, providerConfig, config)
+      return createReadOnlyClient(chain, providerConfig, config)
     },
-    // Effect namespace - wallet's Effect interface
     Effect: wallet.Effect
   }
 }
@@ -190,13 +117,12 @@ const createReadOnlyWalletClient = (network: NetworkId, config: ReadOnlyWalletCo
  * @category constructors
  */
 const createReadOnlyClient = (
-  network: NetworkId,
+  chain: Chain,
   providerConfig: ProviderConfig,
-  walletConfig: ReadOnlyWalletConfig,
-  slotConfig?: Time.SlotConfig
+  walletConfig: ReadOnlyWalletConfig
 ): ReadOnlyClient => {
   const provider = createProvider(providerConfig)
-  const walletNetwork = toWalletNetwork(network)
+  const walletNetwork = chain.id === 1 ? "Mainnet" : "Testnet"
   const wallet = createReadOnlyWallet(walletNetwork, walletConfig.address, walletConfig.rewardAddress)
   // Parse the bech32 address to Core Address for provider calls
   const coreAddress = CoreAddress.fromBech32(walletConfig.address)
@@ -216,8 +142,7 @@ const createReadOnlyClient = (
       return makeTxBuilder({
         wallet,
         provider,
-        network: toBuilderNetwork(network),
-        slotConfig
+        slotConfig: chain.slotConfig
       })
     },
     Effect: {
@@ -650,19 +575,18 @@ const createApiWallet = (_network: WalletNew.Network, config: ApiWalletConfig): 
  * @category constructors
  */
 const createSigningWalletClient = (
-  network: NetworkId,
+  chain: Chain,
   config: SeedWalletConfig | PrivateKeyWalletConfig
 ): SigningWalletClient => {
-  const walletNetwork = toWalletNetwork(network)
+  const walletNetwork = chain.id === 1 ? "Mainnet" : "Testnet"
   const wallet =
     config.type === "seed" ? createSigningWallet(walletNetwork, config) : createPrivateKeyWallet(walletNetwork, config)
-  const networkId = normalizeNetworkId(network)
 
   return {
     ...wallet,
-    networkId,
+    chain,
     attachProvider: (providerConfig) => {
-      return createSigningClient(network, providerConfig, config)
+      return createSigningClient(chain, providerConfig, config)
     }
   }
 }
@@ -673,14 +597,14 @@ const createSigningWalletClient = (
  * @since 2.0.0
  * @category constructors
  */
-const createApiWalletClient = (network: NetworkId, config: ApiWalletConfig): ApiWalletClient => {
-  const walletNetwork = toWalletNetwork(network)
+const createApiWalletClient = (chain: Chain, config: ApiWalletConfig): ApiWalletClient => {
+  const walletNetwork = chain.id === 1 ? "Mainnet" : "Testnet"
   const wallet = createApiWallet(walletNetwork, config)
 
   return {
     ...wallet,
     attachProvider: (providerConfig) => {
-      return createSigningClient(network, providerConfig, config)
+      return createSigningClient(chain, providerConfig, config)
     }
   }
 }
@@ -692,13 +616,12 @@ const createApiWalletClient = (network: NetworkId, config: ApiWalletConfig): Api
  * @category constructors
  */
 const createSigningClient = (
-  network: NetworkId,
+  chain: Chain,
   providerConfig: ProviderConfig,
-  walletConfig: SeedWalletConfig | PrivateKeyWalletConfig | ApiWalletConfig,
-  slotConfig?: Time.SlotConfig
+  walletConfig: SeedWalletConfig | PrivateKeyWalletConfig | ApiWalletConfig
 ): SigningClient => {
   const provider = createProvider(providerConfig)
-  const walletNetwork = toWalletNetwork(network)
+  const walletNetwork = chain.id === 1 ? "Mainnet" : "Testnet"
 
   const wallet =
     walletConfig.type === "seed"
@@ -779,10 +702,9 @@ const createSigningClient = (
       // The wallet is passed to the builder config, which handles address and UTxO resolution automatically
       // Protocol parameters are auto-fetched from provider during build()
       return makeTxBuilder({
-        provider, // Pass provider for submission
-        wallet, // Pass wallet for signing
-        network: toBuilderNetwork(network),
-        slotConfig // Pass slot config for time conversion
+        provider,
+        wallet,
+        slotConfig: chain.slotConfig
       })
     },
     // Effect namespace
@@ -796,7 +718,7 @@ const createSigningClient = (
  * @since 2.0.0
  * @category constructors
  */
-const createProviderOnlyClient = (network: NetworkId, config: ProviderConfig): ProviderOnlyClient => {
+const createProviderOnlyClient = (chain: Chain, config: ProviderConfig): ProviderOnlyClient => {
   const provider = createProvider(config)
 
   return {
@@ -804,11 +726,11 @@ const createProviderOnlyClient = (network: NetworkId, config: ProviderConfig): P
     attachWallet<T extends WalletConfig>(walletConfig: T) {
       switch (walletConfig.type) {
         case "read-only":
-          return createReadOnlyClient(network, config, walletConfig) as any
+          return createReadOnlyClient(chain, config, walletConfig) as any
         case "seed":
-          return createSigningClient(network, config, walletConfig) as any
+          return createSigningClient(chain, config, walletConfig) as any
         case "api":
-          return createSigningClient(network, config, walletConfig) as any
+          return createSigningClient(chain, config, walletConfig) as any
       }
     }
   }
@@ -820,28 +742,26 @@ const createProviderOnlyClient = (network: NetworkId, config: ProviderConfig): P
  * @since 2.0.0
  * @category constructors
  */
-const createMinimalClient = (network: NetworkId = "mainnet"): MinimalClient => {
-  const networkId = normalizeNetworkId(network)
-
+const createMinimalClient = (chain: Chain): MinimalClient => {
   const effectInterface: MinimalClientEffect = {
-    networkId: Effect.succeed(networkId)
+    chain
   }
 
   return {
-    networkId,
+    chain,
     attachProvider: (config) => {
-      return createProviderOnlyClient(network, config)
+      return createProviderOnlyClient(chain, config)
     },
     attachWallet<T extends WalletConfig>(walletConfig: T) {
       // TypeScript cannot narrow conditional return types from runtime discriminants.
       // The conditional type interface provides type safety at call sites.
       switch (walletConfig.type) {
         case "read-only":
-          return createReadOnlyWalletClient(network, walletConfig) as any
+          return createReadOnlyWalletClient(chain, walletConfig) as any
         case "seed":
-          return createSigningWalletClient(network, walletConfig) as any
+          return createSigningWalletClient(chain, walletConfig) as any
         case "api":
-          return createApiWalletClient(network, walletConfig) as any
+          return createApiWalletClient(chain, walletConfig) as any
       }
     },
     attach<TW extends WalletConfig>(providerConfig: ProviderConfig, walletConfig: TW) {
@@ -849,11 +769,11 @@ const createMinimalClient = (network: NetworkId = "mainnet"): MinimalClient => {
       // The conditional type interface provides type safety at call sites.
       switch (walletConfig.type) {
         case "read-only":
-          return createReadOnlyClient(network, providerConfig, walletConfig) as any
+          return createReadOnlyClient(chain, providerConfig, walletConfig) as any
         case "seed":
-          return createSigningClient(network, providerConfig, walletConfig) as any
+          return createSigningClient(chain, providerConfig, walletConfig) as any
         case "api":
-          return createSigningClient(network, providerConfig, walletConfig) as any
+          return createSigningClient(chain, providerConfig, walletConfig) as any
       }
     },
     // Effect namespace
@@ -875,60 +795,55 @@ const createMinimalClient = (network: NetworkId = "mainnet"): MinimalClient => {
 // Most specific overloads first - wallet type determines client capability
 // Provider + ReadOnly Wallet → ReadOnlyClient
 export function createClient(config: {
-  network?: NetworkId
+  chain: Chain
   provider: ProviderConfig
   wallet: ReadOnlyWalletConfig
-  slotConfig?: Time.SlotConfig
 }): ReadOnlyClient
 
 // Provider + Seed Wallet → SigningClient
 export function createClient(config: {
-  network?: NetworkId
+  chain: Chain
   provider: ProviderConfig
   wallet: SeedWalletConfig
-  slotConfig?: Time.SlotConfig
 }): SigningClient
 
 // Provider + PrivateKey Wallet → SigningClient
 export function createClient(config: {
-  network?: NetworkId
+  chain: Chain
   provider: ProviderConfig
   wallet: PrivateKeyWalletConfig
-  slotConfig?: Time.SlotConfig
 }): SigningClient
 
 // Provider + API Wallet → SigningClient
 export function createClient(config: {
-  network?: NetworkId
+  chain: Chain
   provider: ProviderConfig
   wallet: ApiWalletConfig
-  slotConfig?: Time.SlotConfig
 }): SigningClient
 
 // Provider only → ProviderOnlyClient
-export function createClient(config: { network?: NetworkId; provider: ProviderConfig }): ProviderOnlyClient
+export function createClient(config: { chain: Chain; provider: ProviderConfig }): ProviderOnlyClient
 
 // ReadOnly Wallet only → ReadOnlyWalletClient
-export function createClient(config: { network?: NetworkId; wallet: ReadOnlyWalletConfig }): ReadOnlyWalletClient
+export function createClient(config: { chain: Chain; wallet: ReadOnlyWalletConfig }): ReadOnlyWalletClient
 
 // Seed Wallet only → SigningWalletClient
-export function createClient(config: { network?: NetworkId; wallet: SeedWalletConfig }): SigningWalletClient
+export function createClient(config: { chain: Chain; wallet: SeedWalletConfig }): SigningWalletClient
 
 // Private Key Wallet only → SigningWalletClient
-export function createClient(config: { network?: NetworkId; wallet: PrivateKeyWalletConfig }): SigningWalletClient
+export function createClient(config: { chain: Chain; wallet: PrivateKeyWalletConfig }): SigningWalletClient
 
 // API Wallet only → ApiWalletClient
-export function createClient(config: { network?: NetworkId; wallet: ApiWalletConfig }): ApiWalletClient
+export function createClient(config: { chain: Chain; wallet: ApiWalletConfig }): ApiWalletClient
 
-// Network only or minimal → MinimalClient
-export function createClient(config?: { network?: NetworkId }): MinimalClient
+// Chain only → MinimalClient
+export function createClient(config: { chain: Chain }): MinimalClient
 
 // Implementation signature - handles all cases (all synchronous now)
-export function createClient(config?: {
-  network?: NetworkId
+export function createClient(config: {
+  chain: Chain
   provider?: ProviderConfig
   wallet?: WalletConfig
-  slotConfig?: Time.SlotConfig
 }):
   | MinimalClient
   | ReadOnlyClient
@@ -937,38 +852,37 @@ export function createClient(config?: {
   | ReadOnlyWalletClient
   | SigningWalletClient
   | ApiWalletClient {
-  const network = config?.network ?? "mainnet"
-  const slotConfig = config?.slotConfig
+  const chain = config.chain
 
-  if (config?.provider && config?.wallet) {
+  if (config.provider && config.wallet) {
     switch (config.wallet.type) {
       case "read-only":
-        return createReadOnlyClient(network, config.provider, config.wallet, slotConfig)
+        return createReadOnlyClient(chain, config.provider, config.wallet)
       case "seed":
-        return createSigningClient(network, config.provider, config.wallet, slotConfig)
+        return createSigningClient(chain, config.provider, config.wallet)
       case "private-key":
-        return createSigningClient(network, config.provider, config.wallet, slotConfig)
+        return createSigningClient(chain, config.provider, config.wallet)
       case "api":
-        return createSigningClient(network, config.provider, config.wallet, slotConfig)
+        return createSigningClient(chain, config.provider, config.wallet)
     }
   }
 
-  if (config?.wallet) {
+  if (config.wallet) {
     switch (config.wallet.type) {
       case "read-only":
-        return createReadOnlyWalletClient(network, config.wallet)
+        return createReadOnlyWalletClient(chain, config.wallet)
       case "seed":
-        return createSigningWalletClient(network, config.wallet)
+        return createSigningWalletClient(chain, config.wallet)
       case "private-key":
-        return createSigningWalletClient(network, config.wallet)
+        return createSigningWalletClient(chain, config.wallet)
       case "api":
-        return createApiWalletClient(network, config.wallet)
+        return createApiWalletClient(chain, config.wallet)
     }
   }
 
-  if (config?.provider) {
-    return createProviderOnlyClient(network, config.provider)
+  if (config.provider) {
+    return createProviderOnlyClient(chain, config.provider)
   }
 
-  return createMinimalClient(network)
+  return createMinimalClient(chain)
 }

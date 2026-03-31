@@ -11,6 +11,7 @@ import type {
   WalletApi,
   WalletError
 } from "../wallet/WalletNew.js"
+import type { Chain } from "./Chain.js"
 
 /**
  * Error class for provider-related operations.
@@ -24,13 +25,13 @@ export class ProviderError extends Data.TaggedError("ProviderError")<{
 }> {}
 
 /**
- * MinimalClient Effect - holds network context.
+ * MinimalClient Effect - holds chain context.
  *
  * @since 2.0.0
  * @category model
  */
 export interface MinimalClientEffect {
-  readonly networkId: Effect.Effect<number | string, never>
+  readonly chain: Chain
 }
 
 /**
@@ -62,7 +63,7 @@ export interface SigningClientEffect extends Provider.ProviderEffect, SigningWal
  * @category model
  */
 export interface MinimalClient {
-  readonly networkId: number | string
+  readonly chain: Chain
   readonly attachProvider: (config: ProviderConfig) => ProviderOnlyClient
   readonly attachWallet: <T extends WalletConfig>(
     config: T
@@ -149,7 +150,7 @@ export type ApiWalletClient = EffectToPromiseAPI<ApiWalletEffect> & {
  * @category model
  */
 export type SigningWalletClient = EffectToPromiseAPI<SigningWalletEffect> & {
-  readonly networkId: number | string
+  readonly chain: Chain
   readonly attachProvider: (config: ProviderConfig) => SigningClient
   readonly Effect: SigningWalletEffect
 }
@@ -162,18 +163,10 @@ export type SigningWalletClient = EffectToPromiseAPI<SigningWalletEffect> & {
  * @category model
  */
 export type ReadOnlyWalletClient = EffectToPromiseAPI<ReadOnlyWalletEffect> & {
-  readonly networkId: number | string
+  readonly chain: Chain
   readonly attachProvider: (config: ProviderConfig) => ReadOnlyClient
   readonly Effect: ReadOnlyWalletEffect
 }
-
-/**
- * Network identifier for client configuration.
- *
- * @since 2.0.0
- * @category model
- */
-export type NetworkId = "mainnet" | "preprod" | "preview" | number
 
 /**
  * Retry policy configuration with exponential backoff.
