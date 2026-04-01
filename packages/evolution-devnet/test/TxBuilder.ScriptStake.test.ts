@@ -83,7 +83,7 @@ describe("TxBuilder Script Stake Operations", () => {
 
   const createTestClient = (accountIndex: number = 0) =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1447",
@@ -102,7 +102,7 @@ describe("TxBuilder Script Stake Operations", () => {
     expect(calculatedScriptHash).toBe(STAKE_MULTI_SCRIPT_HASH)
 
     const testClient = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
     })
 

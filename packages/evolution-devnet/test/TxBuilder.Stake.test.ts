@@ -35,7 +35,7 @@ describe("TxBuilder Stake Operations", () => {
   // Create client for a specific account index (each test uses different account)
   const createTestClient = (accountIndex: number = 0) =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1446",
@@ -53,7 +53,7 @@ describe("TxBuilder Stake Operations", () => {
     // Create clients for each account we'll use in tests
     const accounts = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((accountIndex) =>
       createClient({
-        network: 0,
+        chain: Cluster.BOOTSTRAP_CHAIN,
         wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
       })
     )

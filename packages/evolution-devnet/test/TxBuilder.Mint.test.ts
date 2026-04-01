@@ -31,7 +31,7 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
 
   const createTestClient = () =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1443",
@@ -46,7 +46,7 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
 
   beforeAll(async () => {
     const testClient = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
     })
 

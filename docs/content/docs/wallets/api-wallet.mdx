@@ -39,7 +39,7 @@ Never request or store user keys. Frontend signs only and should not include pro
 Frontend creates API wallet client without provider. Can sign and submit transactions but cannot build them.
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, mainnet } from "@evolution-sdk/evolution";
 
 declare const cardano: any; // window.cardano
 
@@ -49,7 +49,7 @@ async function signAndSubmit() {
 
   // 2. Create API wallet client (no provider needed for signing/submitting)
   const client = createClient({
-    network: "mainnet",
+    chain: mainnet,
     wallet: { type: "api", api: walletApi }
   });
 
@@ -88,7 +88,7 @@ interface ApiWalletConfig {
 ## Complete dApp Example
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, mainnet } from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -107,7 +107,7 @@ async function connectAndPay() {
 
   // Create API wallet client
   const client = createClient({
-    network: "mainnet",
+    chain: mainnet,
     wallet: { type: "api", api: walletApi }
   });
 
@@ -141,7 +141,7 @@ async function connectAndPay() {
 Hardware wallets work through browser extensions. The extension communicates with the hardware device.
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, mainnet } from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -151,7 +151,7 @@ async function useHardwareWallet() {
 
   // Create API wallet client (same as software wallets)
   const client = createClient({
-    network: "mainnet",
+    chain: mainnet,
     wallet: { type: "api", api: walletApi }
   });
 
@@ -182,7 +182,7 @@ Hardware wallets and extensions follow Cardano's BIP-32 derivation paths:
 ## Error Handling
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, mainnet } from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -198,7 +198,7 @@ async function connectWallet(walletName: string) {
 
     // Create API wallet client
     const client = createClient({
-      network: "mainnet",
+      chain: mainnet,
       wallet: { type: "api", api: walletApi }
     });
 

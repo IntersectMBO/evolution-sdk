@@ -48,12 +48,12 @@ console.log(mnemonic);
 ## Basic Setup
 
 ```typescript twoslash
-import { PrivateKey, createClient } from "@evolution-sdk/evolution";
+import { PrivateKey, createClient, preprod } from "@evolution-sdk/evolution";
 
 // Create a signing-only client with seed wallet (no provider)
 // Can sign transactions but cannot query blockchain or submit
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   wallet: {
     type: "seed",
     mnemonic: "fitness juice ankle box prepare gallery purse narrow miracle next soccer category analyst wait verb patch kit era hen clerk write skin trumpet attract",
@@ -84,11 +84,11 @@ interface SeedWalletConfig {
 Different networks use the same wallet configuration—just change the network parameter:
 
 ```typescript twoslash
-import { PrivateKey, createClient } from "@evolution-sdk/evolution";
+import { PrivateKey, createClient, preprod, mainnet } from "@evolution-sdk/evolution";
 
 // Testnet client
 const testClient = createClient({
-  network: "preprod",
+  chain: preprod,
   wallet: {
     type: "seed",
     mnemonic: "fitness juice ankle box prepare gallery purse narrow miracle next soccer category analyst wait verb patch kit era hen clerk write skin trumpet attract",
@@ -98,7 +98,7 @@ const testClient = createClient({
 
 // Mainnet client (use DIFFERENT mnemonic in production!)
 const mainClient = createClient({
-  network: "mainnet",
+  chain: mainnet,
   wallet: {
     type: "seed",
     mnemonic: process.env.WALLET_MNEMONIC!,  // Different mnemonic!
@@ -116,10 +116,10 @@ BLOCKFROST_PROJECT_ID="preprodYourProjectIdHere"
 ```
 
 ```typescript twoslash
-import { PrivateKey, createClient } from "@evolution-sdk/evolution";
+import { PrivateKey, createClient, preprod } from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   wallet: {
     type: "seed",
     mnemonic: process.env.WALLET_MNEMONIC!,  // From environment
@@ -133,11 +133,11 @@ const client = createClient({
 Generate independent wallets from the same mnemonic using different `accountIndex` values:
 
 ```typescript twoslash
-import { PrivateKey, createClient } from "@evolution-sdk/evolution";
+import { PrivateKey, createClient, preprod } from "@evolution-sdk/evolution";
 
 // Account 0 (default)
 const account0 = createClient({
-  network: "preprod",
+  chain: preprod,
   wallet: {
     type: "seed",
     mnemonic: process.env.WALLET_MNEMONIC!,
@@ -147,7 +147,7 @@ const account0 = createClient({
 
 // Account 1 (different addresses, same mnemonic)
 const account1 = createClient({
-  network: "preprod",
+  chain: preprod,
   wallet: {
     type: "seed",
     mnemonic: process.env.WALLET_MNEMONIC!,
@@ -165,7 +165,7 @@ console.log("Different addresses:", addr0 !== addr1); // true
 ### Development Testing
 
 ```typescript twoslash
-import { PrivateKey, createClient } from "@evolution-sdk/evolution";
+import { PrivateKey, createClient, preprod } from "@evolution-sdk/evolution";
 
 // Mock test runner functions for documentation
 declare function describe(name: string, fn: () => void): void;
@@ -181,7 +181,7 @@ describe("Payment tests", () => {
 
   beforeEach(() => {
     client = createClient({
-      network: "preprod",
+      chain: preprod,
       wallet: {
         type: "seed",
         mnemonic: process.env.TEST_WALLET_MNEMONIC!,

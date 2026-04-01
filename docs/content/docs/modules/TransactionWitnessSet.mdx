@@ -18,7 +18,9 @@ parent: Modules
   - [fromVKeyWitnesses](#fromvkeywitnesses)
 - [encoding](#encoding)
   - [toCBORBytes](#tocborbytes)
+  - [toCBORBytesWithFormat](#tocborbyteswithformat)
   - [toCBORHex](#tocborhex)
+  - [toCBORHexWithFormat](#tocborhexwithformat)
 - [model](#model)
   - [PlutusScript](#plutusscript)
   - [TransactionWitnessSet (class)](#transactionwitnessset-class)
@@ -35,7 +37,9 @@ parent: Modules
     - [[Hash.symbol] (method)](#hashsymbol-method-1)
 - [parsing](#parsing)
   - [fromCBORBytes](#fromcborbytes)
+  - [fromCBORBytesWithFormat](#fromcborbyteswithformat)
   - [fromCBORHex](#fromcborhex)
+  - [fromCBORHexWithFormat](#fromcborhexwithformat)
 - [schemas](#schemas)
   - [CDDLSchema](#cddlschema)
   - [FromCDDL](#fromcddl)
@@ -112,6 +116,18 @@ export declare const toCBORBytes: (data: TransactionWitnessSet, options?: CBOR.C
 
 Added in v2.0.0
 
+## toCBORBytesWithFormat
+
+Convert a TransactionWitnessSet to CBOR bytes using an explicit root format tree.
+
+**Signature**
+
+```ts
+export declare const toCBORBytesWithFormat: (data: TransactionWitnessSet, format: CBOR.CBORFormat) => Uint8Array
+```
+
+Added in v2.0.0
+
 ## toCBORHex
 
 Convert a TransactionWitnessSet to CBOR hex string.
@@ -120,6 +136,18 @@ Convert a TransactionWitnessSet to CBOR hex string.
 
 ```ts
 export declare const toCBORHex: (data: TransactionWitnessSet, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
+## toCBORHexWithFormat
+
+Convert a TransactionWitnessSet to CBOR hex string using an explicit root format tree.
+
+**Signature**
+
+```ts
+export declare const toCBORHexWithFormat: (data: TransactionWitnessSet, format: CBOR.CBORFormat) => string
 ```
 
 Added in v2.0.0
@@ -302,6 +330,18 @@ export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOpti
 
 Added in v2.0.0
 
+## fromCBORBytesWithFormat
+
+Parse a TransactionWitnessSet from CBOR bytes and return the root format tree.
+
+**Signature**
+
+```ts
+export declare const fromCBORBytesWithFormat: (bytes: Uint8Array) => CBOR.DecodedWithFormat<TransactionWitnessSet>
+```
+
+Added in v2.0.0
+
 ## fromCBORHex
 
 Parse a TransactionWitnessSet from CBOR hex string.
@@ -310,6 +350,18 @@ Parse a TransactionWitnessSet from CBOR hex string.
 
 ```ts
 export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => TransactionWitnessSet
+```
+
+Added in v2.0.0
+
+## fromCBORHexWithFormat
+
+Parse a TransactionWitnessSet from CBOR hex string and return the root format tree.
+
+**Signature**
+
+```ts
+export declare const fromCBORHexWithFormat: (hex: string) => CBOR.DecodedWithFormat<TransactionWitnessSet>
 ```
 
 Added in v2.0.0
@@ -337,10 +389,7 @@ nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
 **Signature**
 
 ```ts
-export declare const CDDLSchema: Schema.MapFromSelf<
-  typeof Schema.BigIntFromSelf,
-  Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>
->
+export declare const CDDLSchema: Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>
 ```
 
 Added in v2.0.0
@@ -353,7 +402,7 @@ CDDL transformation schema for TransactionWitnessSet.
 
 ```ts
 export declare const FromCDDL: Schema.transformOrFail<
-  Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>,
+  Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
   Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
   never
 >
@@ -377,7 +426,7 @@ export declare const FromCBORBytes: (
     never
   >,
   Schema.transformOrFail<
-    Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>,
+    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
     Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
     never
   >
@@ -401,7 +450,7 @@ export declare const FromCBORHex: (
     >
   >,
   Schema.transformOrFail<
-    Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>,
+    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
     Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
     never
   >

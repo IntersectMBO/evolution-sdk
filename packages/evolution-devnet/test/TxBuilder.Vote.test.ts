@@ -33,7 +33,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   const createTestClient = (accountIndex: number = 0) =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1453",
@@ -51,7 +51,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Create clients for multiple test accounts
     const accounts = [0, 1, 2, 3].map((accountIndex) =>
       createClient({
-        network: 0,
+        chain: Cluster.BOOTSTRAP_CHAIN,
         wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
       })
     )

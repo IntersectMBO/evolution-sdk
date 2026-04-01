@@ -42,10 +42,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
 
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
-    const slotConfig = Cluster.getSlotConfig(devnetCluster)
     return createClient({
-      network: 0,
-      slotConfig,
+      chain: Cluster.getChain(devnetCluster),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1449",
@@ -62,7 +60,7 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
 
   beforeAll(async () => {
     const tempClient = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
     })
 

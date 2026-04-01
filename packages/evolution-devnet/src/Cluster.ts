@@ -519,17 +519,9 @@ export interface SlotConfig {
  * @example
  * ```typescript
  * import * as Cluster from "@evolution-sdk/devnet/Cluster"
- * import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
  *
  * const cluster = await Cluster.make({ ... })
  * const slotConfig = Cluster.getSlotConfig(cluster)
- *
- * const client = createClient({
- *   network: 0,
- *   slotConfig,
- *   provider: { type: "kupmios", kupoUrl: "...", ogmiosUrl: "..." },
- *   wallet: { type: "seed", mnemonic: "..." }
- * })
  * ```
  *
  * @since 2.0.0

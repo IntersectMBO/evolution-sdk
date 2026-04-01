@@ -32,7 +32,7 @@ describe("TxBuilder Pool Operations", () => {
 
   const createTestClient = (accountIndex: number = 0) =>
     createClient({
-      network: 0,
+      chain: Cluster.getChain(devnetCluster!),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1453",
@@ -50,7 +50,7 @@ describe("TxBuilder Pool Operations", () => {
     // Create clients for pool tests
     const accounts = [0, 1].map((accountIndex) =>
       createClient({
-        network: 0,
+        chain: Cluster.BOOTSTRAP_CHAIN,
         wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
       })
     )
