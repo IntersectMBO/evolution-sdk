@@ -1,0 +1,49 @@
+{
+  "name": "@evolution-sdk/scalus-emulator",
+  "version": "0.0.1",
+  "description": "Scalus Emulator provider for Evolution SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": [],
+  "tags": [
+    "typescript",
+    "cardano",
+    "scalus",
+    "emulator",
+    "provider"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "node": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "dev": "tsc -b tsconfig.build.json --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.{ts,mjs}\"",
+    "clean": "rm -rf dist .turbo .tsbuildinfo"
+  },
+  "dependencies": {
+    "effect": "^3.19.3",
+    "scalus": "^0.15.0"
+  },
+  "peerDependencies": {
+    "@evolution-sdk/evolution": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

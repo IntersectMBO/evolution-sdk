@@ -283,6 +283,22 @@ importers:
         specifier: ^5.9.2
         version: 5.9.2
 
+  packages/scalus-emulator:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      effect:
+        specifier: ^3.19.3
+        version: 3.19.3
+      scalus:
+        specifier: ^0.15.0
+        version: 0.15.0
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+
   packages/scalus-uplc:
     dependencies:
       '@evolution-sdk/evolution':
@@ -5364,6 +5380,9 @@ packages:
 
   scalus@0.14.2:
     resolution: {integrity: sha512-dobDMIUDUVhtxoX3ceGlaykKQGkph4HOE9hjkLsmwVgYf24fIik6YrZzVFrZSNCTvI2WN7hjEknehIrEJo1CMQ==}
+
+  scalus@0.15.0:
+    resolution: {integrity: sha512-4yWMpHkGj89/VUUn18kXZHjUHdJDSw2Se9E1Aa3xmNWSe5YdWyGclpRlqfih5mTFuQik9/vt0fgrh3HaEUVqUw==}
 
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
@@ -12080,6 +12099,8 @@ snapshots:
       enhanced-resolve: 5.18.3
 
   scalus@0.14.2: {}
+
+  scalus@0.15.0: {}
 
   scheduler@0.27.0: {}
 
