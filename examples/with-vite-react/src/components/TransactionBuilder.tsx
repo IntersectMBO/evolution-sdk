@@ -48,7 +48,10 @@ export default function TransactionBuilder() {
 
       // Determine chain from environment variable
       const chainMap = { mainnet, preprod, preview } as const
-      const chain = chainMap[networkEnv as keyof typeof chainMap] ?? preprod
+      const resolvedKey = (networkEnv as keyof typeof chainMap) in chainMap
+        ? (networkEnv as keyof typeof chainMap)
+        : "preprod"
+      const chain = chainMap[resolvedKey]
 
       // Configure Blockfrost provider based on network
       const blockfrostUrls = {
@@ -59,7 +62,7 @@ export default function TransactionBuilder() {
 
       const providerConfig = {
         type: "blockfrost" as const,
-        baseUrl: blockfrostUrls[networkEnv as keyof typeof blockfrostUrls],
+        baseUrl: blockfrostUrls[resolvedKey],
         projectId: import.meta.env.VITE_BLOCKFROST_PROJECT_ID || ""
       }
 
