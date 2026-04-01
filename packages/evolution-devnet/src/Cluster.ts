@@ -583,5 +583,5 @@ export const BOOTSTRAP_CHAIN = {
   id: 0 as const,
   networkMagic: Config.DEFAULT_DEVNET_CONFIG.networkMagic,
   slotConfig: { zeroTime: 0n, zeroSlot: 0n, slotLength: 1000 },
-  epochLength: Config.DEFAULT_DEVNET_CONFIG.shelleyGenesis.epochLength
+  epochLength: Config.DEFAULT_DEVNET_CONFIG.shelleyGenesis.epochLength ?? 432000
 } as const

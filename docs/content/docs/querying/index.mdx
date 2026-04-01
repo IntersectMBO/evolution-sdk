@@ -26,10 +26,10 @@ Evolution SDK provides a unified query interface across all providers (Blockfros
 ## Quick Example
 
 ```typescript twoslash
-import { Address, createClient } from "@evolution-sdk/evolution"
+import { Address, createClient, preprod} from "@evolution-sdk/evolution"
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
   wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
 })

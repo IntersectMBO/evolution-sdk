@@ -27,7 +27,7 @@ import { Address, TransactionHash, createClient } from "@evolution-sdk/evolution
 
 // Create a client to generate an address
 const client = createClient({
-  network: 0, // Network magic 0 for custom devnet
+  chain: Cluster.BOOTSTRAP_CHAIN,
   wallet: {
     type: "seed",
     mnemonic: "your twenty-four word mnemonic phrase here",
@@ -74,7 +74,7 @@ import { Cluster, Config } from "@evolution-sdk/devnet";
 import { Address, TransactionHash, createClient } from "@evolution-sdk/evolution";
 
 const client1 = createClient({
-  network: 0,
+  chain: Cluster.BOOTSTRAP_CHAIN,
   wallet: {
     type: "seed",
     mnemonic: "your mnemonic here",
@@ -83,7 +83,7 @@ const client1 = createClient({
 });
 
 const client2 = createClient({
-  network: 0,
+  chain: Cluster.BOOTSTRAP_CHAIN,
   wallet: {
     type: "seed",
     mnemonic: "your mnemonic here",
@@ -308,7 +308,7 @@ import { Address, TransactionHash, createClient } from "@evolution-sdk/evolution
 
 // Generate funded addresses
 const wallet1 = createClient({
-  network: 0,
+  chain: Cluster.BOOTSTRAP_CHAIN,
   wallet: {
     type: "seed",
     mnemonic: "test wallet one mnemonic here",
@@ -317,7 +317,7 @@ const wallet1 = createClient({
 });
 
 const wallet2 = createClient({
-  network: 0,
+  chain: Cluster.BOOTSTRAP_CHAIN,
   wallet: {
     type: "seed",
     mnemonic: "test wallet two mnemonic here",
@@ -460,6 +460,6 @@ With custom genesis configuration, you can now:
 
 **Protocol parameter validation**: Some parameter combinations are invalid (e.g., `lovelacePerUTxOWord` too low in Alonzo genesis). Check cardano-node logs if startup fails.
 
-**Client network parameter**: Always use `network: 0` for devnet clients to create testnet-format addresses (addr_test...).
+**Client chain parameter**: Always use `Cluster.BOOTSTRAP_CHAIN` for devnet clients to create testnet-format addresses (addr_test...).
 
 **Excessive funds**: While genesis supports arbitrary amounts, extremely large values may cause numeric overflow in some calculations. Stay under 45B ADA (total supply) per address.

@@ -36,10 +36,10 @@ const lucid = await Lucid.new(blockfrostProvider, "Preprod");
 
 **Evolution SDK:**
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -65,10 +65,10 @@ lucid
 
 **Evolution SDK:**
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -97,7 +97,7 @@ Here are the typical changes you'll make throughout your codebase:
 
 | Lucid | Evolution SDK |
 |-------|---------------|
-| `Lucid.new(provider, network)` | `createClient({ network, provider, wallet })` |
+| `Lucid.new(provider, network)` | `createClient({ chain, provider, wallet })` |
 | `.payToAddress(addr, assets)` | `.payToAddress({ address, assets })` |
 | `.complete()` | `.build()` |
 | `.signWithWallet()` | `tx.sign()` |

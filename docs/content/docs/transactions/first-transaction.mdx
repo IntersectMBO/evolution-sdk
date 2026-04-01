@@ -14,11 +14,11 @@ This guide walks through a complete payment transaction from client setup to on-
 Here's a full transaction workflow—configure once, then build, sign, and submit:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 // 1. Configure your client
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -54,10 +54,10 @@ console.log("Transaction submitted:", txHash);
 
 Set up your connection to the network. This happens once—you'll reuse the client throughout your application:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -76,10 +76,10 @@ const client = createClient({
 Chain operations to specify what the transaction should do. Call `.build()` when ready to finalize:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "", projectId: "" },
   wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
 });
@@ -99,10 +99,10 @@ The builder handles UTxO selection, fee calculation, and change outputs automati
 Authorize the transaction with your wallet's private keys:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "", projectId: "" },
   wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
 });
@@ -119,10 +119,10 @@ const signed = await tx.sign();
 Broadcast the signed transaction to the blockchain and get the transaction hash:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "", projectId: "" },
   wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
 });

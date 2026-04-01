@@ -35,7 +35,7 @@ const MNEMONIC = "your twenty-four word mnemonic phrase here";
 async function completeWorkflow() {
   // Step 1: Generate sender address
   const wallet = createClient({
-    network: 0,
+    chain: Cluster.BOOTSTRAP_CHAIN,
     wallet: { type: "seed", mnemonic: MNEMONIC, accountIndex: 0 }
   });
 
@@ -72,7 +72,7 @@ async function completeWorkflow() {
 
   // Step 4: Create client connected to devnet
   const client = createClient({
-    network: 0,
+    chain: Cluster.getChain(cluster),
     provider: {
       type: "kupmios",
       kupoUrl: "http://localhost:1442",
@@ -190,7 +190,7 @@ await new Promise(resolve => setTimeout(resolve, 6000));
 
 // Provider-only client (no wallet configured)
 const providerClient = createClient({
-  network: 0,
+  chain: Cluster.getChain(cluster),
   provider: {
     type: "kupmios",
     kupoUrl: "http://localhost:1442",
@@ -232,7 +232,7 @@ describe("Transaction Tests", () => {
     const mnemonic = "test test test test test test test test test test test test test test test test test test test test test test test sauce";
     
     const wallet = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic, accountIndex: 0 }
     });
 
@@ -257,7 +257,7 @@ describe("Transaction Tests", () => {
     await new Promise(resolve => setTimeout(resolve, 8000));
 
     client = createClient({
-      network: 0,
+      chain: Cluster.getChain(cluster),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1442",
@@ -323,7 +323,7 @@ import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/e
 async function multiWalletExample() {
   // Create two wallets
   const wallet1 = createClient({
-    network: 0,
+    chain: Cluster.BOOTSTRAP_CHAIN,
     wallet: {
       type: "seed",
       mnemonic: "wallet one mnemonic here",
@@ -332,7 +332,7 @@ async function multiWalletExample() {
   });
 
   const wallet2 = createClient({
-    network: 0,
+    chain: Cluster.BOOTSTRAP_CHAIN,
     wallet: {
       type: "seed",
       mnemonic: "wallet two mnemonic here",
@@ -367,7 +367,7 @@ await new Promise(resolve => setTimeout(resolve, 8000));
 
 // Create connected clients for both wallets
 const client1 = createClient({
-  network: 0,
+  chain: Cluster.getChain(cluster),
   provider: {
     type: "kupmios",
     kupoUrl: "http://localhost:1442",
@@ -381,7 +381,7 @@ const client1 = createClient({
 });
 
 const client2 = createClient({
-  network: 0,
+  chain: Cluster.getChain(cluster),
   provider: {
     type: "kupmios",
     kupoUrl: "http://localhost:1442",

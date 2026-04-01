@@ -138,13 +138,13 @@ Backend services use read-only wallets configured with user addresses to build u
 ### Implementation
 
 ```typescript
-import { Address, Assets, Transaction, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Transaction, createClient, mainnet } from "@evolution-sdk/evolution";
 
 // Backend endpoint
 export async function buildTransaction(userAddress: string) {
   // Create read-only client with user's address
   const client = createClient({
-    network: "mainnet",
+    chain: mainnet,
     provider: {
       type: "blockfrost",
       baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",

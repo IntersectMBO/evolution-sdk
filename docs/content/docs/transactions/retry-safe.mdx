@@ -42,10 +42,10 @@ Querying chain state **outside** the action and passing it in as a static value 
 The simplest approach: wrap the full pipeline in an async function and call it from a retry loop.
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -89,10 +89,10 @@ console.log("Submitted:", txHash);
 When collecting from a script address, query the script UTxOs inside the action so each retry gets a fresh view of what is available at that address.
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -125,11 +125,11 @@ async function unlockFromScript() {
 When using Effect, compose the full pipeline as a single `Effect.gen` and apply `Effect.retry` directly. `Schedule` controls the timing and number of attempts.
 
 ```ts twoslash
-import { Address, createClient } from "@evolution-sdk/evolution";
+import { Address, createClient, preprod} from "@evolution-sdk/evolution";
 import { Effect, Schedule } from "effect";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",

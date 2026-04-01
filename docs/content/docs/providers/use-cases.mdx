@@ -12,10 +12,10 @@ Practical patterns and complete examples showing how to use providers in real ap
 Query and display address information:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -56,10 +56,10 @@ export async function exploreAddress(
 Track balances across multiple addresses:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -132,10 +132,10 @@ export async function trackPortfolio(
 Backend API endpoint for transaction submission:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -211,10 +211,10 @@ app.post("/api/submit", async (req, res) => {
 Track token distribution across holders:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -277,10 +277,10 @@ export async function trackDistribution(
 Track NFT ownership and rarity:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -357,10 +357,10 @@ export async function getCollectionStats(
 Track delegators to a specific stake pool:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -428,10 +428,10 @@ export async function getPoolStats(
 Monitor network parameters for changes:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -514,7 +514,7 @@ export class ParameterMonitor {
 Implement provider failover for reliability:
 
 ```typescript twoslash
-import { Address, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, Chain, PoolKeyHash, RewardAddress, Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 // Type for clients with common provider methods
 interface ProviderClient {
@@ -529,7 +529,7 @@ class ProviderWithFallback {
   
   constructor(
     configs: Array<{
-      network: "mainnet" | "preprod" | "preview";
+      chain: Chain;
       provider:
         | { type: "blockfrost"; baseUrl: string; projectId: string }
         | { type: "maestro"; baseUrl: string; apiKey: string }
@@ -537,8 +537,8 @@ class ProviderWithFallback {
         | { type: "koios"; baseUrl: string };
     }>
   ) {
-    this.clients = configs.map(({ network, provider }) =>
-      createClient({ network, provider })
+    this.clients = configs.map(({ chain, provider }) =>
+      createClient({ chain, provider })
     );
   }
   
@@ -583,7 +583,7 @@ class ProviderWithFallback {
 // Usage
 const resilientProvider = new ProviderWithFallback([
   {
-    network: "mainnet",
+    chain: mainnet,
     provider: {
       type: "blockfrost",
       baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -591,7 +591,7 @@ const resilientProvider = new ProviderWithFallback([
     }
   },
   {
-    network: "mainnet",
+    chain: mainnet,
     provider: {
       type: "maestro",
       baseUrl: "https://mainnet.gomaestro-api.org/v1",

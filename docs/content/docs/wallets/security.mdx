@@ -160,7 +160,7 @@ BLOCKFROST_PROJECT_ID=preprodxxxxxxxxxxxx
 // backend code (see /docs/clients for client creation examples).
 
 const providerConfig = {
-  network: process.env.NETWORK as "preprod" | "mainnet",
+  chain: process.env.NETWORK === "preprod" ? preprod : mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: process.env.NETWORK === "preprod"

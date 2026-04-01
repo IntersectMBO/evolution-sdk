@@ -29,10 +29,10 @@ Provider-only clients are ideal when you need blockchain data but not wallet-spe
 Create a client with only provider configuration:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -56,10 +56,10 @@ console.log("Min fee A:", params.minFeeA);
 Provider-only clients expose all provider methods directly:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -103,10 +103,10 @@ const evaluated = await client.evaluateTx(unsignedTx);
 Portfolio tracker for multiple addresses:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -143,10 +143,10 @@ const portfolio = await getPortfolioBalance([
 Accept signed transactions and submit to blockchain:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -182,10 +182,10 @@ export async function submitTransaction(signedTxCbor: string) {
 Track network parameters for fee estimation or protocol changes:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -221,10 +221,10 @@ Provider-only clients cannot perform wallet-specific operations:
 
 ```typescript twoslash
 // @errors: 2339
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -259,11 +259,11 @@ const txHash = await client.submitTx(signedTx);
 Add wallet to provider-only client using `attachWallet()`:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
 
 // Start with provider only
 const providerClient = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -292,13 +292,13 @@ const result = await builder.build();
 Switch between environments:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, preprod, mainnet} from "@evolution-sdk/evolution";
 
 const env = (process.env.NODE_ENV || "development") as "development" | "production";
 
 const config = {
   development: {
-    network: "preprod" as const,
+    chain: preprod,
     provider: {
       type: "blockfrost" as const,
       baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -306,7 +306,7 @@ const config = {
     }
   },
   production: {
-    network: "mainnet" as const,
+    chain: mainnet,
     provider: {
       type: "kupmios" as const,
       ogmiosUrl: process.env.OGMIOS_URL!,

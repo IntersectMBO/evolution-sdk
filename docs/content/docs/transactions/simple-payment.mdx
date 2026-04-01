@@ -14,10 +14,10 @@ This guide covers common payment patterns—from basic ADA transfers to payments
 The simplest transaction sends only lovelace (ADA's smallest unit). 1 ADA = 1,000,000 lovelace:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -66,10 +66,10 @@ console.log(lovelace); // 2500000n
 Include native tokens (custom tokens or NFTs) alongside ADA. The `assets` object takes any asset by its policy ID + asset name:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -109,10 +109,10 @@ The policy ID + asset name is concatenated into a single hex string.
 Make your code more readable with descriptive variable names:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "", projectId: "" },
   wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
 });
@@ -135,10 +135,10 @@ const tx = await client
 Adjust transaction values based on network or configuration:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "", projectId: "" },
   wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
 });

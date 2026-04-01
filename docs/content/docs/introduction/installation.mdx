@@ -56,10 +56,10 @@ Most modern frameworks (React, Vue, Svelte) bundle Evolution SDK without issues.
 Test that everything is working:
 
 ```ts twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",

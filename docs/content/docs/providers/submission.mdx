@@ -12,10 +12,10 @@ Providers handle transaction submission and confirmation monitoring. Submit pre-
 Submit a signed transaction CBOR string:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -36,10 +36,10 @@ console.log("Transaction submitted:", txHash);
 Monitor transaction until confirmed on blockchain:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -66,10 +66,10 @@ if (confirmed) {
 Specify how often to check for confirmation:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -91,10 +91,10 @@ console.log("Confirmed:", confirmed);
 Evaluate transaction before submission to estimate script execution costs:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -121,10 +121,10 @@ redeemers.forEach((redeemer) => {
 Create a transaction submission service with error handling:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -172,10 +172,10 @@ export async function submitAndWait(
 Submit multiple transactions sequentially:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -216,10 +216,10 @@ async function submitBatch(signedTxs: string[]) {
 Handle common submission errors:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -275,10 +275,10 @@ async function safeSubmit(signedTxCbor: string) {
 Implement retry logic for transient failures:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -329,10 +329,10 @@ async function submitWithRetry(
 Track transaction status with periodic checks:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -373,10 +373,10 @@ async function monitorTransaction(
 End-to-end transaction submission with all error handling:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -462,10 +462,10 @@ export async function submitTransaction(
 Validate scripts before submitting:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",

@@ -23,7 +23,7 @@ describe("Transaction Tests", () => {
     const mnemonic = "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
     const wallet = createClient({
-      network: 0,
+      chain: Cluster.BOOTSTRAP_CHAIN,
       wallet: { type: "seed", mnemonic, accountIndex: 0 }
     })
 
@@ -48,7 +48,7 @@ describe("Transaction Tests", () => {
     await new Promise(resolve => setTimeout(resolve, 8000))
 
     client = createClient({
-      network: 0,
+      chain: Cluster.getChain(cluster),
       provider: {
         type: "kupmios",
         kupoUrl: "http://localhost:1442",

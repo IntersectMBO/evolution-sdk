@@ -27,10 +27,10 @@ npm install @evolution-sdk/evolution
 ### 2. Create a Wallet
 Instantiate a wallet using your seed phrase or private keys:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   wallet: {
     type: "seed",
     mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -44,10 +44,10 @@ See [Creating Wallets](/docs/wallets) for all wallet types.
 ### 3. Attach a Provider
 Connect to the blockchain via a provider:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -66,10 +66,10 @@ Learn more in [Clients](/docs/clients) and [Providers](/docs/clients/providers).
 ### 4. Build a Transaction
 Construct your first payment:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -97,10 +97,10 @@ Details in [Transactions](/docs/transactions).
 ### 5. Sign & Submit
 Sign with your wallet and send to the network:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",

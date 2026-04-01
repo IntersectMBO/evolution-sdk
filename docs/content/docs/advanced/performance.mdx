@@ -18,10 +18,10 @@ Evolution SDK provides several configuration options to optimize transaction bui
 The default algorithm is `"largest-first"`. You can also provide a custom coin selection function:
 
 ```typescript twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution"
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
   wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
 })
@@ -40,10 +40,10 @@ const tx = await client
 The `unfrack` option optimizes your wallet's UTxO structure during transaction building:
 
 ```typescript twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution"
 
 const client = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
   wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
 })

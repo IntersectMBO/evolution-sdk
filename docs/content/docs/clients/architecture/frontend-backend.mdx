@@ -32,7 +32,7 @@ Frontend applications use API wallet clients (CIP-30) for signing only. They hav
 **Cannot Do**: Build transactions, query blockchain, fee calculation
 
 ```typescript twoslash
-import { Address, Assets, Transaction, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Transaction, createClient, mainnet} from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -41,7 +41,7 @@ const walletApi = await cardano.eternl.enable();
 
 // 2. Create API wallet client (no provider)
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   wallet: { type: "api", api: walletApi }
 });
 
@@ -81,12 +81,12 @@ Backend services use read-only clients configured with user addresses to build u
 **Cannot Do**: Sign transactions, access private keys
 
 ```typescript twoslash
-import { Address, Assets, Transaction, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Transaction, createClient, mainnet} from "@evolution-sdk/evolution";
 
 export async function buildTransaction(userAddressBech32: string) {
   // Create read-only client with user's address (bech32 string)
   const client = createClient({
-    network: "mainnet",
+    chain: mainnet,
     provider: {
       type: "blockfrost",
       baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -142,7 +142,7 @@ export type BuildPaymentResponse = {
 
 // @filename: frontend.ts
 // ===== Frontend (Browser) =====
-import { Address, Assets, Transaction, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Transaction, createClient, mainnet } from "@evolution-sdk/evolution";
 import type { BuildPaymentRequest, BuildPaymentResponse } from "./shared";
 
 declare const cardano: any;
@@ -153,7 +153,7 @@ async function sendPayment(recipientAddress: string, lovelace: bigint) {
   
   // 2. Create API wallet client (signing only)
   const walletClient = createClient({
-    network: "mainnet",
+    chain: mainnet,
     wallet: { type: "api", api: walletApi }
   });
 
@@ -186,7 +186,7 @@ async function sendPayment(recipientAddress: string, lovelace: bigint) {
 
 // @filename: backend.ts
 // ===== Backend (Server) =====
-import { Address, Assets, Transaction, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, Transaction, createClient, mainnet} from "@evolution-sdk/evolution";
 import type { BuildPaymentResponse } from "./shared";
 
 export async function buildPayment(
@@ -199,7 +199,7 @@ export async function buildPayment(
 
   // Create read-only client with user's address (bech32 string)
   const client = createClient({
-    network: "mainnet",
+    chain: mainnet,
     provider: {
       type: "blockfrost",
       baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -274,7 +274,7 @@ This architecture provides complete security through proper separation:
 ```typescript
 // WRONG - API wallet client has no provider
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   wallet: { type: "api", api: walletApi }
   // No provider configured!
 });
@@ -289,7 +289,7 @@ const builder = client.newTx(); // Error: Cannot build without provider
 ```typescript
 // CORRECT - API wallet client signs only
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   wallet: { type: "api", api: walletApi }
 });
 
@@ -307,7 +307,7 @@ const witnessSet = await client.signTx(txCbor);
 ```typescript
 // WRONG - Read-only client has no private keys
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: { /* ... */ },
   wallet: {
     type: "read-only",
@@ -325,7 +325,7 @@ await client.sign(data); // Error: Cannot sign with read-only wallet
 ```typescript
 // CORRECT - Read-only client builds only
 const client = createClient({
-  network: "mainnet",
+  chain: mainnet,
   provider: { /* ... */ },
   wallet: {
     type: "read-only",

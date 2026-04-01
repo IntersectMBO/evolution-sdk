@@ -38,11 +38,11 @@ interface ProviderEffect {
 ## Using a Provider
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution"
+import { createClient, preprod} from "@evolution-sdk/evolution"
 
 // Blockfrost
 const blockfrostClient = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "blockfrost",
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
@@ -52,7 +52,7 @@ const blockfrostClient = createClient({
 
 // Kupo/Ogmios
 const kupmiosClient = createClient({
-  network: "preprod",
+  chain: preprod,
   provider: {
     type: "kupmios",
     kupoUrl: "http://localhost:1442",
