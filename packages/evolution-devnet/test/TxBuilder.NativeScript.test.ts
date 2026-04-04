@@ -523,10 +523,9 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const mintTx = await mintSignBuilder.toTransaction()
 
     // Both signers still need to sign (native script requires signatures)
-    // When using client.signTx directly, reference UTxOs are auto-fetched
-    // so the wallet can determine required signers from reference scripts
+    // Pass referenceUtxos explicitly so the wallet can determine required signers
     const mintWitness1 = await mintSignBuilder.partialSign()
-    const mintWitness2 = await client2.signTx(mintTx)
+    const mintWitness2 = await client2.signTx(mintTx, { referenceUtxos: [refScriptUtxo!] })
 
     const mintSubmitBuilder = await mintSignBuilder.assemble([mintWitness1, mintWitness2])
     const mintTxHash = await mintSubmitBuilder.submit()
@@ -627,8 +626,9 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const spendTx = await spendSignBuilder.toTransaction()
 
     // Both clients must sign (native script requires signatures)
+    // Pass referenceUtxos explicitly so the wallet can determine required signers
     const witness1 = await spendSignBuilder.partialSign()
-    const witness2 = await client2.signTx(spendTx)
+    const witness2 = await client2.signTx(spendTx, { referenceUtxos: [refScriptUtxo!] })
 
     const spendSubmitBuilder = await spendSignBuilder.assemble([witness1, witness2])
     const spendTxHash = await spendSubmitBuilder.submit()

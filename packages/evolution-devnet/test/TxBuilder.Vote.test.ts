@@ -36,7 +36,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   beforeAll(async () => {
     // Create clients for vote tests
-    const accounts = [0, 1, 2].map((accountIndex) =>
+    const accounts = [0, 1, 2, 3].map((accountIndex) =>
       client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
     )
 
