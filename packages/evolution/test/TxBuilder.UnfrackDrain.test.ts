@@ -2,8 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
-import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { client, newTx, preview } from "../src/index.js"
 import * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -130,7 +129,6 @@ const createSimpleAdaWallet = (): Array<CoreUTxO.UTxO> => [
 // ============================================================================
 
 describe("TxBuilder Unfrack + DrainTo Integration", () => {
-  const baseConfig: TxBuilderConfig = {}
 
   // ==========================================================================
   // Basic Combination Tests
@@ -142,7 +140,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Simple ADA-only wallet
       const utxos = createSimpleAdaWallet()
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
         assets: CoreAssets.fromLovelace(1_000_000n) // 1 ADA minimum payment
       })
@@ -197,7 +195,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
         })
       ]
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
         assets: CoreAssets.fromLovelace(1_000_000n)
       })
@@ -242,7 +240,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Fragmented wallet with tokens scattered across UTxOs
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -281,7 +279,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Wallet with both fungible tokens and NFTs
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -321,7 +319,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Wallet with NFTs from multiple policies
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -361,7 +359,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Complete fragmented wallet
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -413,7 +411,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Simple ADA-only wallet for deterministic drainTo test
       const utxos = createSimpleAdaWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -452,7 +450,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: ADA-only wallet
       const utxos = createSimpleAdaWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -506,7 +504,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
         })
       ]
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -542,7 +540,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Wallet with tokens
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -592,7 +590,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
         })
       ]
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -646,7 +644,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Heavily fragmented wallet (simulating long-term usage)
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -691,7 +689,7 @@ describe("TxBuilder Unfrack + DrainTo Integration", () => {
       // Arrange: Complete wallet to migrate
       const utxos = createFragmentedWallet()
 
-      const builder = makeTxBuilder(baseConfig)
+      const builder = client(preview).newTx()
         .collectFrom({ inputs: utxos })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),

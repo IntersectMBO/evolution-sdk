@@ -13,7 +13,7 @@ describe("WalletFromSeed", () => {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Base",
         accountIndex: 0,
-        network: "Mainnet"
+        networkId: 1
       })
 
       expect(Address.toBech32(result1.address)).toBe(
@@ -27,7 +27,7 @@ describe("WalletFromSeed", () => {
         "ed25519e_sk19q4d6fguvncszk6f46fvvep5y5w3877y77t3n3dc446wgja25dg968hm8jxkc9d7p982uls6k8uq0srs69e44lay43hxmdx4nc3rttsn0h2f5"
       )
 
-      const result2 = yield* walletFromSeed(seedPhrase)
+      const result2 = yield* walletFromSeed(seedPhrase, { networkId: 1 })
       expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
       expect(result2.rewardAddress).toBe(result1.rewardAddress)
       expect(result2.paymentKey).toBe(result1.paymentKey)
@@ -40,7 +40,7 @@ describe("WalletFromSeed", () => {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Base",
         accountIndex: 1,
-        network: "Mainnet"
+        networkId: 1
       })
 
       expect(Address.toBech32(result1.address)).toBe(
@@ -55,7 +55,8 @@ describe("WalletFromSeed", () => {
       )
 
       const result2 = yield* walletFromSeed(seedPhrase, {
-        accountIndex: 1
+        accountIndex: 1,
+        networkId: 1
       })
       expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
       expect(result2.rewardAddress).toBe(result1.rewardAddress)
@@ -69,7 +70,7 @@ describe("WalletFromSeed", () => {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Base",
         accountIndex: 0,
-        network: "Custom"
+        networkId: 0
       })
 
       expect(Address.toBech32(result1.address)).toBe(
@@ -84,7 +85,7 @@ describe("WalletFromSeed", () => {
       )
 
       const result2 = yield* walletFromSeed(seedPhrase, {
-        network: "Custom"
+        networkId: 0
       })
       expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
       expect(result2.rewardAddress).toBe(result1.rewardAddress)
@@ -98,7 +99,7 @@ describe("WalletFromSeed", () => {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Enterprise",
         accountIndex: 0,
-        network: "Mainnet"
+        networkId: 1
       })
 
       expect(Address.toBech32(result1.address)).toBe("addr1v98wl3hnya9l94rt58ky533deyqe9t8zz5n9su26k8e5g2srcn4hd")
@@ -109,7 +110,8 @@ describe("WalletFromSeed", () => {
       expect(result1.stakeKey).toBeUndefined()
 
       const result2 = yield* walletFromSeed(seedPhrase, {
-        addressType: "Enterprise"
+        addressType: "Enterprise",
+        networkId: 1
       })
       expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
       expect(result2.rewardAddress).toBeUndefined()

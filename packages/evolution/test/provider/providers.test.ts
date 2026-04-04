@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest"
 
 import { BlockfrostProvider } from "../../src/sdk/provider/Blockfrost.js"
-import { Koios } from "../../src/sdk/provider/Koios.js"
+import { KoiosProvider } from "../../src/sdk/provider/Koios.js"
 import { KupmiosProvider } from "../../src/sdk/provider/Kupmios.js"
 import { MaestroProvider } from "../../src/sdk/provider/Maestro.js"
 import { registerConformanceTests } from "./conformance.js"
@@ -46,7 +46,7 @@ const OGMIOS_HEADER = parseHeaderJson(process.env.KUPMIOS_OGMIOS_HEADER_JSON) ??
 
 // ── Koios (no API key) ────────────────────────────────────────────────────────
 describe.skipIf(!process.env.KOIOS_ENABLED)("Koios", () => {
-  registerConformanceTests(() => new Koios(KOIOS_URL))
+  registerConformanceTests(() => new KoiosProvider(KOIOS_URL))
 })
 
 // ── Koios preview: awaitTx with Haskell show string asset_list ────────────────
@@ -55,7 +55,7 @@ describe.skipIf(!process.env.KOIOS_ENABLED)("Koios", () => {
 // without the InputOutputSchema fix.
 describe.skipIf(!process.env.KOIOS_PREVIEW_ENABLED)("Koios (preview)", () => {
   it("awaitTx succeeds for tx with Haskell show string asset_list", { timeout: 200_000 }, async () => {
-    const koios = new Koios(KOIOS_PREVIEW_URL)
+    const koios = new KoiosProvider(KOIOS_PREVIEW_URL)
     const confirmed = await koios.awaitTx(previewTxHash())
     expect(confirmed).toBe(true)
   })

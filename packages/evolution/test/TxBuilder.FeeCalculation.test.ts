@@ -7,7 +7,7 @@ import {
   calculateMinimumFee,
   tierRefScriptFee,
   validateTransactionBalance
-} from "../src/sdk/builders/TxBuilderImpl.js"
+} from "../src/utils/FeeValidation.js"
 
 // Test policy IDs (56 hex chars = 28 bytes each)
 const POLICY1 = "aa".repeat(28) // aaaa...aa (56 chars)

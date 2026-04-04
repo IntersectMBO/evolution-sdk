@@ -2,8 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
-import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { client, newTx, preview } from "../src/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -22,7 +21,6 @@ const TESTNET_ADDRESSES = [
 const CHANGE_ADDRESS = TESTNET_ADDRESSES[0]
 const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
-const baseConfig: TxBuilderConfig = {}
 
 describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
   it("hit max reselection attempts with insufficient funds", async () => {
@@ -33,7 +31,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
       createCoreTestUtxo({ transactionId: "d".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 100_000n })
     ]
 
-    const txBuilder = makeTxBuilder(baseConfig)
+    const txBuilder = client(preview).newTx()
 
     // Try to build transaction requiring 5M lovelace (impossible with 400k total)
     await expect(
@@ -145,7 +143,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
       100n
     )
 
-    const txBuilder = makeTxBuilder(baseConfig)
+    const txBuilder = client(preview).newTx()
 
     const signBuilder = await txBuilder
       .payToAddress({
@@ -205,7 +203,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
       createCoreTestUtxo({ transactionId: "b".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 700_000n })
     ]
 
-    const txBuilder = makeTxBuilder(baseConfig)
+    const txBuilder = client(preview).newTx()
 
     // Payment that will leave insufficient change with the first UTxO
     const signBuilder = await txBuilder
@@ -285,7 +283,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
       })
     ]
 
-    const txBuilder = makeTxBuilder(baseConfig)
+    const txBuilder = client(preview).newTx()
 
     // Small payment to leave change with max-length asset names
     const signBuilder = await txBuilder
@@ -371,7 +369,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
       createCoreTestUtxo({ transactionId: "f".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 400_000n })
     ]
 
-    const txBuilder = makeTxBuilder(baseConfig)
+    const txBuilder = client(preview).newTx()
 
     // Payment sized to trigger cascading reselection
     // Initial 2 UTxOs: 4.4M total

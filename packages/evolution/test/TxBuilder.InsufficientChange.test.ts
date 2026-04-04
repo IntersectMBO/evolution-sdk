@@ -3,9 +3,8 @@ import { FastCheck, Schema } from "effect"
 
 import * as Address from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
+import { client, newTx, preview } from "../src/index.js"
 import * as KeyHash from "../src/KeyHash.js"
-import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
-import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import * as FeeValidation from "../src/utils/FeeValidation.js"
 import * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
@@ -73,13 +72,12 @@ const assertFeeValid = async (
 const createSufficientUtxo = (lovelace: bigint = 100_000_000n): CoreUTxO.UTxO =>
   createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace })
 
-const baseConfig: TxBuilderConfig = {}
 
 describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
   it("should throw error by default when change is insufficient (safe default)", async () => {
     // Arrange: UTxO with insufficient leftover for change output
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })
@@ -98,7 +96,7 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
   it("should burn leftover as extra fee when onInsufficientChange='burn'", async () => {
     // Arrange: Same insufficient leftover scenario
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })
@@ -137,7 +135,7 @@ describe("Fallback Precedence: drainTo before onInsufficientChange", () => {
   it("should use drainTo (Fallback #1) before checking onInsufficientChange (Fallback #2)", async () => {
     // Arrange: Insufficient change + both fallbacks configured
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })
@@ -174,7 +172,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
   it("should create change output when sufficient funds available", async () => {
     // Arrange: UTxO with plenty of ADA
     const utxo = createSufficientUtxo(100_000_000n) // 100 ADA
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(10_000_000n) // 10 ADA payment
     })
@@ -211,7 +209,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
   it("should handle exact amount with drainTo without triggering fallbacks", async () => {
     // Arrange: UTxO with exact amount needed
     const utxo = createMinimalUtxo()
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })
@@ -259,7 +257,7 @@ describe("Edge Cases", () => {
       })
     ]
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })
@@ -292,7 +290,7 @@ describe("Edge Cases", () => {
     // Arrange: Use the standard minimal UTxO (sufficient for tests)
     const utxo = createMinimalUtxo()
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })
@@ -357,7 +355,7 @@ describe("Multi-Asset minUTxO Calculation", () => {
 
     // Send most lovelace but keep all native assets
     // This creates leftover with: small lovelace + 10 assets
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(2_500_000n) // Send 2.5 ADA only
     })
@@ -433,7 +431,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
     )
 
     // Build transaction that will select all 10 inputs
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(45_000_000n) // 45 ADA
     })
@@ -488,7 +486,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
       )
     }
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
       assets: CoreAssets.fromLovelace(45_000_000n)
     })
