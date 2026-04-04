@@ -17,14 +17,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as Data from "@evolution-sdk/evolution/Data"
 import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 
 import plutusJson from "../../evolution/test/spec/plutus.json"
 
@@ -82,31 +81,15 @@ describe("TxBuilder Script Stake Operations", () => {
   }
 
   const createTestClient = (accountIndex: number = 0) =>
-    createClient({
-      chain: Cluster.getChain(devnetCluster!),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1447",
-        ogmiosUrl: "http://localhost:1342"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base" // Need Base address to have stake credential for paying fees
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1447", ogmiosUrl: "http://localhost:1342" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
 
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedScriptHash).toBe(STAKE_MULTI_SCRIPT_HASH)
 
-    const testClient = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
-    })
+    const testClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }))
 
-    const testAddress = await testClient.address()
+    const testAddress = await testClient.getAddress()
     const testAddressHex = CoreAddress.toHex(testAddress)
 
     genesisConfig = {

@@ -544,17 +544,15 @@ export const getSlotConfig = (cluster: Cluster): SlotConfig => {
  * Create a Chain descriptor for a running devnet cluster.
  *
  * The returned object is structurally compatible with the `Chain` interface
- * from `@evolution-sdk/evolution` and can be passed directly to `createClient`.
+ * from `@evolution-sdk/evolution` and can be passed directly to `client()`.
  *
  * @example
  * ```typescript
  * const cluster = await Cluster.make({ ... })
  * await Cluster.start(cluster)
- * const client = createClient({
- *   chain: Cluster.getChain(cluster),
- *   provider: { type: "kupmios", kupoUrl: "...", ogmiosUrl: "..." },
- *   wallet: { type: "seed", mnemonic: "..." }
- * })
+ * const c = client(Cluster.getChain(cluster))
+ *   .with(kupmios({ kupoUrl: "...", ogmiosUrl: "..." }))
+ *   .with(seedWallet({ mnemonic: "..." }))
  * ```
  *
  * @since 2.1.0

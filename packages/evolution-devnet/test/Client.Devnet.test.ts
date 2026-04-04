@@ -2,9 +2,8 @@ import { describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import type { ProtocolParameters } from "@evolution-sdk/evolution/sdk/ProtocolParameters"
 import { afterAll, beforeAll } from "vitest"
 
@@ -23,27 +22,12 @@ describe("Client with Devnet", () => {
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
   const createTestClient = () =>
-    createClient({
-      chain: Cluster.getChain(devnetCluster!),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1443",
-        ogmiosUrl: "http://localhost:1338"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1443", ogmiosUrl: "http://localhost:1338" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
   beforeAll(async () => {
-    const testClient = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
-    const testAddress = await testClient.address()
+    const testAddress = await testClient.getAddress()
     const testAddressHex = CoreAddress.toHex(testAddress)
 
     genesisConfig = {
@@ -92,7 +76,7 @@ describe("Client with Devnet", () => {
   it("should create signing client and query wallet address", { timeout: 30_000 }, async () => {
     const client = createTestClient()
 
-    const address = await client.address()
+    const address = await client.getAddress()
     expect(address).toBeDefined()
     const addressBech32 = CoreAddress.toBech32(address)
     expect(addressBech32).toMatch(/^addr_test/)
@@ -125,7 +109,7 @@ describe("Client with Devnet", () => {
     }
 
     const client = createTestClient()
-    const genesisAddress = await client.address()
+    const genesisAddress = await client.getAddress()
     const genesisAddressBech32 = CoreAddress.toBech32(genesisAddress)
     const genesisUtxo = genesisUtxos.find((u) => CoreAddress.toBech32(u.address) === genesisAddressBech32)
 

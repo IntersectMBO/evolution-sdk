@@ -7,14 +7,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as Data from "@evolution-sdk/evolution/Data"
 import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 
 const CoreAssets = Cardano.Assets
 
@@ -38,25 +37,14 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
     CoreAddress.Address.make({ networkId: 0, paymentCredential: alwaysSucceedScriptHash })
 
   const createTestClient = () =>
-    createClient({
-      chain: Cluster.getChain(devnetCluster!),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1454",
-        ogmiosUrl: "http://localhost:1346"
-      },
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1454", ogmiosUrl: "http://localhost:1346" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
   beforeAll(async () => {
     expect(ScriptHash.toHex(alwaysSucceedScriptHash)).toBe(ALWAYS_SUCCEED_HASH)
 
-    const testClient = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
-    const testAddress = await testClient.address()
+    const testAddress = await testClient.getAddress()
     const testAddressHex = CoreAddress.toHex(testAddress)
 
     genesisConfig = {
@@ -95,7 +83,7 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
       if (genesisUtxos.length === 0) throw new Error("Genesis UTxOs not calculated")
 
       const client = createTestClient()
-      const walletAddress = await client.address()
+      const walletAddress = await client.getAddress()
       const scriptAddress = makeScriptAddress()
 
       const genesisUtxo = genesisUtxos.find(

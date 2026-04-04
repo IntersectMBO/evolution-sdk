@@ -15,9 +15,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 
 // Alias for readability
 const Time = Cardano.Time
@@ -33,30 +32,14 @@ describe("TxBuilder Validity Interval", () => {
   // Creates a client with correct slot config for devnet
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
-    return createClient({
-      chain: Cluster.getChain(devnetCluster),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1448",
-        ogmiosUrl: "http://localhost:1343"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    return client(Cluster.getChain(devnetCluster)).with(kupmios({ kupoUrl: "http://localhost:1448", ogmiosUrl: "http://localhost:1343" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
   }
 
   beforeAll(async () => {
     // Create a minimal client just to get the address (before cluster is ready)
-    const tempClient = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
-    })
+    const tempClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }))
 
-    const testAddress = await tempClient.address()
+    const testAddress = await tempClient.getAddress()
     const testAddressHex = Address.toHex(testAddress)
 
     genesisConfig = {
@@ -90,7 +73,7 @@ describe("TxBuilder Validity Interval", () => {
 
   it("should build and submit transaction with TTL", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Set TTL to 5 minutes from now
     const ttl = Time.now() + 300_000n
@@ -123,7 +106,7 @@ describe("TxBuilder Validity Interval", () => {
 
   it("should build and submit transaction with both validity bounds", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Valid from now until 5 minutes from now
     const from = Time.now()
@@ -163,7 +146,7 @@ describe("TxBuilder Validity Interval", () => {
 
   it("should reject expired transaction", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Set TTL to 1 second ago (already expired)
     const expiredTtl = Time.now() - 1_000n
@@ -185,7 +168,7 @@ describe("TxBuilder Validity Interval", () => {
 
   it("should reject transaction before validity start", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Valid starting 5 minutes from now (not valid yet)
     const from = Time.now() + 300_000n

@@ -11,11 +11,10 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as NativeScripts from "@evolution-sdk/evolution/NativeScripts"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import * as UTxO from "@evolution-sdk/evolution/UTxO"
@@ -42,29 +41,13 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
 
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
-    return createClient({
-      chain: Cluster.getChain(devnetCluster),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1449",
-        ogmiosUrl: "http://localhost:1344"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    return client(Cluster.getChain(devnetCluster)).with(kupmios({ kupoUrl: "http://localhost:1449", ogmiosUrl: "http://localhost:1344" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
   }
 
   beforeAll(async () => {
-    const tempClient = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
-    })
+    const tempClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }))
 
-    const testAddress = await tempClient.address()
+    const testAddress = await tempClient.getAddress()
     const testAddressHex = Address.toHex(testAddress)
 
     genesisConfig = {
@@ -100,8 +83,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     const credential1 = address1.paymentCredential
     const credential2 = address2.paymentCredential
@@ -161,8 +144,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     const credential1 = address1.paymentCredential
     const credential2 = address2.paymentCredential
@@ -215,9 +198,9 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const client2 = createTestClient(1)
     const client3 = createTestClient(2)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
-    const address3 = await client3.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
+    const address3 = await client3.getAddress()
 
     const credential1 = address1.paymentCredential
     const credential2 = address2.paymentCredential
@@ -274,7 +257,7 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
 
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     const paymentCredential = myAddress.paymentCredential
     if (paymentCredential._tag !== "KeyHash") {
@@ -332,7 +315,7 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
 
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     const paymentCredential = myAddress.paymentCredential
     if (paymentCredential._tag !== "KeyHash") {
@@ -401,8 +384,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     const credential1 = address1.paymentCredential
     const credential2 = address2.paymentCredential
@@ -478,8 +461,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     const credential1 = address1.paymentCredential
     const credential2 = address2.paymentCredential
@@ -558,8 +541,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     const credential1 = address1.paymentCredential
     const credential2 = address2.paymentCredential

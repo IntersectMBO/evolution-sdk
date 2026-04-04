@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Anchor from "@evolution-sdk/evolution/Anchor"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -22,7 +22,6 @@ import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as RewardAccount from "@evolution-sdk/evolution/RewardAccount"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import * as Url from "@evolution-sdk/evolution/Url"
 import * as VotingProcedures from "@evolution-sdk/evolution/VotingProcedures"
@@ -52,31 +51,15 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
 
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
-    return createClient({
-      chain: Cluster.getChain(devnetCluster),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1453",
-        ogmiosUrl: "http://localhost:1343"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    return client(Cluster.getChain(devnetCluster)).with(kupmios({ kupoUrl: "http://localhost:1453", ogmiosUrl: "http://localhost:1343" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
   }
   const genesisUtxosByAccount: Map<number, Cardano.UTxO.UTxO> = new Map()
 
   beforeAll(async () => {
     const accounts = [0, 1].map((accountIndex) =>
-      createClient({
-        chain: Cluster.BOOTSTRAP_CHAIN,
-        wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
-      })
+      client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
     )
-    const addresses = await Promise.all(accounts.map((client) => client.address()))
+    const addresses = await Promise.all(accounts.map((client) => client.getAddress()))
 
     const genesisConfig: Config.ShelleyGenesis = {
       ...Config.DEFAULT_SHELLEY_GENESIS,
@@ -114,7 +97,7 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
 
   it("validates always_yes_drep for Publishing and Voting", { timeout: 180_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
     if (!address.stakingCredential) throw new Error("Need staking credential")
 
     // Register stake (required for proposal submission)
@@ -197,8 +180,8 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
 
     const client0 = createTestClient(0)
     const client1 = createTestClient(1)
-    const address0 = await client0.address()
-    const address1 = await client1.address()
+    const address0 = await client0.getAddress()
+    const address1 = await client1.getAddress()
     if (!address0.stakingCredential) throw new Error("Need staking credential")
 
     const pkh0 = address0.paymentCredential
@@ -340,8 +323,8 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
 
     const client0 = createTestClient(0)
     const client1 = createTestClient(1)
-    const address0 = await client0.address()
-    const address1 = await client1.address()
+    const address0 = await client0.getAddress()
+    const address1 = await client1.getAddress()
     if (!address0.stakingCredential) throw new Error("Need staking credential")
 
     const pkh0 = address0.paymentCredential

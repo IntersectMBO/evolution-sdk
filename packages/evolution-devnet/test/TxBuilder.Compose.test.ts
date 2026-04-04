@@ -9,9 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 
 // Alias for readability
 const Time = Cardano.Time
@@ -26,29 +25,13 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
-    return createClient({
-      chain: Cluster.getChain(devnetCluster),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1451",
-        ogmiosUrl: "http://localhost:1346"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    return client(Cluster.getChain(devnetCluster)).with(kupmios({ kupoUrl: "http://localhost:1451", ogmiosUrl: "http://localhost:1346" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
   }
 
   beforeAll(async () => {
-    const tempClient = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
-    })
+    const tempClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }))
 
-    const testAddress = await tempClient.address()
+    const testAddress = await tempClient.getAddress()
     const testAddressHex = Address.toHex(testAddress)
 
     genesisConfig = {
@@ -82,7 +65,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
   it("should compose payment with validity constraints", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Create a payment builder
     const paymentBuilder = client.newTx().payToAddress({
@@ -121,8 +104,8 @@ describe("TxBuilder compose (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     // Create separate payment builders for different addresses
     const payment1 = client1.newTx().payToAddress({
@@ -159,7 +142,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
   it("should compose builder with addSigner + metadata + payment", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Extract payment credential
     const paymentCredential = myAddress.paymentCredential
@@ -206,7 +189,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
   it("should compose stake registration with payment and metadata", { timeout: 90_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Get stake credential from address
     if (!("stakingCredential" in myAddress) || !myAddress.stakingCredential) {
@@ -255,7 +238,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
   it("should verify getPrograms returns accumulated operations", { timeout: 30_000 }, async () => {
     const client = createTestClient(0)
-    const myAddress = await client.address()
+    const myAddress = await client.getAddress()
 
     // Build a transaction with multiple operations
     const builder = client
@@ -294,8 +277,8 @@ describe("TxBuilder compose (Devnet Submit)", () => {
     const client1 = createTestClient(0)
     const client2 = createTestClient(1)
 
-    const address1 = await client1.address()
-    const address2 = await client2.address()
+    const address1 = await client1.getAddress()
+    const address2 = await client2.getAddress()
 
     // Create builders from different clients
     const builder1 = client1.newTx().payToAddress({

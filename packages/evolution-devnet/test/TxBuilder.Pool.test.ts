@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
+import { client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Bytes32 from "@evolution-sdk/evolution/Bytes32"
 import type * as EpochNo from "@evolution-sdk/evolution/EpochNo"
@@ -16,7 +17,6 @@ import * as PoolKeyHash from "@evolution-sdk/evolution/PoolKeyHash"
 import * as PoolMetadata from "@evolution-sdk/evolution/PoolMetadata"
 import * as PoolParams from "@evolution-sdk/evolution/PoolParams"
 import * as RewardAccount from "@evolution-sdk/evolution/RewardAccount"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as SingleHostAddr from "@evolution-sdk/evolution/SingleHostAddr"
 import * as UnitInterval from "@evolution-sdk/evolution/UnitInterval"
 import * as Url from "@evolution-sdk/evolution/Url"
@@ -31,31 +31,15 @@ describe("TxBuilder Pool Operations", () => {
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
   const createTestClient = (accountIndex: number = 0) =>
-    createClient({
-      chain: Cluster.getChain(devnetCluster!),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1453",
-        ogmiosUrl: "http://localhost:1343"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1453", ogmiosUrl: "http://localhost:1343" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
 
   beforeAll(async () => {
     // Create clients for pool tests
     const accounts = [0, 1].map((accountIndex) =>
-      createClient({
-        chain: Cluster.BOOTSTRAP_CHAIN,
-        wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
-      })
+      client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
     )
 
-    const addresses = await Promise.all(accounts.map((client) => client.address()))
+    const addresses = await Promise.all(accounts.map((client) => client.getAddress()))
     const addressHexes = addresses.map((addr) => Address.toHex(addr))
 
     genesisConfig = {
@@ -108,7 +92,7 @@ describe("TxBuilder Pool Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
 
     const poolKeyHash =
       walletAddress.paymentCredential._tag === "KeyHash"
@@ -170,7 +154,7 @@ describe("TxBuilder Pool Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
 
     const poolKeyHash =
       walletAddress.paymentCredential._tag === "KeyHash"

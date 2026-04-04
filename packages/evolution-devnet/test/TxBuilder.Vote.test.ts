@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
+import { client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Anchor from "@evolution-sdk/evolution/Anchor"
 import * as Bytes32 from "@evolution-sdk/evolution/Bytes32"
@@ -17,7 +18,6 @@ import * as KeyHash from "@evolution-sdk/evolution/KeyHash"
 import * as ProtocolParamUpdate from "@evolution-sdk/evolution/ProtocolParamUpdate"
 import * as ProtocolVersion from "@evolution-sdk/evolution/ProtocolVersion"
 import * as RewardAccount from "@evolution-sdk/evolution/RewardAccount"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as UnitInterval from "@evolution-sdk/evolution/UnitInterval"
 import * as Url from "@evolution-sdk/evolution/Url"
 import * as VotingProcedures from "@evolution-sdk/evolution/VotingProcedures"
@@ -32,31 +32,15 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
   const createTestClient = (accountIndex: number = 0) =>
-    createClient({
-      chain: Cluster.getChain(devnetCluster!),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1453",
-        ogmiosUrl: "http://localhost:1343"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1453", ogmiosUrl: "http://localhost:1343" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
 
   beforeAll(async () => {
-    // Create clients for multiple test accounts
-    const accounts = [0, 1, 2, 3].map((accountIndex) =>
-      createClient({
-        chain: Cluster.BOOTSTRAP_CHAIN,
-        wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
-      })
+    // Create clients for vote tests
+    const accounts = [0, 1, 2].map((accountIndex) =>
+      client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
     )
 
-    const addresses = await Promise.all(accounts.map((client) => client.address()))
+    const addresses = await Promise.all(accounts.map((client) => client.getAddress()))
     const addressHexes = addresses.map((addr) => Address.toHex(addr))
 
     genesisConfig = {
@@ -122,7 +106,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
     const proposerClient = createTestClient(PROPOSER_ACCOUNT)
 
-    const proposerAddress = await proposerClient.address()
+    const proposerAddress = await proposerClient.getAddress()
     const proposerCredential = proposerAddress.paymentCredential
 
     // Step 1: Register key-based DRep (proposer)
@@ -225,7 +209,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates InfoAction proposal (type 6)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -259,7 +243,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Use account 0 as voter for this simple test
     const VOTER_ACCOUNT = 0
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for InfoAction vote")
@@ -301,7 +285,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates NoConfidenceAction proposal (type 3)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -337,7 +321,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Use account 1 as voter for NoConfidenceAction
     const VOTER_ACCOUNT = 1
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for NoConfidenceAction vote")
@@ -382,7 +366,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates HardForkInitiationAction proposal (type 1)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -419,7 +403,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Use account 2 as voter for HardForkInitiationAction
     const VOTER_ACCOUNT = 2
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for HardForkInitiationAction vote")
@@ -464,7 +448,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates TreasuryWithdrawalsAction proposal (type 2)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -504,7 +488,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Use account 3 as voter for TreasuryWithdrawalsAction
     const VOTER_ACCOUNT = 3
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for TreasuryWithdrawalsAction vote")
@@ -549,7 +533,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates UpdateCommitteeAction proposal (type 4)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -588,7 +572,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Use account 0 as voter for UpdateCommitteeAction
     const VOTER_ACCOUNT = 0
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for UpdateCommitteeAction vote")
@@ -633,7 +617,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates NewConstitutionAction proposal (type 5)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -679,7 +663,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Use account 1 as voter for NewConstitutionAction
     const VOTER_ACCOUNT = 1
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for NewConstitutionAction vote")
@@ -724,7 +708,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
   it("creates ParameterChangeAction proposal (type 0)", { timeout: 60_000 }, async () => {
     const client = createTestClient(0)
-    const address = await client.address()
+    const address = await client.getAddress()
 
     if (!address.stakingCredential) {
       throw new Error("Address must have staking credential")
@@ -766,7 +750,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     // Ensure a key-based DRep exists for account 1 (voter)
     const VOTER_ACCOUNT = 1
     const voterClient = createTestClient(VOTER_ACCOUNT)
-    const voterAddress = await voterClient.address()
+    const voterAddress = await voterClient.getAddress()
     const voterUtxo = genesisUtxosByAccount.get(VOTER_ACCOUNT)
 
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found")
