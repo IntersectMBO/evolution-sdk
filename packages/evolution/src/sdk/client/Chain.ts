@@ -50,7 +50,7 @@ export interface Chain {
  * not built into the SDK.
  *
  * @example
- * import { defineChain, createClient } from "@evolution-sdk/evolution"
+ * import { defineChain, client, kupmios } from "@evolution-sdk/evolution"
  *
  * const devnet = defineChain({
  *   name: "Local Devnet",
@@ -60,10 +60,7 @@ export interface Chain {
  *   epochLength: 500,
  * })
  *
- * const client = createClient({
- *   chain: devnet,
- *   provider: { type: "kupmios", kupoUrl: "http://localhost:1442", ogmiosUrl: "ws://localhost:1337" }
- * })
+ * const c = client(devnet).with(kupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl: "ws://localhost:1337" }))
  *
  * @since 2.1.0
  * @category constructors
