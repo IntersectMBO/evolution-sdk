@@ -11,11 +11,11 @@
 import { Effect, Ref } from "effect"
 
 import * as CoreAssets from "../../../Assets/index.js"
-import * as EvaluationStateManager from "../EvaluationStateManager.js"
+import * as EvaluationStateManager from "../internal/EvaluationStateManager.js"
 import { mintToAssets } from "../operations/Mint.js"
 import { BuildOptionsTag, PhaseContextTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
+import { calculateCertificateBalance, calculateProposalDeposits, calculateWithdrawals } from "./Calculations.js"
 import type { PhaseResult } from "./Phases.js"
-import { calculateCertificateBalance, calculateProposalDeposits, calculateWithdrawals } from "./utils.js"
 
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)

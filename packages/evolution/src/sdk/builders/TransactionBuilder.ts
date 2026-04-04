@@ -45,14 +45,25 @@ import * as Time from "../../Time/index.js"
 import * as Transaction from "../../Transaction.js"
 import type * as TxOut from "../../TxOut.js"
 import { runEffectPromise } from "../../utils/effect-runtime.js"
+import { calculateTransactionSize } from "../../utils/FeeValidation.js"
 import type * as CoreUTxO from "../../UTxO.js"
 import type * as VotingProcedures from "../../VotingProcedures.js"
+import type {
+  Addressable,
+  EvaluateTx as EvaluateTxCapability,
+  QueryProtocolParams,
+  QueryUtxos,
+  Signable,
+} from "../client/Capabilities.js"
 import type { EvalRedeemer } from "../EvalRedeemer.js"
 import type * as Provider from "../provider/Provider.js"
-import type * as WalletNew from "../wallet/WalletNew.js"
+import type * as Wallet from "../wallet/Wallet.js"
 import type { CoinSelectionAlgorithm, CoinSelectionFunction } from "./CoinSelection.js"
+import { buildFakeWitnessSet } from "./internal/FeeEstimation.js"
+import { makeSignBuilder } from "./internal/SignBuilderImpl.js"
+import { assembleTransaction, buildTransactionInputs } from "./internal/TxAssembly.js"
 import { createAddSignerProgram } from "./operations/AddSigner.js"
-import { attachScriptToState } from "./operations/Attach.js"
+import { createAttachScriptProgram } from "./operations/Attach.js"
 import { createAttachMetadataProgram } from "./operations/AttachMetadata.js"
 import { createCollectFromProgram } from "./operations/Collect.js"
 import {
@@ -114,17 +125,10 @@ import { executeEvaluation } from "./phases/Evaluation.js"
 import { executeFallback } from "./phases/Fallback.js"
 import { executeFeeCalculation } from "./phases/FeeCalculation.js"
 import { executeSelection } from "./phases/Selection.js"
-import type { DeferredRedeemer } from "./RedeemerBuilder.js"
-import type { SignBuilder } from "./SignBuilder.js"
-import { makeSignBuilder } from "./SignBuilderImpl.js"
+import type { DeferredRedeemer, RedeemerArg } from "./RedeemerBuilder.js"
+import type { SignBuilder, SignBuilderOf } from "./SignBuilder.js"
 import type { TransactionResultBase } from "./TransactionResult.js"
 import { makeTransactionResult } from "./TransactionResult.js"
-import {
-  assembleTransaction,
-  buildFakeWitnessSet,
-  buildTransactionInputs,
-  calculateTransactionSize
-} from "./TxBuilderImpl.js"
 
 /**
  * Error type for failures occurring during transaction builder operations.
@@ -225,7 +229,7 @@ const resolveProtocolParameters = (
 const resolveChangeAddress = (
   config: TxBuilderConfig,
   options?: BuildOptions
-): Effect.Effect<CoreAddress.Address, TransactionBuilderError | WalletNew.WalletError> => {
+): Effect.Effect<CoreAddress.Address, TransactionBuilderError | Wallet.WalletError> => {
   if (options?.changeAddress) {
     return Effect.succeed(options.changeAddress)
   }
@@ -251,7 +255,7 @@ const resolveAvailableUtxos = (
   options?: BuildOptions
 ): Effect.Effect<
   ReadonlyArray<CoreUTxO.UTxO>,
-  TransactionBuilderError | WalletNew.WalletError | Provider.ProviderError
+  TransactionBuilderError | Wallet.WalletError | Provider.ProviderError
 > => {
   if (options?.availableUtxos) {
     return Effect.succeed(options.availableUtxos)
@@ -449,7 +453,7 @@ const assembleFinalResult = (
 
     const wallet = config.wallet
 
-    if (wallet?.type === "signing" || wallet?.type === "api") {
+    if (hasSigningCapability(wallet)) {
       return makeSignBuilder({
         transaction,
         transactionWithFakeWitnesses: txWithFakeWitnesses,
@@ -516,7 +520,7 @@ const assembleAndValidateTransaction = Effect.gen(function* () {
   )
 
   // Build transaction inputs and assemble transaction body
-  const inputs = yield* buildTransactionInputs(selectedUtxos)
+  const inputs = buildTransactionInputs(selectedUtxos)
   const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
 
   // SAFETY CHECK: Validate transaction size against protocol limit
@@ -533,7 +537,7 @@ const assembleAndValidateTransaction = Effect.gen(function* () {
     auxiliaryData: finalState.auxiliaryData ?? null
   })
 
-  const txSizeWithWitnesses = yield* calculateTransactionSize(txWithFakeWitnesses)
+  const txSizeWithWitnesses = calculateTransactionSize(txWithFakeWitnesses)
   const protocolParams = yield* ProtocolParametersTag
 
   yield* Effect.logDebug(
@@ -1205,6 +1209,59 @@ export interface ProtocolParameters {
   // maxCollateralInputs?: number
 }
 
+// ── Structural "Like" types ─────────────────────────────────────────────────
+// These define the minimum shape the builder actually needs from a provider
+// or wallet. The full Provider/Wallet interfaces satisfy these structurally,
+// and so does the pipe Client's Effect namespace — no adapter needed.
+
+/**
+ * Structural subset of Provider that the transaction builder actually needs.
+ * Both `Provider` and `{ Effect: pipeClient.Effect }` satisfy this.
+ *
+ * @since 2.1.0
+ * @category config
+ */
+export interface ProviderLike {
+  readonly Effect: Pick<
+    Provider.ProviderEffect,
+    "getProtocolParameters" | "getUtxos" | "evaluateTx" | "submitTx"
+  >
+}
+
+/**
+ * Structural subset of a read-only wallet for the transaction builder.
+ * Provides change address resolution without signing.
+ *
+ * @since 2.1.0
+ * @category config
+ */
+export interface ReadOnlyWalletLike {
+  readonly Effect: Pick<Wallet.ReadOnlyWalletEffect, "address" | "rewardAddress">
+}
+
+/**
+ * Structural subset of a signing wallet for the transaction builder.
+ * Provides change address resolution and transaction signing.
+ *
+ * @since 2.1.0
+ * @category config
+ */
+export interface SigningWalletLike {
+  readonly Effect: Pick<Wallet.ReadOnlyWalletEffect, "address" | "rewardAddress"> &
+    Pick<Wallet.SigningWalletEffect, "signTx">
+}
+
+/**
+ * Union of wallet-like types accepted by TxBuilderConfig.
+ *
+ * @since 2.1.0
+ * @category config
+ */
+export type WalletLike = ReadOnlyWalletLike | SigningWalletLike
+
+const hasSigningCapability = (wallet: WalletLike | undefined): wallet is SigningWalletLike =>
+  wallet !== undefined && "signTx" in wallet.Effect
+
 /**
  * Configuration for TransactionBuilder.
  * Immutable configuration passed to builder at creation time.
@@ -1231,12 +1288,11 @@ export interface TxBuilderConfig {
    * When provided: Automatic change address and UTxO resolution.
    * When omitted: Must provide changeAddress and availableUtxos in BuildOptions.
    *
-   * ReadOnlyWallet: For read-only clients that can build but not sign transactions.
-   * SigningWallet/ApiWallet: For signing clients with full transaction signing capability.
+   * Accepts full Wallet interfaces or structural WalletLike subsets.
    *
    * Override per-build via BuildOptions.changeAddress and BuildOptions.availableUtxos.
    */
-  readonly wallet?: WalletNew.SigningWallet | WalletNew.ApiWallet | WalletNew.ReadOnlyWallet
+  readonly wallet?: WalletLike
 
   /**
    * Optional provider for:
@@ -1244,10 +1300,9 @@ export interface TxBuilderConfig {
    * - Transaction submission (provider.Effect.submitTx)
    * - Protocol parameters
    *
-   * Works together with wallet to provide everything needed for transaction building.
-   * When wallet is omitted, provider is only used if you call provider methods directly.
+   * Accepts full Provider or structural ProviderLike subset.
    */
-  readonly provider?: Provider.Provider
+  readonly provider?: ProviderLike
 
   /**
    * Network type for slot configuration in script evaluation.
@@ -1557,8 +1612,8 @@ export type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext
  * @internal
  */
 export type BuildResultType<W extends TxBuilderConfig["wallet"] | undefined> = W extends
-  | WalletNew.SigningWallet
-  | WalletNew.ApiWallet
+  | Wallet.SigningWallet
+  | Wallet.ApiWallet
   ? SignBuilder
   : TransactionResultBase
 
@@ -2297,6 +2352,8 @@ export interface TransactionBuilderBase {
  * This builder type is returned when makeTxBuilder() is called with a signing wallet.
  * Type narrowing happens automatically at construction time - no call-site guards needed.
  *
+ * @deprecated Use TxBuilder<C, R> from newTx(client) instead.
+ *
  * @since 2.0.0
  * @category builder-interfaces
  */
@@ -2329,7 +2386,7 @@ export interface SigningTransactionBuilder extends TransactionBuilderBase {
     options?: BuildOptions
   ) => Effect.Effect<
     SignBuilder,
-    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+    TransactionBuilderError | EvaluationError | Wallet.WalletError | Provider.ProviderError,
     never
   >
 
@@ -2347,7 +2404,7 @@ export interface SigningTransactionBuilder extends TransactionBuilderBase {
   readonly buildEither: (
     options?: BuildOptions
   ) => Promise<
-    Either<SignBuilder, TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError>
+    Either<SignBuilder, TransactionBuilderError | EvaluationError | Wallet.WalletError | Provider.ProviderError>
   >
 }
 
@@ -2359,6 +2416,8 @@ export interface SigningTransactionBuilder extends TransactionBuilderBase {
  *
  * This builder type is returned when makeTxBuilder() is called with a read-only wallet or no wallet.
  * Type narrowing happens automatically at construction time - no call-site guards needed.
+ *
+ * @deprecated Use TxBuilder<C, R> from newTx(client) instead.
  *
  * @since 2.0.0
  * @category builder-interfaces
@@ -2392,7 +2451,7 @@ export interface ReadOnlyTransactionBuilder extends TransactionBuilderBase {
     options?: BuildOptions
   ) => Effect.Effect<
     TransactionResultBase,
-    TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError,
+    TransactionBuilderError | EvaluationError | Wallet.WalletError | Provider.ProviderError,
     never
   >
 
@@ -2412,7 +2471,7 @@ export interface ReadOnlyTransactionBuilder extends TransactionBuilderBase {
   ) => Promise<
     Either<
       TransactionResultBase,
-      TransactionBuilderError | EvaluationError | WalletNew.WalletError | Provider.ProviderError
+      TransactionBuilderError | EvaluationError | Wallet.WalletError | Provider.ProviderError
     >
   >
 }
@@ -2421,21 +2480,513 @@ export interface ReadOnlyTransactionBuilder extends TransactionBuilderBase {
  * Union type for all transaction builders.
  * Use specific types (SigningTransactionBuilder or ReadOnlyTransactionBuilder) when you know the wallet type.
  *
+ * @deprecated Use TxBuilder<C, R> from newTx(client) instead.
+ *
  * @since 2.0.0
  * @category builder-interfaces
  */
 export type TransactionBuilder = SigningTransactionBuilder | ReadOnlyTransactionBuilder
 
 /**
- * Conditional type to determine the correct TransactionBuilder based on wallet type.
- * - If wallet is SigningWallet or ApiWallet: SigningTransactionBuilder
- * - If wallet is ReadOnlyWallet or undefined: ReadOnlyTransactionBuilder
+ * Conditional type to determine the correct TransactionBuilder based on wallet capabilities.
+ * - If wallet exposes signTx: SigningTransactionBuilder
+ * - Otherwise: ReadOnlyTransactionBuilder
  *
  * @internal
  */
 export type TxBuilderResultType<
-  W extends WalletNew.SigningWallet | WalletNew.ApiWallet | WalletNew.ReadOnlyWallet | undefined
-> = W extends WalletNew.SigningWallet | WalletNew.ApiWallet ? SigningTransactionBuilder : ReadOnlyTransactionBuilder
+  W extends WalletLike | undefined
+> = W extends { readonly Effect: Pick<Wallet.SigningWalletEffect, "signTx"> }
+  ? SigningTransactionBuilder
+  : ReadOnlyTransactionBuilder
+
+// ============================================================================
+// TxBuilder<C, R> — Capability-Tracked Builder Interface
+// ============================================================================
+
+/**
+ * Computes which fields MUST be supplied in build(options) because C cannot provide them.
+ *
+ * Static requirements (QPP, Addressable, QueryUtxos): required when C lacks the interface.
+ * Dynamic requirement (EvaluateTx): required when R has accumulated EvaluateTx AND C
+ * doesn't provide EvaluateTx capability. Uses `{} extends R` (not `C extends R`) to
+ * correctly handle the `unknown` edge case — `unknown extends {}` is false in TypeScript,
+ * which would incorrectly mark evaluator as required even when R = {} (no requirements).
+ *
+ * @internal
+ */
+type RequiredBuildInputs<C, R> =
+  & (C extends QueryProtocolParams ? {} : { readonly protocolParameters: ProtocolParameters })
+  & (C extends Addressable         ? {} : { readonly changeAddress: CoreAddress.Address })
+  & (C extends QueryUtxos          ? {} : { readonly availableUtxos: ReadonlyArray<CoreUTxO.UTxO> })
+  & ({} extends R                  ? {} : C extends EvaluateTxCapability ? {} : { readonly evaluator: Evaluator })
+
+/**
+ * Resolves to `[options?: BuildOptions]` when C satisfies all requirements,
+ * or `[options: RequiredBuildInputs<C,R> & BuildOptions]` when fields are missing.
+ *
+ * @internal
+ */
+type BuildArgs<C, R> =
+  {} extends RequiredBuildInputs<C, R>
+    ? [options?: BuildOptions]
+    : [options: RequiredBuildInputs<C, R> & BuildOptions]
+
+/**
+ * Result type for TxBuilder.build(): SignBuilder when C has signing capability, TransactionResultBase otherwise.
+ *
+ * @since 2.1.0
+ * @category builder-types
+ */
+export type TxBuildResult<C> = C extends Signable ? SignBuilderOf<C> : TransactionResultBase
+
+/**
+ * Capability-tracked transaction builder.
+ *
+ * `C` (client capabilities) is fixed at `newTx(client)` construction and never changes.
+ * `R` (accumulated requirements) starts as `{}` and grows via `R & EvaluateTxCapability`
+ * each time an operation with a redeemer (but no inline exUnits) is added.
+ *
+ * At build time, `BuildArgs<C, R>` computes:
+ * - Which `BuildOptions` fields are REQUIRED because C cannot provide them
+ * - Whether `evaluator` is required based on R and C
+ *
+ * When `{} extends RequiredBuildInputs<C, R>` (C provides everything), `build()` can be
+ * called with no arguments.
+ *
+ * `compose<R2>(other)` imports the composed builder's programs AND merges R2 into R,
+ * so script requirements from fragments are never silently dropped.
+ *
+ * @typeParam C - Client capabilities (fixed at newTx construction)
+ * @typeParam R - Accumulated dynamic requirements (grows with redeemer operations)
+ *
+ * @since 2.1.0
+ * @category builder-interfaces
+ */
+export interface TxBuilder<C, R = {}> {
+  // ── Operations with no new requirements ────────────────────────────────────
+  payToAddress(params: PayToAddressParams): TxBuilder<C, R>
+  attachScript(params: { script: CoreScript.Script }): TxBuilder<C, R>
+  readFrom(params: ReadFromParams): TxBuilder<C, R>
+  setValidity(params: ValidityParams): TxBuilder<C, R>
+  addSigner(params: AddSignerParams): TxBuilder<C, R>
+  sendAll(params: SendAllParams): TxBuilder<C, R>
+  attachMetadata(params: AttachMetadataParams): TxBuilder<C, R>
+  registerStake(params: RegisterStakeParams): TxBuilder<C, R>
+  registerPool(params: RegisterPoolParams): TxBuilder<C, R>
+  retirePool(params: RetirePoolParams): TxBuilder<C, R>
+  registerDRep(params: RegisterDRepParams): TxBuilder<C, R>
+  updateDRep(params: UpdateDRepParams): TxBuilder<C, R>
+  deregisterDRep(params: DeregisterDRepParams): TxBuilder<C, R>
+  authCommitteeHot(params: AuthCommitteeHotParams): TxBuilder<C, R>
+  resignCommitteeCold(params: ResignCommitteeColdParams): TxBuilder<C, R>
+  registerAndDelegateTo(params: RegisterAndDelegateToParams): TxBuilder<C, R>
+  /** @deprecated Use delegateToPool, delegateToDRep, or delegateToPoolAndDRep instead */
+  delegateTo(params: DelegateToParams): TxBuilder<C, R>
+  delegateToPool(params: DelegateToPoolParams): TxBuilder<C, R>
+  delegateToDRep(params: DelegateToDRepParams): TxBuilder<C, R>
+  delegateToPoolAndDRep(params: DelegateToPoolAndDRepParams): TxBuilder<C, R>
+  vote(params: VoteParams): TxBuilder<C, R>
+  propose(params: ProposeParams): TxBuilder<C, R>
+
+  // ── Operations that may add EvaluateTxCapability to R (most-specific overload first) ──
+  // Most-specific (redeemer present) must come first so TypeScript picks the right overload.
+
+  /** redeemer without exUnits → R grows to R & EvaluateTxCapability */
+  collectFrom(params: CollectFromParams & { readonly redeemer: RedeemerArg }): TxBuilder<C, R & EvaluateTxCapability>
+  /** no redeemer → R unchanged */
+  collectFrom(params: CollectFromParams): TxBuilder<C, R>
+
+  /** redeemer without exUnits → R grows to R & EvaluateTxCapability */
+  mintAssets(params: MintTokensParams & { readonly redeemer: RedeemerArg }): TxBuilder<C, R & EvaluateTxCapability>
+  /** no redeemer → R unchanged */
+  mintAssets(params: MintTokensParams): TxBuilder<C, R>
+
+  /** redeemer without exUnits → R grows to R & EvaluateTxCapability */
+  withdraw(params: WithdrawParams & { readonly redeemer: RedeemerArg }): TxBuilder<C, R & EvaluateTxCapability>
+  /** no redeemer → R unchanged */
+  withdraw(params: WithdrawParams): TxBuilder<C, R>
+
+  /** redeemer without exUnits → R grows to R & EvaluateTxCapability */
+  deregisterStake(params: DeregisterStakeParams & { readonly redeemer: RedeemerArg }): TxBuilder<C, R & EvaluateTxCapability>
+  /** no redeemer → R unchanged */
+  deregisterStake(params: DeregisterStakeParams): TxBuilder<C, R>
+
+  // ── Compose and introspect ────────────────────────────────────────────────
+  /**
+   * Merge another builder's programs into this one.
+   *
+   * C (capabilities) is fixed from the receiver — the composed builder's client
+   * capabilities are NOT imported. R2 IS merged (via &) so script requirements
+   * from fragments are never silently dropped.
+   */
+  compose<R2>(other: TxBuilder<any, R2>): TxBuilder<C, R & R2>
+
+  /** Snapshot of accumulated programs, for composition and introspection. */
+  getPrograms(): ReadonlyArray<ProgramStep>
+
+  // ── Build methods ─────────────────────────────────────────────────────────
+  /**
+   * Build the transaction.
+   *
+   * When `C` satisfies all requirements and `R` is `{}`, can be called with no arguments.
+   * Otherwise, `options` becomes required with the missing fields.
+   */
+  build(...args: BuildArgs<C, R>): Promise<TxBuildResult<C>>
+
+  buildEffect(...args: BuildArgs<C, R>): Effect.Effect<
+    TxBuildResult<C>,
+    TransactionBuilderError | EvaluationError | Wallet.WalletError | Provider.ProviderError,
+    never
+  >
+
+  buildEither(...args: BuildArgs<C, R>): Promise<
+    Either<
+      TxBuildResult<C>,
+      TransactionBuilderError | EvaluationError | Wallet.WalletError | Provider.ProviderError
+    >
+  >
+}
+
+type BuilderCompletionError =
+  | TransactionBuilderError
+  | EvaluationError
+  | Wallet.WalletError
+  | Provider.ProviderError
+
+type BuilderCoreResult = SignBuilder | TransactionResultBase
+
+interface BuilderCore {
+  readonly config: TxBuilderConfig
+  readonly appendProgram: (program: ProgramStep) => void
+  readonly appendPrograms: (programs: ReadonlyArray<ProgramStep>) => void
+  readonly getPrograms: () => ReadonlyArray<ProgramStep>
+  readonly buildEffect: <TResult extends BuilderCoreResult = BuilderCoreResult>(
+    options?: BuildOptions
+  ) => Effect.Effect<TResult, BuilderCompletionError, never>
+  readonly build: <TResult extends BuilderCoreResult = BuilderCoreResult>(options?: BuildOptions) => Promise<TResult>
+  readonly buildEither: <TResult extends BuilderCoreResult = BuilderCoreResult>(
+    options?: BuildOptions
+  ) => Promise<Either<TResult, BuilderCompletionError>>
+  readonly buildPartialEffect: (
+    options?: BuildOptions
+  ) => Effect.Effect<Transaction.Transaction, TransactionBuilderError, never>
+  readonly buildPartial: (options?: BuildOptions) => Promise<Transaction.Transaction>
+}
+
+const provideBuildLogging = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  debug: boolean | undefined
+): Effect.Effect<A, E, never> =>
+  debug
+    ? effect.pipe(Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug))))
+    : effect
+
+const createBuilderCore = (config: TxBuilderConfig): BuilderCore => {
+  const programs: Array<ProgramStep> = []
+
+  return {
+    config,
+    appendProgram: (program) => {
+      programs.push(program)
+    },
+    appendPrograms: (steps) => {
+      if (steps.length > 0) {
+        programs.push(...steps)
+      }
+    },
+    getPrograms: () => [...programs],
+    buildEffect: <TResult extends BuilderCoreResult = BuilderCoreResult>(options?: BuildOptions) =>
+      makeBuild(config, programs, options) as Effect.Effect<TResult, BuilderCompletionError, never>,
+    build: <TResult extends BuilderCoreResult = BuilderCoreResult>(options?: BuildOptions) =>
+      runEffectPromise(provideBuildLogging(makeBuild(config, programs, options), options?.debug)) as Promise<TResult>,
+    buildEither: <TResult extends BuilderCoreResult = BuilderCoreResult>(options?: BuildOptions) =>
+      runEffectPromise(
+        provideBuildLogging(makeBuild(config, programs, options).pipe(Effect.either), options?.debug)
+      ) as Promise<Either<TResult, BuilderCompletionError>>,
+    buildPartialEffect: (options?: BuildOptions) => buildPartialEffectCore(config, programs, options),
+    buildPartial: (options?: BuildOptions) => runEffectPromise(buildPartialEffectCore(config, programs, options))
+  }
+}
+
+const createLegacyBuilderFromCore = <W extends WalletLike | undefined>(core: BuilderCore): TxBuilderResultType<W> => {
+  const txBuilder = {
+    payToAddress: (params: PayToAddressParams) => {
+      core.appendProgram(createPayToAddressProgram(params))
+      return txBuilder
+    },
+    collectFrom: (params: CollectFromParams) => {
+      core.appendProgram(createCollectFromProgram(params))
+      return txBuilder
+    },
+    sendAll: (params: SendAllParams) => {
+      core.appendProgram(createSendAllProgram(params))
+      return txBuilder
+    },
+    mintAssets: (params: MintTokensParams) => {
+      core.appendProgram(createMintAssetsProgram(params))
+      return txBuilder
+    },
+    readFrom: (params: ReadFromParams) => {
+      core.appendProgram(createReadFromProgram(params))
+      return txBuilder
+    },
+    attachScript: (params: { script: CoreScript.Script }) => {
+      core.appendProgram(createAttachScriptProgram(params.script))
+      return txBuilder
+    },
+    registerStake: (params: RegisterStakeParams) => {
+      core.appendProgram(createRegisterStakeProgram(params))
+      return txBuilder
+    },
+    deregisterStake: (params: DeregisterStakeParams) => {
+      core.appendProgram(createDeregisterStakeProgram(params))
+      return txBuilder
+    },
+    delegateTo: (params: DelegateToParams) => {
+      core.appendProgram(createDelegateToProgram(params))
+      return txBuilder
+    },
+    delegateToPool: (params: DelegateToPoolParams) => {
+      core.appendProgram(createDelegateToPoolProgram(params))
+      return txBuilder
+    },
+    delegateToDRep: (params: DelegateToDRepParams) => {
+      core.appendProgram(createDelegateToDRepProgram(params))
+      return txBuilder
+    },
+    delegateToPoolAndDRep: (params: DelegateToPoolAndDRepParams) => {
+      core.appendProgram(createDelegateToPoolAndDRepProgram(params))
+      return txBuilder
+    },
+    withdraw: (params: WithdrawParams) => {
+      core.appendProgram(createWithdrawProgram(params))
+      return txBuilder
+    },
+    registerAndDelegateTo: (params: RegisterAndDelegateToParams) => {
+      core.appendProgram(createRegisterAndDelegateToProgram(params))
+      return txBuilder
+    },
+    registerDRep: (params: RegisterDRepParams) => {
+      core.appendProgram(createRegisterDRepProgram(params))
+      return txBuilder
+    },
+    updateDRep: (params: UpdateDRepParams) => {
+      core.appendProgram(createUpdateDRepProgram(params))
+      return txBuilder
+    },
+    deregisterDRep: (params: DeregisterDRepParams) => {
+      core.appendProgram(createDeregisterDRepProgram(params))
+      return txBuilder
+    },
+    authCommitteeHot: (params: AuthCommitteeHotParams) => {
+      core.appendProgram(createAuthCommitteeHotProgram(params))
+      return txBuilder
+    },
+    resignCommitteeCold: (params: ResignCommitteeColdParams) => {
+      core.appendProgram(createResignCommitteeColdProgram(params))
+      return txBuilder
+    },
+    registerPool: (params: RegisterPoolParams) => {
+      core.appendProgram(createRegisterPoolProgram(params))
+      return txBuilder
+    },
+    retirePool: (params: RetirePoolParams) => {
+      core.appendProgram(createRetirePoolProgram(params))
+      return txBuilder
+    },
+    setValidity: (params: ValidityParams) => {
+      core.appendProgram(createSetValidityProgram(params))
+      return txBuilder
+    },
+    vote: (params: VoteParams) => {
+      core.appendProgram(createVoteProgram(params))
+      return txBuilder
+    },
+    propose: (params: ProposeParams) => {
+      core.appendProgram(createProposeProgram(params))
+      return txBuilder
+    },
+    addSigner: (params: AddSignerParams) => {
+      core.appendProgram(createAddSignerProgram(params))
+      return txBuilder
+    },
+    attachMetadata: (params: AttachMetadataParams) => {
+      core.appendProgram(createAttachMetadataProgram(params))
+      return txBuilder
+    },
+    compose: (other: TransactionBuilder) => {
+      core.appendPrograms(other.getPrograms())
+      return txBuilder
+    },
+    getPrograms: core.getPrograms,
+    buildEffect: (options?: BuildOptions) => core.buildEffect(options),
+    build: (options?: BuildOptions) => core.build(options),
+    buildEither: (options?: BuildOptions) => core.buildEither(options),
+    buildPartialEffect: (options?: BuildOptions) => core.buildPartialEffect(options),
+    buildPartial: (options?: BuildOptions) => core.buildPartial(options)
+  }
+
+  return txBuilder as TxBuilderResultType<W>
+}
+
+const createCapabilityTxBuilderFromCore = <C, R>(core: BuilderCore): TxBuilder<C, R> => {
+  const current = (): TxBuilder<C, R> => createCapabilityTxBuilderFromCore<C, R>(core)
+  const next = <RNext,>(): TxBuilder<C, RNext> => createCapabilityTxBuilderFromCore<C, RNext>(core)
+
+  function collectFrom(
+    params: CollectFromParams & { readonly redeemer: RedeemerArg }
+  ): TxBuilder<C, R & EvaluateTxCapability>
+  function collectFrom(params: CollectFromParams): TxBuilder<C, R>
+  function collectFrom(params: CollectFromParams): TxBuilder<C, R> | TxBuilder<C, R & EvaluateTxCapability> {
+    core.appendProgram(createCollectFromProgram(params))
+    return params.redeemer === undefined ? current() : next<R & EvaluateTxCapability>()
+  }
+
+  function mintAssets(
+    params: MintTokensParams & { readonly redeemer: RedeemerArg }
+  ): TxBuilder<C, R & EvaluateTxCapability>
+  function mintAssets(params: MintTokensParams): TxBuilder<C, R>
+  function mintAssets(params: MintTokensParams): TxBuilder<C, R> | TxBuilder<C, R & EvaluateTxCapability> {
+    core.appendProgram(createMintAssetsProgram(params))
+    return params.redeemer === undefined ? current() : next<R & EvaluateTxCapability>()
+  }
+
+  function withdraw(
+    params: WithdrawParams & { readonly redeemer: RedeemerArg }
+  ): TxBuilder<C, R & EvaluateTxCapability>
+  function withdraw(params: WithdrawParams): TxBuilder<C, R>
+  function withdraw(params: WithdrawParams): TxBuilder<C, R> | TxBuilder<C, R & EvaluateTxCapability> {
+    core.appendProgram(createWithdrawProgram(params))
+    return params.redeemer === undefined ? current() : next<R & EvaluateTxCapability>()
+  }
+
+  function deregisterStake(
+    params: DeregisterStakeParams & { readonly redeemer: RedeemerArg }
+  ): TxBuilder<C, R & EvaluateTxCapability>
+  function deregisterStake(params: DeregisterStakeParams): TxBuilder<C, R>
+  function deregisterStake(
+    params: DeregisterStakeParams
+  ): TxBuilder<C, R> | TxBuilder<C, R & EvaluateTxCapability> {
+    core.appendProgram(createDeregisterStakeProgram(params))
+    return params.redeemer === undefined ? current() : next<R & EvaluateTxCapability>()
+  }
+
+  return {
+    payToAddress: (params: PayToAddressParams) => {
+      core.appendProgram(createPayToAddressProgram(params))
+      return current()
+    },
+    attachScript: (params: { script: CoreScript.Script }) => {
+      core.appendProgram(createAttachScriptProgram(params.script))
+      return current()
+    },
+    readFrom: (params: ReadFromParams) => {
+      core.appendProgram(createReadFromProgram(params))
+      return current()
+    },
+    setValidity: (params: ValidityParams) => {
+      core.appendProgram(createSetValidityProgram(params))
+      return current()
+    },
+    addSigner: (params: AddSignerParams) => {
+      core.appendProgram(createAddSignerProgram(params))
+      return current()
+    },
+    sendAll: (params: SendAllParams) => {
+      core.appendProgram(createSendAllProgram(params))
+      return current()
+    },
+    attachMetadata: (params: AttachMetadataParams) => {
+      core.appendProgram(createAttachMetadataProgram(params))
+      return current()
+    },
+    registerStake: (params: RegisterStakeParams) => {
+      core.appendProgram(createRegisterStakeProgram(params))
+      return current()
+    },
+    registerPool: (params: RegisterPoolParams) => {
+      core.appendProgram(createRegisterPoolProgram(params))
+      return current()
+    },
+    retirePool: (params: RetirePoolParams) => {
+      core.appendProgram(createRetirePoolProgram(params))
+      return current()
+    },
+    registerDRep: (params: RegisterDRepParams) => {
+      core.appendProgram(createRegisterDRepProgram(params))
+      return current()
+    },
+    updateDRep: (params: UpdateDRepParams) => {
+      core.appendProgram(createUpdateDRepProgram(params))
+      return current()
+    },
+    deregisterDRep: (params: DeregisterDRepParams) => {
+      core.appendProgram(createDeregisterDRepProgram(params))
+      return current()
+    },
+    authCommitteeHot: (params: AuthCommitteeHotParams) => {
+      core.appendProgram(createAuthCommitteeHotProgram(params))
+      return current()
+    },
+    resignCommitteeCold: (params: ResignCommitteeColdParams) => {
+      core.appendProgram(createResignCommitteeColdProgram(params))
+      return current()
+    },
+    registerAndDelegateTo: (params: RegisterAndDelegateToParams) => {
+      core.appendProgram(createRegisterAndDelegateToProgram(params))
+      return current()
+    },
+    delegateTo: (params: DelegateToParams) => {
+      core.appendProgram(createDelegateToProgram(params))
+      return current()
+    },
+    delegateToPool: (params: DelegateToPoolParams) => {
+      core.appendProgram(createDelegateToPoolProgram(params))
+      return current()
+    },
+    delegateToDRep: (params: DelegateToDRepParams) => {
+      core.appendProgram(createDelegateToDRepProgram(params))
+      return current()
+    },
+    delegateToPoolAndDRep: (params: DelegateToPoolAndDRepParams) => {
+      core.appendProgram(createDelegateToPoolAndDRepProgram(params))
+      return current()
+    },
+    vote: (params: VoteParams) => {
+      core.appendProgram(createVoteProgram(params))
+      return current()
+    },
+    propose: (params: ProposeParams) => {
+      core.appendProgram(createProposeProgram(params))
+      return current()
+    },
+    collectFrom,
+    mintAssets,
+    withdraw,
+    deregisterStake,
+    compose: <R2,>(other: TxBuilder<any, R2>): TxBuilder<C, R & R2> => {
+      core.appendPrograms(other.getPrograms())
+      return next<R & R2>()
+    },
+    getPrograms: core.getPrograms,
+    build: (...args: BuildArgs<C, R>) => core.build<TxBuildResult<C>>(args[0]),
+    buildEffect: (...args: BuildArgs<C, R>) => core.buildEffect<TxBuildResult<C>>(args[0]),
+    buildEither: (...args: BuildArgs<C, R>) => core.buildEither<TxBuildResult<C>>(args[0])
+  }
+}
+
+/**
+ * Construct a capability-tracked transaction builder from immutable builder configuration.
+ *
+ * This constructor shares the same runtime builder core as `makeTxBuilder`, but returns the
+ * capability-aware `TxBuilder<C, {}>` facade used by `newTx(client)`.
+ *
+ * @since 2.1.0
+ * @category constructors
+ */
+export const makeCapabilityTxBuilder = <C>(config: TxBuilderConfig): TxBuilder<C, {}> =>
+  createCapabilityTxBuilderFromCore<C, {}>(createBuilderCore(config))
 
 /**
  * Construct a TransactionBuilder instance from protocol configuration.
@@ -2454,200 +3005,16 @@ export type TxBuilderResultType<
  * Wallet parameter is optional; if omitted, changeAddress and availableUtxos must be
  * provided at build time via BuildOptions.
  *
+ * @deprecated Use newTx(client) instead. newTx returns TxBuilder<C, R> which enforces
+ * capability constraints at compile time via the client's pipe-composed capabilities.
+ *
  * @since 2.0.0
  * @category constructors
  *
  */
 export function makeTxBuilder<
-  W extends WalletNew.SigningWallet | WalletNew.ApiWallet | WalletNew.ReadOnlyWallet | undefined
+  W extends WalletLike | undefined
 >(config: Partial<TxBuilderConfig> & { wallet?: W }): TxBuilderResultType<W>
 export function makeTxBuilder(config: TxBuilderConfig) {
-  const programs: Array<ProgramStep> = []
-
-  const txBuilder = {
-    // ============================================================================
-    // Chainable builder methods - Create ProgramSteps, return same instance
-    // ============================================================================
-
-    payToAddress: (params: PayToAddressParams) => {
-      // Create ProgramStep for deferred execution
-      const program = createPayToAddressProgram(params)
-      programs.push(program)
-      return txBuilder // Return same instance for chaining
-    },
-
-    collectFrom: (params: CollectFromParams) => {
-      // Create ProgramStep for deferred execution
-      const program = createCollectFromProgram(params)
-      programs.push(program)
-      return txBuilder // Return same instance for chaining
-    },
-
-    sendAll: (params: SendAllParams) => {
-      // Create ProgramStep for deferred execution
-      const program = createSendAllProgram(params)
-      programs.push(program)
-      return txBuilder // Return same instance for chaining
-    },
-
-    mintAssets: (params: MintTokensParams) => {
-      // Create ProgramStep for deferred execution
-      const program = createMintAssetsProgram(params)
-      programs.push(program)
-      return txBuilder // Return same instance for chaining
-    },
-
-    readFrom: (params: ReadFromParams) => {
-      // Create ProgramStep for deferred execution
-      const program = createReadFromProgram(params)
-      programs.push(program)
-      return txBuilder // Return same instance for chaining
-    },
-
-    attachScript: (params: { script: CoreScript.Script }) => {
-      // Create ProgramStep for deferred execution
-      const program = attachScriptToState(params.script)
-      programs.push(program)
-      return txBuilder // Return same instance for chaining
-    },
-
-    // Staking/Certificate methods
-    registerStake: (params: RegisterStakeParams) => {
-      const program = createRegisterStakeProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    deregisterStake: (params: DeregisterStakeParams) => {
-      const program = createDeregisterStakeProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    delegateTo: (params: DelegateToParams) => {
-      const program = createDelegateToProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    delegateToPool: (params: DelegateToPoolParams) => {
-      const program = createDelegateToPoolProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    delegateToDRep: (params: DelegateToDRepParams) => {
-      const program = createDelegateToDRepProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    delegateToPoolAndDRep: (params: DelegateToPoolAndDRepParams) => {
-      const program = createDelegateToPoolAndDRepProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    withdraw: (params: WithdrawParams) => {
-      const program = createWithdrawProgram(params, config)
-      programs.push(program)
-      return txBuilder
-    },
-    registerAndDelegateTo: (params: RegisterAndDelegateToParams) => {
-      const program = createRegisterAndDelegateToProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    registerDRep: (params: RegisterDRepParams) => {
-      const program = createRegisterDRepProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    updateDRep: (params: UpdateDRepParams) => {
-      const program = createUpdateDRepProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    deregisterDRep: (params: DeregisterDRepParams) => {
-      const program = createDeregisterDRepProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    authCommitteeHot: (params: AuthCommitteeHotParams) => {
-      const program = createAuthCommitteeHotProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    resignCommitteeCold: (params: ResignCommitteeColdParams) => {
-      const program = createResignCommitteeColdProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    registerPool: (params: RegisterPoolParams) => {
-      const program = createRegisterPoolProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    retirePool: (params: RetirePoolParams) => {
-      const program = createRetirePoolProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    setValidity: (params: ValidityParams) => {
-      programs.push(createSetValidityProgram(params))
-      return txBuilder
-    },
-    vote: (params: VoteParams) => {
-      const program = createVoteProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    propose: (params: ProposeParams) => {
-      const program = createProposeProgram(params)
-      programs.push(program)
-      return txBuilder
-    },
-    addSigner: (params: AddSignerParams) => {
-      programs.push(createAddSignerProgram(params))
-      return txBuilder
-    },
-    attachMetadata: (params: AttachMetadataParams) => {
-      programs.push(createAttachMetadataProgram(params))
-      return txBuilder
-    },
-    compose: (other: TransactionBuilder) => {
-      const otherPrograms = other.getPrograms()
-      if (otherPrograms.length > 0) {
-        programs.push(...otherPrograms)
-      }
-      return txBuilder
-    },
-
-    getPrograms: () => [...programs],
-
-    buildEffect: (options?: BuildOptions) => {
-      return makeBuild(config, programs, options)
-    },
-
-    build: (options?: BuildOptions) => {
-      const effect = makeBuild(config, programs, options)
-      return runEffectPromise(
-        options?.debug
-          ? effect.pipe(Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug))))
-          : effect
-      )
-    },
-    buildEither: (options?: BuildOptions) => {
-      const effect = makeBuild(config, programs, options).pipe(Effect.either)
-      return runEffectPromise(
-        options?.debug
-          ? effect.pipe(Effect.provide(Layer.merge(Logger.pretty, Logger.minimumLogLevel(LogLevel.Debug))))
-          : effect
-      )
-    },
-
-    // ============================================================================
-    // Debug methods - Execute with fresh state, return partial transaction
-    // ============================================================================
-
-    buildPartialEffect: (options?: BuildOptions) => buildPartialEffectCore(config, programs, options),
-
-    buildPartial: (options?: BuildOptions) => runEffectPromise(buildPartialEffectCore(config, programs, options))
-  }
-
-  return txBuilder
+  return createLegacyBuilderFromCore(createBuilderCore(config))
 }

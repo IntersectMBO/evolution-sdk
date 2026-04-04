@@ -14,7 +14,7 @@ import { TxContext } from "../TransactionBuilder.js"
  * @since 2.0.0
  * @category operations
  */
-export const attachScriptToState = (script: ScriptCore.Script) =>
+export const createAttachScriptProgram = (script: ScriptCore.Script) =>
   Effect.gen(function* () {
     const stateRef = yield* TxContext
     const state = yield* Ref.get(stateRef)

@@ -14,6 +14,7 @@ import { Effect, Ref } from "effect"
 import * as CoreAssets from "../../../Assets/index.js"
 import * as TxOut from "../../../TxOut.js"
 import * as UTxO from "../../../UTxO.js"
+import { calculateMinimumUtxoLovelace } from "../internal/TxOutput.js"
 import {
   AvailableUtxosTag,
   BuildOptionsTag,
@@ -22,7 +23,6 @@ import {
   TransactionBuilderError,
   TxContext
 } from "../TransactionBuilder.js"
-import { calculateMinimumUtxoLovelace } from "../TxBuilderImpl.js"
 import type { PhaseResult } from "./Phases.js"
 
 // ============================================================================
