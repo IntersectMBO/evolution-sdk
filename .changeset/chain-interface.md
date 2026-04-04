@@ -1,11 +1,49 @@
 ---
-"@evolution-sdk/evolution": patch
-"@evolution-sdk/devnet": patch
+"@evolution-sdk/evolution": minor
+"@evolution-sdk/devnet": minor
 ---
 
-`createClient` now requires an explicit `chain` field instead of the optional `network?: string` field.
+Introduce composable client API and typed wallet system.
 
-Previously, selecting a network required passing a string identifier and, separately, a `slotConfig` object for slot/time conversions. There was no single source of truth that tied network identity, magic number, and timing parameters together:
+## New composable client API
+
+Clients are now built by composing a chain context with provider and wallet constructors via `.with()`. TypeScript infers the accumulated capabilities automatically:
+
+```ts
+import { client, preview, kupmios, seedWallet } from "@evolution-sdk/evolution"
+
+const myClient = client(preview)
+  .with(kupmios({ kupoUrl: "...", ogmiosUrl: "..." }))
+  .with(seedWallet({ mnemonic: "..." }))
+
+// Promise API
+const utxos = await myClient.getUtxos(addr)
+const signed = await myClient.signTx(tx)
+
+// Effect API
+myClient.Effect.getUtxos(addr).pipe(Effect.flatMap(...))
+
+// Transaction building
+myClient.newTx().payToAddress({ address: "addr1...", assets: { lovelace: 5_000_000n } })
+```
+
+Per-provider constructors: `blockfrost()`, `kupmios()`, `maestro()`, `koios()`
+
+Per-wallet constructors: `seedWallet()`, `privateKeyWallet()`, `readOnlyWallet()`, `cip30Wallet()`
+
+## New typed wallet factories
+
+```ts
+import { makeSigningWalletEffect, makePrivateKeyWalletEffect, makeReadOnlyWalletEffect } from "@evolution-sdk/evolution"
+
+const wallet = Wallet.makeSigningWalletEffect(chain.id, mnemonic)
+const address = yield* wallet.address()
+const signed = yield* wallet.signTx(tx)
+```
+
+## Chain descriptor (breaking change)
+
+`createClient` now requires an explicit `chain` field instead of the optional `network?: string` field:
 
 ```ts
 // Before
@@ -15,11 +53,7 @@ createClient({
   provider: { ... },
   wallet: { ... }
 })
-```
 
-Now the `chain` field is a rich descriptor that carries all of this together. Three built-in constants are exported from the top-level package:
-
-```ts
 // After
 import { createClient, preprod } from "@evolution-sdk/evolution"
 
@@ -30,11 +64,9 @@ createClient({
 })
 ```
 
-For custom networks — local devnets, private chains, or future forks — use `defineChain`:
+Built-in chain constants: `mainnet`, `preprod`, `preview`. Use `defineChain` for custom networks:
 
 ```ts
-import { defineChain } from "@evolution-sdk/evolution"
-
 const devnet = defineChain({
   name: "Devnet",
   id: 0,
@@ -44,4 +76,12 @@ const devnet = defineChain({
 })
 ```
 
-The `networkId: number | string` property on client objects is replaced with `chain: Chain`. The `@evolution-sdk/devnet` package adds `getChain(cluster)` and `BOOTSTRAP_CHAIN` for constructing a `Chain` from a running local devnet.
+## Devnet helpers
+
+`@evolution-sdk/devnet` adds `getChain(cluster)` and `BOOTSTRAP_CHAIN` for constructing a `Chain` from a running local cluster.
+
+## Other breaking changes
+
+- `Koios` class renamed to `KoiosProvider` for consistency with `BlockfrostProvider`, `MaestroProvider`, `KupmiosProvider`
+- `networkId` property on client objects replaced with `chain: Chain`
+- `createClient` is deprecated in favour of the composable `client()` API
