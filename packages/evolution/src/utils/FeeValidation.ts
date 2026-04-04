@@ -9,8 +9,14 @@
  * @category validation
  */
 
+import { Data, Effect } from "effect"
+
+import * as Assets from "../Assets/index.js"
+import * as Script from "../Script.js"
+import { TransactionBuilderError } from "../sdk/builders/TransactionBuilder.js"
 import * as Transaction from "../Transaction.js"
 import type * as TransactionWitnessSet from "../TransactionWitnessSet.js"
+import type * as UTxO from "../UTxO.js"
 
 /**
  * Protocol parameters required for fee calculation.
@@ -150,4 +156,183 @@ export const assertValidFee = (
         `(Transaction size: ${result.txSizeBytes} bytes)`
     )
   }
+}
+
+// ============================================================================
+// Fee calculation primitives
+// ============================================================================
+
+/**
+ * Error raised when a fee calculation fails.
+ *
+ * @since 2.0.0
+ * @category errors
+ */
+export class FeeCalculationError extends Data.TaggedError("FeeCalculationError")<{
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
+/**
+ * Calculate the CBOR-serialised byte length of a transaction.
+ *
+ * @since 2.0.0
+ * @category fee-calculation
+ */
+export const calculateTransactionSize = (
+  transaction: Transaction.Transaction
+): number =>
+  Transaction.toCBORBytes(transaction).length
+
+/**
+ * Calculate the minimum fee from transaction size and protocol parameters.
+ *
+ * Formula: `txSize × minFeeCoefficient + minFeeConstant`
+ *
+ * @since 2.0.0
+ * @category fee-calculation
+ */
+export const calculateMinimumFee = (
+  transactionSizeBytes: number,
+  protocolParams: {
+    minFeeCoefficient: bigint
+    minFeeConstant: bigint
+  }
+): bigint =>
+  BigInt(transactionSizeBytes) * protocolParams.minFeeCoefficient + protocolParams.minFeeConstant
+
+/**
+ * Tiered reference-script fee: direct port of the Cardano ledger's
+ * `tierRefScriptFee` function.
+ *
+ * Each `sizeIncrement`-byte chunk is priced at `curTierPrice` per byte,
+ * then `curTierPrice *= multiplier` for the next chunk.
+ * Final result: `floor(total)`.
+ *
+ * @since 2.0.0
+ * @category reference-scripts
+ */
+export const tierRefScriptFee = (
+  multiplier: number,
+  sizeIncrement: number,
+  baseFee: number,
+  totalSize: number
+): bigint => {
+  let acc = 0
+  let curTierPrice = baseFee
+  let remaining = totalSize
+
+  while (remaining >= sizeIncrement) {
+    acc += sizeIncrement * curTierPrice
+    curTierPrice *= multiplier
+    remaining -= sizeIncrement
+  }
+  acc += remaining * curTierPrice
+
+  return BigInt(Math.floor(acc))
+}
+
+/**
+ * Calculate the total reference-script fee for a set of UTxOs.
+ *
+ * Matches the Cardano node's Conway-era rules:
+ * - Stride: 25,600 bytes
+ * - Multiplier: 1.2× per tier
+ * - Base: `minFeeRefScriptCostPerByte` protocol parameter
+ * - Maximum total script size: 200,000 bytes
+ *
+ * Callers must pass both spent inputs and reference inputs, since the node
+ * sums all `txNonDistinctRefScriptsSize` together.
+ *
+ * @since 2.0.0
+ * @category reference-scripts
+ */
+export const calculateReferenceScriptFee = (
+  utxos: ReadonlyArray<UTxO.UTxO>,
+  costPerByte: number
+): Effect.Effect<bigint, FeeCalculationError> =>
+  Effect.gen(function* () {
+    let totalScriptSize = 0
+
+    for (const utxo of utxos) {
+      if (utxo.scriptRef) {
+        const scriptBytes = Script.toCBOR(utxo.scriptRef).length
+        totalScriptSize += scriptBytes
+        const scriptType = utxo.scriptRef._tag === "NativeScript" ? "Native" : "Plutus"
+        yield* Effect.logDebug(`[RefScriptFee] ${scriptType} script: ${scriptBytes} bytes`)
+      }
+    }
+
+    if (totalScriptSize === 0) return 0n
+
+    yield* Effect.logDebug(`[RefScriptFee] Total reference script size: ${totalScriptSize} bytes`)
+
+    if (totalScriptSize > 200_000) {
+      return yield* Effect.fail(
+        new FeeCalculationError({
+          message: `Total reference script size (${totalScriptSize} bytes) exceeds maximum limit of 200,000 bytes`
+        })
+      )
+    }
+
+    const fee = tierRefScriptFee(1.2, 25_600, costPerByte, totalScriptSize)
+    yield* Effect.logDebug(`[RefScriptFee] Tiered fee: ${fee} lovelace`)
+    return fee
+  })
+
+/**
+ * Validate that transaction inputs cover all outputs plus fee.
+ *
+ * Checks lovelace and every native asset unit. Fails with a detailed
+ * TransactionBuilderError when any required asset is short.
+ *
+ * @since 2.0.0
+ * @category validation
+ */
+export const validateTransactionBalance = (params: {
+  totalInputAssets: Assets.Assets
+  totalOutputAssets: Assets.Assets
+  fee: bigint
+}): Effect.Effect<void, TransactionBuilderError> =>
+  Effect.gen(function* () {
+    const totalRequired = Assets.withLovelace(params.totalOutputAssets, params.totalOutputAssets.lovelace + params.fee)
+
+    for (const unit of Assets.getUnits(totalRequired)) {
+      const requiredAmount = Assets.getByUnit(totalRequired, unit)
+      const availableAmount = Assets.getByUnit(params.totalInputAssets, unit)
+
+      if (availableAmount < requiredAmount) {
+        const shortfall = requiredAmount - availableAmount
+
+        return yield* Effect.fail(
+          new TransactionBuilderError({
+            message: `Insufficient ${unit}: need ${requiredAmount}, have ${availableAmount} (short by ${shortfall})`,
+            cause: {
+              unit,
+              required: String(requiredAmount),
+              available: String(availableAmount),
+              shortfall: String(shortfall)
+            }
+          })
+        )
+      }
+    }
+  })
+
+/**
+ * Calculate leftover assets after paying outputs and fee.
+ *
+ * Filters out any zero or negative balances from the result.
+ *
+ * @since 2.0.0
+ * @category fee-calculation
+ */
+export const calculateLeftoverAssets = (params: {
+  totalInputAssets: Assets.Assets
+  totalOutputAssets: Assets.Assets
+  fee: bigint
+}): Assets.Assets => {
+  const afterOutputs = Assets.subtract(params.totalInputAssets, params.totalOutputAssets)
+  const leftover = Assets.withLovelace(afterOutputs, afterOutputs.lovelace - params.fee)
+  return Assets.filter(leftover, (_unit, amount) => amount > 0n)
 }

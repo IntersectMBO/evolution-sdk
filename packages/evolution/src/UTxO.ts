@@ -190,3 +190,14 @@ export const toArray = (set: UTxOSet): Array<UTxO> => Array.from(set)
  * @category getters
  */
 export const toOutRefString = (utxo: UTxO): string => `${TransactionHash.toHex(utxo.transactionId)}#${utxo.index}`
+
+/**
+ * Sum all assets across an array (or Set) of UTxOs.
+ *
+ * @since 2.0.0
+ * @category aggregation
+ */
+export const totalAssets = (utxos: ReadonlyArray<UTxO> | Set<UTxO>): Assets.Assets => {
+  const arr = (globalThis.Array.isArray(utxos) ? utxos : globalThis.Array.from(utxos)) as ReadonlyArray<UTxO>
+  return arr.reduce((acc: Assets.Assets, utxo: UTxO) => Assets.merge(acc, utxo.assets), Assets.zero)
+}
