@@ -10,15 +10,17 @@ After submitting a transaction, use `awaitTx` to wait for it to appear on-chain.
 ## Wait for Confirmation
 
 ```typescript twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .payToAddress({
     address: Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"),
@@ -30,7 +32,7 @@ const signed = await tx.sign()
 const txHash = await signed.submit()
 
 // Wait for confirmation (poll every 3 seconds)
-const confirmed = await client.awaitTx(txHash, 3000)
+const confirmed = await sdkClient.awaitTx(txHash, 3000)
 console.log("Confirmed:", confirmed)
 ```
 

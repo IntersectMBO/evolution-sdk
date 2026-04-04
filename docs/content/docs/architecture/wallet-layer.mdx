@@ -21,8 +21,6 @@ The architecture encodes capability in types. A `ReadOnlyWallet` produces a `Rea
 
 This separation provides security by design: applications needing only monitoring cannot accidentally expose signing capability. The type system makes "read-only" genuinely read-only at the language level, not through defensive programming.
 
-This separation provides security by design: applications needing only monitoring cannot accidentally expose signing capability. The type system makes "read-only" genuinely read-only at the language level, not through defensive programming.
-
 ## Wallet Capability Hierarchy
 
 Wallets separate into two capability levels, with signing wallets further divided by key management approach:
@@ -54,7 +52,7 @@ graph TD
 `} />
 
 **[1] Wallet Base**: Common operations all wallets support:
-- `address()` - Get wallet address
+- `getAddress()` - Get wallet address
 - `getUtxos()` - Query UTxOs at wallet address  
 - `getBalance()` - Query total balance
 
@@ -67,8 +65,6 @@ graph TD
 Three signing implementations:
 - **SeedWallet**: HD wallet from mnemonic (12/15/24 words)
 - **PrivateKeyWallet**: Extended private key (xprv)
-- **ApiWallet**: CIP-30 browser wallet API (Nami, Eternl, Flint, hardware wallets)
-
 - **ApiWallet**: CIP-30 browser wallet API (Nami, Eternl, Flint, hardware wallets)
 
 ## Client Type Determination
@@ -110,13 +106,11 @@ graph LR
 
 **[3] SigningClient / ApiWalletClient**: Created from `SigningWallet` or `ApiWallet`. Transaction builder's `build()` returns `SignBuilder` which has `sign()` method. Type system guarantees signing capability exists.
 
-**[3] SigningClient / ApiWalletClient**: Created from `SigningWallet` or `ApiWallet`. Transaction builder's `build()` returns `SignBuilder` which has `sign()` method. Type system guarantees signing capability exists.
-
 ## Integration Points
 
 The wallet layer integrates with other architectural components:
 
-**Client Factory**: `createClient(config)` uses conditional types to return appropriate client type based on wallet. Type narrowing happens at construction—no runtime type guards needed in application code.
+**Client Factory**: The composable `.with(wallet)` chain uses conditional types to return the appropriate client type based on wallet. Type narrowing happens at construction—no runtime type guards needed in application code.
 
 **Transaction Builder**: Builder type (`ReadOnlyTransactionBuilder` vs `SigningTransactionBuilder`) determined by wallet capability. Read-only builders cannot produce `SignBuilder`, only `TransactionResultBase`.
 

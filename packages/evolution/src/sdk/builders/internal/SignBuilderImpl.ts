@@ -16,27 +16,25 @@
 
 import { Effect } from "effect"
 
-import * as Script from "../../Script.js"
-import * as Transaction from "../../Transaction.js"
-import * as TransactionHash from "../../TransactionHash.js"
-import * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
-import type * as TxOut from "../../TxOut.js"
-import { hashTransaction } from "../../utils/Hash.js"
-import * as CoreUTxO from "../../UTxO.js"
-import type * as Provider from "../provider/Provider.js"
-import type * as WalletNew from "../wallet/WalletNew.js"
-import type { SignBuilder, SignBuilderEffect } from "./SignBuilder.js"
+import * as Script from "../../../Script.js"
+import * as Transaction from "../../../Transaction.js"
+import * as TransactionHash from "../../../TransactionHash.js"
+import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
+import type * as TxOut from "../../../TxOut.js"
+import { hashTransaction } from "../../../utils/Hash.js"
+import * as CoreUTxO from "../../../UTxO.js"
+import type { SignBuilder, SignBuilderSubmittableEffect } from "../SignBuilder.js"
+import { type ChainResult, type ProviderLike, type SigningWalletLike, TransactionBuilderError } from "../TransactionBuilder.js"
 import { makeSubmitBuilder } from "./SubmitBuilderImpl.js"
-import { type ChainResult, TransactionBuilderError } from "./TransactionBuilder.js"
 
 // ============================================================================
 // SignBuilder Factory
 // ============================================================================
 
 /**
- * Wallet type - can be SigningWallet or ApiWallet (both have Effect.signTx)
+ * Wallet type - accepts any wallet-like object with signTx capability
  */
-type Wallet = WalletNew.SigningWallet | WalletNew.ApiWallet
+type Wallet = SigningWalletLike
 
 /**
  * Create a SignBuilder instance for a built transaction.
@@ -50,7 +48,7 @@ export const makeSignBuilder = (params: {
   fee: bigint
   utxos: ReadonlyArray<CoreUTxO.UTxO>
   referenceUtxos: ReadonlyArray<CoreUTxO.UTxO>
-  provider: Provider.Provider
+  provider: ProviderLike
   wallet: Wallet
   // Data for lazy chainResult computation
   outputs: ReadonlyArray<TxOut.TransactionOutput>
@@ -100,7 +98,7 @@ export const makeSignBuilder = (params: {
   // Effect Namespace Implementation
   // ============================================================================
 
-  const signEffect: SignBuilderEffect = {
+  const signEffect: SignBuilderSubmittableEffect = {
     /**
      * Sign the transaction by delegating to the wallet's Effect.signTx method.
      *

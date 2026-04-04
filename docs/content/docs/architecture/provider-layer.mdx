@@ -21,8 +21,6 @@ The architecture establishes a thin interface capturing what transaction buildin
 
 The abstraction remains thin by design—it does not attempt to expose every provider's unique features. Focused scope keeps the interface stable and implementations maintainable.
 
-The abstraction remains thin by design—it does not attempt to expose every provider's unique features. Focused scope keeps the interface stable and implementations maintainable.
-
 ## Provider Interface Contract
 
 All providers implement the same core operations required for transaction building:
@@ -69,8 +67,6 @@ graph TD
 
 **[2] Provider Implementations**: Each translates interface calls to their native API. Application code depends only on interface, never on specific implementation.
 
-**[2] Provider Implementations**: Each translates interface calls to their native API. Application code depends only on interface, never on specific implementation.
-
 ## Type-Driven Configuration
 
 Provider configuration uses discriminated unions to enforce correctness at compile time:
@@ -83,10 +79,10 @@ graph LR
     
     Config --> Type
     
-    Type -->|blockfrost| BF[url + projectId]
+    Type -->|blockfrost| BF[baseUrl + projectId]
     Type -->|kupmios| KP[kupoUrl + ogmiosUrl]
     Type -->|maestro| MA[network + apiKey]
-    Type -->|koios| KO[url + token?]
+    Type -->|koios| KO[baseUrl + token?]
     
     BF --> Factory["[2] Provider Factory"]
     KP --> Factory
@@ -107,9 +103,7 @@ graph LR
 
 **[3] Provider Instance**: Implements unified interface. Type system guarantees all required configuration is present.
 
-TypeScript enforces: `type: "blockfrost"` requires `url` and `projectId`. `type: "kupmios"` requires `kupoUrl` and `ogmiosUrl`. Mismatches are compilation errors, not runtime failures.
-
-TypeScript enforces: `type: "blockfrost"` requires `url` and `projectId`. `type: "kupmios"` requires `kupoUrl` and `ogmiosUrl`. Mismatches are compilation errors, not runtime failures.
+TypeScript enforces: `type: "blockfrost"` requires `baseUrl` and `projectId`. `type: "kupmios"` requires `kupoUrl` and `ogmiosUrl`. Mismatches are compilation errors, not runtime failures.
 
 ## Integration Points
 
@@ -120,7 +114,7 @@ The provider layer integrates with other architectural components:
 - Available UTxOs at wallet addresses (coin selection)
 - Script evaluation (calculating execution units for Plutus scripts)
 
-**Client Configuration**: Provider is attached via `createClient()` or `attachProvider()`. The client stores the provider reference and passes it to transaction builders.
+**Client Configuration**: Provider is attached via `.with(provider)` on the composable client. The client stores the provider reference and passes it to transaction builders.
 
 **Error Handling**: Provider methods return `Effect<Result, ProviderError>`. All provider-specific errors (HTTP failures, WebSocket disconnections, rate limits, authentication) normalize to `ProviderError` with consistent structure. Application code handles one error type, not provider-specific exceptions.
 

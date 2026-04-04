@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -18,7 +18,6 @@ import * as Data from "@evolution-sdk/evolution/Data"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 
@@ -65,30 +64,15 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
   const calculatedPolicyId = ScriptHash.toHex(scriptHash)
 
   const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1444",
-        ogmiosUrl: "http://localhost:1339"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1444", ogmiosUrl: "http://localhost:1339" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedPolicyId).toBe(SIMPLE_MINT_POLICY_ID_HEX)
 
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
-    const testAddress = await testClient.address()
+    const testAddress = await testClient.getAddress()
     const testAddressHex = CoreAddress.toHex(testAddress)
 
     genesisConfig = {
@@ -131,7 +115,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
     }
 
     const client = createTestClient()
-    const address = await client.address()
+    const address = await client.getAddress()
 
     // Use pre-calculated genesis UTxOs (Kupo may not have synced yet)
     const genesisUtxo = genesisUtxos.find((u) => CoreAddress.toBech32(u.address) === CoreAddress.toBech32(address))
@@ -212,7 +196,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
   it("should mint then burn tokens with PlutusV3 simple_mint script", { timeout: 60_000 }, async () => {
     const client = createTestClient()
-    const address = await client.address()
+    const address = await client.getAddress()
 
     const assetNameHex = Text.toHex("BurnToken")
     const unit = SIMPLE_MINT_POLICY_ID_HEX + assetNameHex

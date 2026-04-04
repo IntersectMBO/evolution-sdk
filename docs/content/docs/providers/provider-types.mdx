@@ -14,16 +14,13 @@ Hosted API service with generous free tier and pay-as-you-grow pricing.
 ### Configuration
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { client, mainnet, blockfrost, kupmios, koios, maestro } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "mainnet",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 ```
 
 ### Network Endpoints
@@ -76,16 +73,13 @@ Self-hosted combination of Ogmios (Cardano node interface) and Kupo (lightweight
 ### Configuration
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { client, mainnet, blockfrost, kupmios, koios, maestro } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "mainnet",
-  provider: {
-    type: "kupmios",
-    ogmiosUrl: "http://localhost:1337",
+const sdkClient = client(mainnet)
+  .with(kupmios({
+ogmiosUrl: "http://localhost:1337",
     kupoUrl: "http://localhost:1442"
-  }
-});
+}));
 ```
 
 ### Setup Requirements
@@ -118,12 +112,12 @@ services:
 
 ```typescript
 // Mainnet
-network: "mainnet",
+chain: mainnet,
 ogmiosUrl: "http://localhost:1337",
 kupoUrl: "http://localhost:1442"
 
 // Preprod testnet
-network: "preprod",
+chain: preprod,
 ogmiosUrl: "http://localhost:1337",
 kupoUrl: "http://localhost:1442"
 ```
@@ -154,16 +148,13 @@ Hosted API service with advanced features and analytics capabilities.
 ### Configuration
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { client, mainnet, blockfrost, kupmios, koios, maestro } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "mainnet",
-  provider: {
-    type: "maestro",
-    baseUrl: "https://mainnet.gomaestro-api.org/v1",
+const sdkClient = client(mainnet)
+  .with(maestro({
+baseUrl: "https://mainnet.gomaestro-api.org/v1",
     apiKey: process.env.MAESTRO_API_KEY!
-  }
-});
+}));
 ```
 
 ### Network Endpoints
@@ -215,15 +206,12 @@ Community-driven distributed API infrastructure.
 ### Configuration
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { client, mainnet, blockfrost, kupmios, koios, maestro } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "mainnet",
-  provider: {
-    type: "koios",
-    baseUrl: "https://api.koios.rest/api/v1"
-  }
-});
+const sdkClient = client(mainnet)
+  .with(koios({
+baseUrl: "https://api.koios.rest/api/v1"
+}));
 ```
 
 ### Network Endpoints
@@ -279,27 +267,21 @@ Applications prioritizing decentralization, community infrastructure, or wanting
 The unified interface allows switching providers with minimal code changes:
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { client, preprod, mainnet, blockfrost, kupmios, koios, maestro } from "@evolution-sdk/evolution";
 
 // Development: Blockfrost
-const devClient = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const devClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Production: Self-hosted Kupmios
-const prodClient = createClient({
-  network: "mainnet",
-  provider: {
-    type: "kupmios",
-    ogmiosUrl: process.env.OGMIOS_URL!,
+const prodClient = client(mainnet)
+  .with(kupmios({
+ogmiosUrl: process.env.OGMIOS_URL!,
     kupoUrl: process.env.KUPO_URL!
-  }
-});
+}));
 
 // Same query methods work across all providers
 const params = await devClient.getProtocolParameters();
@@ -310,32 +292,25 @@ const params = await devClient.getProtocolParameters();
 Manage provider configuration per environment:
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { client, mainnet, preprod, blockfrost, kupmios, koios, maestro } from "@evolution-sdk/evolution";
 
 const environment = (process.env.NODE_ENV || "development") as "development" | "staging" | "production";
 
-const providerConfig = {
-  development: {
-    type: "blockfrost" as const,
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
-    projectId: process.env.BLOCKFROST_PREPROD_PROJECT_ID!
-  },
-  staging: {
-    type: "maestro" as const,
-    baseUrl: "https://preprod.gomaestro-api.org/v1",
-    apiKey: process.env.MAESTRO_STAGING_API_KEY!
-  },
-  production: {
-    type: "kupmios" as const,
-    ogmiosUrl: process.env.OGMIOS_URL!,
-    kupoUrl: process.env.KUPO_URL!
-  }
-};
-
-const client = createClient({
-  network: environment === "production" ? "mainnet" : "preprod",
-  provider: providerConfig[environment]
-});
+const sdkClient =
+  environment === "production"
+    ? client(mainnet).with(kupmios({
+        ogmiosUrl: process.env.OGMIOS_URL!,
+        kupoUrl: process.env.KUPO_URL!
+      }))
+    : environment === "staging"
+    ? client(preprod).with(maestro({
+        baseUrl: "https://preprod.gomaestro-api.org/v1",
+        apiKey: process.env.MAESTRO_STAGING_API_KEY!
+      }))
+    : client(preprod).with(blockfrost({
+        baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+        projectId: process.env.BLOCKFROST_PREPROD_PROJECT_ID!
+      }));
 ```
 
 ## Next Steps

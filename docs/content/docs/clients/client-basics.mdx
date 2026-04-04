@@ -7,29 +7,57 @@ description: "Learn the basics of creating and using an Evolution SDK client"
 
 The Evolution SDK client is your primary interface to the Cardano blockchain. It combines wallet management, provider communication, and transaction building into a single, cohesive API. Once configured, the client handles UTxO selection, fee calculation, and signing—letting you focus on your application logic.
 
-Think of the client as your persistent connection: configure it once with your network, provider, and wallet, then use it throughout your application to build and submit transactions. All operations maintain type safety and composability through Effect-TS.
+Think of the client as your persistent connection: configure it once with your chain, provider, and wallet, then use it throughout your application to build and submit transactions. All operations maintain type safety and composability through Effect-TS.
 
 ## Creating a Client
 
-Configure your client with three essential pieces: the network (mainnet/preprod/preview), your blockchain provider, and the wallet for signing:
+Configure your client with three essential pieces: the **chain** (which Cardano network to target), your blockchain provider, and the wallet for signing:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+}))
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
+}));
+```
+
+## Chain Configuration
+
+The `chain` field is a rich descriptor, not just a string identifier. It carries network magic, slot timing parameters, and optional block explorer URLs — everything the SDK needs to interact with a specific Cardano network.
+
+Evolution SDK exports three built-in chain constants:
+
+| Constant | Network | Network Magic |
+|----------|---------|---------------|
+| `mainnet` | Production | `764824073` |
+| `preprod` | Pre-production testnet | `1` |
+| `preview` | Preview testnet | `2` |
+
+```ts twoslash
+import { mainnet, preprod, preview, blockfrost, seedWallet, client } from "@evolution-sdk/evolution";
+```
+
+For custom networks — local devnets, private chains, or future Cardano forks — use `defineChain`:
+
+```ts twoslash
+import { defineChain, blockfrost, seedWallet, client } from "@evolution-sdk/evolution";
+
+const devnet = defineChain({
+  name: "Devnet",
+  id: 0,
+  networkMagic: 42,
+  slotConfig: { zeroTime: 0n, zeroSlot: 0n, slotLength: 1000 },
+  epochLength: 432000,
 });
 ```
+
+The `slotConfig` is embedded in the chain constant and consumed directly by the transaction builder for slot-to-POSIX time conversions. There is no separate `slotConfig` parameter on `client`.
 
 ## The Transaction Workflow
 
@@ -37,18 +65,20 @@ Evolution SDK follows a three-stage pattern: build, sign, submit. Each stage ret
 
 ### Stage 1: Building
 
-Start with `client.newTx()` and chain operations to specify outputs, metadata, or validity ranges:
+Start with `sdkClient.newTx()` and chain operations to specify outputs, metadata, or validity ranges:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "", projectId: "" },
-  wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
-});
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "", projectId: ""
+}))
+  .with(seedWallet({
+mnemonic: "", accountIndex: 0
+}));
 
-const builder = client.newTx();
+const builder = sdkClient.newTx();
 
 builder.payToAddress({
   address: Address.fromBech32("addr_test1qzx9hu8j4ah3auytk0mwcupd69hpc52t0cw39a65ndrah86djs784u92a3m5w475w3w35tyd6v3qumkze80j8a6h5tuqq5xe8y"),
@@ -63,15 +93,17 @@ const signBuilder = await builder.build();
 Call `.sign()` on the built transaction to create signatures with your wallet:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "", projectId: "" },
-  wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
-});
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "", projectId: ""
+}))
+  .with(seedWallet({
+mnemonic: "", accountIndex: 0
+}));
 
-const builder = client.newTx();
+const builder = sdkClient.newTx();
 builder.payToAddress({ address: Address.fromBech32("addr_test1qzx9hu8j4ah3auytk0mwcupd69hpc52t0cw39a65ndrah86djs784u92a3m5w475w3w35tyd6v3qumkze80j8a6h5tuqq5xe8y"), assets: Assets.fromLovelace(2000000n) });
 const signBuilder = await builder.build();
 
@@ -83,15 +115,17 @@ const submitBuilder = await signBuilder.sign();
 Finally, `.submit()` broadcasts the signed transaction to the blockchain and returns the transaction hash:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "", projectId: "" },
-  wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
-});
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "", projectId: ""
+}))
+  .with(seedWallet({
+mnemonic: "", accountIndex: 0
+}));
 
-const builder = client.newTx();
+const builder = sdkClient.newTx();
 builder.payToAddress({ address: Address.fromBech32("addr_test1qzx9hu8j4ah3auytk0mwcupd69hpc52t0cw39a65ndrah86djs784u92a3m5w475w3w35tyd6v3qumkze80j8a6h5tuqq5xe8y"), assets: Assets.fromLovelace(2000000n) });
 const signBuilder = await builder.build();
 const submitBuilder = await signBuilder.sign();
@@ -105,24 +139,20 @@ console.log("Transaction submitted:", txId);
 Here's the complete workflow in a single example—from client creation through transaction submission:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: process.env.WALLET_MNEMONIC!,
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!,
     accountIndex: 0
-  }
-});
+}));
 
 // Build transaction
-const builder = client.newTx();
+const builder = sdkClient.newTx();
 builder.payToAddress({
   address: Address.fromBech32("addr_test1qzx9hu8j4ah3auytk0mwcupd69hpc52t0cw39a65ndrah86djs784u92a3m5w475w3w35tyd6v3qumkze80j8a6h5tuqq5xe8y"),
   assets: Assets.fromLovelace(2000000n)

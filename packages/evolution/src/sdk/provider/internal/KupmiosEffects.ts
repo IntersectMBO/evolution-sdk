@@ -1,5 +1,5 @@
 import { FetchHttpClient } from "@effect/platform"
-import { Array as _Array, Effect, pipe, Schedule, Schema } from "effect"
+import { Array as _Array, Effect, pipe, Schedule, Schema, Stream } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets/index.js"
@@ -25,7 +25,7 @@ import type * as TransactionInput from "../../../TransactionInput.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import * as Provider from "../Provider.js"
-import * as HttpUtils from "./HttpUtils.js"
+import * as HttpUtils from "./Http.js"
 import * as Kupo from "./Kupo.js"
 import * as Ogmios from "./Ogmios.js"
 
@@ -477,3 +477,40 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
     )
     return Schema.decodeSync(PlutusData.FromCBORHex())(result.datum)
   })
+
+export const watchUtxosEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<string, string> }) =>
+  (addressOrCredential: CoreAddress.Address | Credential.Credential, pollInterval = 2000): Stream.Stream<CoreUTxO.UTxO, Provider.ProviderError> => {
+    let pattern: string
+    if (addressOrCredential instanceof CoreAddress.Address) {
+      const addressStr = CoreAddress.toBech32(addressOrCredential)
+      pattern = `${kupoUrl}/matches/${addressStr}?unspent`
+    } else {
+      pattern = `${kupoUrl}/matches/${addressOrCredential.hash}/*?unspent`
+    }
+    const schema = Schema.Array(Kupo.UTxOSchema)
+    const toUtxos = kupmiosUtxosToUtxos(kupoUrl, headers?.kupoHeader)
+
+    // Track seen UTxO IDs (txHash#index) to only emit new ones
+    const seen = new Set<string>()
+
+    return Stream.repeatEffectWithSchedule(
+      pipe(
+        HttpUtils.get(pattern, schema, headers?.kupoHeader),
+        Effect.flatMap((u) => toUtxos(u)),
+        Effect.provide(FetchHttpClient.layer),
+        Effect.timeout(TIMEOUT),
+        Effect.catchAll(wrapError("watchUtxos"))
+      ),
+      Schedule.spaced(pollInterval)
+    ).pipe(
+      Stream.flatMap((utxos) => {
+        const newUtxos = utxos.filter((utxo) => {
+          const id = `${TransactionHash.toHex(utxo.transactionId)}#${utxo.index}`
+          if (seen.has(id)) return false
+          seen.add(id)
+          return true
+        })
+        return Stream.fromIterable(newUtxos)
+      })
+    )
+  }

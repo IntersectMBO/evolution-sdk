@@ -519,17 +519,9 @@ export interface SlotConfig {
  * @example
  * ```typescript
  * import * as Cluster from "@evolution-sdk/devnet/Cluster"
- * import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
  *
  * const cluster = await Cluster.make({ ... })
  * const slotConfig = Cluster.getSlotConfig(cluster)
- *
- * const client = createClient({
- *   network: 0,
- *   slotConfig,
- *   provider: { type: "kupmios", kupoUrl: "...", ogmiosUrl: "..." },
- *   wallet: { type: "seed", mnemonic: "..." }
- * })
  * ```
  *
  * @since 2.0.0
@@ -547,3 +539,47 @@ export const getSlotConfig = (cluster: Cluster): SlotConfig => {
     slotLength
   }
 }
+
+/**
+ * Create a Chain descriptor for a running devnet cluster.
+ *
+ * The returned object is structurally compatible with the `Chain` interface
+ * from `@evolution-sdk/evolution` and can be passed directly to `client()`.
+ *
+ * @example
+ * ```typescript
+ * const cluster = await Cluster.make({ ... })
+ * await Cluster.start(cluster)
+ * const c = client(Cluster.getChain(cluster))
+ *   .with(kupmios({ kupoUrl: "...", ogmiosUrl: "..." }))
+ *   .with(seedWallet({ mnemonic: "..." }))
+ * ```
+ *
+ * @since 2.1.0
+ * @category utilities
+ */
+export const getChain = (cluster: Cluster) => ({
+  name: "Devnet",
+  id: 0 as const,
+  networkMagic: cluster.shelleyGenesis.networkMagic,
+  slotConfig: getSlotConfig(cluster),
+  epochLength: cluster.shelleyGenesis.epochLength
+})
+
+/**
+ * A minimal testnet chain descriptor for bootstrapping (e.g., deriving wallet addresses
+ * before a cluster is started). Uses `id: 0` so addresses are in testnet bech32 format.
+ *
+ * Slot config values are zero-based placeholders — valid for address derivation but
+ * not for time-based validity windows. Use `getChain(cluster)` once the cluster is running.
+ *
+ * @since 2.1.0
+ * @category constants
+ */
+export const BOOTSTRAP_CHAIN = {
+  name: "Devnet",
+  id: 0 as const,
+  networkMagic: Config.DEFAULT_DEVNET_CONFIG.networkMagic,
+  slotConfig: { zeroTime: 0n, zeroSlot: 0n, slotLength: 1000 },
+  epochLength: Config.DEFAULT_DEVNET_CONFIG.shelleyGenesis.epochLength ?? 432000
+} as const

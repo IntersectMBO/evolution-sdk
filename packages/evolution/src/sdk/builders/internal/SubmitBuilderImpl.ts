@@ -13,11 +13,10 @@
 
 import { Effect } from "effect"
 
-import type * as Transaction from "../../Transaction.js"
-import type * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
-import type * as Provider from "../provider/Provider.js"
-import type { SubmitBuilder, SubmitBuilderEffect } from "./SubmitBuilder.js"
-import { TransactionBuilderError } from "./TransactionBuilder.js"
+import type * as Transaction from "../../../Transaction.js"
+import type * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
+import type { SubmitBuilder, SubmitBuilderEffect } from "../SubmitBuilder.js"
+import { type ProviderLike, TransactionBuilderError } from "../TransactionBuilder.js"
 
 /**
  * Create a SubmitBuilder instance for a signed transaction.
@@ -28,7 +27,7 @@ import { TransactionBuilderError } from "./TransactionBuilder.js"
 export const makeSubmitBuilder = (
   signedTransaction: Transaction.Transaction,
   witnessSet: TransactionWitnessSet.TransactionWitnessSet,
-  provider: Provider.Provider
+  provider: ProviderLike
 ): SubmitBuilder => {
   const submitEffect: SubmitBuilderEffect = {
     submit: () =>

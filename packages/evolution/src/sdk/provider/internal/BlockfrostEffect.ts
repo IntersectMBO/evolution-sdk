@@ -27,7 +27,7 @@ import * as CoreUTxO from "../../../UTxO.js"
 import type * as Provider from "../Provider.js"
 import { ProviderError } from "../Provider.js"
 import * as Blockfrost from "./Blockfrost.js"
-import * as HttpUtils from "./HttpUtils.js"
+import * as HttpUtils from "./Http.js"
 
 // ============================================================================
 // Rate Limiting Configuration

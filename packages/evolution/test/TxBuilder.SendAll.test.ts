@@ -2,8 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
-import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { client, preview } from "../src/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -27,7 +26,6 @@ const NFT_POLICY = "c".repeat(56)
 const HOSKY_NAME_HEX = "484f534b59" // "HOSKY" in hex
 const NFT_NAME_HEX = "4e4654303031" // "NFT001" in hex
 
-const baseConfig: TxBuilderConfig = {}
 
 describe("TxBuilder SendAll", () => {
   describe("Basic SendAll Operation", () => {
@@ -48,7 +46,7 @@ describe("TxBuilder SendAll", () => {
       ]
       const totalLovelace = 350_000_000n
 
-      const signBuilder = await makeTxBuilder(baseConfig)
+      const signBuilder = await client(preview).newTx()
         .sendAll({ to: Address.fromBech32(DESTINATION_ADDRESS) })
         .build({
           changeAddress: Address.fromBech32(SOURCE_ADDRESS),
@@ -100,7 +98,7 @@ describe("TxBuilder SendAll", () => {
       ]
       const totalLovelace = 175_000_000n
 
-      const signBuilder = await makeTxBuilder(baseConfig)
+      const signBuilder = await client(preview).newTx()
         .sendAll({ to: Address.fromBech32(DESTINATION_ADDRESS) })
         .build({
           changeAddress: Address.fromBech32(SOURCE_ADDRESS),
@@ -142,7 +140,7 @@ describe("TxBuilder SendAll", () => {
       ]
 
       await expect(
-        makeTxBuilder(baseConfig)
+        client(preview).newTx()
           .payToAddress({
             address: Address.fromBech32(DESTINATION_ADDRESS),
             assets: CoreAssets.fromLovelace(1_000_000n)
@@ -167,7 +165,7 @@ describe("TxBuilder SendAll", () => {
       ]
 
       await expect(
-        makeTxBuilder(baseConfig)
+        client(preview).newTx()
           .collectFrom({ inputs: [utxos[0]] })
           .sendAll({ to: Address.fromBech32(DESTINATION_ADDRESS) })
           .build({
@@ -182,7 +180,7 @@ describe("TxBuilder SendAll", () => {
   describe("Insufficient Funds Handling", () => {
     it("should fail when wallet is empty", async () => {
       await expect(
-        makeTxBuilder(baseConfig)
+        client(preview).newTx()
           .sendAll({ to: Address.fromBech32(DESTINATION_ADDRESS) })
           .build({
             changeAddress: Address.fromBech32(SOURCE_ADDRESS),
@@ -210,7 +208,7 @@ describe("TxBuilder SendAll", () => {
         })
       ]
 
-      const signBuilder = await makeTxBuilder(baseConfig)
+      const signBuilder = await client(preview).newTx()
         .sendAll({ to: Address.fromBech32(DESTINATION_ADDRESS) })
         .build({
           changeAddress: Address.fromBech32(SOURCE_ADDRESS),

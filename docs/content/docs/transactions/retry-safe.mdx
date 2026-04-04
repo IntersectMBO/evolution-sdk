@@ -42,23 +42,22 @@ Querying chain state **outside** the action and passing it in as a static value 
 The simplest approach: wrap the full pipeline in an async function and call it from a retry loop.
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-});
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}));
 
 const recipient = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63");
 
 // The action fetches UTxOs at call time — safe to retry
 async function sendPayment() {
-  const tx = await client
+  const tx = await sdkClient
     .newTx()
     .payToAddress({ address: recipient, assets: Assets.fromLovelace(2_000_000n) })
     .build();
@@ -89,17 +88,16 @@ console.log("Submitted:", txHash);
 When collecting from a script address, query the script UTxOs inside the action so each retry gets a fresh view of what is available at that address.
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-});
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}));
 
 // Illustrative snippet (not runnable as-is) — redeemer and scriptAddress are placeholders
 async function unlockFromScript() {
@@ -107,9 +105,9 @@ async function unlockFromScript() {
   const recipient = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63");
 
   // Script UTxOs fetched inside the action — re-run on every retry
-  const scriptUtxos = await client.getUtxos(scriptAddress);
+  const scriptUtxos = await sdkClient.getUtxos(scriptAddress);
 
-  const tx = await client
+  const tx = await sdkClient
     .newTx()
     .collectFrom({ inputs: scriptUtxos })
     .payToAddress({ address: recipient, assets: Assets.fromLovelace(5_000_000n) })
@@ -125,25 +123,24 @@ async function unlockFromScript() {
 When using Effect, compose the full pipeline as a single `Effect.gen` and apply `Effect.retry` directly. `Schedule` controls the timing and number of attempts.
 
 ```ts twoslash
-import { Address, createClient } from "@evolution-sdk/evolution";
+import { Address, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 import { Effect, Schedule } from "effect";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-});
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}));
 
 // Illustrative snippet (not runnable as-is) — scriptAddress and redeemer are placeholders
 const unlockAction = Effect.gen(function* () {
   // Script UTxOs fetched fresh on every attempt
-  const scriptUtxos = yield* client.Effect.getUtxos(Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"));
+  const scriptUtxos = yield* sdkClient.Effect.getUtxos(Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"));
 
-  const signBuilder = yield* client.newTx()
+  const signBuilder = yield* sdkClient.newTx()
     .collectFrom({ inputs: scriptUtxos })
     .buildEffect();
 

@@ -11,9 +11,11 @@
 import { Effect, Ref } from "effect"
 
 import * as CoreAssets from "../../../Assets/index.js"
-import type { BuildOptionsTag, TransactionBuilderError } from "../TransactionBuilder.js"
-import { PhaseContextTag, ProtocolParametersTag, TxContext } from "../TransactionBuilder.js"
-import { buildTransactionInputs, calculateFeeIteratively, calculateReferenceScriptFee } from "../TxBuilderImpl.js"
+import { calculateReferenceScriptFee as calculateReferenceScriptFeeCore } from "../../../utils/FeeValidation.js"
+import { calculateFeeIteratively } from "../internal/FeeEstimation.js"
+import { buildTransactionInputs } from "../internal/TxAssembly.js"
+import type { BuildOptionsTag } from "../TransactionBuilder.js"
+import { PhaseContextTag, ProtocolParametersTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
 import type { PhaseResult } from "./Phases.js"
 
 /**
@@ -67,7 +69,7 @@ export const executeFeeCalculation = (): Effect.Effect<
     const baseOutputs = state.outputs
 
     // Step 2: Build transaction inputs
-    const inputs = yield* buildTransactionInputs(selectedUtxos)
+    const inputs = buildTransactionInputs(selectedUtxos)
 
     // Step 3: Combine base outputs + change outputs
     yield* Effect.logDebug(
@@ -89,10 +91,10 @@ export const executeFeeCalculation = (): Effect.Effect<
 
     // Step 4a: Add reference script fee for scripts on spent inputs and reference inputs
     const costPerByte = protocolParams.minFeeRefScriptCostPerByte ?? 44
-    const refScriptFee = yield* calculateReferenceScriptFee(
+    const refScriptFee = yield* calculateReferenceScriptFeeCore(
       [...state.selectedUtxos, ...state.referenceInputs],
       costPerByte
-    )
+    ).pipe(Effect.mapError((e) => new TransactionBuilderError({ message: e.message, cause: e })))
     yield* Effect.logDebug(`[FeeCalculation] Reference script fee: ${refScriptFee}`)
 
     const calculatedFee = baseFee + refScriptFee

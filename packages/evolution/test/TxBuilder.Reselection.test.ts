@@ -1,12 +1,11 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, FastCheck, Schema } from "effect"
+import { FastCheck, Schema } from "effect"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
+import { client, preview } from "../src/index.js"
 import * as KeyHash from "../src/KeyHash.js"
-import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
-import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
-import { calculateTransactionSize } from "../src/sdk/builders/TxBuilderImpl.js"
+import { calculateTransactionSize } from "../src/utils/FeeValidation.js"
 import * as FeeValidation from "../src/utils/FeeValidation.js"
 import * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
@@ -36,10 +35,6 @@ describe("TxBuilder Re-selection Loop", () => {
   const CHANGE_ADDRESS = TESTNET_ADDRESSES[0]
   const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
-  const baseConfig: TxBuilderConfig = {
-    // No wallet/provider - using manual mode
-    // changeAddress and availableUtxos provided via build options
-  }
 
   // ============================================================================
   // Test Utilities
@@ -71,7 +66,7 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 10_000_000n
       })
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(2_000_000n)
       })
@@ -89,7 +84,7 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs.length).toBe(2) // Payment + change
 
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Strict expectations with deterministic values
@@ -125,7 +120,7 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 1_000_000n
       })
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(2_000_000n) // 2 ADA payment
       })
@@ -146,7 +141,7 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs.length).toBe(2)
 
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       expect(size).toBe(326) // 2 inputs, 1 witness, 2 outputs (Shelley format saves 4 bytes)
@@ -165,7 +160,7 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 1_000_000n
       })
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(2_000_000n) // Requesting 2 ADA
       })
@@ -192,7 +187,7 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: exactAmount
       })
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(paymentAmount)
       })
@@ -211,7 +206,7 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs.length).toBe(1)
 
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Strict expectations with deterministic values
@@ -240,7 +235,7 @@ describe("TxBuilder Re-selection Loop", () => {
       })
       const utxoWithTokens = new CoreUTxO.UTxO({ ...utxo, assets })
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         // Payment leaves leftover + token
         // 3_000_000 - 2_000_000 - fee(~170k) = ~830k leftover + token
@@ -298,7 +293,7 @@ describe("TxBuilder Re-selection Loop", () => {
       // Pay 2 ADA + 50 tokens
       let paymentAssets = CoreAssets.fromLovelace(2_000_000n)
       paymentAssets = CoreAssets.addByHex(paymentAssets, TOKEN_POLICY, TOKEN_NAME, 50n)
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: paymentAssets
       })
@@ -322,7 +317,7 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs[1]).toBeDefined()
 
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Strict expectations with deterministic values
@@ -358,15 +353,11 @@ describe("TxBuilder Re-selection Loop", () => {
       })
       const utxo2 = new CoreUTxO.UTxO({ ...utxo2Base, assets: assets2 })
 
-      // Config with both utxos available for automatic selection
-      const builderConfig: TxBuilderConfig = {
-        ...baseConfig
-      }
 
       // Payment requires tokens that utxo1 doesn't have
       let paymentAssets = CoreAssets.fromLovelace(2_000_000n)
       paymentAssets = CoreAssets.addByHex(paymentAssets, TOKEN_POLICY, TOKEN_NAME, 100n)
-      const builder = makeTxBuilder(builderConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: paymentAssets // Requires tokens!
       })
@@ -410,7 +401,7 @@ describe("TxBuilder Re-selection Loop", () => {
         })
       )
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(5_000_000n) // 5 ADA
       })
@@ -422,7 +413,7 @@ describe("TxBuilder Re-selection Loop", () => {
       })
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
 
@@ -456,7 +447,7 @@ describe("TxBuilder Re-selection Loop", () => {
         lovelace: 5_000_000n
       })
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(6_000_000n)
       })
@@ -468,7 +459,7 @@ describe("TxBuilder Re-selection Loop", () => {
       })
       const txWithFakeWitnesses = await signBuilder.toTransactionWithFakeWitnesses()
 
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
 
@@ -515,7 +506,7 @@ describe("TxBuilder Re-selection Loop", () => {
         })
       })
 
-      const builder = makeTxBuilder({ ...baseConfig }).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         // Request 280M to force selection of 140+ UTxOs (each 2M), which will create 140+ witnesses
         // This will exceed the 16KB transaction size limit
@@ -557,7 +548,7 @@ describe("TxBuilder Re-selection Loop", () => {
         createCoreTestUtxo({ transactionId: "3".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace: 400_000n })
       ]
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(2_500_000n) // 2.5 ADA payment
       })
@@ -575,7 +566,7 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Verify transaction is valid
       await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Largest-first picks 1.5M + 1.2M = 2.7M initially (for 2.5M payment)
@@ -616,7 +607,7 @@ describe("TxBuilder Re-selection Loop", () => {
       // Request a payment that will require multiple UTxOs
       // Each UTxO contributes 350K, minus ~2K fee overhead = ~348K net
       // To get 3M payment, need ~9 UTxOs initially, but fee will increase
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(3_000_000n) // 3 ADA
       })
@@ -632,7 +623,7 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Verify transaction is valid
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Should have selected many inputs due to small UTxO sizes
@@ -665,7 +656,7 @@ describe("TxBuilder Re-selection Loop", () => {
         createCoreTestUtxo({ transactionId: "f".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace: 400_000n })
       ]
 
-      const builder = makeTxBuilder(baseConfig).payToAddress({
+      const builder = client(preview).newTx().payToAddress({
         address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
         assets: CoreAssets.fromLovelace(2_500_000n) // 2.5 ADA - requires reselection
       })
@@ -680,7 +671,7 @@ describe("TxBuilder Re-selection Loop", () => {
 
       // Verify transaction is valid
       await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
-      const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+      const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Should need at least 2 inputs (1.5M + 0.8M + fee > 2.5M)
@@ -705,10 +696,6 @@ describe("TxBuilder Reselection After Change", () => {
   const RECEIVER_ADDRESS =
     "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
 
-  const baseConfig: TxBuilderConfig = {
-    // No wallet/provider - using manual mode
-    // changeAddress and availableUtxos provided via build options
-  }
 
   /**
    * Verifies that fee calculation includes the change output in the transaction structure.
@@ -722,7 +709,7 @@ describe("TxBuilder Reselection After Change", () => {
       lovelace: 10_000_000n // 10 ADA
     })
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(5_000_000n) // 5 ADA payment
     })
@@ -777,7 +764,7 @@ describe("TxBuilder Reselection After Change", () => {
       lovelace: 2_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(3_500_000n) // Needs 2 UTxOs
     })
@@ -819,7 +806,7 @@ describe("TxBuilder Reselection After Change", () => {
     })
     const utxoWithAssets = new CoreUTxO.UTxO({ ...utxoBase, assets })
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(3_000_000n) // Send only lovelace
     })
@@ -869,7 +856,7 @@ describe("TxBuilder Reselection After Change", () => {
       lovelace: 2_400_000n
     })
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(3_000_000n)
     })

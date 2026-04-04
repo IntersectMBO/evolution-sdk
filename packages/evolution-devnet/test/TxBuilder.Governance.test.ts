@@ -7,13 +7,14 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
+import type { Cardano} from "@evolution-sdk/evolution";
+import { client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Anchor from "@evolution-sdk/evolution/Anchor"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as Bytes32 from "@evolution-sdk/evolution/Bytes32"
 import * as Credential from "@evolution-sdk/evolution/Credential"
 import * as KeyHash from "@evolution-sdk/evolution/KeyHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Url from "@evolution-sdk/evolution/Url"
 
 describe("TxBuilder Governance Operations", () => {
@@ -26,31 +27,15 @@ describe("TxBuilder Governance Operations", () => {
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
   const createTestClient = (accountIndex: number = 0) =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1452",
-        ogmiosUrl: "http://localhost:1342"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1452", ogmiosUrl: "http://localhost:1342" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
 
   beforeAll(async () => {
     // Create clients for governance tests
     const accounts = [0, 1, 2, 3, 4].map((accountIndex) =>
-      createClient({
-        network: 0,
-        wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
-      })
+      client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }))
     )
 
-    const addresses = await Promise.all(accounts.map((client) => client.address()))
+    const addresses = await Promise.all(accounts.map((client) => client.getAddress()))
     const addressHexes = addresses.map((addr) => Address.toHex(addr))
 
     // Extract committee member key hashes from payment credentials
@@ -117,7 +102,7 @@ describe("TxBuilder Governance Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
     const drepCredential = walletAddress.paymentCredential
 
     const anchor = new Anchor.Anchor({
@@ -142,7 +127,7 @@ describe("TxBuilder Governance Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
     const drepCredential = walletAddress.paymentCredential
 
     // Register DRep first
@@ -184,7 +169,7 @@ describe("TxBuilder Governance Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
     const drepCredential = walletAddress.paymentCredential
 
     // Register DRep
@@ -216,7 +201,7 @@ describe("TxBuilder Governance Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
     const coldCredential = walletAddress.paymentCredential
 
     const hotKeyHashBytes = KeyHash.fromHex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
@@ -239,7 +224,7 @@ describe("TxBuilder Governance Operations", () => {
     }
 
     const client = createTestClient(ACCOUNT_INDEX)
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
     const coldCredential = walletAddress.paymentCredential
 
     const anchor = new Anchor.Anchor({

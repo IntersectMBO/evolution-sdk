@@ -10,19 +10,21 @@ Governance proposals submit actions for the community to vote on. The deposit is
 ## Submitting a Proposal
 
 ```typescript twoslash
-import { Anchor, GovernanceAction, RewardAccount, createClient } from "@evolution-sdk/evolution"
+import { Anchor, GovernanceAction, RewardAccount, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const governanceAction: GovernanceAction.GovernanceAction
 declare const rewardAccount: RewardAccount.RewardAccount
 declare const anchor: Anchor.Anchor
 
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .propose({
     governanceAction,
@@ -54,13 +56,15 @@ The `govActionDeposit` is deducted automatically during transaction balancing.
 Submit multiple proposals in a single transaction by chaining `.propose()`:
 
 ```typescript twoslash
-import { Anchor, GovernanceAction, RewardAccount, createClient } from "@evolution-sdk/evolution"
+import { Anchor, GovernanceAction, RewardAccount, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const action1: GovernanceAction.GovernanceAction
 declare const action2: GovernanceAction.GovernanceAction
@@ -68,7 +72,7 @@ declare const rewardAccount: RewardAccount.RewardAccount
 declare const anchor1: Anchor.Anchor
 declare const anchor2: Anchor.Anchor
 
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .propose({ governanceAction: action1, rewardAccount, anchor: anchor1 })
   .propose({ governanceAction: action2, rewardAccount, anchor: anchor2 })

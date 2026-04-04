@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -18,7 +18,6 @@ import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import { Schema } from "effect"
@@ -84,30 +83,15 @@ describe("TxBuilder RedeemerBuilder", () => {
   const calculatedPolicyId = ScriptHash.toHex(scriptHashValue)
 
   const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1445",
-        ogmiosUrl: "http://localhost:1340"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1445", ogmiosUrl: "http://localhost:1340" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedPolicyId).toBe(MINT_MULTI_POLICY_ID_HEX)
 
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
-    const testAddress = await testClient.address()
+    const testAddress = await testClient.getAddress()
     const testAddressHex = CoreAddress.toHex(testAddress)
 
     genesisConfig = {
@@ -146,7 +130,7 @@ describe("TxBuilder RedeemerBuilder", () => {
     }
 
     const client = createTestClient()
-    const walletAddress = await client.address()
+    const walletAddress = await client.getAddress()
 
     // Use pre-calculated genesis UTxOs
     const genesisUtxo = genesisUtxos.find(

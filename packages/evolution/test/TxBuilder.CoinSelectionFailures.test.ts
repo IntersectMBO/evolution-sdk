@@ -2,8 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
-import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { client, preview } from "../src/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -19,7 +18,6 @@ const CHANGE_ADDRESS =
 const RECEIVER_ADDRESS =
   "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
 
-const baseConfig: TxBuilderConfig = {}
 
 describe("Insufficient Lovelace", () => {
   it("should fail when total lovelace is less than payment amount", async () => {
@@ -28,7 +26,7 @@ describe("Insufficient Lovelace", () => {
       createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace: 1_000_000n })
     ]
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(5_000_000n)
     })
@@ -48,7 +46,7 @@ describe("Insufficient Lovelace", () => {
       createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace: 2_000_000n })
     ]
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(1_950_000n)
     })
@@ -72,7 +70,7 @@ describe("Insufficient Lovelace", () => {
       createCoreTestUtxo({ transactionId: "e".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace: 100_000n })
     ]
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(1_000_000n)
     })
@@ -108,7 +106,7 @@ describe("Missing Native Assets", () => {
 
     const paymentAssets = CoreAssets.addByHex(CoreAssets.fromLovelace(2_000_000n), policyB, "546f6b656e42", 100n)
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -158,7 +156,7 @@ describe("Missing Native Assets", () => {
       10n // Missing token
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -196,7 +194,7 @@ describe("Insufficient Native Asset Quantity", () => {
       100n // Need 100, only have 50
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -246,7 +244,7 @@ describe("Insufficient Native Asset Quantity", () => {
       100n // Need 100, only have 90 total
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -293,7 +291,7 @@ describe("Insufficient Native Asset Quantity", () => {
       100n // Insufficient
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -312,7 +310,7 @@ describe("Complex Mixed Failures", () => {
   it("should fail with empty wallet (no UTxOs)", async () => {
     const utxos: Array<CoreUTxO.UTxO> = []
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(1_000_000n)
     })
@@ -340,7 +338,7 @@ describe("Complex Mixed Failures", () => {
         }) // 0.001 ADA each
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(50_000n)
     })
@@ -370,7 +368,7 @@ describe("Complex Mixed Failures", () => {
       1n // Even 1 token will fail
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -417,7 +415,7 @@ describe("Complex Mixed Failures", () => {
       50n // Need 50, have 5
     )
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: paymentAssets
     })
@@ -441,7 +439,7 @@ describe("Edge Case: drainTo Cannot Save Insufficient Funds", () => {
       createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 1_000_000n })
     ]
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(5_000_000n) // Way more than available
     })
@@ -463,7 +461,7 @@ describe("Edge Case: drainTo Cannot Save Insufficient Funds", () => {
       createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 800_000n })
     ]
 
-    const builder = makeTxBuilder(baseConfig).payToAddress({
+    const builder = client(preview).newTx().payToAddress({
       address: CoreAddress.fromBech32(RECEIVER_ADDRESS),
       assets: CoreAssets.fromLovelace(2_000_000n)
     })

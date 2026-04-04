@@ -1,7 +1,7 @@
 import { useCardano } from "@cardano-foundation/cardano-connect-with-wallet"
 import { NetworkType } from "@cardano-foundation/cardano-connect-with-wallet-core"
 import { useState } from "react"
-import { Address, Assets, createClient, TransactionHash } from "@evolution-sdk/evolution"
+import { Address, Assets, client, mainnet, preprod, preview, TransactionHash, blockfrost, cip30Wallet } from "@evolution-sdk/evolution"
 
 export default function TransactionBuilder() {
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -46,8 +46,12 @@ export default function TransactionBuilder() {
         throw new Error("Failed to enable wallet")
       }
 
-      // Determine network ID and provider config
-      const networkId = networkEnv // "preprod", "preview", or "mainnet"
+      // Determine chain from environment variable
+      const chainMap = { mainnet, preprod, preview } as const
+      const resolvedKey = (networkEnv as keyof typeof chainMap) in chainMap
+        ? (networkEnv as keyof typeof chainMap)
+        : "preprod"
+      const chain = chainMap[resolvedKey]
 
       // Configure Blockfrost provider based on network
       const blockfrostUrls = {
@@ -56,18 +60,10 @@ export default function TransactionBuilder() {
         mainnet: "https://cardano-mainnet.blockfrost.io/api/v0"
       }
 
-      const providerConfig = {
-        type: "blockfrost" as const,
-        baseUrl: blockfrostUrls[networkId as keyof typeof blockfrostUrls],
-        projectId: import.meta.env.VITE_BLOCKFROST_PROJECT_ID || ""
-      }
-
       // Create client with wallet and provider
-      const client = createClient({
-        network: networkId,
-        provider: providerConfig,
-        wallet: { type: "api", api }
-      })
+      const sdkClient = client(chain)
+        .with(blockfrost({ baseUrl: blockfrostUrls[resolvedKey], projectId: import.meta.env.VITE_BLOCKFROST_PROJECT_ID || "" }))
+        .with(cip30Wallet(api))
 
       // Build transaction (convert ADA to lovelace: 1 ADA = 1,000,000 lovelace)
       const lovelaceAmount = BigInt(Math.floor(amountLovelace * 1_000_000))
@@ -88,7 +84,7 @@ export default function TransactionBuilder() {
       const assetsToSend = Assets.fromLovelace(lovelaceAmount)
 
       // Build, sign, and submit transaction
-      const tx = await client
+      const tx = await sdkClient
         .newTx()
         .payToAddress({
           address: parsedAddress,

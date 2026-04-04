@@ -16,7 +16,8 @@ import { INT64_MAX } from "../../../Numeric.js"
 import * as PolicyId from "../../../PolicyId.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type * as Provider from "../../provider/Provider.js"
-import * as EvaluationStateManager from "../EvaluationStateManager.js"
+import * as EvaluationStateManager from "../internal/EvaluationStateManager.js"
+import { assembleTransaction, buildTransactionInputs } from "../internal/TxAssembly.js"
 import type { IndexedInput } from "../RedeemerBuilder.js"
 import {
   BuildOptionsTag,
@@ -30,9 +31,8 @@ import {
   TxBuilderConfigTag,
   TxContext
 } from "../TransactionBuilder.js"
-import { assembleTransaction, buildTransactionInputs } from "../TxBuilderImpl.js"
+import { voterToKey } from "./Calculations.js"
 import type { PhaseResult } from "./Phases.js"
-import { voterToKey } from "./utils.js"
 
 /**
  * Convert ProtocolParameters cost models to CostModels core type for evaluation.
@@ -325,7 +325,7 @@ export const executeEvaluation = (): Effect.Effect<
     if (
       hasResolvedRedeemers &&
       !hasDeferredRedeemers &&
-      EvaluationStateManager.allRedeemersEvaluated(state.redeemers)
+      EvaluationStateManager.areAllRedeemersEvaluated(state.redeemers)
     ) {
       yield* Effect.logDebug("[Evaluation] All redeemers already evaluated - skipping re-evaluation")
       return { next: "feeCalculation" as const }
@@ -463,7 +463,7 @@ export const executeEvaluation = (): Effect.Effect<
       }
     }
 
-    const inputs = yield* buildTransactionInputs(sortedUtxos)
+    const inputs = buildTransactionInputs(sortedUtxos)
     const allOutputs = [...updatedState.outputs, ...buildCtx.changeOutputs]
     const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
 

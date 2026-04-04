@@ -10,9 +10,9 @@ import { Effect, Ref } from "effect"
 import * as CoreAssets from "../../../Assets/index.js"
 import * as ScriptHash from "../../../ScriptHash.js"
 import * as UTxO from "../../../UTxO.js"
+import { calculateTotalAssets, filterScriptUtxos } from "../internal/UtxoAnalysis.js"
 import * as RedeemerBuilder from "../RedeemerBuilder.js"
 import { TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
-import { calculateTotalAssets, filterScriptUtxos } from "../TxBuilderImpl.js"
 import type { CollectFromParams } from "./Operations.js"
 
 /**
@@ -52,7 +52,7 @@ export const createCollectFromProgram = (
     }
 
     // 2. Filter script-locked UTxOs
-    const scriptUtxos = yield* filterScriptUtxos(params.inputs)
+    const scriptUtxos = filterScriptUtxos(params.inputs)
 
     // 3. Filter out native script UTxOs (those with native scripts don't need redeemers)
     // Native scripts are validated by signatures, not redeemers

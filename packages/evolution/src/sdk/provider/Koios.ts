@@ -11,7 +11,7 @@ import type { Provider, ProviderEffect } from "./Provider.js"
  * @since 2.0.0
  * @category constructors
  */
-export class Koios implements Provider {
+export class KoiosProvider implements Provider {
   private readonly baseUrl: string
   private readonly token?: string
 

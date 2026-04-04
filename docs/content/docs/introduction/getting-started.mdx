@@ -27,16 +27,13 @@ npm install @evolution-sdk/evolution
 ### 2. Create a Wallet
 Instantiate a wallet using your seed phrase or private keys:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+const sdkClient = client(preprod)
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
-});
+}));
 ```
 
 See [Creating Wallets](/docs/wallets) for all wallet types.
@@ -44,21 +41,17 @@ See [Creating Wallets](/docs/wallets) for all wallet types.
 ### 3. Attach a Provider
 Connect to the blockchain via a provider:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+}))
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
-});
+}));
 ```
 
 Learn more in [Clients](/docs/clients) and [Providers](/docs/clients/providers).
@@ -66,24 +59,20 @@ Learn more in [Clients](/docs/clients) and [Providers](/docs/clients/providers).
 ### 4. Build a Transaction
 Construct your first payment:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: "your-project-id"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+}))
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
-});
+}));
 
 // ---cut---
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .payToAddress({ 
     address: Address.fromBech32("addr_test1qzrf9g3ea6hdc5vfujgrpjc0c0xq3qqkz8zkpwh3s6nqzhgey8k3eq73kr0gcqd7cyy75s0qqx0qqx0qqx0qqx0qx7e8pq"),
@@ -97,23 +86,19 @@ Details in [Transactions](/docs/transactions).
 ### 5. Sign & Submit
 Sign with your wallet and send to the network:
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: "your-project-id"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+}))
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
-});
+}));
 
-const tx = await client.newTx()
+const tx = await sdkClient.newTx()
   .payToAddress({ 
     address: Address.fromBech32("addr_test1qzrf9g3ea6hdc5vfujgrpjc0c0xq3qqkz8zkpwh3s6nqzhgey8k3eq73kr0gcqd7cyy75s0qqx0qqx0qqx0qqx0qx7e8pq"),
     assets: Assets.fromLovelace(2_000_000n)

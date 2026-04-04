@@ -14,6 +14,7 @@ import type * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets/index.js"
 import type * as TxOut from "../../../TxOut.js"
 import * as CoreUTxO from "../../../UTxO.js"
+import { calculateMinimumUtxoLovelace, makeTxOutput as txOutputToTransactionOutput } from "../internal/TxOutput.js"
 import { mintToAssets } from "../operations/Mint.js"
 import {
   AvailableUtxosTag,
@@ -24,10 +25,9 @@ import {
   TransactionBuilderError,
   TxContext
 } from "../TransactionBuilder.js"
-import { calculateMinimumUtxoLovelace, txOutputToTransactionOutput } from "../TxBuilderImpl.js"
 import * as Unfrack from "../Unfrack.js"
+import { calculateCertificateBalance, calculateProposalDeposits, calculateWithdrawals } from "./Calculations.js"
 import type { PhaseResult } from "./Phases.js"
-import { calculateCertificateBalance, calculateProposalDeposits, calculateWithdrawals } from "./utils.js"
 
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
@@ -227,7 +227,7 @@ export const executeChangeCreation = (): Effect.Effect<
       }
 
       // Create the sendAll output using the txOutputToTransactionOutput helper
-      const sendAllOutput = yield* txOutputToTransactionOutput({
+      const sendAllOutput = txOutputToTransactionOutput({
         address: state.sendAllTo,
         assets: tentativeLeftover
       })
@@ -376,7 +376,7 @@ export const executeChangeCreation = (): Effect.Effect<
     }
 
     // Step 6: Single output path - create single change output
-    const singleOutput = yield* txOutputToTransactionOutput({
+    const singleOutput = txOutputToTransactionOutput({
       address: changeAddress,
       assets: tentativeLeftover
     })

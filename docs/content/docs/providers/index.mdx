@@ -18,28 +18,25 @@ The SDK abstracts provider differences through a unified interface. Choose your 
 Create a provider-only client to query blockchain data:
 
 ```typescript
-import { createClient } from "@evolution-sdk/evolution";
+import { client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  network: "mainnet",
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Query protocol parameters
-const params = await client.getProtocolParameters();
+const params = await sdkClient.getProtocolParameters();
 console.log("Min fee:", params.minFeeConstant);
 
 // Query any address
-const utxos = await client.getUtxos("addr1...");
+const utxos = await sdkClient.getUtxos("addr1...");
 console.log("UTxOs found:", utxos.length);
 
 // Submit pre-signed transaction
 const signedTxCbor = "84a300..."; // Signed transaction CBOR
-const txHash = await client.submitTx(signedTxCbor);
+const txHash = await sdkClient.submitTx(signedTxCbor);
 ```
 
 ## Available Providers

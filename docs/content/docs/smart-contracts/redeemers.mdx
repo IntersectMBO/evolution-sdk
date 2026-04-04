@@ -18,19 +18,21 @@ Cardano redeemers reference inputs by their sorted position in the transaction. 
 The simplest mode — provide a direct `Data` value. Use this when your redeemer doesn't need to know its input index:
 
 ```typescript twoslash
-import { Data, createClient, type UTxO } from "@evolution-sdk/evolution"
+import { Data, client, type UTxO, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const scriptUtxos: UTxO.UTxO[]
 declare const validatorScript: any
 
 // Static redeemer — the value is fixed
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .collectFrom({
     inputs: scriptUtxos,
@@ -47,19 +49,21 @@ const tx = await client
 A callback that receives the input's final index after coin selection. Use this when the redeemer needs to encode its own position:
 
 ```typescript twoslash
-import { Data, createClient, type UTxO } from "@evolution-sdk/evolution"
+import { Data, client, type UTxO, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const scriptUtxos: UTxO.UTxO[]
 declare const validatorScript: any
 
 // Self redeemer — callback receives { index, utxo }
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .collectFrom({
     inputs: scriptUtxos,
@@ -85,19 +89,21 @@ interface IndexedInput {
 A callback that sees all specified inputs with their final indices. Use this when multiple script inputs need coordinated redeemer values:
 
 ```typescript twoslash
-import { Data, createClient, type UTxO } from "@evolution-sdk/evolution"
+import { Data, client, type UTxO, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const orderUtxos: UTxO.UTxO[]
 declare const validatorScript: any
 
 // Batch redeemer — callback sees all specified inputs
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .collectFrom({
     inputs: orderUtxos,
@@ -119,20 +125,22 @@ const tx = await client
 Redeemers also apply to minting policies. The same three modes work:
 
 ```typescript twoslash
-import { Assets, Data, createClient } from "@evolution-sdk/evolution"
+import { Assets, Data, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const mintingPolicyScript: any
 
 let assets = Assets.fromLovelace(2_000_000n)
 assets = Assets.addByHex(assets, "abc123def456abc123def456abc123def456abc123def456abc123de", "", 100n)
 
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .mintAssets({
     assets,
@@ -147,7 +155,7 @@ const tx = await client
 Define redeemer schemas for compile-time validation:
 
 ```typescript twoslash
-import { Bytes, Data, TSchema } from "@evolution-sdk/evolution"
+import { Bytes, Data, TSchema, blockfrost, seedWallet, client } from "@evolution-sdk/evolution"
 
 const RedeemerSchema = TSchema.Variant({
   Claim: {},

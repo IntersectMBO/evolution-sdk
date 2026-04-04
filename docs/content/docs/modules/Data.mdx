@@ -180,8 +180,9 @@ Added in v2.0.0
 
 ## equals
 
-Deep structural equality for Plutus Data values.
-Handles maps, lists, ints, bytes, and constrs.
+Schema-derived structural equality for Plutus Data values.
+Handles maps, lists, ints, bytes, and constrs via the
+recursive DataSchema definition — no hand-rolled comparison needed.
 
 **Signature**
 

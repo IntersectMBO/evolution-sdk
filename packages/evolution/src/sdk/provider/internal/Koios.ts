@@ -18,7 +18,7 @@ import * as PlutusV3 from "../../../PlutusV3.js"
 import type * as Script from "../../../Script.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import * as CoreUTxO from "../../../UTxO.js"
-import * as HttpUtils from "./HttpUtils.js"
+import * as HttpUtils from "./Http.js"
 
 export const ProtocolParametersSchema = Schema.Struct({
   pvt_motion_no_confidence: Schema.Number,

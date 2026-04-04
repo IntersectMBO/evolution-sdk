@@ -1,7 +1,7 @@
 /**
  * Shared utilities for transaction builder phases
  *
- * @module phases/utils
+ * @module phases/Calculations
  * @since 2.0.0
  */
 
@@ -140,7 +140,7 @@ export function calculateProposalDeposits(
  *
  * This is used for:
  * 1. Tracking redeemers by voter in Vote.ts
- * 2. Computing vote redeemer indices in TxBuilderImpl.ts (assembly)
+ * 2. Computing vote redeemer indices in TxAssembly.ts (assembly)
  * 3. Mapping evaluation results back to voters in Evaluation.ts
  *
  * The key format must match the sorting order used by Cardano ledger for

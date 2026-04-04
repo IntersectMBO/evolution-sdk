@@ -27,14 +27,13 @@ Different combinations create different client types with distinct capabilities.
 
 ## Configuration Pattern
 
-All clients use `createClient` with different configurations:
+All clients use `client` with different configurations:
 
 ```typescript
-createClient({
-  network: "mainnet" | "preprod" | "preview",
-  provider?: ProviderConfig,  // Optional
-  wallet?: WalletConfig       // Optional
-})
+import { mainnet, preprod, preview, defineChain, client } from "@evolution-sdk/evolution";
+
+// Pass a chain — mainnet, preprod, or preview
+const sdkClient = client(preprod)
 ```
 
 **Rules**:

@@ -8,7 +8,7 @@
  * @since 2.0.0
  */
 
-import type { TxBuilderState } from "./TransactionBuilder.js"
+import type { TxBuilderState } from "../TransactionBuilder.js"
 
 /**
  * Invalidate all redeemer exUnits.
@@ -67,7 +67,7 @@ export const hasUnevaluatedRedeemers = (redeemers: TxBuilderState["redeemers"]):
  * @since 2.0.0
  * @category state-management
  */
-export const allRedeemersEvaluated = (redeemers: TxBuilderState["redeemers"]): boolean => {
+export const areAllRedeemersEvaluated = (redeemers: TxBuilderState["redeemers"]): boolean => {
   if (redeemers.size === 0) return false
 
   return Array.from(redeemers.values()).every(

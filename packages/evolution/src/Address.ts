@@ -338,3 +338,12 @@ export const getStakingCredential = (address: string): Credential.Credential | u
   const details = getAddressDetails(address)
   return details?.stakingCredential
 }
+
+/**
+ * Check if an address has a script payment credential (i.e. is a script address).
+ *
+ * @since 2.0.0
+ * @category Utils
+ */
+export const isScriptAddress = (address: Address): boolean =>
+  address.paymentCredential?._tag === "ScriptHash"

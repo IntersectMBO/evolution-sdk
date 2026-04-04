@@ -23,20 +23,22 @@ Cardano uses a slot-based time system. Each slot has a fixed duration (typically
 When you call `.setValidity({ from, to })`, you provide Unix timestamps in milliseconds. The transaction builder converts these to slots using the network's slot configuration:
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution"
+import { client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const tx: any
 
 const now = BigInt(Date.now())
 
 // Set validity: valid from now, expires in 5 minutes
-// await client.newTx()
+// await sdkClient.newTx()
 //   .setValidity({ from: now, to: now + 300_000n })
 //   ...
 ```

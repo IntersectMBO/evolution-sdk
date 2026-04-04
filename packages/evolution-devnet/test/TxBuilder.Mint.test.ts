@@ -2,13 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as NativeScripts from "@evolution-sdk/evolution/NativeScripts"
 import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 
@@ -30,27 +29,12 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
   const ASSET_NAME = "TestToken"
 
   const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1443",
-        ogmiosUrl: "http://localhost:1338"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+    client(Cluster.getChain(devnetCluster!)).with(kupmios({ kupoUrl: "http://localhost:1443", ogmiosUrl: "http://localhost:1338" })).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
   beforeAll(async () => {
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = client(Cluster.BOOTSTRAP_CHAIN).with(seedWallet({ mnemonic: TEST_MNEMONIC, accountIndex: 0 }))
 
-    const testAddress = await testClient.address()
+    const testAddress = await testClient.getAddress()
     const testAddressHex = CoreAddress.toHex(testAddress)
 
     // Get payment key hash from client's address for native script
@@ -103,7 +87,7 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
     }
 
     const client = createTestClient()
-    const address = await client.address()
+    const address = await client.getAddress()
 
     // Use pre-calculated genesis UTxOs (Kupo may not have synced yet)
     const genesisUtxo = genesisUtxos.find((u) => CoreAddress.toBech32(u.address) === CoreAddress.toBech32(address))
@@ -170,7 +154,7 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
     }
 
     const client = createTestClient()
-    const address = await client.address()
+    const address = await client.getAddress()
 
     const assetNameHex = Text.toHex(ASSET_NAME)
     const unit = policyId + assetNameHex

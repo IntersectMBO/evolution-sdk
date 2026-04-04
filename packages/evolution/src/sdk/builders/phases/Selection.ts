@@ -14,7 +14,8 @@ import * as CoreAssets from "../../../Assets/index.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type { CoinSelectionAlgorithm, CoinSelectionFunction } from "../CoinSelection.js"
 import { largestFirstSelection } from "../CoinSelection.js"
-import * as EvaluationStateManager from "../EvaluationStateManager.js"
+import * as EvaluationStateManager from "../internal/EvaluationStateManager.js"
+import { calculateTotalAssets } from "../internal/UtxoAnalysis.js"
 import { negatedMintAssets } from "../operations/Mint.js"
 import {
   AvailableUtxosTag,
@@ -23,7 +24,6 @@ import {
   TransactionBuilderError,
   TxContext
 } from "../TransactionBuilder.js"
-import { calculateTotalAssets } from "../TxBuilderImpl.js"
 import type { PhaseResult } from "./Phases.js"
 
 /**
@@ -363,7 +363,7 @@ export const executeSelection = (): Effect.Effect<
     // This handles cases where refunds/withdrawals cover all costs, but no UTxO inputs exist
     const stateAfterSelection = yield* Ref.get(ctx)
     if (stateAfterSelection.selectedUtxos.length === 0) {
-      //TODO: double check if this is a good approach, it seems that this condition is only needed when refunds/withdrawals cover all costs
+      // Cardano requires at least one input even when withdrawals/refunds cover all costs — select a minimal UTxO.
       const allAvailableUtxos = yield* AvailableUtxosTag
       const state = yield* Ref.get(ctx)
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { createAikenEvaluator } from "@evolution-sdk/aiken-uplc"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano , client, kupmios, newTx, preview } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as Data from "@evolution-sdk/evolution/Data"
@@ -8,11 +8,10 @@ import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV2 from "@evolution-sdk/evolution/PlutusV2"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import type { TxBuilderConfig } from "@evolution-sdk/evolution/sdk/builders/TransactionBuilder"
-import { makeTxBuilder } from "@evolution-sdk/evolution/sdk/builders/TransactionBuilder"
-import { KupmiosProvider } from "@evolution-sdk/evolution/sdk/provider/Kupmios"
+import type { KupmiosCapabilities } from "@evolution-sdk/evolution/sdk/client/Capabilities"
+import type { Client } from "@evolution-sdk/evolution/sdk/client/Client"
 import { createScalusEvaluator } from "@evolution-sdk/scalus-uplc"
-import { Schema } from "effect"
+import { pipe, Schema } from "effect"
 
 import plutusJson from "../../evolution/test/spec/plutus.json"
 import * as Cluster from "../src/Cluster.js"
@@ -27,7 +26,7 @@ describe("TxBuilder Script Handling", () => {
   // ============================================================================
 
   let devnetCluster: Cluster.Cluster | undefined
-  let kupmiosProvider: KupmiosProvider
+  let kupmiosClient: Client & KupmiosCapabilities
 
   beforeAll(async () => {
     try {
@@ -57,11 +56,9 @@ describe("TxBuilder Script Handling", () => {
       // Ogmios serves both HTTP (for JSON-RPC) and WebSocket on the same port
       const ogmiosUrl = "http://localhost:1337"
 
-      // Create provider using local Ogmios
-      // Note: Kupo URL is required but not used in these tests (only Ogmios for evaluation)
-      kupmiosProvider = new KupmiosProvider(
-        "http://localhost:1442", // Kupo (not used)
-        ogmiosUrl // Ogmios for script evaluation via HTTP
+      kupmiosClient = pipe(
+        client(preview),
+        kupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl })
       )
 
       // eslint-disable-next-line no-console
@@ -106,12 +103,7 @@ describe("TxBuilder Script Handling", () => {
   const CHANGE_ADDRESS = TESTNET_ADDRESSES[0]
   const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
-  // baseConfig will use kupmiosProvider which is set in beforeAll
-  const baseConfig: TxBuilderConfig = {
-    get provider() {
-      return kupmiosProvider
-    }
-  }
+  // kupmiosClient is initialized in beforeAll
 
   // Simple PlutusV2 always-succeeds script (CBOR-wrapped)
   const ALWAYS_SUCCEED_SCRIPT_CBOR = "49480100002221200101"
@@ -168,7 +160,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -233,7 +225,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -299,7 +291,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -378,7 +370,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -473,7 +465,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -532,7 +524,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -591,7 +583,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -661,7 +653,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -744,7 +736,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -813,7 +805,7 @@ describe("TxBuilder Script Handling", () => {
       lovelace: 10_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .readFrom({ referenceInputs: [refScriptUtxo] })
       .collectFrom({ inputs: [spendUtxo] })
       .payToAddress({
@@ -861,7 +853,7 @@ describe("TxBuilder Script Handling", () => {
       lovelace: 10_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .readFrom({ referenceInputs: [refScriptUtxo] })
       .collectFrom({ inputs: [spendUtxo] })
       .payToAddress({
@@ -907,7 +899,7 @@ describe("TxBuilder Script Handling", () => {
       lovelace: 10_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .readFrom({ referenceInputs: [refScriptUtxo] })
       .collectFrom({ inputs: [spendUtxo] })
       .payToAddress({
@@ -954,7 +946,7 @@ describe("TxBuilder Script Handling", () => {
       lovelace: 10_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .readFrom({ referenceInputs: [refScriptUtxo] })
       .collectFrom({ inputs: [spendUtxo] })
       .payToAddress({
@@ -998,7 +990,7 @@ describe("TxBuilder Script Handling", () => {
       lovelace: 10_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .readFrom({ referenceInputs: [refScriptUtxo1, refScriptUtxo2] })
       .collectFrom({ inputs: [spendUtxo] })
       .payToAddress({
@@ -1041,7 +1033,7 @@ describe("TxBuilder Script Handling", () => {
       lovelace: 10_000_000n
     })
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .readFrom({ referenceInputs: [refUtxo] })
       .collectFrom({ inputs: [spendUtxo] })
       .payToAddress({
@@ -1116,7 +1108,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -1189,7 +1181,7 @@ describe("TxBuilder Script Handling", () => {
     // Create redeemer
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -1248,7 +1240,7 @@ describe("TxBuilder Script Handling", () => {
 
     const redeemerData = Data.constr(0n, [Data.bytearray("48656c6c6f2c20576f726c6421")])
 
-    const builder = makeTxBuilder(baseConfig)
+    const builder = newTx(kupmiosClient)
       .collectFrom({
         inputs: [scriptUtxo],
         redeemer: redeemerData
@@ -1295,7 +1287,7 @@ describe("TxBuilder Script Handling", () => {
     // 100-byte payload — exceeds the 64-byte bounded_bytes chunk size
     const largePayload = new Uint8Array(100).fill(0xaa)
 
-    const signBuilder = await makeTxBuilder(baseConfig)
+    const signBuilder = await newTx(kupmiosClient)
       .collectFrom({ inputs: [scriptUtxo], redeemer: Data.constr(0n, [largePayload]) })
       .attachScript({ script: alwaysSucceedV3 })
       .payToAddress({

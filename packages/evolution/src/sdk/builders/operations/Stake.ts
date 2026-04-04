@@ -11,7 +11,7 @@ import * as Bytes from "../../../Bytes.js"
 import * as Certificate from "../../../Certificate.js"
 import * as RewardAccount from "../../../RewardAccount.js"
 import * as RedeemerBuilder from "../RedeemerBuilder.js"
-import { TransactionBuilderError, type TxBuilderConfig, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
+import { TransactionBuilderError, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
 import type {
   DelegateToDRepParams,
   DelegateToParams,
@@ -674,11 +674,11 @@ export const createDeregisterStakeProgram = (
  * @category programs
  */
 export const createWithdrawProgram = (
-  params: WithdrawParams,
-  config: TxBuilderConfig
-): Effect.Effect<void, TransactionBuilderError, TxContext> =>
+  params: WithdrawParams
+): Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag> =>
   Effect.gen(function* () {
     const ctx = yield* TxContext
+    const config = yield* TxBuilderConfigTag
 
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
