@@ -1,9 +1,9 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, FastCheck, Schema } from "effect"
+import { FastCheck, Schema } from "effect"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import { client, newTx, preview } from "../src/index.js"
+import { client, preview } from "../src/index.js"
 import * as KeyHash from "../src/KeyHash.js"
 import { calculateTransactionSize } from "../src/utils/FeeValidation.js"
 import * as FeeValidation from "../src/utils/FeeValidation.js"

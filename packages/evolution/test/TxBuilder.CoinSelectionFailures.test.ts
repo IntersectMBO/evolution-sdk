@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import { client, newTx, preview } from "../src/index.js"
+import { client, preview } from "../src/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect } from "effect"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import { client, newTx, preview } from "../src/index.js"
+import { client, preview } from "../src/index.js"
 import * as Mint from "../src/Mint.js"
 import * as NativeScripts from "../src/NativeScripts.js"
 import * as ScriptHash from "../src/ScriptHash.js"

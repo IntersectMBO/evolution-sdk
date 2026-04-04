@@ -3,7 +3,7 @@ import { FastCheck, Schema } from "effect"
 
 import * as Address from "../src/Address.js"
 import * as CoreAssets from "../src/Assets/index.js"
-import { client, newTx, preview } from "../src/index.js"
+import { client, preview } from "../src/index.js"
 import * as KeyHash from "../src/KeyHash.js"
 import * as FeeValidation from "../src/utils/FeeValidation.js"
 import * as CoreUTxO from "../src/UTxO.js"

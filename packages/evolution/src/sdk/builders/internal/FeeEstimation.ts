@@ -29,20 +29,14 @@ import type * as PlutusV2 from "../../../PlutusV2.js"
 import type * as PlutusV3 from "../../../PlutusV3.js"
 import * as Redeemer from "../../../Redeemer.js"
 import * as Redeemers from "../../../Redeemers.js"
-import * as CoreScript from "../../../Script.js"
 import * as ScriptDataHash from "../../../ScriptDataHash.js"
 import * as Time from "../../../Time/index.js"
 import * as Transaction from "../../../Transaction.js"
-import * as Transaction_ from "../../../Transaction.js"
 import * as TransactionBody from "../../../TransactionBody.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
 import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
 import type * as TxOut from "../../../TxOut.js"
-import {
-  calculateMinimumFee,
-  calculateTransactionSize,
-  tierRefScriptFee
-} from "../../../utils/FeeValidation.js"
+import { calculateMinimumFee, calculateTransactionSize } from "../../../utils/FeeValidation.js"
 import { hashAuxiliaryData } from "../../../utils/Hash.js"
 import type * as CoreUTxO from "../../../UTxO.js"
 import * as VKey from "../../../VKey.js"
