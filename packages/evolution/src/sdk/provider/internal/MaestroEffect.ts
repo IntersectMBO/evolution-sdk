@@ -18,7 +18,7 @@ import type * as TransactionInput from "../../../TransactionInput.js"
 import * as TxOut from "../../../TxOut.js"
 import type * as CoreUTxO from "../../../UTxO.js"
 import { ProviderError } from "../Provider.js"
-import * as HttpUtils from "./HttpUtils.js"
+import * as HttpUtils from "./Http.js"
 import * as Maestro from "./Maestro.js"
 
 // ============================================================================

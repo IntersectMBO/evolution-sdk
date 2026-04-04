@@ -18,7 +18,7 @@ import type * as TransactionInput from "../../../TransactionInput.js"
 import type * as CoreUTxO from "../../../UTxO.js"
 import type * as EvalRedeemer from "../../EvalRedeemer.js"
 import * as Provider from "../Provider.js"
-import * as HttpUtils from "./HttpUtils.js"
+import * as HttpUtils from "./Http.js"
 import * as _Koios from "./Koios.js"
 import * as _Ogmios from "./Ogmios.js"
 
