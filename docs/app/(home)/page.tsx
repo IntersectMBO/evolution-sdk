@@ -13,17 +13,15 @@ const packageManagers = [
   { id: "bun", name: "bun", icon: SiBun, color: "#FBF0DF", command: "bun add @evolution-sdk/evolution" }
 ]
 
-const quickStartCode = `import { Address, Assets, createClient } from "@evolution-sdk/evolution"
+const quickStartCode = `import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
 // 1. Create a client
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "...", projectId: "..." },
-  wallet: { type: "seed", mnemonic: "your 24 words here" }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: "..." }))
+  .with(seedWallet({ mnemonic: "your 24 words here" }))
 
 // 2. Build a transaction
-const tx = await client.newTx()
+const tx = await sdkClient.newTx()
   .payToAddress({
     address: Address.fromBech32("addr_test1..."),
     assets: Assets.fromLovelace(5_000_000n)

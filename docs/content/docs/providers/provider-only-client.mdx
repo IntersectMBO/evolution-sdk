@@ -29,25 +29,22 @@ Provider-only clients are ideal when you need blockchain data but not wallet-spe
 Create a client with only provider configuration:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Query any address
-const utxos = await client.getUtxos(
+const utxos = await sdkClient.getUtxos(
   Address.fromBech32("addr1qxy8sclc58rsck0pzsc0v4skmqjwuqsqpwfcvrdldl5sjvvhyltp7fk0fmtmrlnykgmhnzcns2msa2cmpvllzgqd2azqhpv8e4")
 );
 console.log("Found UTxOs:", utxos.length);
 
 // Get protocol parameters
-const params = await client.getProtocolParameters();
+const params = await sdkClient.getProtocolParameters();
 console.log("Min fee A:", params.minFeeA);
 ```
 
@@ -56,25 +53,22 @@ console.log("Min fee A:", params.minFeeA);
 Provider-only clients expose all provider methods directly:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Protocol parameters
-const params = await client.getProtocolParameters();
+const params = await sdkClient.getProtocolParameters();
 
 // UTxO queries - use Address.fromBech32 for addresses
 const address = Address.fromBech32("addr1qxy8sclc58rsck0pzsc0v4skmqjwuqsqpwfcvrdldl5sjvvhyltp7fk0fmtmrlnykgmhnzcns2msa2cmpvllzgqd2azqhpv8e4");
-const utxos = await client.getUtxos(address);
-const utxosWithAda = await client.getUtxosWithUnit(address, "lovelace");
-const utxosByRefs = await client.getUtxosByOutRef([
+const utxos = await sdkClient.getUtxos(address);
+const utxosWithAda = await sdkClient.getUtxosWithUnit(address, "lovelace");
+const utxosByRefs = await sdkClient.getUtxosByOutRef([
   new TransactionInput.TransactionInput({ 
     transactionId: TransactionHash.fromHex("abc123def456..."), 
     index: 0n 
@@ -82,20 +76,20 @@ const utxosByRefs = await client.getUtxosByOutRef([
 ]);
 
 // Delegation
-const delegation = await client.getDelegation(RewardAddress.RewardAddress.make("stake1uxy..."));
+const delegation = await sdkClient.getDelegation(RewardAddress.RewardAddress.make("stake1uxy..."));
 
 // Datum resolution
-const datum = await client.getDatum(new DatumHash.DatumHash({ hash: Bytes.fromHex("datum-hash-here") }));
+const datum = await sdkClient.getDatum(new DatumHash.DatumHash({ hash: Bytes.fromHex("datum-hash-here") }));
 
 // Transaction operations
 const signedTxCbor = "84a300...";
 const signedTx = Transaction.fromCBORHex(signedTxCbor);
-const txHash = await client.submitTx(signedTx);
-const confirmed = await client.awaitTx(txHash);
+const txHash = await sdkClient.submitTx(signedTx);
+const confirmed = await sdkClient.awaitTx(txHash);
 
 const unsignedTxCbor = "84a300...";
 const unsignedTx = Transaction.fromCBORHex(unsignedTxCbor);
-const evaluated = await client.evaluateTx(unsignedTx);
+const evaluated = await sdkClient.evaluateTx(unsignedTx);
 ```
 
 ## Querying Multiple Addresses
@@ -103,22 +97,19 @@ const evaluated = await client.evaluateTx(unsignedTx);
 Portfolio tracker for multiple addresses:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Portfolio tracker
 async function getPortfolioBalance(addressesBech32: string[]) {
   const results = await Promise.all(
     addressesBech32.map(async (addressBech32) => {
-      const utxos = await client.getUtxos(
+      const utxos = await sdkClient.getUtxos(
         Address.fromBech32(addressBech32)
       );
       const lovelace = utxos.reduce(
@@ -143,25 +134,22 @@ const portfolio = await getPortfolioBalance([
 Accept signed transactions and submit to blockchain:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // API endpoint
 export async function submitTransaction(signedTxCbor: string) {
   try {
     const signedTx = Transaction.fromCBORHex(signedTxCbor);
-    const txHash = await client.submitTx(signedTx);
+    const txHash = await sdkClient.submitTx(signedTx);
     
     // Wait for confirmation
-    const confirmed = await client.awaitTx(txHash, 5000);
+    const confirmed = await sdkClient.awaitTx(txHash, 5000);
     
     return {
       success: true,
@@ -182,19 +170,16 @@ export async function submitTransaction(signedTxCbor: string) {
 Track network parameters for fee estimation or protocol changes:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function monitorProtocolParameters() {
-  const params = await client.getProtocolParameters();
+  const params = await sdkClient.getProtocolParameters();
   
   return {
     minFeeA: params.minFeeA,
@@ -221,61 +206,46 @@ Provider-only clients cannot perform wallet-specific operations:
 
 ```typescript twoslash
 // @errors: 2339
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
-
-// Cannot build transactions - no wallet address
-// @ts-expect-error - Property 'newTx' does not exist on provider-only client
-client.newTx();
+}));
 
 // Cannot sign - no private key
-// @ts-expect-error - Property 'signTx' does not exist on provider-only client
-client.signTx();
+sdkClient.signTx();
 
 // Cannot get own address - no wallet
-// @ts-expect-error - Property 'address' does not exist on provider-only client
-client.address();
+sdkClient.getAddress();
 
 // CAN query any address
 const address = Address.fromBech32("addr1qxy8sclc58rsck0pzsc0v4skmqjwuqsqpwfcvrdldl5sjvvhyltp7fk0fmtmrlnykgmhnzcns2msa2cmpvllzgqd2azqhpv8e4");
-const utxos = await client.getUtxos(address);
+const utxos = await sdkClient.getUtxos(address);
 
 // CAN submit pre-signed transactions
 const signedCbor = "84a400..."; // Example signed transaction CBOR
 const signedTx = Transaction.fromCBORHex(signedCbor);
-const txHash = await client.submitTx(signedTx);
+const txHash = await sdkClient.submitTx(signedTx);
 ```
 
 ## Upgrading to Full Client
 
-Add wallet to provider-only client using `attachWallet()`:
+Add wallet to provider-only client using `.with(wallet)`:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
 // Start with provider only
-const providerClient = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const providerClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Later, attach wallet for specific user
-const readOnlyClient = providerClient.attachWallet({
-  type: "read-only",
-  address: "addr1qxy8g0m3dnvxpk6dlh40u9vgc8m6hyqyjf6qn6j6t47wnhvcpqp0aw50nln8nyzfh6fjp6sxgajx5q0c6p73xqf2qhvq5pzqsh"
-});
+const readOnlyClient = providerClient.with(readOnlyWallet("addr1qxy8g0m3dnvxpk6dlh40u9vgc8m6hyqyjf6qn6j6t47wnhvcpqp0aw50nln8nyzfh6fjp6sxgajx5q0c6p73xqf2qhvq5pzqsh"));
 
 // Now can build transactions for this address
 const builder = readOnlyClient.newTx();
@@ -292,7 +262,7 @@ const result = await builder.build();
 Switch between environments:
 
 ```typescript twoslash
-import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, createClient, preprod, mainnet} from "@evolution-sdk/evolution";
+import { Address, Assets, Bytes, DatumHash, RewardAddress, Transaction, TransactionHash, TransactionInput, client, preprod, mainnet, blockfrost, kupmios, readOnlyWallet } from "@evolution-sdk/evolution";
 
 const env = (process.env.NODE_ENV || "development") as "development" | "production";
 
@@ -315,7 +285,12 @@ const config = {
   }
 };
 
-const client = createClient(config[env]);
+const sdkClient = client(config[env].chain)
+  .with(
+    config[env].provider.type === "blockfrost"
+      ? blockfrost({ baseUrl: config[env].provider.baseUrl, projectId: config[env].provider.projectId! })
+      : kupmios({ ogmiosUrl: config[env].provider.ogmiosUrl!, kupoUrl: config[env].provider.kupoUrl! })
+  );
 ```
 
 ## Comparison with Read-Only Client
@@ -323,9 +298,9 @@ const client = createClient(config[env]);
 | Feature | Provider-Only Client | Read-Only Client |
 |---------|---------------------|------------------|
 | **Configuration** | Provider only | Provider + address |
-| **Creation** | `createClient({ provider })` | `createClient({ provider, wallet: { type: "read-only", address } })` |
+| **Creation** | `client(chain).with(provider)` | `client(chain).with(provider).with(readOnlyWallet(address))` |
 | **Query any address** | `getUtxos(anyAddress)` | `getUtxos(anyAddress)` |
-| **Query own address** | Not available | `getWalletUtxos()` |
+| **Query own address** | Not available | `getUtxos()` (wallet UTxOs) |
 | **Build transactions** | Not available | `newTx()` returns unsigned tx |
 | **Sign transactions** | Not available | Not available |
 | **Submit transactions** | `submitTx(signedCbor)` | `submitTx(signedCbor)` |

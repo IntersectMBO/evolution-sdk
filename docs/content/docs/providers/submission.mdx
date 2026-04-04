@@ -12,21 +12,18 @@ Providers handle transaction submission and confirmation monitoring. Submit pre-
 Submit a signed transaction CBOR string:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Submit signed transaction
 const signedTxCbor = "84a300..."; // Signed transaction CBOR
 const signedTx = Transaction.fromCBORHex(signedTxCbor);
-const txHash = await client.submitTx(signedTx);
+const txHash = await sdkClient.submitTx(signedTx);
 
 console.log("Transaction submitted:", txHash);
 ```
@@ -36,23 +33,20 @@ console.log("Transaction submitted:", txHash);
 Monitor transaction until confirmed on blockchain:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 const signedTxCbor = "84a300...";
 const signedTx = Transaction.fromCBORHex(signedTxCbor);
-const txHash = await client.submitTx(signedTx);
+const txHash = await sdkClient.submitTx(signedTx);
 
 // Wait for confirmation (checks every 5 seconds by default)
-const confirmed = await client.awaitTx(txHash);
+const confirmed = await sdkClient.awaitTx(txHash);
 
 if (confirmed) {
   console.log("Transaction confirmed!");
@@ -66,22 +60,19 @@ if (confirmed) {
 Specify how often to check for confirmation:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 const txHashHex = "abc123...";
 const txHash = TransactionHash.fromHex(txHashHex);
 
 // Check every 10 seconds
-const confirmed = await client.awaitTx(txHash, 10000);
+const confirmed = await sdkClient.awaitTx(txHash, 10000);
 
 console.log("Confirmed:", confirmed);
 ```
@@ -91,22 +82,19 @@ console.log("Confirmed:", confirmed);
 Evaluate transaction before submission to estimate script execution costs:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 const unsignedTxCbor = "84a300..."; // Unsigned transaction
 const unsignedTx = Transaction.fromCBORHex(unsignedTxCbor);
 
 // Evaluate script execution
-const redeemers = await client.evaluateTx(unsignedTx);
+const redeemers = await sdkClient.evaluateTx(unsignedTx);
 
 redeemers.forEach((redeemer) => {
   console.log("Redeemer tag:", redeemer.redeemer_tag);
@@ -121,16 +109,13 @@ redeemers.forEach((redeemer) => {
 Create a transaction submission service with error handling:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 interface SubmissionResult {
   success: boolean;
@@ -145,11 +130,11 @@ export async function submitAndWait(
 ): Promise<SubmissionResult> {
   try {
     const signedTx = Transaction.fromCBORHex(signedTxCbor);
-    const txHash = await client.submitTx(signedTx);
+    const txHash = await sdkClient.submitTx(signedTx);
     
     console.log("Transaction submitted:", txHash);
     
-    const confirmed = await client.awaitTx(txHash, checkInterval);
+    const confirmed = await sdkClient.awaitTx(txHash, checkInterval);
     
     return {
       success: true,
@@ -172,16 +157,13 @@ export async function submitAndWait(
 Submit multiple transactions sequentially:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function submitBatch(signedTxs: string[]) {
   const results = [];
@@ -189,10 +171,10 @@ async function submitBatch(signedTxs: string[]) {
   for (const txCbor of signedTxs) {
     try {
       const tx = Transaction.fromCBORHex(txCbor);
-      const txHash = await client.submitTx(tx);
+      const txHash = await sdkClient.submitTx(tx);
       console.log("Submitted:", txHash);
       
-      const confirmed = await client.awaitTx(txHash);
+      const confirmed = await sdkClient.awaitTx(txHash);
       
       results.push({
         success: true,
@@ -216,21 +198,18 @@ async function submitBatch(signedTxs: string[]) {
 Handle common submission errors:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function safeSubmit(signedTxCbor: string) {
   try {
     const signedTx = Transaction.fromCBORHex(signedTxCbor);
-    const txHash = await client.submitTx(signedTx);
+    const txHash = await sdkClient.submitTx(signedTx);
     return { success: true as const, txHash };
   } catch (error: any) {
     // Common errors
@@ -275,16 +254,13 @@ async function safeSubmit(signedTxCbor: string) {
 Implement retry logic for transient failures:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function submitWithRetry(
   signedTxCbor: string,
@@ -296,7 +272,7 @@ async function submitWithRetry(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const signedTx = Transaction.fromCBORHex(signedTxCbor);
-      const txHash = await client.submitTx(signedTx);
+      const txHash = await sdkClient.submitTx(signedTx);
       console.log(`Success on attempt ${attempt}:`, txHash);
       return { success: true as const, txHash };
     } catch (error: any) {
@@ -329,16 +305,13 @@ async function submitWithRetry(
 Track transaction status with periodic checks:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function monitorTransaction(
   txHashHex: string,
@@ -350,7 +323,7 @@ async function monitorTransaction(
   
   while (Date.now() - startTime < timeout) {
     try {
-      const confirmed = await client.awaitTx(txHash, checkInterval);
+      const confirmed = await sdkClient.awaitTx(txHash, checkInterval);
       
       if (confirmed) {
         console.log("Transaction confirmed:", txHashHex);
@@ -373,16 +346,13 @@ async function monitorTransaction(
 End-to-end transaction submission with all error handling:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 interface TransactionStatus {
   status: "submitted" | "confirmed" | "failed";
@@ -404,12 +374,12 @@ export async function submitTransaction(
     
     try {
       const signedTx = Transaction.fromCBORHex(signedTxCbor);
-      const txHash = await client.submitTx(signedTx);
+      const txHash = await sdkClient.submitTx(signedTx);
       
       console.log(`Submitted (attempt ${attempts}):`, txHash);
       
       // Wait for confirmation
-      const confirmed = await client.awaitTx(txHash, 5000);
+      const confirmed = await sdkClient.awaitTx(txHash, 5000);
       
       if (confirmed) {
         return {
@@ -462,22 +432,19 @@ export async function submitTransaction(
 Validate scripts before submitting:
 
 ```typescript twoslash
-import { Transaction, TransactionHash, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Transaction, TransactionHash, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function evaluateAndSubmit(signedTxCbor: string) {
   try {
     // Evaluate first
     const signedTx = Transaction.fromCBORHex(signedTxCbor);
-    const redeemers = await client.evaluateTx(signedTx);
+    const redeemers = await sdkClient.evaluateTx(signedTx);
     
     console.log("Script evaluation:");
     redeemers.forEach((r, i) => {
@@ -489,8 +456,8 @@ async function evaluateAndSubmit(signedTxCbor: string) {
     });
     
     // Submit if evaluation succeeds
-    const txHash = await client.submitTx(signedTx);
-    const confirmed = await client.awaitTx(txHash);
+    const txHash = await sdkClient.submitTx(signedTx);
+    const confirmed = await sdkClient.awaitTx(txHash);
     
     return {
       success: true,

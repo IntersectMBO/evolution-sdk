@@ -12,18 +12,15 @@ Providers expose methods to query UTxOs, protocol parameters, delegation informa
 Retrieve current network parameters for fee calculation and transaction constraints:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
-const params = await client.getProtocolParameters();
+const params = await sdkClient.getProtocolParameters();
 
 // Fee calculation parameters
 console.log("Min fee A:", params.minFeeA);
@@ -48,19 +45,16 @@ Query unspent transaction outputs by address, credential, unit, or reference.
 ### By Address
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Get all UTxOs at address
-const utxos = await client.getUtxos(
+const utxos = await sdkClient.getUtxos(
   Address.fromBech32("addr1qxy8sclc58rsck0pzsc0v4skmqjwuqsqpwfcvrdldl5sjvvhyltp7fk0fmtmrlnykgmhnzcns2msa2cmpvllzgqd2azqhpv8e4")
 );
 
@@ -86,22 +80,19 @@ utxos.forEach((utxo) => {
 Query UTxOs by payment credential instead of full address:
 
 ```typescript
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet } from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Create credential from key hash
 const credential = Credential.keyHash("payment-key-hash-here");
 
 // Query by credential
-const utxos = await client.getUtxos(credential);
+const utxos = await sdkClient.getUtxos(credential);
 ```
 
 ### By Unit
@@ -109,23 +100,20 @@ const utxos = await client.getUtxos(credential);
 Query UTxOs containing specific native asset:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Find UTxOs with specific token at address
 const policyId = "abc123def456abc123def456abc123def456abc123def456abc123de7890";
 const assetName = "MyToken";
 const unit = policyId + assetName;
 
-const utxosWithToken = await client.getUtxosWithUnit(
+const utxosWithToken = await sdkClient.getUtxosWithUnit(
   Address.fromBech32("addr1qxy8sclc58rsck0pzsc0v4skmqjwuqsqpwfcvrdldl5sjvvhyltp7fk0fmtmrlnykgmhnzcns2msa2cmpvllzgqd2azqhpv8e4"),
   unit
 );
@@ -138,19 +126,16 @@ console.log("UTxOs with token:", utxosWithToken.length);
 Query specific UTxOs by transaction output reference:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Query specific UTxOs
-const utxos = await client.getUtxosByOutRef([
+const utxos = await sdkClient.getUtxosByOutRef([
   new TransactionInput.TransactionInput({
     transactionId: TransactionHash.fromHex("abc123..."),
     index: 0n
@@ -169,20 +154,17 @@ console.log("Found UTxOs:", utxos.length);
 Find a single UTxO by unique unit identifier:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Query NFT (unique token with quantity 1)
 const nftUnit = "policyId" + "tokenName";
-const utxo = await client.getUtxoByUnit(nftUnit);
+const utxo = await sdkClient.getUtxoByUnit(nftUnit);
 
 console.log("NFT found at:", Address.toBech32(utxo.address));
 console.log("Current owner UTxO:", TransactionHash.toHex(utxo.transactionId));
@@ -193,18 +175,15 @@ console.log("Current owner UTxO:", TransactionHash.toHex(utxo.transactionId));
 Query staking delegation and reward information:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
-const delegation = await client.getDelegation(RewardAddress.RewardAddress.make("stake1uxy..."));
+const delegation = await sdkClient.getDelegation(RewardAddress.RewardAddress.make("stake1uxy..."));
 
 console.log("Delegated to pool:", delegation.poolId);
 console.log("Is delegated:", delegation.poolId !== undefined);
@@ -216,20 +195,17 @@ console.log("Rewards:", delegation.rewards);
 Retrieve datum content by hash:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Get datum from hash
 const datumHash = new DatumHash.DatumHash({ hash: Bytes.fromHex("abc123...") });
-const datumCbor = await client.getDatum(datumHash);
+const datumCbor = await sdkClient.getDatum(datumHash);
 
 console.log("Datum CBOR:", datumCbor);
 ```
@@ -241,22 +217,19 @@ console.log("Datum CBOR:", datumCbor);
 Calculate total balance across multiple addresses:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function getPortfolioBalance(addressesBech32: string[]) {
   const balances = await Promise.all(
     addressesBech32.map(async (addressBech32) => {
       const address = Address.fromBech32(addressBech32);
-      const utxos = await client.getUtxos(address);
+      const utxos = await sdkClient.getUtxos(address);
       const lovelace = utxos.reduce(
         (sum, utxo) => sum + utxo.assets.lovelace,
         0n
@@ -290,16 +263,13 @@ async function getPortfolioBalance(addressesBech32: string[]) {
 Find all holders of a specific token:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function getTokenHolders(
   addresses: string[],
@@ -309,7 +279,7 @@ async function getTokenHolders(
   
   for (const addressBech32 of addresses) {
     const address = Address.fromBech32(addressBech32);
-    const utxos = await client.getUtxosWithUnit(address, tokenUnit);
+    const utxos = await sdkClient.getUtxosWithUnit(address, tokenUnit);
     
     if (utxos.length > 0) {
       // Count UTxOs containing this token
@@ -330,16 +300,13 @@ async function getTokenHolders(
 Check if addresses are delegated to specific pool:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function checkPoolDelegation(
   rewardAddresses: string[],
@@ -347,7 +314,7 @@ async function checkPoolDelegation(
 ) {
   const results = await Promise.all(
     rewardAddresses.map(async (rewardAddress) => {
-      const delegation = await client.getDelegation(RewardAddress.RewardAddress.make(rewardAddress));
+      const delegation = await sdkClient.getDelegation(RewardAddress.RewardAddress.make(rewardAddress));
       
       return {
         rewardAddress,
@@ -368,22 +335,19 @@ async function checkPoolDelegation(
 Track NFT ownership across collection:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function getNFTOwnership(nftUnits: string[]) {
   const ownership = await Promise.all(
     nftUnits.map(async (unit) => {
       try {
-        const utxo = await client.getUtxoByUnit(unit);
+        const utxo = await sdkClient.getUtxoByUnit(unit);
         return {
           unit,
           owner: Address.toBech32(utxo.address),
@@ -409,21 +373,18 @@ async function getNFTOwnership(nftUnits: string[]) {
 Handle query errors gracefully:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 async function safeGetUtxos(addressBech32: string) {
   try {
     const address = Address.fromBech32(addressBech32);
-    const utxos = await client.getUtxos(address);
+    const utxos = await sdkClient.getUtxos(address);
     return { success: true as const, utxos };
   } catch (error: any) {
     console.error("Failed to query UTxOs:", error);
@@ -433,7 +394,7 @@ async function safeGetUtxos(addressBech32: string) {
 
 async function safeGetDelegation(rewardAddress: string) {
   try {
-    const delegation = await client.getDelegation(RewardAddress.RewardAddress.make(rewardAddress));
+    const delegation = await sdkClient.getDelegation(RewardAddress.RewardAddress.make(rewardAddress));
     return { success: true as const, delegation };
   } catch (error: any) {
     // May fail if address not registered
@@ -447,23 +408,20 @@ async function safeGetDelegation(rewardAddress: string) {
 Optimize queries for better performance:
 
 ```typescript twoslash
-import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, createClient, mainnet} from "@evolution-sdk/evolution";
+import { Address, Bytes, Credential, DatumHash, PoolKeyHash, RewardAddress, TransactionHash, TransactionInput, client, mainnet, blockfrost } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: mainnet,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
+const sdkClient = client(mainnet)
+  .with(blockfrost({
+baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_PROJECT_ID!
-  }
-});
+}));
 
 // Batch queries in parallel
 async function batchQuery(addressesBech32: string[]) {
   // Good: parallel queries
   const results = await Promise.all(
     addressesBech32.map(addr => 
-      client.getUtxos(Address.fromBech32(addr))
+      sdkClient.getUtxos(Address.fromBech32(addr))
     )
   );
   
@@ -471,7 +429,7 @@ async function batchQuery(addressesBech32: string[]) {
 }
 
 // Cache protocol parameters
-type ProtocolParams = Awaited<ReturnType<typeof client.getProtocolParameters>>;
+type ProtocolParams = Awaited<ReturnType<typeof sdkClient.getProtocolParameters>>;
 let cachedParams: ProtocolParams | null = null;
 let cacheTime = 0;
 const CACHE_DURATION = 300000; // 5 minutes
@@ -480,7 +438,7 @@ async function getCachedProtocolParameters() {
   const now = Date.now();
   
   if (!cachedParams || now - cacheTime > CACHE_DURATION) {
-    cachedParams = await client.getProtocolParameters();
+    cachedParams = await sdkClient.getProtocolParameters();
     cacheTime = now;
   }
   

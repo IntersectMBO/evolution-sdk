@@ -32,7 +32,7 @@ Selection → Collateral → Change Creation → Fee Calculation → Balance →
 
 ```typescript
 // These don't execute immediately — they record operations
-const builder = client.newTx()
+const builder = sdkClient.newTx()
   .payToAddress({ ... })    // Records a "pay" program
   .collectFrom({ ... })     // Records a "collect" program
   .mintAssets({ ... })       // Records a "mint" program

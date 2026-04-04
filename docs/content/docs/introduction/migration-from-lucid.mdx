@@ -36,21 +36,17 @@ const lucid = await Lucid.new(blockfrostProvider, "Preprod");
 
 **Evolution SDK:**
 ```ts twoslash
-import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: preprod,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: "your-project-id"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+}))
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
-});
+}));
 ```
 
 ### Building Transactions
@@ -65,24 +61,20 @@ lucid
 
 **Evolution SDK:**
 ```ts twoslash
-import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution";
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution";
 
-const client = createClient({
-  chain: preprod,
-  provider: {
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: "your-project-id"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+}))
+  .with(seedWallet({
+mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     accountIndex: 0
-  }
-});
+}));
 
 // ---cut---
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .payToAddress({ 
     address: Address.fromBech32("addr_test1qzrf9g3ea6hdc5vfujgrpjc0c0xq3qqkz8zkpwh3s6nqzhgey8k3eq73kr0gcqd7cyy75s0qqx0qqx0qqx0qqx0qx7e8pq"),
@@ -97,7 +89,7 @@ Here are the typical changes you'll make throughout your codebase:
 
 | Lucid | Evolution SDK |
 |-------|---------------|
-| `Lucid.new(provider, network)` | `createClient({ chain, provider, wallet })` |
+| `Lucid.new(provider, network)` | `client(chain).with(provider).with(wallet)` |
 | `.payToAddress(addr, assets)` | `.payToAddress({ address, assets })` |
 | `.complete()` | `.build()` |
 | `.signWithWallet()` | `tx.sign()` |

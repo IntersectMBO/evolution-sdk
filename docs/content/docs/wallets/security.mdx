@@ -38,7 +38,7 @@ logger.debug({ mnemonic: process.env.MNEMONIC });
 const badConfig = {
   wallet: {
     type: "private-key",
-    bech32PrivateKey: process.env.PRIVATE_KEY! // Bundled to client (DON'T DO THIS)
+    paymentKey: process.env.PRIVATE_KEY! // Bundled to client (DON'T DO THIS)
   }
 };
 ```
@@ -267,7 +267,7 @@ MNEMONIC="staging staging staging..."
 
 ```typescript
 // Error: Always uses same address
-const address = await client.address();
+const address = await client.getAddress();
 // Use for everything - bad for privacy
 ```
 

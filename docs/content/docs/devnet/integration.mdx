@@ -28,18 +28,18 @@ This example shows the full cycle from cluster creation to confirmed transaction
 
 ```typescript twoslash
 import { Cluster, Config, Genesis } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, TransactionHash, client, kupmios, seedWallet } from "@evolution-sdk/evolution";
 
 const MNEMONIC = "your twenty-four word mnemonic phrase here";
 
 async function completeWorkflow() {
   // Step 1: Generate sender address
-  const wallet = createClient({
-    chain: Cluster.BOOTSTRAP_CHAIN,
-    wallet: { type: "seed", mnemonic: MNEMONIC, accountIndex: 0 }
-  });
+  const wallet = client(Cluster.BOOTSTRAP_CHAIN)
+  .with(seedWallet({
+mnemonic: MNEMONIC, accountIndex: 0
+}));
 
-  const senderAddress = await wallet.address();
+  const senderAddress = await wallet.getAddress();
   const senderAddressHex = Address.toHex(senderAddress);
 
   console.log("Sender address:", senderAddress);
@@ -71,20 +71,19 @@ async function completeWorkflow() {
   console.log("Devnet started with Kupo and Ogmios");
 
   // Step 4: Create client connected to devnet
-  const client = createClient({
-    chain: Cluster.getChain(cluster),
-    provider: {
-      type: "kupmios",
-      kupoUrl: "http://localhost:1442",
+  const sdkClient = client(Cluster.getChain(cluster))
+  .with(kupmios({
+kupoUrl: "http://localhost:1442",
       ogmiosUrl: "http://localhost:1337"
-    },
-    wallet: { type: "seed", mnemonic: MNEMONIC, accountIndex: 0 }
-  });
+}))
+  .with(seedWallet({
+mnemonic: MNEMONIC, accountIndex: 0
+}));
 
   console.log("Client connected to devnet");
 
   // Step 5: Query protocol parameters
-  const params = await client.getProtocolParameters();
+  const params = await sdkClient.getProtocolParameters();
   console.log("Protocol parameters:", {
     minFeeA: params.minFeeA,
     minFeeB: params.minFeeB,
@@ -102,7 +101,7 @@ async function completeWorkflow() {
     "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
   );
 
-  const signBuilder = await client
+  const signBuilder = await sdkClient
     .newTx()
     .payToAddress({
       address: receiverAddress,
@@ -125,11 +124,11 @@ async function completeWorkflow() {
   console.log("Transaction submitted:", txHash);
 
   // Step 10: Wait for confirmation
-  const confirmed = await client.awaitTx(txHash, 1000);
+  const confirmed = await sdkClient.awaitTx(txHash, 1000);
   console.log("Transaction confirmed:", confirmed);
 
   // Step 11: Query final state
-  const finalUtxos = await client.getWalletUtxos();
+  const finalUtxos = await sdkClient.getWalletUtxos();
   const totalBalance = finalUtxos.reduce(
     (sum, utxo) => sum + utxo.assets.lovelace,
     0n
@@ -169,7 +168,7 @@ Not all workflows require a wallet. Query blockchain state using a provider-only
 
 ```typescript twoslash
 import { Cluster, Config, Genesis } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, TransactionHash, client, kupmios, seedWallet } from "@evolution-sdk/evolution";
 
 // Start devnet with funded address
 const cluster = await Cluster.make({
@@ -189,14 +188,11 @@ await Cluster.start(cluster);
 await new Promise(resolve => setTimeout(resolve, 6000));
 
 // Provider-only client (no wallet configured)
-const providerClient = createClient({
-  chain: Cluster.getChain(cluster),
-  provider: {
-    type: "kupmios",
-    kupoUrl: "http://localhost:1442",
+const providerClient = client(Cluster.getChain(cluster))
+  .with(kupmios({
+kupoUrl: "http://localhost:1442",
     ogmiosUrl: "http://localhost:1337"
-  }
-});
+}));
 
 // Query any address on the devnet
 const utxos = await providerClient.getUtxos(
@@ -221,22 +217,22 @@ Provider-only clients are ideal for blockchain explorers, monitoring tools, and 
 ```typescript twoslash
 import { describe, it, beforeAll, afterAll, expect } from "vitest";
 import { Cluster, Config } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient, type SigningClient } from "@evolution-sdk/evolution";
+import { Address, Assets, TransactionHash, client, kupmios, seedWallet } from "@evolution-sdk/evolution";
 
 describe("Transaction Tests", () => {
   let cluster: Cluster.Cluster;
-  let client: SigningClient;
+  let sdkClient: any;
 
   beforeAll(async () => {
     // Setup devnet for test suite
     const mnemonic = "test test test test test test test test test test test test test test test test test test test test test test test sauce";
     
-    const wallet = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic, accountIndex: 0 }
-    });
+    const wallet = client(Cluster.BOOTSTRAP_CHAIN)
+  .with(seedWallet({
+mnemonic, accountIndex: 0
+}));
 
-    const addressHex = Address.toHex(await wallet.address());
+    const addressHex = Address.toHex(await wallet.getAddress());
 
     const genesisConfig = {
       ...Config.DEFAULT_SHELLEY_GENESIS,
@@ -256,15 +252,14 @@ describe("Transaction Tests", () => {
     await Cluster.start(cluster);
     await new Promise(resolve => setTimeout(resolve, 8000));
 
-    client = createClient({
-      chain: Cluster.getChain(cluster),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1442",
+    sdkClient = client(Cluster.getChain(cluster))
+  .with(kupmios({
+kupoUrl: "http://localhost:1442",
         ogmiosUrl: "http://localhost:1337"
-      },
-      wallet: { type: "seed", mnemonic, accountIndex: 0 }
-    });
+}))
+  .with(seedWallet({
+mnemonic, accountIndex: 0
+}));
   }, 180_000); // Extended timeout for cluster startup
 
   afterAll(async () => {
@@ -273,7 +268,7 @@ describe("Transaction Tests", () => {
   }, 60_000);
 
   it("should submit simple payment", async () => {
-    const signBuilder = await client
+    const signBuilder = await sdkClient
       .newTx()
       .payToAddress({
         address: Address.fromBech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"),
@@ -283,13 +278,13 @@ describe("Transaction Tests", () => {
 
     const submitBuilder = await signBuilder.sign();
     const txHash = await submitBuilder.submit();
-    const confirmed = await client.awaitTx(txHash, 1000);
+    const confirmed = await sdkClient.awaitTx(txHash, 1000);
 
     expect(confirmed).toBe(true);
   }, 30_000);
 
   it("should handle multiple outputs", async () => {
-    const signBuilder = await client
+    const signBuilder = await sdkClient
       .newTx()
       .payToAddress({
         address: Address.fromBech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"),
@@ -303,7 +298,7 @@ describe("Transaction Tests", () => {
 
     const submitBuilder = await signBuilder.sign();
     const txHash = await submitBuilder.submit();
-    const confirmed = await client.awaitTx(txHash, 1000);
+    const confirmed = await sdkClient.awaitTx(txHash, 1000);
 
     expect(confirmed).toBe(true);
   }, 30_000);
@@ -318,31 +313,25 @@ Test multi-party protocols by funding multiple addresses in genesis:
 
 ```typescript twoslash
 import { Cluster, Config } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, TransactionHash, client, kupmios, seedWallet } from "@evolution-sdk/evolution";
 
 async function multiWalletExample() {
   // Create two wallets
-  const wallet1 = createClient({
-    chain: Cluster.BOOTSTRAP_CHAIN,
-    wallet: {
-      type: "seed",
-      mnemonic: "wallet one mnemonic here",
+  const wallet1 = client(Cluster.BOOTSTRAP_CHAIN)
+  .with(seedWallet({
+mnemonic: "wallet one mnemonic here",
       accountIndex: 0
-    }
-  });
+}));
 
-  const wallet2 = createClient({
-    chain: Cluster.BOOTSTRAP_CHAIN,
-    wallet: {
-      type: "seed",
-      mnemonic: "wallet two mnemonic here",
+  const wallet2 = client(Cluster.BOOTSTRAP_CHAIN)
+  .with(seedWallet({
+mnemonic: "wallet two mnemonic here",
       accountIndex: 0
-    }
-  });
+}));
 
   // Get addresses as hex for genesis config
-  const addr1Hex = Address.toHex(await wallet1.address());
-  const addr2Hex = Address.toHex(await wallet2.address());
+  const addr1Hex = Address.toHex(await wallet1.getAddress());
+  const addr2Hex = Address.toHex(await wallet2.getAddress());
 
 // Fund both in genesis
 const genesisConfig = {
@@ -366,36 +355,28 @@ await Cluster.start(cluster);
 await new Promise(resolve => setTimeout(resolve, 8000));
 
 // Create connected clients for both wallets
-const client1 = createClient({
-  chain: Cluster.getChain(cluster),
-  provider: {
-    type: "kupmios",
-    kupoUrl: "http://localhost:1442",
+const client1 = client(Cluster.getChain(cluster))
+  .with(kupmios({
+kupoUrl: "http://localhost:1442",
     ogmiosUrl: "http://localhost:1337"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "wallet one mnemonic here",
+}))
+  .with(seedWallet({
+mnemonic: "wallet one mnemonic here",
     accountIndex: 0
-  }
-});
+}));
 
-const client2 = createClient({
-  chain: Cluster.getChain(cluster),
-  provider: {
-    type: "kupmios",
-    kupoUrl: "http://localhost:1442",
+const client2 = client(Cluster.getChain(cluster))
+  .with(kupmios({
+kupoUrl: "http://localhost:1442",
     ogmiosUrl: "http://localhost:1337"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "wallet two mnemonic here",
+}))
+  .with(seedWallet({
+mnemonic: "wallet two mnemonic here",
     accountIndex: 0
-  }
-});
+}));
 
   // Wallet 1 sends to Wallet 2
-  const wallet2Address = await wallet2.address();
+  const wallet2Address = await wallet2.getAddress();
   const signBuilder = await client1
     .newTx()
     .payToAddress({
@@ -478,9 +459,9 @@ Run this script to start a persistent devnet for manual testing, dApp developmen
 
 **"UTxO not found"**: Remember that genesis UTxOs are NOT indexed by Kupo. Always use `calculateUtxosFromConfig` and provide them via `availableUtxos` parameter when building your first transaction. After spending genesis UTxOs, subsequent outputs will be indexed normally.
 
-**"Transaction submission failed"**: Verify network magic matches between genesis configuration and client. Mismatched magic causes address validation failures.
+**"Transaction submission failed"**: Verify network magic matches between genesis configuration and sdkClient. Mismatched magic causes address validation failures.
 
-**"Fee estimation error"**: Ensure protocol parameters are accessible through the provider. Query `client.getProtocolParameters()` before building transactions to verify connectivity.
+**"Fee estimation error"**: Ensure protocol parameters are accessible through the provider. Query `sdkClient.getProtocolParameters()` before building transactions to verify connectivity.
 
 **Port conflicts**: If Kupo/Ogmios won't start, check for port conflicts. Use different ports or stop conflicting services.
 

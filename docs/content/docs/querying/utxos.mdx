@@ -10,16 +10,18 @@ UTxOs (Unspent Transaction Outputs) represent available funds on the blockchain.
 ## By Address
 
 ```typescript twoslash
-import { Address, createClient, preprod} from "@evolution-sdk/evolution"
+import { Address, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  chain: preprod,
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 const address = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63")
-const utxos = await client.getUtxos(address)
+const utxos = await sdkClient.getUtxos(address)
 
 for (const utxo of utxos) {
   console.log("UTxO:", utxo.transactionId, "#", utxo.index)
@@ -32,15 +34,17 @@ for (const utxo of utxos) {
 Query all UTxOs belonging to your connected wallet:
 
 ```typescript twoslash
-import { createClient, preprod} from "@evolution-sdk/evolution"
+import { client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  chain: preprod,
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
-const utxos = await client.getWalletUtxos()
+const utxos = await sdkClient.getWalletUtxos()
 const totalLovelace = utxos.reduce((sum, u) => sum + u.assets.lovelace, 0n)
 console.log("Total balance:", totalLovelace, "lovelace")
 ```
@@ -50,22 +54,24 @@ console.log("Total balance:", totalLovelace, "lovelace")
 Find UTxOs containing a specific native token:
 
 ```typescript twoslash
-import { Address, createClient, preprod} from "@evolution-sdk/evolution"
+import { Address, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  chain: preprod,
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 const address = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63")
 const unit = "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1b0c9d8e7f6"
 
 // UTxOs at address containing this token
-const utxos = await client.getUtxosWithUnit(address, unit)
+const utxos = await sdkClient.getUtxosWithUnit(address, unit)
 
 // Find the single UTxO holding an NFT (unique token)
-const nftUtxo = await client.getUtxoByUnit(unit)
+const nftUtxo = await sdkClient.getUtxoByUnit(unit)
 ```
 
 ## By Output Reference
@@ -73,17 +79,19 @@ const nftUtxo = await client.getUtxoByUnit(unit)
 Fetch specific UTxOs by their transaction hash and output index:
 
 ```typescript twoslash
-import { createClient, preprod} from "@evolution-sdk/evolution"
+import { client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  chain: preprod,
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const refs: any[]
 
-const utxos = await client.getUtxosByOutRef(refs)
+const utxos = await sdkClient.getUtxosByOutRef(refs)
 ```
 
 ## Next Steps

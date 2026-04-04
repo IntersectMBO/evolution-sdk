@@ -10,15 +10,17 @@ Protocol parameters define the network's rules — fee calculations, size limits
 ## Query Parameters
 
 ```typescript twoslash
-import { createClient, preprod} from "@evolution-sdk/evolution"
+import { client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  chain: preprod,
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
-const params = await client.getProtocolParameters()
+const params = await sdkClient.getProtocolParameters()
 
 console.log("Min fee coefficient:", params.minFeeA)
 console.log("Min fee constant:", params.minFeeB)
@@ -46,17 +48,19 @@ console.log("Pool deposit:", params.poolDeposit)
 You can provide custom protocol parameters when building transactions:
 
 ```typescript twoslash
-import { Address, Assets, createClient, preprod} from "@evolution-sdk/evolution"
+import { Address, Assets, client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  chain: preprod,
-  provider: { type: "blockfrost", baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! },
-  wallet: { type: "seed", mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 }
-})
+const sdkClient = client(preprod)
+  .with(blockfrost({
+baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY!
+}))
+  .with(seedWallet({
+mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0
+}))
 
 declare const customParams: any
 
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .payToAddress({
     address: Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"),

@@ -39,7 +39,7 @@ Never request or store user keys. Frontend signs only and should not include pro
 Frontend creates API wallet client without provider. Can sign and submit transactions but cannot build them.
 
 ```typescript twoslash
-import { createClient, mainnet } from "@evolution-sdk/evolution";
+import { client, mainnet, cip30Wallet } from "@evolution-sdk/evolution";
 
 declare const cardano: any; // window.cardano
 
@@ -48,23 +48,21 @@ async function signAndSubmit() {
   const walletApi = await cardano.eternl.enable();
 
   // 2. Create API wallet client (no provider needed for signing/submitting)
-  const client = createClient({
-    chain: mainnet,
-    wallet: { type: "api", api: walletApi }
-  });
+  const sdkClient = client(mainnet)
+  .with(cip30Wallet(walletApi));
 
   // 3. Get user address
-  const userAddress = await client.address();
+  const userAddress = await sdkClient.getAddress();
   console.log("User address:", userAddress);
 
   // 4. Request backend to build transaction (backend has provider + read-only wallet)
   const unsignedTxCbor = "84a400..."; // From backend
 
   // 5. Sign with user's wallet (prompts user approval)
-  const witnessSet = await client.signTx(unsignedTxCbor);
+  const witnessSet = await sdkClient.signTx(unsignedTxCbor);
 
-  // 6. Submit directly through wallet API (CIP-30 wallets can submit)
-  const txHash = await client.submitTx(unsignedTxCbor);
+  // 6. Submit via wallet API (CIP-30 wallets can submit)
+  const txHash = await sdkClient.walletSubmitTx(unsignedTxCbor);
   console.log("Transaction submitted:", txHash);
 }
 ```
@@ -88,7 +86,7 @@ interface ApiWalletConfig {
 ## Complete dApp Example
 
 ```typescript twoslash
-import { createClient, mainnet } from "@evolution-sdk/evolution";
+import { client, mainnet, cip30Wallet } from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -106,13 +104,11 @@ async function connectAndPay() {
   const walletApi = await cardano[walletName].enable();
 
   // Create API wallet client
-  const client = createClient({
-    chain: mainnet,
-    wallet: { type: "api", api: walletApi }
-  });
+  const sdkClient = client(mainnet)
+  .with(cip30Wallet(walletApi));
 
   // Get user address
-  const address = await client.address();
+  const address = await sdkClient.getAddress();
 
   // Send address to backend for transaction building
   const response = await fetch("/api/build-payment", {
@@ -128,10 +124,10 @@ async function connectAndPay() {
   const { txCbor } = await response.json();
 
   // Sign with user wallet (prompts user for approval)
-  const witnessSet = await client.signTx(txCbor);
+  const witnessSet = await sdkClient.signTx(txCbor);
 
-  // Submit directly via wallet API (CIP-30 wallets can submit)
-  const txHash = await client.submitTx(txCbor);
+  // Submit via wallet API (CIP-30 wallets can submit)
+  const txHash = await sdkClient.walletSubmitTx(txCbor);
   console.log("Payment sent:", txHash);
 }
 ```
@@ -141,7 +137,7 @@ async function connectAndPay() {
 Hardware wallets work through browser extensions. The extension communicates with the hardware device.
 
 ```typescript twoslash
-import { createClient, mainnet } from "@evolution-sdk/evolution";
+import { client, mainnet, cip30Wallet } from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -150,14 +146,12 @@ async function useHardwareWallet() {
   const walletApi = await cardano.eternl.enable(); // Extension handles hardware
 
   // Create API wallet client (same as software wallets)
-  const client = createClient({
-    chain: mainnet,
-    wallet: { type: "api", api: walletApi }
-  });
+  const sdkClient = client(mainnet)
+  .with(cip30Wallet(walletApi));
 
   // Extension will prompt hardware wallet for signatures
   const txCbor = "84a400..."; // Transaction CBOR from backend
-  const witnessSet = await client.signTx(txCbor);
+  const witnessSet = await sdkClient.signTx(txCbor);
 }
 ```
 
@@ -182,7 +176,7 @@ Hardware wallets and extensions follow Cardano's BIP-32 derivation paths:
 ## Error Handling
 
 ```typescript twoslash
-import { createClient, mainnet } from "@evolution-sdk/evolution";
+import { client, mainnet, cip30Wallet } from "@evolution-sdk/evolution";
 
 declare const cardano: any;
 
@@ -197,12 +191,10 @@ async function connectWallet(walletName: string) {
     const walletApi = await cardano[walletName].enable();
 
     // Create API wallet client
-    const client = createClient({
-      chain: mainnet,
-      wallet: { type: "api", api: walletApi }
-    });
+    const sdkClient = client(mainnet)
+  .with(cip30Wallet(walletApi));
 
-    return client;
+    return sdkClient;
 
   } catch (error: any) {
     if (error.code === 2) {

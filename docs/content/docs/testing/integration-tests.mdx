@@ -12,22 +12,22 @@ Integration tests run against a local devnet cluster, validating the full transa
 ```typescript
 import { describe, it, beforeAll, afterAll, expect } from "vitest"
 import { Cluster, Config, Genesis } from "@evolution-sdk/devnet"
-import { Address, Assets, createClient, type SigningClient } from "@evolution-sdk/evolution"
+import { Address, Assets, client, kupmios, seedWallet } from "@evolution-sdk/evolution"
 
 describe("Transaction Tests", () => {
   let cluster: Cluster.Cluster
-  let client: SigningClient
+  let sdkClient: ReturnType<typeof client<typeof Cluster.BOOTSTRAP_CHAIN>>
   let genesisConfig: any
 
   beforeAll(async () => {
     const mnemonic = "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
-    const wallet = createClient({
-      chain: Cluster.BOOTSTRAP_CHAIN,
-      wallet: { type: "seed", mnemonic, accountIndex: 0 }
-    })
+    const wallet = client(Cluster.BOOTSTRAP_CHAIN)
+  .with(seedWallet({
+mnemonic, accountIndex: 0
+}))
 
-    const addressHex = Address.toHex(await wallet.address())
+    const addressHex = Address.toHex(await wallet.getAddress())
 
     genesisConfig = {
       ...Config.DEFAULT_SHELLEY_GENESIS,
@@ -47,15 +47,14 @@ describe("Transaction Tests", () => {
     await Cluster.start(cluster)
     await new Promise(resolve => setTimeout(resolve, 8000))
 
-    client = createClient({
-      chain: Cluster.getChain(cluster),
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1442",
+    sdkClient = client(Cluster.getChain(cluster))
+  .with(kupmios({
+kupoUrl: "http://localhost:1442",
         ogmiosUrl: "http://localhost:1337"
-      },
-      wallet: { type: "seed", mnemonic, accountIndex: 0 }
-    })
+}))
+  .with(seedWallet({
+mnemonic, accountIndex: 0
+}))
   }, 180_000) // Extended timeout for cluster startup
 
   afterAll(async () => {
@@ -67,7 +66,7 @@ describe("Transaction Tests", () => {
     // Genesis UTxOs are NOT indexed by Kupo — must provide them explicitly
     const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
 
-    const signBuilder = await client
+    const signBuilder = await sdkClient
       .newTx()
       .payToAddress({
         address: Address.fromBech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"),
@@ -77,7 +76,7 @@ describe("Transaction Tests", () => {
 
     const submitBuilder = await signBuilder.sign()
     const txHash = await submitBuilder.submit()
-    const confirmed = await client.awaitTx(txHash, 1000)
+    const confirmed = await sdkClient.awaitTx(txHash, 1000)
 
     expect(confirmed).toBe(true)
   }, 30_000)

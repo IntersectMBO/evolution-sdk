@@ -106,30 +106,30 @@ The architecture maintains strict boundaries between layers. The client never di
 
 <Mermaid chart={`
 stateDiagram-v2
-    [*] --> MinimalClient
+    [*] --> BaseClient: client(chain)
     
-    MinimalClient --> ProviderOnlyClient: attachProvider()
-    MinimalClient --> WalletClient: attachWallet()
-    MinimalClient --> FullClient: attach(provider, wallet)
+    BaseClient --> ProviderClient: .with(provider)
+    BaseClient --> WalletClient: .with(wallet)
+    BaseClient --> FullClient: .with(provider).with(wallet)
     
-    ProviderOnlyClient --> FullClient: attachWallet()
-    WalletClient --> FullClient: attachProvider()
+    ProviderClient --> FullClient: .with(wallet)
+    WalletClient --> FullClient: .with(provider)
     
     FullClient --> [*]
     
-    MinimalClient: [1] MinimalClient
-    ProviderOnlyClient: [2] ProviderOnlyClient
-    WalletClient: [3] WalletClient
-    FullClient: [4] FullClient
+    BaseClient: [1] Base Client
+    ProviderClient: [2] Provider Client
+    WalletClient: [3] Wallet Client
+    FullClient: [4] Full Client
 `} />
 
-**[1] MinimalClient**: Network context only, no blockchain access or signing capability
+**[1] Base Client**: Chain context only. No blockchain access or signing capability. Created by `client(chain)`.
 
-**[2] ProviderOnlyClient**: Can query blockchain and submit transactions, cannot sign
+**[2] Provider Client**: Can query blockchain and submit transactions, cannot sign. Created by `.with(provider)`.
 
-**[3] WalletClient**: Can sign transactions and messages, must attach provider to build transactions
+**[3] Wallet Client**: Can sign transactions and messages, must attach provider to build transactions. Created by `.with(wallet)`.
 
-**[4] FullClient**: Either ReadOnlyClient (query + unsigned transactions) or SigningClient (query + sign + submit) depending on wallet type
+**[4] Full Client**: Either read-only (query + unsigned transactions) or signing (query + sign + submit) depending on wallet type. Created by chaining `.with(provider)` and `.with(wallet)`.
 
 ## When This Matters
 

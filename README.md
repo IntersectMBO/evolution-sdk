@@ -21,25 +21,21 @@
 Evolution SDK is a **TypeScript-first** Cardano development framework. Define your data schemas and build transactions with full type safety. You'll get back strongly typed, validated results with comprehensive error handling.
 
 ```typescript
-import { createClient } from "@evolution-sdk/evolution"
+import { client, preprod, blockfrost, seedWallet } from "@evolution-sdk/evolution"
 
 // Create a client with wallet and provider
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
+const sdkClient = client(preprod)
+  .with(blockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
+  }))
+  .with(seedWallet({
     mnemonic: "your twelve word mnemonic phrase here...",
     accountIndex: 0
-  }
-})
+  }))
 
 // Build a transaction with full type safety
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .payToAddress({
     address: "addr_test1qz...",
@@ -74,36 +70,32 @@ npm install @evolution-sdk/evolution
 ## Quick Start
 
 ```typescript
-import { Core, createClient } from "@evolution-sdk/evolution"
+import { client, preprod, blockfrost, seedWallet, Address } from "@evolution-sdk/evolution"
 
 // Work with addresses - convert between formats
 const bech32 = "addr1qx2kd28nq8ac5prwg32hhvudlwggpgfp8utlyqxu6wqgz62f79qsdmm5dsknt9ecr5w468r9ey0fxwkdrwh08ly3tu9sy0f4qd"
 
 // Parse Bech32 to address structure
-const address = Core.Address.fromBech32(bech32)
+const address = Address.fromBech32(bech32)
 console.log("Network ID:", address.networkId)
 console.log("Payment credential:", address.paymentCredential)
 
 // Convert to different formats
-const hex = Core.Address.toHex(address)
-const bytes = Core.Address.toBytes(address)
+const hex = Address.toHex(address)
+const bytes = Address.toBytes(address)
 
 // Build and submit transactions
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
+const sdkClient = client(preprod)
+  .with(blockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
+  }))
+  .with(seedWallet({
     mnemonic: "your mnemonic here...",
     accountIndex: 0
-  }
-})
+  }))
 
-const tx = await client
+const tx = await sdkClient
   .newTx()
   .payToAddress({
     address: bech32,
