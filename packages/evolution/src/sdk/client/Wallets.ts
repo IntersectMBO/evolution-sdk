@@ -18,19 +18,26 @@
  * @module
  */
 
-import { Effect, Schema } from "effect"
+import { Effect, ParseResult, Schema } from "effect"
 
 import * as Address from "../../Address.js"
 import * as CoreRewardAddress from "../../RewardAddress.js"
-import type { WalletApi } from "../wallet/Wallet.js"
+import * as Transaction from "../../Transaction.js"
+import type * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
+import type * as CoreUTxO from "../../UTxO.js"
+import type { ProviderError } from "../provider/Provider.js"
+import type { WalletApi, WalletError } from "../wallet/Wallet.js"
 import * as Wallet from "../wallet/Wallet.js"
 import { attachCapabilities } from "./attachCapabilities.js"
 import type {
   Addressable,
   Cip30WalletCapabilities,
+  QueryDelegation,
   QueryUtxos,
+  QueryUtxosByOutRef,
   SigningWalletCapabilities,
   Stakeable,
+  WalletDelegation,
   WalletUtxos
 } from "./Capabilities.js"
 import { type Client } from "./Client.js"
@@ -67,7 +74,8 @@ export interface PrivateKeyWalletConfig {
 // ── Wallet capability type aliases ────────────────────────────────────────────
 
 type SigningCaps<T extends Client> = SigningWalletCapabilities &
-  (T extends { Effect: { getUtxos: unknown } } ? WalletUtxos : {})
+  (T extends { Effect: { getUtxos: unknown } } ? WalletUtxos : {}) &
+  (T extends { Effect: { getDelegation: unknown } } ? WalletDelegation : {})
 
 type ReadOnlyWalletCaps = Addressable & Stakeable
 
@@ -102,16 +110,54 @@ export const seedWallet = (cfg: SeedWalletConfig) =>
       password: cfg.password
     })
 
-    const providerEffect = c.Effect as Partial<QueryUtxos["Effect"]>
+    const providerEffect = c.Effect as Partial<QueryUtxos["Effect"] & QueryUtxosByOutRef["Effect"] & QueryDelegation["Effect"]>
     const caps: Record<string, (...args: Array<never>) => Effect.Effect<unknown, unknown>> = {
       getAddress: effects.address,
       getRewardAddress: effects.rewardAddress,
-      signTx: effects.signTx as never,
       signMessage: effects.signMessage as never
     }
+
+    // Auto-fetch reference UTxOs before signing when a provider is present
+    if (typeof providerEffect.getUtxosByOutRef === "function") {
+      const getUtxosByOutRef = providerEffect.getUtxosByOutRef
+      caps.signTx = ((
+        txOrHex: Transaction.Transaction | string,
+        context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
+      ) =>
+        Effect.gen(function* () {
+          if (!context?.referenceUtxos?.length) {
+            const tx =
+              typeof txOrHex === "string"
+                ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex())(txOrHex).pipe(
+                    Effect.mapError(
+                      (cause) => new Wallet.WalletError({ message: `Failed to decode transaction: ${cause}`, cause })
+                    )
+                  )
+                : txOrHex
+            if (tx.body.referenceInputs && tx.body.referenceInputs.length > 0) {
+              const fetched = yield* (getUtxosByOutRef(tx.body.referenceInputs) as Effect.Effect<ReadonlyArray<CoreUTxO.UTxO>, ProviderError>).pipe(
+                Effect.orElseSucceed(() => [] as ReadonlyArray<CoreUTxO.UTxO>)
+              )
+              return yield* (effects.signTx(txOrHex, { ...context, referenceUtxos: fetched }) as Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>)
+            }
+          }
+          return yield* (effects.signTx(txOrHex, context) as Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>)
+        })) as never
+    } else {
+      caps.signTx = effects.signTx as never
+    }
+
     if (typeof providerEffect.getUtxos === "function") {
       const getUtxos = providerEffect.getUtxos
       caps.getWalletUtxos = () => Effect.flatMap(effects.address(), (addr) => getUtxos(addr))
+    }
+    if (typeof providerEffect.getDelegation === "function") {
+      const getDelegation = providerEffect.getDelegation
+      caps.getWalletDelegation = () =>
+        Effect.flatMap(effects.rewardAddress(), (rewardAddr) => {
+          if (!rewardAddr) return Effect.fail(new Wallet.WalletError({ message: "No reward address", cause: null }))
+          return getDelegation(rewardAddr) as Effect.Effect<unknown, unknown>
+        })
     }
 
     return attachCapabilities<T, SigningCaps<T>>(c, caps)
@@ -141,16 +187,54 @@ export const privateKeyWallet = (cfg: PrivateKeyWalletConfig) =>
       addressType: cfg.addressType
     })
 
-    const providerEffect = c.Effect as Partial<QueryUtxos["Effect"]>
+    const providerEffect = c.Effect as Partial<QueryUtxos["Effect"] & QueryUtxosByOutRef["Effect"] & QueryDelegation["Effect"]>
     const caps: Record<string, (...args: Array<never>) => Effect.Effect<unknown, unknown>> = {
       getAddress: effects.address,
       getRewardAddress: effects.rewardAddress,
-      signTx: effects.signTx as never,
       signMessage: effects.signMessage as never
     }
+
+    // Auto-fetch reference UTxOs before signing when a provider is present
+    if (typeof providerEffect.getUtxosByOutRef === "function") {
+      const getUtxosByOutRef = providerEffect.getUtxosByOutRef
+      caps.signTx = ((
+        txOrHex: Transaction.Transaction | string,
+        context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
+      ) =>
+        Effect.gen(function* () {
+          if (!context?.referenceUtxos?.length) {
+            const tx =
+              typeof txOrHex === "string"
+                ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex())(txOrHex).pipe(
+                    Effect.mapError(
+                      (cause) => new Wallet.WalletError({ message: `Failed to decode transaction: ${cause}`, cause })
+                    )
+                  )
+                : txOrHex
+            if (tx.body.referenceInputs && tx.body.referenceInputs.length > 0) {
+              const fetched = yield* (getUtxosByOutRef(tx.body.referenceInputs) as Effect.Effect<ReadonlyArray<CoreUTxO.UTxO>, ProviderError>).pipe(
+                Effect.orElseSucceed(() => [] as ReadonlyArray<CoreUTxO.UTxO>)
+              )
+              return yield* (effects.signTx(txOrHex, { ...context, referenceUtxos: fetched }) as Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>)
+            }
+          }
+          return yield* (effects.signTx(txOrHex, context) as Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>)
+        })) as never
+    } else {
+      caps.signTx = effects.signTx as never
+    }
+
     if (typeof providerEffect.getUtxos === "function") {
       const getUtxos = providerEffect.getUtxos
       caps.getWalletUtxos = () => Effect.flatMap(effects.address(), (addr) => getUtxos(addr))
+    }
+    if (typeof providerEffect.getDelegation === "function") {
+      const getDelegation = providerEffect.getDelegation
+      caps.getWalletDelegation = () =>
+        Effect.flatMap(effects.rewardAddress(), (rewardAddr) => {
+          if (!rewardAddr) return Effect.fail(new Wallet.WalletError({ message: "No reward address", cause: null }))
+          return getDelegation(rewardAddr) as Effect.Effect<unknown, unknown>
+        })
     }
 
     return attachCapabilities<T, SigningCaps<T>>(c, caps)

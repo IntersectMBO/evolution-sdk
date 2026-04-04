@@ -59,6 +59,8 @@ export const maestro = (cfg: MaestroConfig) =>
     return attachCapabilities<T, MaestroCapabilities>(c, {
       getUtxos: MaestroEffect.getUtxos(cfg.baseUrl, cfg.apiKey),
       getUtxosByOutRef: MaestroEffect.getUtxosByOutRef(cfg.baseUrl, cfg.apiKey),
+      getUtxosWithUnit: MaestroEffect.getUtxosWithUnit(cfg.baseUrl, cfg.apiKey),
+      getUtxoByUnit: MaestroEffect.getUtxoByUnit(cfg.baseUrl, cfg.apiKey),
       getProtocolParameters: () => MaestroEffect.getProtocolParameters(cfg.baseUrl, cfg.apiKey),
       getDelegation: MaestroEffect.getDelegation(cfg.baseUrl, cfg.apiKey),
       submitTx: MaestroEffect.submitTx(cfg.baseUrl, cfg.apiKey, cfg.turboSubmit),

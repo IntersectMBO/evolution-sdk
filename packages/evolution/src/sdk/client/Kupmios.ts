@@ -62,6 +62,8 @@ export const kupmios = (cfg: KupmiosConfig) =>
     return attachCapabilities<T, KupmiosCapabilities>(c, {
       getUtxos: KupmiosEffects.getUtxosEffect(cfg.kupoUrl, cfg.headers),
       getUtxosByOutRef: KupmiosEffects.getUtxosByOutRefEffect(cfg.kupoUrl, cfg.headers),
+      getUtxosWithUnit: KupmiosEffects.getUtxosWithUnitEffect(cfg.kupoUrl, cfg.headers),
+      getUtxoByUnit: KupmiosEffects.getUtxoByUnitEffect(cfg.kupoUrl, cfg.headers),
       getProtocolParameters: () => KupmiosEffects.getProtocolParametersEffect(cfg.ogmiosUrl, cfg.headers),
       getDelegation: KupmiosEffects.getDelegationEffect(cfg.ogmiosUrl, cfg.headers),
       submitTx: KupmiosEffects.submitTxEffect(cfg.ogmiosUrl, cfg.headers),

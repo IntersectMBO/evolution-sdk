@@ -58,6 +58,8 @@ export const blockfrost = (cfg: BlockfrostConfig) =>
     return attachCapabilities<T, BlockfrostCapabilities>(c, {
       getUtxos: BlockfrostEffect.getUtxos(cfg.baseUrl, cfg.projectId),
       getUtxosByOutRef: BlockfrostEffect.getUtxosByOutRef(cfg.baseUrl, cfg.projectId),
+      getUtxosWithUnit: BlockfrostEffect.getUtxosWithUnit(cfg.baseUrl, cfg.projectId),
+      getUtxoByUnit: BlockfrostEffect.getUtxoByUnit(cfg.baseUrl, cfg.projectId),
       getProtocolParameters: () => BlockfrostEffect.getProtocolParameters(cfg.baseUrl, cfg.projectId),
       getDelegation: BlockfrostEffect.getDelegation(cfg.baseUrl, cfg.projectId),
       submitTx: BlockfrostEffect.submitTx(cfg.baseUrl, cfg.projectId),

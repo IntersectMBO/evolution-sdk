@@ -43,6 +43,51 @@ import type { Payload, SignedMessage, WalletError } from "../wallet/Wallet.js"
 // ── Provider Capabilities ─────────────────────────────────────────────────────
 
 /**
+ * Query UTxOs at an address filtered by a specific asset unit.
+ *
+ * @since 2.1.0
+ * @category capabilities
+ */
+export interface QueryUtxosWithUnit {
+  readonly getUtxosWithUnit: (
+    addressOrCredential: CoreAddress.Address | Credential.Credential,
+    unit: string
+  ) => Promise<Array<CoreUTxO.UTxO>>
+  readonly Effect: {
+    readonly getUtxosWithUnit: (
+      addressOrCredential: CoreAddress.Address | Credential.Credential,
+      unit: string
+    ) => Effect.Effect<Array<CoreUTxO.UTxO>, ProviderError>
+  }
+}
+
+/**
+ * Query a single UTxO by its asset unit (returns the UTxO holding that unit).
+ *
+ * @since 2.1.0
+ * @category capabilities
+ */
+export interface QueryUtxoByUnit {
+  readonly getUtxoByUnit: (unit: string) => Promise<CoreUTxO.UTxO>
+  readonly Effect: {
+    readonly getUtxoByUnit: (unit: string) => Effect.Effect<CoreUTxO.UTxO, ProviderError>
+  }
+}
+
+/**
+ * Query delegation for the wallet's own reward address.
+ *
+ * @since 2.1.0
+ * @category capabilities
+ */
+export interface WalletDelegation {
+  readonly getWalletDelegation: () => Promise<Delegation>
+  readonly Effect: {
+    readonly getWalletDelegation: () => Effect.Effect<Delegation, WalletError | ProviderError>
+  }
+}
+
+/**
  * Query UTxOs at an address or by credential.
  *
  * @since 2.1.0
@@ -333,6 +378,8 @@ export interface Derivable {
  */
 export type FullProviderCapabilities = QueryUtxos &
   QueryUtxosByOutRef &
+  QueryUtxosWithUnit &
+  QueryUtxoByUnit &
   QueryProtocolParams &
   QueryDelegation &
   SubmitTx &

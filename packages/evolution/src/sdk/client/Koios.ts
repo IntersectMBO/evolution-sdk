@@ -58,6 +58,8 @@ export const koios = (cfg: KoiosConfig) =>
     return attachCapabilities<T, KoiosCapabilities>(c, {
       getUtxos: KoiosEffect.getUtxos(cfg.baseUrl, cfg.token),
       getUtxosByOutRef: KoiosEffect.getUtxosByOutRef(cfg.baseUrl, cfg.token),
+      getUtxosWithUnit: KoiosEffect.getUtxosWithUnit(cfg.baseUrl, cfg.token),
+      getUtxoByUnit: KoiosEffect.getUtxoByUnit(cfg.baseUrl, cfg.token),
       getProtocolParameters: () => KoiosEffect.getProtocolParameters(cfg.baseUrl, cfg.token),
       getDelegation: KoiosEffect.getDelegation(cfg.baseUrl, cfg.token),
       submitTx: KoiosEffect.submitTx(cfg.baseUrl, cfg.token),
