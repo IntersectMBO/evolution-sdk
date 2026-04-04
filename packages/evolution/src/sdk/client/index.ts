@@ -1,7 +1,6 @@
 export * from "./Capabilities.js"
 export * from "./Client.js"
 export {
-  RetryPresets,
   type ApiWalletClient,
   type MinimalClient,
   type MinimalClientEffect,
@@ -13,6 +12,7 @@ export {
   type ReadOnlyWalletClient,
   type RetryConfig,
   type RetryPolicy,
+  RetryPresets,
   type SigningClient,
   type SigningClientEffect,
   type SigningWalletClient,
