@@ -16,6 +16,7 @@ import * as Bytes from "../../Bytes.js"
 import * as Ed25519Signature from "../../Ed25519Signature.js"
 import * as KeyHash from "../../KeyHash.js"
 import type * as NativeScripts from "../../NativeScripts.js"
+import * as PoolKeyHash from "../../PoolKeyHash.js"
 import * as PrivateKey from "../../PrivateKey.js"
 import * as CoreRewardAccount from "../../RewardAccount.js"
 import * as CoreRewardAddress from "../../RewardAddress.js"
@@ -104,23 +105,59 @@ const computeRequiredKeyHashesSync = (params: {
     }
   }
 
-  if (params.tx.body.certificates && params.stakeKhHex) {
+  if (params.tx.body.certificates && (params.stakeKhHex || params.paymentKhHex)) {
     for (const cert of params.tx.body.certificates) {
-      const cred =
-        cert._tag === "StakeRegistration" || cert._tag === "StakeDeregistration" || cert._tag === "StakeDelegation"
-          ? cert.stakeCredential
-          : cert._tag === "RegCert" || cert._tag === "UnregCert"
+      // Stake credential certs — require stake key
+      if (params.stakeKhHex) {
+        const stakeCred =
+          cert._tag === "StakeRegistration" ||
+          cert._tag === "StakeDeregistration" ||
+          cert._tag === "StakeDelegation" ||
+          cert._tag === "RegCert" ||
+          cert._tag === "UnregCert" ||
+          cert._tag === "StakeVoteDelegCert" ||
+          cert._tag === "StakeRegDelegCert" ||
+          cert._tag === "StakeVoteRegDelegCert" ||
+          cert._tag === "VoteDelegCert" ||
+          cert._tag === "VoteRegDelegCert"
             ? cert.stakeCredential
-            : cert._tag === "StakeVoteDelegCert" ||
-                cert._tag === "StakeRegDelegCert" ||
-                cert._tag === "StakeVoteRegDelegCert" ||
-                cert._tag === "VoteDelegCert" ||
-                cert._tag === "VoteRegDelegCert"
-              ? cert.stakeCredential
-              : undefined
-      if (cred && cred._tag === "KeyHash") {
-        const khHex = KeyHash.toHex(cred)
-        if (khHex === params.stakeKhHex) required.add(params.stakeKhHex)
+            : undefined
+        if (stakeCred && stakeCred._tag === "KeyHash") {
+          const khHex = KeyHash.toHex(stakeCred)
+          if (khHex === params.stakeKhHex) required.add(params.stakeKhHex)
+        }
+
+        // DRep credential certs — DRep key is typically the stake key
+        const drepCred =
+          cert._tag === "RegDrepCert" || cert._tag === "UnregDrepCert" || cert._tag === "UpdateDrepCert"
+            ? cert.drepCredential
+            : undefined
+        if (drepCred && drepCred._tag === "KeyHash") {
+          const khHex = KeyHash.toHex(drepCred)
+          if (khHex === params.stakeKhHex) required.add(params.stakeKhHex)
+        }
+
+        // Committee cold credential certs — cold key is typically the stake key
+        const committeeColdCred =
+          cert._tag === "AuthCommitteeHotCert" || cert._tag === "ResignCommitteeColdCert"
+            ? cert.committeeColdCredential
+            : undefined
+        if (committeeColdCred && committeeColdCred._tag === "KeyHash") {
+          const khHex = KeyHash.toHex(committeeColdCred)
+          if (khHex === params.stakeKhHex) required.add(params.stakeKhHex)
+        }
+      }
+
+      // Pool certs — pool operator key is typically the payment key
+      if (params.paymentKhHex) {
+        if (cert._tag === "PoolRegistration") {
+          const operatorHex = PoolKeyHash.toHex(cert.poolParams.operator)
+          if (operatorHex === params.paymentKhHex) required.add(params.paymentKhHex)
+        }
+        if (cert._tag === "PoolRetirement") {
+          const poolKhHex = PoolKeyHash.toHex(cert.poolKeyHash)
+          if (poolKhHex === params.paymentKhHex) required.add(params.paymentKhHex)
+        }
       }
     }
   }
@@ -177,11 +214,19 @@ const makeSigningWalletEffect = (
         }
         return witnesses.length > 0 ? TransactionWitnessSet.fromVKeyWitnesses(witnesses) : TransactionWitnessSet.empty()
       }),
-    signMessage: (_address: CoreAddress.Address | CoreRewardAddress.RewardAddress, payload: WalletNew.Payload) =>
-      Effect.map(derivationEffect, (derivation) => {
-        const paymentSk = PrivateKey.fromBech32(derivation.paymentKey)
+    signMessage: (address: CoreAddress.Address | CoreRewardAddress.RewardAddress, payload: WalletNew.Payload) =>
+      Effect.gen(function* () {
+        const derivation = yield* derivationEffect
+        // Use stake key when signing for a reward address, payment key otherwise.
+        // Reward addresses require the stake credential key per CIP-0008.
+        const useStakeKey =
+          typeof address === "string" && // RewardAddress is a branded string
+          derivation.stakeKey !== undefined
+        const sk = useStakeKey
+          ? PrivateKey.fromBech32(derivation.stakeKey!)
+          : PrivateKey.fromBech32(derivation.paymentKey)
         const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload
-        const sig = PrivateKey.sign(paymentSk, bytes)
+        const sig = PrivateKey.sign(sk, bytes)
         return { payload, signature: Ed25519Signature.toHex(sig) }
       })
   }
@@ -335,48 +380,55 @@ export const privateKeyWallet =
  * @category constructors
  */
 export const cip30Wallet = (api: WalletNew.WalletApi): WalletNew.ApiWallet => {
-  let cachedAddress: CoreAddress.Address | null = null
-  let cachedReward: CoreRewardAddress.RewardAddress | null = null
+  // Cache the address fetch as a single Promise so concurrent callers share the
+  // same in-flight request and subsequent calls reuse the settled result.
+  let addressPromise: Promise<CoreAddress.Address> | null = null
+  let rewardAddressPromise: Promise<CoreRewardAddress.RewardAddress | null> | null = null
 
-  const getPrimaryAddress = Effect.gen(function* () {
-    if (cachedAddress) return cachedAddress
-    const used = yield* Effect.tryPromise({
-      try: () => api.getUsedAddresses(),
-      catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
-    })
-    const unused = yield* Effect.tryPromise({
-      try: () => api.getUnusedAddresses(),
-      catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
-    })
-    const addrStr = used[0] ?? unused[0]
-    if (!addrStr) {
-      return yield* Effect.fail(new WalletNew.WalletError({ message: "Wallet API returned no addresses", cause: null }))
+  const fetchPrimaryAddress = (): Promise<CoreAddress.Address> => {
+    if (!addressPromise) {
+      addressPromise = (async () => {
+        const used = await api.getUsedAddresses()
+        const unused = await api.getUnusedAddresses()
+        const addrStr = used[0] ?? unused[0]
+        if (!addrStr) throw new WalletNew.WalletError({ message: "Wallet API returned no addresses", cause: null })
+        try {
+          return CoreAddress.fromBech32(addrStr)
+        } catch {
+          try {
+            return CoreAddress.fromHex(addrStr)
+          } catch (error) {
+            throw new WalletNew.WalletError({
+              message: `Invalid address format from wallet: ${addrStr}`,
+              cause: error as Error
+            })
+          }
+        }
+      })()
     }
-    try {
-      cachedAddress = CoreAddress.fromBech32(addrStr)
-    } catch {
-      try {
-        cachedAddress = CoreAddress.fromHex(addrStr)
-      } catch (error) {
-        return yield* Effect.fail(
-          new WalletNew.WalletError({
-            message: `Invalid address format from wallet: ${addrStr}`,
-            cause: error as Error
-          })
-        )
-      }
+    return addressPromise
+  }
+
+  const fetchPrimaryRewardAddress = (): Promise<CoreRewardAddress.RewardAddress | null> => {
+    if (!rewardAddressPromise) {
+      rewardAddressPromise = api
+        .getRewardAddresses()
+        .then((rewards) => (rewards[0] ? Schema.decodeSync(CoreRewardAddress.RewardAddress)(rewards[0]) : null))
     }
-    return cachedAddress
+    return rewardAddressPromise
+  }
+
+  const getPrimaryAddress = Effect.tryPromise({
+    try: fetchPrimaryAddress,
+    catch: (cause) =>
+      cause instanceof WalletNew.WalletError
+        ? cause
+        : new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
   })
 
-  const getPrimaryRewardAddress = Effect.gen(function* () {
-    if (cachedReward !== null) return cachedReward
-    const rewards = yield* Effect.tryPromise({
-      try: () => api.getRewardAddresses(),
-      catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
-    })
-    cachedReward = rewards[0] ? Schema.decodeSync(CoreRewardAddress.RewardAddress)(rewards[0]) : null
-    return cachedReward
+  const getPrimaryRewardAddress = Effect.tryPromise({
+    try: fetchPrimaryRewardAddress,
+    catch: (cause) => new WalletNew.WalletError({ message: (cause as Error).message, cause: cause as Error })
   })
 
   const effectInterface: WalletNew.ApiWalletEffect = {

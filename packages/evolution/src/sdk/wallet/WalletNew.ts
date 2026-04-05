@@ -136,7 +136,7 @@ export interface WalletApi {
 export interface ApiWalletEffect extends ReadOnlyWalletEffect {
   readonly signTx: (
     tx: Transaction.Transaction | string,
-    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
+    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }
   ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
   readonly signMessage: (
     address: CoreAddress.Address | RewardAddress.RewardAddress,
