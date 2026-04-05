@@ -1,4 +1,4 @@
-import { Data, type Effect } from "effect"
+import { type Effect } from "effect"
 
 import type * as CoreUTxO from "../../UTxO.js"
 import type { ReadOnlyTransactionBuilder, SigningTransactionBuilder } from "../builders/TransactionBuilder.js"
@@ -7,17 +7,6 @@ import type { EffectToPromiseAPI } from "../Type.js"
 import type * as WalletNew from "../wallet/WalletNew.js"
 import type { Chain } from "./Chain.js"
 import type { AnyWallet } from "./Wallets.js"
-
-/**
- * Error class for provider-related operations.
- *
- * @since 2.0.0
- * @category errors
- */
-export class ProviderError extends Data.TaggedError("ProviderError")<{
-  message?: string
-  cause?: unknown
-}> {}
 
 /**
  * MinimalClient Effect - holds chain context.
@@ -47,7 +36,10 @@ export interface ReadOnlyClientEffect extends Provider.ProviderEffect, WalletNew
  * @category model
  */
 export interface SigningClientEffect extends Provider.ProviderEffect, WalletNew.SigningWalletEffect {
-  readonly getWalletUtxos: () => Effect.Effect<ReadonlyArray<CoreUTxO.UTxO>, WalletNew.WalletError | Provider.ProviderError>
+  readonly getWalletUtxos: () => Effect.Effect<
+    ReadonlyArray<CoreUTxO.UTxO>,
+    WalletNew.WalletError | Provider.ProviderError
+  >
   readonly getWalletDelegation: () => Effect.Effect<Provider.Delegation, WalletNew.WalletError | Provider.ProviderError>
 }
 

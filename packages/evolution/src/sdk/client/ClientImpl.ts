@@ -19,6 +19,7 @@ import {
   type ReadOnlyClient,
   type ReadOnlyWalletClient,
   type SigningClient,
+  type SigningClientEffect,
   type SigningWalletClient
 } from "./Client.js"
 import { type AnyWallet, type WalletFactory } from "./Wallets.js"
@@ -152,9 +153,23 @@ const createSigningClient = (
       return yield* wallet.Effect.signTx(txOrHex, { ...context, referenceUtxos })
     })
 
-  const effectInterface = {
-    ...wallet.Effect,
-    ...provider.Effect,
+  const effectInterface: SigningClientEffect = {
+    // Provider methods — explicit to avoid silent overrides if provider gains new fields
+    getProtocolParameters: provider.Effect.getProtocolParameters.bind(provider.Effect),
+    getUtxos: provider.Effect.getUtxos.bind(provider.Effect),
+    getUtxosWithUnit: provider.Effect.getUtxosWithUnit.bind(provider.Effect),
+    getUtxoByUnit: provider.Effect.getUtxoByUnit.bind(provider.Effect),
+    getUtxosByOutRef: provider.Effect.getUtxosByOutRef.bind(provider.Effect),
+    getDelegation: provider.Effect.getDelegation.bind(provider.Effect),
+    getDatum: provider.Effect.getDatum.bind(provider.Effect),
+    awaitTx: provider.Effect.awaitTx.bind(provider.Effect),
+    submitTx: provider.Effect.submitTx.bind(provider.Effect),
+    evaluateTx: provider.Effect.evaluateTx.bind(provider.Effect),
+    // Wallet methods
+    address: wallet.Effect.address.bind(wallet.Effect),
+    rewardAddress: wallet.Effect.rewardAddress.bind(wallet.Effect),
+    signMessage: wallet.Effect.signMessage.bind(wallet.Effect),
+    // Composite methods
     signTx: signTxWithAutoFetch,
     getWalletUtxos: () => Effect.flatMap(wallet.Effect.address(), (addr) => provider.Effect.getUtxos(addr)),
     getWalletDelegation: () =>
@@ -166,8 +181,8 @@ const createSigningClient = (
   }
 
   return {
-    ...provider,
     ...wallet,
+    ...provider,
     signTx: (txOrHex, context) => Effect.runPromise(signTxWithAutoFetch(txOrHex, context)),
     getWalletUtxos: () => Effect.runPromise(effectInterface.getWalletUtxos()),
     getWalletDelegation: () => Effect.runPromise(effectInterface.getWalletDelegation()),
@@ -242,7 +257,7 @@ export function createClient(config: { chain?: Chain; wallet: WalletNew.ApiWalle
 // Signing Wallet or Factory only → SigningWalletClient
 export function createClient(config: {
   chain?: Chain
-  wallet: WalletNew.SigningWallet | AnyWallet
+  wallet: WalletNew.SigningWallet | WalletFactory
 }): SigningWalletClient
 
 // Chain only or minimal → MinimalClient
