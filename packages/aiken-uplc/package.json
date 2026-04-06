@@ -42,10 +42,10 @@
     "clean": "rm -rf dist .turbo .tsbuildinfo"
   },
   "devDependencies": {
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.2"
   },
   "dependencies": {
-    "effect": "^3.19.3"
+    "effect": "^3.21.0"
   },
   "peerDependencies": {
     "@evolution-sdk/evolution": "workspace:*"

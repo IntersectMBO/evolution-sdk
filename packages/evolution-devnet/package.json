@@ -38,20 +38,20 @@
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
-    "@types/dockerode": "^3.3.43",
-    "tsx": "^4.20.4",
-    "typescript": "^5.9.2"
+    "@types/dockerode": "^4.0.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   },
   "dependencies": {
-    "@noble/hashes": "^1.8.0",
-    "dockerode": "^4.0.7"
+    "@noble/hashes": "^2.0.1",
+    "dockerode": "^4.0.10"
   },
   "peerDependencies": {
+    "@effect/platform": "^0.90.10",
+    "@effect/platform-node": "^0.96.1",
     "@evolution-sdk/aiken-uplc": "workspace:*",
     "@evolution-sdk/evolution": "workspace:*",
     "@evolution-sdk/scalus-uplc": "workspace:*",
-    "@effect/platform": "^0.90.10",
-    "@effect/platform-node": "^0.96.1",
     "effect": "^3.19.3"
   },
   "keywords": [

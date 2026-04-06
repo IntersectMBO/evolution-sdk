@@ -45,21 +45,21 @@
   "devDependencies": {
     "@dcspark/cardano-multiplatform-lib-nodejs": "^6.2.0",
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
-    "tinybench": "^5.0.0",
-    "tsx": "^4.20.4",
-    "typescript": "^5.9.2"
+    "tinybench": "^6.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   },
   "dependencies": {
-    "@effect/platform": "^0.90.10",
-    "@effect/platform-node": "^0.96.1",
+    "@effect/platform": "^0.96.0",
+    "@effect/platform-node": "^0.106.0",
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^1.8.0",
-    "@scure/base": "^1.2.6",
-    "@scure/bip32": "^1.7.0",
-    "@scure/bip39": "^1.6.0",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
     "@types/bip39": "^3.0.4",
     "bip39": "^3.1.0",
-    "effect": "^3.19.3"
+    "effect": "^3.21.0"
   },
   "keywords": [
     "cardano",

@@ -37,14 +37,14 @@
     "clean": "rm -rf dist .turbo .tsbuildinfo"
   },
   "dependencies": {
-    "effect": "^3.19.3",
-    "scalus": "^0.14.2"
+    "effect": "^3.21.0",
+    "scalus": "^0.15.0"
   },
   "peerDependencies": {
     "@evolution-sdk/evolution": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.2"
   },
   "keywords": [
     "cardano",
