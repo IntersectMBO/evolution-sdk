@@ -10,8 +10,8 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as Assets from "../../../Assets/index.js"
+import * as UTxO from "../../../UTxO.js"
 import * as Ctx from "../internal/ctx.js"
 import { calculateFeeIteratively, calculateReferenceScriptFee } from "../internal/txBuilder.js"
 
@@ -66,7 +66,7 @@ export const executeFeeCalculation = (): Effect.Effect<
     const baseOutputs = state.outputs
 
     // Step 2: Build transaction inputs
-    const inputs = CoreUTxO.toInputs(selectedUtxos)
+    const inputs = UTxO.toInputs(selectedUtxos)
 
     // Step 3: Combine base outputs + change outputs
     yield* Effect.logDebug(
@@ -100,9 +100,9 @@ export const executeFeeCalculation = (): Effect.Effect<
     // Step 5: Calculate leftover after fee NOW (after fee is known)
     const inputAssets = state.totalInputAssets
     const outputAssets = state.totalOutputAssets
-    const leftoverBeforeFee = CoreAssets.subtract(inputAssets, outputAssets)
+    const leftoverBeforeFee = Assets.subtract(inputAssets, outputAssets)
 
-    const leftoverAfterFee = CoreAssets.subtractLovelace(leftoverBeforeFee, calculatedFee)
+    const leftoverAfterFee = Assets.subtractLovelace(leftoverBeforeFee, calculatedFee)
 
     // Step 6: Store both fee and leftoverAfterFee in context
     yield* Ref.update(buildCtxRef, (ctx) => ({

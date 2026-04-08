@@ -27,7 +27,7 @@ export const UTxOSchema = S.Struct({
   )
 })
 
-export interface UTxO extends S.Schema.Type<typeof UTxOSchema> {}
+export interface KupoUTxO extends S.Schema.Type<typeof UTxOSchema> {}
 
 export const ScriptSchema = S.NullOr(
   S.Struct({
@@ -35,7 +35,7 @@ export const ScriptSchema = S.NullOr(
     script: S.String
   })
 )
-export type Script = S.Schema.Type<typeof ScriptSchema>
+export type KupoScript = S.Schema.Type<typeof ScriptSchema>
 
 export const DatumSchema = S.NullOr(S.Struct({ datum: S.String }))
 

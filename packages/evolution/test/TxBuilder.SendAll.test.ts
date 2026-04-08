@@ -1,11 +1,11 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet } from "../src/sdk/client/index.js"
-import type * as CoreUTxO from "../src/UTxO.js"
+import type * as UTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
 const PROTOCOL_PARAMS = {
@@ -33,7 +33,7 @@ const baseConfig: TxBuilderConfig = { chain: mainnet }
 describe("TxBuilder SendAll", () => {
   describe("Basic SendAll Operation", () => {
     it("should send all ADA from wallet to recipient", async () => {
-      const utxos: Array<CoreUTxO.UTxO> = [
+      const utxos: Array<UTxO.UTxO> = [
         createCoreTestUtxo({
           transactionId: "a".repeat(64),
           index: 0,
@@ -77,7 +77,7 @@ describe("TxBuilder SendAll", () => {
       const hoskyUnit = `${FUNGIBLE_POLICY}${HOSKY_NAME_HEX}`
       const nftUnit = `${NFT_POLICY}${NFT_NAME_HEX}`
 
-      const utxos: Array<CoreUTxO.UTxO> = [
+      const utxos: Array<UTxO.UTxO> = [
         createCoreTestUtxo({
           transactionId: "1".repeat(64),
           index: 0,
@@ -121,8 +121,8 @@ describe("TxBuilder SendAll", () => {
       expect(Address.toBech32(output.address)).toBe(DESTINATION_ADDRESS)
 
       // Output should contain all tokens
-      expect(CoreAssets.getByUnit(output.assets, hoskyUnit)).toBe(500_000n)
-      expect(CoreAssets.getByUnit(output.assets, nftUnit)).toBe(1n)
+      expect(Assets.getByUnit(output.assets, hoskyUnit)).toBe(500_000n)
+      expect(Assets.getByUnit(output.assets, nftUnit)).toBe(1n)
 
       // Output should contain total ADA minus fee
       const outputLovelace = output.assets.lovelace
@@ -133,7 +133,7 @@ describe("TxBuilder SendAll", () => {
 
   describe("Mutual Exclusivity Validation", () => {
     it("should fail when used with payToAddress", async () => {
-      const utxos: Array<CoreUTxO.UTxO> = [
+      const utxos: Array<UTxO.UTxO> = [
         createCoreTestUtxo({
           transactionId: "a".repeat(64),
           index: 0,
@@ -146,7 +146,7 @@ describe("TxBuilder SendAll", () => {
         makeTxBuilder(baseConfig)
           .payToAddress({
             address: Address.fromBech32(DESTINATION_ADDRESS),
-            assets: CoreAssets.fromLovelace(1_000_000n)
+            assets: Assets.fromLovelace(1_000_000n)
           })
           .sendAll({ to: Address.fromBech32(DESTINATION_ADDRESS) })
           .build({
@@ -158,7 +158,7 @@ describe("TxBuilder SendAll", () => {
     })
 
     it("should fail when used with collectFrom", async () => {
-      const utxos: Array<CoreUTxO.UTxO> = [
+      const utxos: Array<UTxO.UTxO> = [
         createCoreTestUtxo({
           transactionId: "a".repeat(64),
           index: 0,
@@ -196,7 +196,7 @@ describe("TxBuilder SendAll", () => {
 
   describe("Fee Calculation", () => {
     it("should calculate fee correctly based on transaction size", async () => {
-      const utxos: Array<CoreUTxO.UTxO> = [
+      const utxos: Array<UTxO.UTxO> = [
         createCoreTestUtxo({
           transactionId: "a".repeat(64),
           index: 0,

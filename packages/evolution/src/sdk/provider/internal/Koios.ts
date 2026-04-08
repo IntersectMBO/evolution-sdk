@@ -3,8 +3,8 @@ import { FetchHttpClient } from "@effect/platform"
 import { Effect, pipe, Schema } from "effect"
 import type { ParseError } from "effect/ParseResult"
 
-import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Address from "../../../Address.js"
+import * as Assets from "../../../Assets/index.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
@@ -17,7 +17,7 @@ import * as PlutusV2 from "../../../PlutusV2.js"
 import * as PlutusV3 from "../../../PlutusV3.js"
 import type * as Script from "../../../Script.js"
 import * as TransactionHash from "../../../TransactionHash.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import * as HttpUtils from "./HttpUtils.js"
 
 export const ProtocolParametersSchema = Schema.Struct({
@@ -119,7 +119,7 @@ export const UTxOSchema = Schema.Struct({
   asset_list: Schema.NullOr(Schema.Array(AssetSchema))
 })
 
-export interface UTxO extends Schema.Schema.Type<typeof UTxOSchema> {}
+export interface KoiosUTxO extends Schema.Schema.Type<typeof UTxOSchema> {}
 
 export const AddressInfoSchema = Schema.Array(
   Schema.NullishOr(
@@ -288,19 +288,19 @@ export const getHeadersWithToken = (token?: string, headers: Record<string, stri
   return headers
 }
 
-export const toUTxO = (koiosUTxO: UTxO, addressStr: string): CoreUTxO.UTxO => {
+export const toUTxO = (koiosUTxO: KoiosUTxO, addressStr: string): UTxO.UTxO => {
   // Build Core Assets
   const lovelace = BigInt(koiosUTxO.value)
-  let assets = CoreAssets.fromLovelace(lovelace)
+  let assets = Assets.fromLovelace(lovelace)
 
   if (koiosUTxO.asset_list) {
     for (const am of koiosUTxO.asset_list) {
       // policy_id is hex (56 chars), asset_name is hex
-      assets = CoreAssets.addByHex(assets, am.policy_id, am.asset_name || "", BigInt(am.quantity))
+      assets = Assets.addByHex(assets, am.policy_id, am.asset_name || "", BigInt(am.quantity))
     }
   }
 
-  const address = CoreAddress.fromBech32(addressStr)
+  const address = Address.fromBech32(addressStr)
   const transactionId = TransactionHash.fromHex(koiosUTxO.tx_hash)
 
   let datumOption: DatumOption.DatumOption | undefined
@@ -330,7 +330,7 @@ export const toUTxO = (koiosUTxO: UTxO, addressStr: string): CoreUTxO.UTxO => {
     }
   }
 
-  return new CoreUTxO.UTxO({
+  return new UTxO.UTxO({
     transactionId,
     index: BigInt(koiosUTxO.tx_index),
     address,
@@ -345,7 +345,7 @@ export const getUtxosEffect = (
   addressOrCredential: string | Credential.Credential,
   headers: Record<string, string> | undefined
 ): Effect.Effect<
-  Array<CoreUTxO.UTxO>,
+  Array<UTxO.UTxO>,
   string | HttpBody.HttpBodyError | HttpClientError.HttpClientError | ParseError,
   never
 > => {

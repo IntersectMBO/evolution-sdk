@@ -12,8 +12,8 @@
 
 import * as Effect from "effect/Effect"
 
-import type * as CoreAddress from "../../Address.js"
-import * as CoreAssets from "../../Assets/index.js"
+import type * as Address from "../../Address.js"
+import * as Assets from "../../Assets/index.js"
 import type * as TxOut from "../../TxOut.js"
 import type * as Ctx from "./internal/ctx.js"
 import { calculateMinimumUtxoLovelace, makeTxOutput } from "./internal/txBuilder.js"
@@ -56,10 +56,10 @@ export interface TokenInfo {
 /**
  * Extract tokens from assets
  */
-export const extractTokens = (assets: CoreAssets.Assets): ReadonlyArray<TokenInfo> => {
+export const extractTokens = (assets: Assets.Assets): ReadonlyArray<TokenInfo> => {
   const tokens: Array<TokenInfo> = []
 
-  for (const unit of CoreAssets.getUnits(assets)) {
+  for (const unit of Assets.getUnits(assets)) {
     // Skip lovelace
     if (unit === "lovelace") continue
 
@@ -67,7 +67,7 @@ export const extractTokens = (assets: CoreAssets.Assets): ReadonlyArray<TokenInf
     // PolicyId is always 56 hex characters (28 bytes), asset name is the rest
     const policyId = unit.slice(0, 56)
     const assetName = unit.slice(56)
-    const quantity = CoreAssets.getByUnit(assets, unit)
+    const quantity = Assets.getByUnit(assets, unit)
 
     // Simple heuristic: NFTs typically have quantity of 1
     // More sophisticated detection could check metadata
@@ -116,17 +116,17 @@ export interface TokenBundle {
  */
 const calculateBundleMinUTxO = (
   bundleTokens: ReadonlyArray<TokenInfo>,
-  changeAddress: CoreAddress.Address,
+  changeAddress: Address.Address,
   coinsPerUtxoByte: bigint
 ): Effect.Effect<bigint, Error, never> =>
   Effect.gen(function* () {
-    // Build Assets object with the bundle tokens using CoreAssets
+    // Build Assets object with the bundle tokens using Assets
     // Use fromHexStrings (pure) since policyId/assetName are already validated hex strings
-    let bundleAssets = CoreAssets.zero
+    let bundleAssets = Assets.zero
 
     for (const token of bundleTokens) {
-      const tokenAssets = CoreAssets.fromHexStrings(token.policyId, token.assetName, token.quantity)
-      bundleAssets = CoreAssets.merge(bundleAssets, tokenAssets)
+      const tokenAssets = Assets.fromHexStrings(token.policyId, token.assetName, token.quantity)
+      bundleAssets = Assets.merge(bundleAssets, tokenAssets)
     }
 
     // Calculate minimum UTxO using CBOR
@@ -146,7 +146,7 @@ const calculateBundleMinUTxO = (
 export const calculateTokenBundles = (
   tokens: ReadonlyArray<TokenInfo>,
   options: Ctx.UnfrackOptions,
-  changeAddress: CoreAddress.Address,
+  changeAddress: Address.Address,
   coinsPerUtxoByte: bigint
 ): Effect.Effect<ReadonlyArray<TokenBundle>, Error, never> =>
   Effect.gen(function* () {
@@ -208,7 +208,7 @@ export const calculateTokenBundles = (
 const bundleTokensWithRules = (
   tokens: ReadonlyArray<TokenInfo>,
   bundleSize: number,
-  changeAddress: CoreAddress.Address,
+  changeAddress: Address.Address,
   coinsPerUtxoByte: bigint
 ): Effect.Effect<ReadonlyArray<TokenBundle>, Error, never> =>
   Effect.gen(function* () {
@@ -350,8 +350,8 @@ export type UnfrackResult = {
  * @category builders
  */
 export const createUnfrackedChangeOutputs = (
-  changeAddress: CoreAddress.Address,
-  changeAssets: CoreAssets.Assets,
+  changeAddress: Address.Address,
+  changeAssets: Assets.Assets,
   options: Ctx.UnfrackOptions = {},
   coinsPerUtxoByte: bigint
 ): Effect.Effect<ReadonlyArray<TxOut.TransactionOutput>, Error, never> => {
@@ -361,7 +361,7 @@ export const createUnfrackedChangeOutputs = (
     const bundleSize = options.tokens?.bundleSize ?? DEFAULT_UNFRACK_OPTIONS.tokens.bundleSize
     const subdividePercentages = options.ada?.subdividePercentages ?? DEFAULT_UNFRACK_OPTIONS.ada.subdividePercentages
 
-    const availableLovelace = CoreAssets.lovelaceOf(changeAssets)
+    const availableLovelace = Assets.lovelaceOf(changeAssets)
     const tokens = extractTokens(changeAssets)
 
     yield* Effect.logDebug(`[Unfrack] Available: ${availableLovelace} lovelace, ${tokens.length} tokens`)
@@ -377,7 +377,7 @@ export const createUnfrackedChangeOutputs = (
         // Calculate minUTxO for single ADA output
         const adaMinUTxO = yield* calculateMinimumUtxoLovelace({
           address: changeAddress,
-          assets: CoreAssets.fromLovelace(1_000_000n), // Use 1 ADA for minUTxO estimation
+          assets: Assets.fromLovelace(1_000_000n), // Use 1 ADA for minUTxO estimation
           coinsPerUtxoByte
         })
 
@@ -411,7 +411,7 @@ export const createUnfrackedChangeOutputs = (
 
             const output = makeTxOutput({
               address: changeAddress,
-              assets: CoreAssets.fromLovelace(amount)
+              assets: Assets.fromLovelace(amount)
             })
             outputs.push(output)
           }
@@ -424,7 +424,7 @@ export const createUnfrackedChangeOutputs = (
           )
           const output = makeTxOutput({
             address: changeAddress,
-            assets: CoreAssets.fromLovelace(availableLovelace)
+            assets: Assets.fromLovelace(availableLovelace)
           })
           return [output]
         }
@@ -432,7 +432,7 @@ export const createUnfrackedChangeOutputs = (
         yield* Effect.logDebug(`[Unfrack] No tokens, ADA below threshold, returning single ADA output`)
         const output = makeTxOutput({
           address: changeAddress,
-          assets: CoreAssets.fromLovelace(availableLovelace)
+          assets: Assets.fromLovelace(availableLovelace)
         })
         return [output]
       }
@@ -441,7 +441,7 @@ export const createUnfrackedChangeOutputs = (
     // Create token bundles
     yield* Effect.logDebug(`[Unfrack] Creating token bundles (size: ${bundleSize})`)
 
-    const bundles: Array<{ tokens: Array<TokenInfo>; minUTxO: bigint; assets: CoreAssets.Assets }> = []
+    const bundles: Array<{ tokens: Array<TokenInfo>; minUTxO: bigint; assets: Assets.Assets }> = []
 
     // Group tokens by policy
     const tokensByPolicy = new Map<string, Array<TokenInfo>>()
@@ -456,47 +456,47 @@ export const createUnfrackedChangeOutputs = (
       // Split tokens into bundles of bundleSize
       if (policyTokens.length <= bundleSize) {
         // All tokens fit in one bundle
-        let bundleAssets = CoreAssets.zero
+        let bundleAssets = Assets.zero
         for (const token of policyTokens) {
           // Use sync helper with hex strings from TokenInfo
-          const tokenAssets = CoreAssets.fromHexStrings(token.policyId, token.assetName, token.quantity)
-          bundleAssets = CoreAssets.merge(bundleAssets, tokenAssets)
+          const tokenAssets = Assets.fromHexStrings(token.policyId, token.assetName, token.quantity)
+          bundleAssets = Assets.merge(bundleAssets, tokenAssets)
         }
 
         // Calculate minUTxO for this bundle
         const minUTxO = yield* calculateMinimumUtxoLovelace({
           address: changeAddress,
-          assets: CoreAssets.merge(bundleAssets, CoreAssets.fromLovelace(1_000_000n)), // Add 1 ADA for calculation
+          assets: Assets.merge(bundleAssets, Assets.fromLovelace(1_000_000n)), // Add 1 ADA for calculation
           coinsPerUtxoByte
         })
 
         bundles.push({
           tokens: policyTokens,
           minUTxO,
-          assets: CoreAssets.merge(bundleAssets, CoreAssets.fromLovelace(minUTxO))
+          assets: Assets.merge(bundleAssets, Assets.fromLovelace(minUTxO))
         })
       } else {
         // Split into multiple bundles
         for (let i = 0; i < policyTokens.length; i += bundleSize) {
           const bundleTokens = policyTokens.slice(i, i + bundleSize)
-          let bundleAssets = CoreAssets.zero
+          let bundleAssets = Assets.zero
 
           for (const token of bundleTokens) {
-            const tokenAssets = CoreAssets.fromHexStrings(token.policyId, token.assetName, token.quantity)
-            bundleAssets = CoreAssets.merge(bundleAssets, tokenAssets)
+            const tokenAssets = Assets.fromHexStrings(token.policyId, token.assetName, token.quantity)
+            bundleAssets = Assets.merge(bundleAssets, tokenAssets)
           }
 
           // Calculate minUTxO for this bundle
           const minUTxO = yield* calculateMinimumUtxoLovelace({
             address: changeAddress,
-            assets: CoreAssets.merge(bundleAssets, CoreAssets.fromLovelace(1_000_000n)), // Add 1 ADA for calculation
+            assets: Assets.merge(bundleAssets, Assets.fromLovelace(1_000_000n)), // Add 1 ADA for calculation
             coinsPerUtxoByte
           })
 
           bundles.push({
             tokens: bundleTokens,
             minUTxO,
-            assets: CoreAssets.merge(bundleAssets, CoreAssets.fromLovelace(minUTxO))
+            assets: Assets.merge(bundleAssets, Assets.fromLovelace(minUTxO))
           })
         }
       }
@@ -537,7 +537,7 @@ export const createUnfrackedChangeOutputs = (
       // Calculate minUTxO for ADA-only output
       const adaMinUTxO = yield* calculateMinimumUtxoLovelace({
         address: changeAddress,
-        assets: CoreAssets.fromLovelace(remaining),
+        assets: Assets.fromLovelace(remaining),
         coinsPerUtxoByte
       })
 
@@ -583,7 +583,7 @@ export const createUnfrackedChangeOutputs = (
 
             const output = makeTxOutput({
               address: changeAddress,
-              assets: CoreAssets.fromLovelace(amount)
+              assets: Assets.fromLovelace(amount)
             })
             adaOutputs.push(output)
           }
@@ -597,7 +597,7 @@ export const createUnfrackedChangeOutputs = (
 
           const adaOutput = makeTxOutput({
             address: changeAddress,
-            assets: CoreAssets.fromLovelace(remaining)
+            assets: Assets.fromLovelace(remaining)
           })
 
           return [...bundleOutputs, adaOutput]
@@ -629,7 +629,7 @@ export const createUnfrackedChangeOutputs = (
       const extra = i === bundles.length - 1 ? perBundle + extraForLast : perBundle
       const output = makeTxOutput({
         address: changeAddress,
-        assets: CoreAssets.merge(bundle.assets, CoreAssets.fromLovelace(extra))
+        assets: Assets.merge(bundle.assets, Assets.fromLovelace(extra))
       })
       spreadOutputs.push(output)
     }

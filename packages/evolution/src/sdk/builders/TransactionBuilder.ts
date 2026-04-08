@@ -28,8 +28,8 @@
 import type * as Effect from "effect/Effect"
 import type { Either } from "effect/Either"
 
-import type * as CoreScript from "../../Script.js"
-import type * as CoreUTxO from "../../UTxO.js"
+import type * as Script from "../../Script.js"
+import type * as UTxO from "../../UTxO.js"
 import type * as Provider from "../provider/Provider.js"
 import type * as Wallet from "../wallet/Wallet.js"
 import type {
@@ -112,9 +112,9 @@ export {
  */
 export interface ChainResult {
   /** UTxOs consumed from availableUtxos by coin selection */
-  readonly consumed: ReadonlyArray<CoreUTxO.UTxO>
+  readonly consumed: ReadonlyArray<UTxO.UTxO>
   /** Available UTxOs: remaining unspent + newly created (with computed txHash) */
-  readonly available: ReadonlyArray<CoreUTxO.UTxO>
+  readonly available: ReadonlyArray<UTxO.UTxO>
   /** Pre-computed transaction hash (blake2b-256 of transaction body) */
   readonly txHash: string
 }
@@ -263,7 +263,7 @@ export interface TransactionBuilderBase {
    * @since 2.0.0
    * @category builder-methods
    */
-  readonly attachScript: (params: { script: CoreScript.Script }) => this
+  readonly attachScript: (params: { script: Script.Script }) => this
 
   /**
    * Mint or burn native tokens.

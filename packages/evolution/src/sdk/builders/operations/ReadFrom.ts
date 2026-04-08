@@ -13,7 +13,7 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import * as Ctx from "../internal/ctx.js"
 import type { ReadFromParams } from "./Operations.js"
 
@@ -49,8 +49,8 @@ export const createReadFromProgram = (
 
     // 2. Validate no conflicts with regular inputs
     const state = yield* Ref.get(ctx)
-    const refInputKeys = new Set(params.referenceInputs.map((utxo) => CoreUTxO.toOutRefString(utxo)))
-    const selectedInputKeys = new Set(state.selectedUtxos.map((utxo) => CoreUTxO.toOutRefString(utxo)))
+    const refInputKeys = new Set(params.referenceInputs.map((utxo) => UTxO.toOutRefString(utxo)))
+    const selectedInputKeys = new Set(state.selectedUtxos.map((utxo) => UTxO.toOutRefString(utxo)))
 
     const refInputKeysArray = Array.from(refInputKeys)
     for (const refKey of refInputKeysArray) {

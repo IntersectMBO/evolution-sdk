@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet } from "../src/sdk/client/index.js"
@@ -79,7 +79,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n) // 2.0 ADA only
+      assets: Assets.fromLovelace(2_000_000n) // 2.0 ADA only
     })
 
     // Act: Build transaction with unfrack enabled
@@ -174,7 +174,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act: Build transaction with unfrack (bundleSize=5 → 3 bundles for 15 tokens)
@@ -236,7 +236,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Build with drainTo option
@@ -282,7 +282,7 @@ describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Try with burnAsFee - should fail because of native assets

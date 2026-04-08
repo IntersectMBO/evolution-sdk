@@ -1,7 +1,7 @@
 import type { Effect } from "effect"
 import { Context, Data } from "effect"
 
-import type * as CoreAddress from "../../Address.js"
+import type * as Address from "../../Address.js"
 import type * as Credential from "../../Credential.js"
 import type * as PlutusData from "../../Data.js"
 import type * as DatumHash from "../../DatumHash.js"
@@ -10,7 +10,7 @@ import type * as RewardAddress from "../../RewardAddress.js"
 import type * as Transaction from "../../Transaction.js"
 import type * as TransactionHash from "../../TransactionHash.js"
 import type * as TransactionInput from "../../TransactionInput.js"
-import type * as CoreUTxO from "../../UTxO.js"
+import type * as UTxO from "../../UTxO.js"
 import type { EvalRedeemer } from "../EvalRedeemer.js"
 import type { EffectToPromiseAPI } from "../Type.js"
 
@@ -84,26 +84,26 @@ export interface ProviderEffect {
    * Query UTxOs at a given address or by credential.
    */
   readonly getUtxos: (
-    addressOrCredential: CoreAddress.Address | Credential.Credential
-  ) => Effect.Effect<Array<CoreUTxO.UTxO>, ProviderError>
+    addressOrCredential: Address.Address | Credential.Credential
+  ) => Effect.Effect<Array<UTxO.UTxO>, ProviderError>
   /**
    * Query UTxOs at a given address or credential filtered by specific unit.
    */
   readonly getUtxosWithUnit: (
-    addressOrCredential: CoreAddress.Address | Credential.Credential,
+    addressOrCredential: Address.Address | Credential.Credential,
     unit: string
-  ) => Effect.Effect<Array<CoreUTxO.UTxO>, ProviderError>
+  ) => Effect.Effect<Array<UTxO.UTxO>, ProviderError>
   /**
    * Query a single UTxO by its unit identifier.
    * Unit format: policyId (56 hex chars) + assetName (0-64 hex chars)
    */
-  readonly getUtxoByUnit: (unit: string) => Effect.Effect<CoreUTxO.UTxO, ProviderError>
+  readonly getUtxoByUnit: (unit: string) => Effect.Effect<UTxO.UTxO, ProviderError>
   /**
    * Query UTxOs by their transaction inputs (output references).
    */
   readonly getUtxosByOutRef: (
     inputs: ReadonlyArray<TransactionInput.TransactionInput>
-  ) => Effect.Effect<Array<CoreUTxO.UTxO>, ProviderError>
+  ) => Effect.Effect<Array<UTxO.UTxO>, ProviderError>
   /**
    * Query delegation info for a reward address.
    */
@@ -133,7 +133,7 @@ export interface ProviderEffect {
    */
   readonly evaluateTx: (
     tx: Transaction.Transaction,
-    additionalUTxOs?: Array<CoreUTxO.UTxO>
+    additionalUTxOs?: Array<UTxO.UTxO>
   ) => Effect.Effect<Array<EvalRedeemer>, ProviderError>
 }
 

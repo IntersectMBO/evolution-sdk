@@ -10,7 +10,7 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets/index.js"
 import type * as Certificate from "../../../Certificate.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
@@ -128,10 +128,10 @@ export const calculateProposalDeposits = (
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
  */
-const formatAssetsForLog = (assets: CoreAssets.Assets): string => {
-  const parts: Array<string> = [`lovelace: ${CoreAssets.lovelaceOf(assets)}`]
-  for (const unit of CoreAssets.getUnits(assets)) {
-    const amount = CoreAssets.getByUnit(assets, unit)
+const formatAssetsForLog = (assets: Assets.Assets): string => {
+  const parts: Array<string> = [`lovelace: ${Assets.lovelaceOf(assets)}`]
+  for (const unit of Assets.getUnits(assets)) {
+    const amount = Assets.getByUnit(assets, unit)
     parts.push(`${unit.substring(0, 16)}...: ${amount.toString()}`)
   }
   return parts.join(", ")
@@ -201,25 +201,25 @@ export const executeBalance = (): Effect.Effect<
 
     // Calculate total change assets
     const changeAssets = buildCtx.changeOutputs.reduce(
-      (acc, output) => CoreAssets.merge(acc, output.assets),
-      CoreAssets.zero
+      (acc, output) => Assets.merge(acc, output.assets),
+      Assets.zero
     )
 
     // Delta = inputs + mint + withdrawals + refunds - outputs - change - fee - deposits
     // Mint adds assets (positive) or removes assets (negative for burns)
     // Withdrawals and refunds add to available balance (money IN)
     // Deposits subtract from available balance (money OUT)
-    let delta = CoreAssets.merge(inputAssets, mintAssets)
-    delta = CoreAssets.addLovelace(delta, totalWithdrawals)
-    delta = CoreAssets.addLovelace(delta, certificateRefunds)
-    delta = CoreAssets.subtract(delta, outputAssets)
-    delta = CoreAssets.subtract(delta, changeAssets)
-    delta = CoreAssets.subtractLovelace(delta, buildCtx.calculatedFee)
-    delta = CoreAssets.subtractLovelace(delta, certificateDeposits)
-    delta = CoreAssets.subtractLovelace(delta, proposalDeposits)
+    let delta = Assets.merge(inputAssets, mintAssets)
+    delta = Assets.addLovelace(delta, totalWithdrawals)
+    delta = Assets.addLovelace(delta, certificateRefunds)
+    delta = Assets.subtract(delta, outputAssets)
+    delta = Assets.subtract(delta, changeAssets)
+    delta = Assets.subtractLovelace(delta, buildCtx.calculatedFee)
+    delta = Assets.subtractLovelace(delta, certificateDeposits)
+    delta = Assets.subtractLovelace(delta, proposalDeposits)
 
     // Check if balanced: lovelace must be exactly 0 and all native assets must be 0
-    const deltaLovelace = CoreAssets.lovelaceOf(delta)
+    const deltaLovelace = Assets.lovelaceOf(delta)
     const isBalanced = deltaLovelace === 0n
 
     yield* Effect.logDebug(
@@ -252,7 +252,7 @@ export const executeBalance = (): Effect.Effect<
 
     // Step 4: Not balanced - check for native assets in delta (shouldn't happen)
     // getUnits always includes "lovelace" at index 0, so length > 1 means native assets present
-    const hasNativeAssets = CoreAssets.getUnits(delta).length > 1
+    const hasNativeAssets = Assets.getUnits(delta).length > 1
     if (hasNativeAssets) {
       return yield* Effect.fail(
         new Ctx.TransactionBuilderError({
@@ -290,7 +290,7 @@ export const executeBalance = (): Effect.Effect<
 
         // Merge delta into target output
         const targetOutput = outputs[drainToIndex]
-        const newAssets = CoreAssets.addLovelace(targetOutput.assets, deltaLovelace)
+        const newAssets = Assets.addLovelace(targetOutput.assets, deltaLovelace)
 
         // Create new TransactionOutput with updated assets
         const updatedOutput = new (targetOutput.constructor as any)({
@@ -306,8 +306,8 @@ export const executeBalance = (): Effect.Effect<
 
         // Recalculate totalOutputAssets
         const newTotalOutputAssets = newOutputs.reduce(
-          (acc, output) => CoreAssets.merge(acc, output.assets),
-          CoreAssets.zero
+          (acc, output) => Assets.merge(acc, output.assets),
+          Assets.zero
         )
 
         yield* Ref.update(ctx, (s) => ({
@@ -318,7 +318,7 @@ export const executeBalance = (): Effect.Effect<
 
         yield* Effect.logDebug(
           `[Balance] DrainTo mode: Merged ${deltaLovelace} lovelace into output[${drainToIndex}]. ` +
-            `New output value: ${CoreAssets.lovelaceOf(newAssets)}. Transaction balanced.`
+            `New output value: ${Assets.lovelaceOf(newAssets)}. Transaction balanced.`
         )
         return { next: "complete" as const }
       } else if (isBurnMode) {

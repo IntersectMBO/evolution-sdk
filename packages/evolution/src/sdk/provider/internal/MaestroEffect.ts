@@ -5,7 +5,7 @@
 
 import { Effect, Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
+import * as Address from "../../../Address.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
@@ -16,7 +16,7 @@ import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
 import * as TxOut from "../../../TxOut.js"
-import type * as CoreUTxO from "../../../UTxO.js"
+import type * as UTxO from "../../../UTxO.js"
 import { ProviderError } from "../Provider.js"
 import * as HttpUtils from "./HttpUtils.js"
 import * as Maestro from "./Maestro.js"
@@ -86,9 +86,9 @@ export const getProtocolParameters = (baseUrl: string, apiKey: string) =>
  * Get UTxOs by address with cursor pagination
  */
 export const getUtxos =
-  (baseUrl: string, apiKey: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) =>
+  (baseUrl: string, apiKey: string) => (addressOrCredential: Address.Address | Credential.Credential) =>
     Effect.gen(function* () {
-      if (!(addressOrCredential instanceof CoreAddress.Address)) {
+      if (!(addressOrCredential instanceof Address.Address)) {
         return yield* Effect.fail(
           new ProviderError({
             message: "Maestro provider does not support credential-based UTxO queries. Pass a full Address instead.",
@@ -96,7 +96,7 @@ export const getUtxos =
           })
         )
       }
-      const addressStr = CoreAddress.toBech32(addressOrCredential)
+      const addressStr = Address.toBech32(addressOrCredential)
 
       // Get all pages of UTxOs
       const allUtxos = yield* getUtxosWithPagination(`${baseUrl}/addresses/${addressStr}/utxos`, apiKey)
@@ -109,11 +109,11 @@ export const getUtxos =
  */
 export const getUtxosWithUnit =
   (baseUrl: string, apiKey: string) =>
-  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) =>
+  (addressOrCredential: Address.Address | Credential.Credential, unit: string) =>
     Effect.gen(function* () {
       // Use address endpoint and filter by unit client-side,
       // because /assets/{unit}/utxos returns a simplified response without full UTxO details
-      if (!(addressOrCredential instanceof CoreAddress.Address)) {
+      if (!(addressOrCredential instanceof Address.Address)) {
         return yield* Effect.fail(
           new ProviderError({
             message: "Maestro provider does not support credential-based UTxO queries. Pass a full Address instead.",
@@ -121,7 +121,7 @@ export const getUtxosWithUnit =
           })
         )
       }
-      const addressStr = CoreAddress.toBech32(addressOrCredential)
+      const addressStr = Address.toBech32(addressOrCredential)
 
       const allUtxos = yield* getUtxosWithPagination(`${baseUrl}/addresses/${addressStr}/utxos`, apiKey)
 
@@ -213,7 +213,7 @@ export const submitTx = (baseUrl: string, apiKey: string, turboSubmit?: boolean)
  * Evaluate transaction with Maestro
  */
 export const evaluateTx =
-  (baseUrl: string, apiKey: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) =>
+  (baseUrl: string, apiKey: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<UTxO.UTxO>) =>
     Effect.gen(function* () {
       const txCborHex = Transaction.toCBORHex(tx)
       const additionalUtxos = additionalUTxOs?.map((utxo) => {

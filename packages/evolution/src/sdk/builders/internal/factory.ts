@@ -1,6 +1,6 @@
 import { Effect, Layer, Logger, LogLevel } from "effect"
 
-import type * as CoreScript from "../../../Script.js"
+import type * as Script from "../../../Script.js"
 import * as EffectRuntime from "../../../utils/effect-runtime.js"
 import * as AddSigner from "../operations/AddSigner.js"
 import * as Attach from "../operations/Attach.js"
@@ -56,7 +56,7 @@ export const makeTxBuilder = (
       return txBuilder
     },
 
-    attachScript: (params: { script: CoreScript.Script }) => {
+    attachScript: (params: { script: Script.Script }) => {
       programs.push(Attach.attachScriptToState(params.script))
       return txBuilder
     },

@@ -1,8 +1,8 @@
-import type * as CoreAddress from "../../../Address.js"
+import type * as Address from "../../../Address.js"
 import type * as Anchor from "../../../Anchor.js"
-import type * as CoreAssets from "../../../Assets/index.js"
+import type * as Assets from "../../../Assets/index.js"
 import type * as Credential from "../../../Credential.js"
-import type * as CoreDatumOption from "../../../DatumOption.js"
+import type * as DatumOption from "../../../DatumOption.js"
 import type * as DRep from "../../../DRep.js"
 import type * as EpochNo from "../../../EpochNo.js"
 import type * as GovernanceAction from "../../../GovernanceAction.js"
@@ -11,7 +11,7 @@ import type * as Metadata from "../../../Metadata.js"
 import type * as PoolKeyHash from "../../../PoolKeyHash.js"
 import type * as PoolParams from "../../../PoolParams.js"
 import type * as RewardAccount from "../../../RewardAccount.js"
-import type * as CoreScript from "../../../Script.js"
+import type * as Script from "../../../Script.js"
 import type * as Time from "../../../Time/index.js"
 import type * as TransactionMetadatum from "../../../TransactionMetadatum.js"
 import type * as UTxO from "../../../UTxO.js"
@@ -42,11 +42,11 @@ export interface ValidityParams {
 }
 
 export interface PayToAddressParams {
-  readonly address: CoreAddress.Address
-  readonly assets: CoreAssets.Assets
-  readonly datum?: CoreDatumOption.DatumOption
+  readonly address: Address.Address
+  readonly assets: Assets.Assets
+  readonly datum?: DatumOption.DatumOption
   /** Optional script to store as a reference script in the output */
-  readonly script?: CoreScript.Script
+  readonly script?: Script.Script
 }
 
 /**
@@ -84,7 +84,7 @@ export interface ReadFromParams {
  */
 export interface MintTokensParams {
   /** Tokens to mint (positive) or burn (negative), excluding lovelace */
-  readonly assets: CoreAssets.Assets
+  readonly assets: Assets.Assets
   /** Optional redeemer for Plutus minting policies (static, self, or batch mode) */
   readonly redeemer?: RedeemerBuilder.RedeemerArg
   /** Optional label for debugging script failures - identifies this operation in error messages */
@@ -505,5 +505,5 @@ export interface ProposeParams {
  */
 export interface SendAllParams {
   /** The recipient address to receive all assets */
-  readonly to: CoreAddress.Address
+  readonly to: Address.Address
 }

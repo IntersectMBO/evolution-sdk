@@ -1,11 +1,11 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet } from "../src/sdk/client/index.js"
-import type * as CoreUTxO from "../src/UTxO.js"
+import type * as UTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
 const PROTOCOL_PARAMS = {
@@ -27,7 +27,7 @@ const baseConfig: TxBuilderConfig = { chain: mainnet }
 
 describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
   it("hit max reselection attempts with insufficient funds", async () => {
-    const utxos: Array<CoreUTxO.UTxO> = [
+    const utxos: Array<UTxO.UTxO> = [
       createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 100_000n }),
       createCoreTestUtxo({ transactionId: "b".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 100_000n }),
       createCoreTestUtxo({ transactionId: "c".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 100_000n }),
@@ -41,7 +41,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
       txBuilder
         .payToAddress({
           address: Address.fromBech32(RECEIVER_ADDRESS),
-          assets: CoreAssets.fromLovelace(5_000_000n)
+          assets: Assets.fromLovelace(5_000_000n)
         })
         .build({
           changeAddress: Address.fromBech32(CHANGE_ADDRESS),
@@ -60,7 +60,7 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
     const tokenB = `${policyB}546f6b656e42` // "TokenB" in hex
     const tokenC = `${policyC}546f6b656e43` // "TokenC" in hex
 
-    const utxos: Array<CoreUTxO.UTxO> = [
+    const utxos: Array<UTxO.UTxO> = [
       // Small amounts (20 units each)
       createCoreTestUtxo({
         transactionId: "a".repeat(64),
@@ -134,9 +134,9 @@ describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
       createCoreTestUtxo({ transactionId: "4".repeat(64), index: 0n, address: CHANGE_ADDRESS, lovelace: 5_000_000n })
     ]
 
-    const paymentAssets = CoreAssets.addByHex(
-      CoreAssets.addByHex(
-        CoreAssets.addByHex(CoreAssets.fromLovelace(1_500_000n), policyA, "546f6b656e41", 100n),
+    const paymentAssets = Assets.addByHex(
+      Assets.addByHex(
+        Assets.addByHex(Assets.fromLovelace(1_500_000n), policyA, "546f6b656e41", 100n),
         policyB,
         "546f6b656e42",
         100n
@@ -193,7 +193,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
     // Payment: 1,000,000 lovelace (no tokens)
     // Expected fee with native asset in change: ~169,901 lovelace
     // Leftover: 1,620,000 - 1,000,000 - 169,901 = 450,099 lovelace (should be below minUTxO)
-    const utxos: Array<CoreUTxO.UTxO> = [
+    const utxos: Array<UTxO.UTxO> = [
       // First UTxO: deliberately insufficient to trigger reselection
       createCoreTestUtxo({
         transactionId: "a".repeat(64),
@@ -212,7 +212,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
     const signBuilder = await txBuilder
       .payToAddress({
         address: Address.fromBech32(RECEIVER_ADDRESS),
-        assets: CoreAssets.fromLovelace(1_000_000n)
+        assets: Assets.fromLovelace(1_000_000n)
       })
       .build({
         changeAddress: Address.fromBech32(CHANGE_ADDRESS),
@@ -272,7 +272,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
     const unit2 = `${policy}${maxLengthName2}`
     const unit3 = `${policy}${maxLengthName3}`
 
-    const utxos: Array<CoreUTxO.UTxO> = [
+    const utxos: Array<UTxO.UTxO> = [
       createCoreTestUtxo({
         transactionId: "a".repeat(64),
         index: 0n,
@@ -292,7 +292,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
     const signBuilder = await txBuilder
       .payToAddress({
         address: Address.fromBech32(RECEIVER_ADDRESS),
-        assets: CoreAssets.fromLovelace(2_000_000n)
+        assets: Assets.fromLovelace(2_000_000n)
       })
       .build({
         changeAddress: Address.fromBech32(CHANGE_ADDRESS),
@@ -352,7 +352,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
     const testAssetName = "54455354" // "TEST" in hex
     const testUnit = `${testPolicyId}${testAssetName}`
 
-    const utxos: Array<CoreUTxO.UTxO> = [
+    const utxos: Array<UTxO.UTxO> = [
       // Initial selection: 2 UTxOs - covers payment but change is too small for minUTxO (~1.1M with native asset)
       createCoreTestUtxo({
         transactionId: "a".repeat(64),
@@ -383,7 +383,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
     const signBuilder = await txBuilder
       .payToAddress({
         address: Address.fromBech32(RECEIVER_ADDRESS),
-        assets: CoreAssets.fromLovelace(4_000_000n) // 4.0 ADA (no native assets in payment)
+        assets: Assets.fromLovelace(4_000_000n) // 4.0 ADA (no native assets in payment)
       })
       .build({
         changeAddress: Address.fromBech32(CHANGE_ADDRESS),

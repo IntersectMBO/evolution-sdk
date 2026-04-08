@@ -6,14 +6,14 @@ import * as KeyHash from "../../../KeyHash.js"
 import type * as NativeScripts from "../../../NativeScripts.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as PrivateKey from "../../../PrivateKey.js"
-import * as CoreRewardAccount from "../../../RewardAccount.js"
-import type * as CoreRewardAddress from "../../../RewardAddress.js"
+import * as RewardAccount from "../../../RewardAccount.js"
+import type * as RewardAddress from "../../../RewardAddress.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
 import { runEffectPromise } from "../../../utils/effect-runtime.js"
 import { hashTransaction, hashTransactionRaw } from "../../../utils/Hash.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import * as VKey from "../../../VKey.js"
 import type * as Provider from "../../provider/Provider.js"
 import type * as Derivation from "../../wallet/Derivation.js"
@@ -45,11 +45,11 @@ const extractKeyHashesFromNativeScript = (script: NativeScripts.NativeScriptVari
 
 const computeRequiredKeyHashesSync = (params: {
   paymentKhHex?: string
-  rewardAddress?: CoreRewardAddress.RewardAddress | null
+  rewardAddress?: RewardAddress.RewardAddress | null
   stakeKhHex?: string
   tx: Transaction.Transaction
-  utxos: ReadonlyArray<CoreUTxO.UTxO>
-  referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO>
+  utxos: ReadonlyArray<UTxO.UTxO>
+  referenceUtxos?: ReadonlyArray<UTxO.UTxO>
 }): Set<string> => {
   const required = new Set<string>()
 
@@ -79,7 +79,7 @@ const computeRequiredKeyHashesSync = (params: {
     }
   }
 
-  const ownedRefs = new Set<string>(params.utxos.map((utxo) => CoreUTxO.toOutRefString(utxo)))
+  const ownedRefs = new Set<string>(params.utxos.map((utxo) => UTxO.toOutRefString(utxo)))
   const checkInputs = (inputs?: ReadonlyArray<Transaction.Transaction["body"]["inputs"][number]>) => {
     if (!inputs || !params.paymentKhHex) {
       return
@@ -100,7 +100,7 @@ const computeRequiredKeyHashesSync = (params: {
   }
 
   if (params.tx.body.withdrawals && params.rewardAddress && params.stakeKhHex) {
-    const ourReward = Schema.decodeSync(CoreRewardAccount.FromBech32)(params.rewardAddress)
+    const ourReward = Schema.decodeSync(RewardAccount.FromBech32)(params.rewardAddress)
     for (const [rewardAccount] of params.tx.body.withdrawals.withdrawals.entries()) {
       if (Equal.equals(ourReward, rewardAccount)) {
         required.add(params.stakeKhHex)
@@ -215,7 +215,7 @@ export const signWithAutoFetch = (
           )
         : txOrHex
 
-    let referenceUtxos: ReadonlyArray<CoreUTxO.UTxO> = []
+    let referenceUtxos: ReadonlyArray<UTxO.UTxO> = []
     if (tx.body.referenceInputs && tx.body.referenceInputs.length > 0) {
       referenceUtxos = yield* provider.effect.getUtxosByOutRef(tx.body.referenceInputs).pipe(
         Effect.mapError(

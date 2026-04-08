@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import * as PlutusV3 from "../src/PlutusV3.js"
 import { calculateMinimumUtxoLovelace } from "../src/sdk/builders/internal/txBuilder.js"
 
@@ -23,7 +23,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const result = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(0n),
+        assets: Assets.fromLovelace(0n),
         coinsPerUtxoByte: 1n // Use 1n to get raw byte count
       })
     )
@@ -39,7 +39,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const resultZero = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(0n),
+        assets: Assets.fromLovelace(0n),
         coinsPerUtxoByte: COINS_PER_UTXO_BYTE
       })
     )
@@ -48,7 +48,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const resultWithAda = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(2_000_000n),
+        assets: Assets.fromLovelace(2_000_000n),
         coinsPerUtxoByte: COINS_PER_UTXO_BYTE
       })
     )
@@ -61,7 +61,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const result = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(0n),
+        assets: Assets.fromLovelace(0n),
         scriptRef: PLUTUS_V3_SCRIPT,
         coinsPerUtxoByte: COINS_PER_UTXO_BYTE
       })
@@ -76,7 +76,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const verification = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(result),
+        assets: Assets.fromLovelace(result),
         scriptRef: PLUTUS_V3_SCRIPT,
         coinsPerUtxoByte: COINS_PER_UTXO_BYTE
       })
@@ -91,7 +91,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const rawSize = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(0n),
+        assets: Assets.fromLovelace(0n),
         scriptRef: PLUTUS_V3_SCRIPT,
         coinsPerUtxoByte: 1n
       })
@@ -100,7 +100,7 @@ describe.concurrent("calculateMinimumUtxoLovelace", () => {
     const actualMinLovelace = await Effect.runPromise(
       calculateMinimumUtxoLovelace({
         address: TEST_ADDRESS,
-        assets: CoreAssets.fromLovelace(0n),
+        assets: Assets.fromLovelace(0n),
         scriptRef: PLUTUS_V3_SCRIPT,
         coinsPerUtxoByte: COINS_PER_UTXO_BYTE
       })

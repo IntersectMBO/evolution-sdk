@@ -1,6 +1,6 @@
 import { Data } from "effect"
 
-import * as CoreAssets from "../../Assets/index.js"
+import * as Assets from "../../Assets/index.js"
 import type * as UTxO from "../../UTxO.js"
 
 // ============================================================================
@@ -24,7 +24,7 @@ export interface CoinSelectionResult {
 // Custom coin selection function - embeds the algorithm and any options within the function
 export type CoinSelectionFunction = (
   availableUtxos: ReadonlyArray<UTxO.UTxO>,
-  requiredAssets: CoreAssets.Assets
+  requiredAssets: Assets.Assets
 ) => CoinSelectionResult
 
 // Predefined algorithm names (each maps to a concrete CoinSelectionFunction)
@@ -66,22 +66,22 @@ export declare const optimalSelection: CoinSelectionFunction
  */
 export const largestFirstSelection: CoinSelectionFunction = (
   availableUtxos: ReadonlyArray<UTxO.UTxO>,
-  requiredAssets: CoreAssets.Assets
+  requiredAssets: Assets.Assets
 ): CoinSelectionResult => {
   // Sort UTxOs by lovelace value (descending)
   const sortedUtxos = [...availableUtxos].sort((a, b) => {
-    const aValue = CoreAssets.lovelaceOf(a.assets)
-    const bValue = CoreAssets.lovelaceOf(b.assets)
+    const aValue = Assets.lovelaceOf(a.assets)
+    const bValue = Assets.lovelaceOf(b.assets)
     return bValue > aValue ? 1 : bValue < aValue ? -1 : 0
   })
 
   const selected: Array<UTxO.UTxO> = []
-  let accumulated = CoreAssets.zero
+  let accumulated = Assets.zero
 
   // Select UTxOs until all requirements met
   for (const utxo of sortedUtxos) {
     // Check if we've met all requirements
-    if (CoreAssets.covers(accumulated, requiredAssets)) {
+    if (Assets.covers(accumulated, requiredAssets)) {
       break
     }
 
@@ -89,13 +89,13 @@ export const largestFirstSelection: CoinSelectionFunction = (
     selected.push(utxo)
 
     // Update accumulated assets using merge
-    accumulated = CoreAssets.merge(accumulated, utxo.assets)
+    accumulated = Assets.merge(accumulated, utxo.assets)
   }
 
   // Verify we met all requirements
-  for (const unit of CoreAssets.getUnits(requiredAssets)) {
-    const have = CoreAssets.getByUnit(accumulated, unit)
-    const required = CoreAssets.getByUnit(requiredAssets, unit)
+  for (const unit of Assets.getUnits(requiredAssets)) {
+    const have = Assets.getByUnit(accumulated, unit)
+    const required = Assets.getByUnit(requiredAssets, unit)
     if (have < required) {
       throw new CoinSelectionError({
         message: `Insufficient ${unit}: need ${required}, have ${have} in available UTxOs`,

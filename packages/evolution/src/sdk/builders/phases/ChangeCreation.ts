@@ -10,10 +10,10 @@
 
 import { Effect, Ref } from "effect"
 
-import type * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
+import type * as Address from "../../../Address.js"
+import * as Assets from "../../../Assets/index.js"
 import type * as TxOut from "../../../TxOut.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import * as Ctx from "../internal/ctx.js"
 import { calculateMinimumUtxoLovelace, makeTxOutput } from "../internal/txBuilder.js"
 import { mintToAssets } from "../operations/Mint.js"
@@ -23,10 +23,10 @@ import { calculateCertificateBalance, calculateProposalDeposits, calculateWithdr
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
  */
-const formatAssetsForLog = (assets: CoreAssets.Assets): string => {
-  const parts: Array<string> = [`lovelace: ${CoreAssets.lovelaceOf(assets)}`]
-  for (const unit of CoreAssets.getUnits(assets)) {
-    const amount = CoreAssets.getByUnit(assets, unit)
+const formatAssetsForLog = (assets: Assets.Assets): string => {
+  const parts: Array<string> = [`lovelace: ${Assets.lovelaceOf(assets)}`]
+  for (const unit of Assets.getUnits(assets)) {
+    const amount = Assets.getByUnit(assets, unit)
     parts.push(`${unit.substring(0, 16)}...: ${amount.toString()}`)
   }
   return parts.join(", ")
@@ -37,11 +37,11 @@ const formatAssetsForLog = (assets: CoreAssets.Assets): string => {
  * Uses Set for O(1) lookup instead of O(n) for better performance.
  */
 const getAvailableUtxos = (
-  allUtxos: ReadonlyArray<CoreUTxO.UTxO>,
-  selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>
-): ReadonlyArray<CoreUTxO.UTxO> => {
-  const selectedKeys = new Set(selectedUtxos.map((u) => CoreUTxO.toOutRefString(u)))
-  return allUtxos.filter((utxo) => !selectedKeys.has(CoreUTxO.toOutRefString(utxo)))
+  allUtxos: ReadonlyArray<UTxO.UTxO>,
+  selectedUtxos: ReadonlyArray<UTxO.UTxO>
+): ReadonlyArray<UTxO.UTxO> => {
+  const selectedKeys = new Set(selectedUtxos.map((u) => UTxO.toOutRefString(u)))
+  return allUtxos.filter((utxo) => !selectedKeys.has(UTxO.toOutRefString(utxo)))
 }
 
 /**
@@ -50,13 +50,13 @@ const getAvailableUtxos = (
  * Returns change outputs array or empty array if unfrack is not viable.
  */
 const createChangeOutputs = (
-  leftoverAfterFee: CoreAssets.Assets,
-  changeAddress: CoreAddress.Address,
+  leftoverAfterFee: Assets.Assets,
+  changeAddress: Address.Address,
   coinsPerUtxoByte: bigint
 ): Effect.Effect<ReadonlyArray<TxOut.TransactionOutput>, Ctx.TransactionBuilderError, Ctx.BuildOptionsTag> =>
   Effect.gen(function* () {
     // Empty leftover = no change needed
-    if (CoreAssets.isEmpty(leftoverAfterFee)) {
+    if (Assets.isEmpty(leftoverAfterFee)) {
       return []
     }
 
@@ -177,16 +177,16 @@ export const executeChangeCreation = (): Effect.Effect<
     // Minted assets add to available (positive), burned assets subtract (negative)
     // Withdrawals and refunds add to available balance (money IN)
     // Deposits subtract from available balance (money OUT)
-    let leftoverBeforeFee = CoreAssets.merge(inputAssets, mintAssets)
-    leftoverBeforeFee = CoreAssets.addLovelace(leftoverBeforeFee, totalWithdrawals)
-    leftoverBeforeFee = CoreAssets.addLovelace(leftoverBeforeFee, certificateRefunds)
-    leftoverBeforeFee = CoreAssets.subtract(leftoverBeforeFee, outputAssets)
-    leftoverBeforeFee = CoreAssets.subtractLovelace(leftoverBeforeFee, certificateDeposits)
-    leftoverBeforeFee = CoreAssets.subtractLovelace(leftoverBeforeFee, proposalDeposits)
+    let leftoverBeforeFee = Assets.merge(inputAssets, mintAssets)
+    leftoverBeforeFee = Assets.addLovelace(leftoverBeforeFee, totalWithdrawals)
+    leftoverBeforeFee = Assets.addLovelace(leftoverBeforeFee, certificateRefunds)
+    leftoverBeforeFee = Assets.subtract(leftoverBeforeFee, outputAssets)
+    leftoverBeforeFee = Assets.subtractLovelace(leftoverBeforeFee, certificateDeposits)
+    leftoverBeforeFee = Assets.subtractLovelace(leftoverBeforeFee, proposalDeposits)
 
     // Subtract fee and filter out zero-quantity tokens (they shouldn't go into change output)
-    const rawLeftover = CoreAssets.subtractLovelace(leftoverBeforeFee, buildCtx.calculatedFee)
-    const tentativeLeftover = CoreAssets.filter(rawLeftover, (_unit, amount) => amount > 0n)
+    const rawLeftover = Assets.subtractLovelace(leftoverBeforeFee, buildCtx.calculatedFee)
+    const tentativeLeftover = Assets.filter(rawLeftover, (_unit, amount) => amount > 0n)
 
     // === SendAll Mode ===
     // If sendAllTo is set, create a single output with all remaining assets to the target address
@@ -196,7 +196,7 @@ export const executeChangeCreation = (): Effect.Effect<
           `${formatAssetsForLog(tentativeLeftover)}`
       )
 
-      const leftoverLovelace = CoreAssets.lovelaceOf(tentativeLeftover)
+      const leftoverLovelace = Assets.lovelaceOf(tentativeLeftover)
 
       // Validate that we have enough for minUTxO
       const protocolParams = yield* Ctx.ProtocolParametersTag
@@ -238,7 +238,7 @@ export const executeChangeCreation = (): Effect.Effect<
 
     // === Normal Change Creation ===
     // Step 3: Check if negative - return to selection immediately
-    const leftoverLovelace = CoreAssets.lovelaceOf(tentativeLeftover)
+    const leftoverLovelace = Assets.lovelaceOf(tentativeLeftover)
     if (leftoverLovelace < 0n) {
       const shortfall = -leftoverLovelace
 
@@ -270,7 +270,7 @@ export const executeChangeCreation = (): Effect.Effect<
       const MAX_ATTEMPTS = 3
 
       // Check if leftover is ADA-only (no native assets)
-      const isAdaOnlyLeftover = CoreAssets.hasOnlyLovelace(tentativeLeftover)
+      const isAdaOnlyLeftover = Assets.hasOnlyLovelace(tentativeLeftover)
 
       // Check if we have available UTxOs for reselection
       const state = yield* Ref.get(stateRef)

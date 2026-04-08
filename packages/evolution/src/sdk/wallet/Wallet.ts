@@ -1,11 +1,11 @@
 import { Data, type Effect } from "effect"
 
-import type * as CoreAddress from "../../Address.js"
+import type * as Address from "../../Address.js"
 import type * as RewardAddress from "../../RewardAddress.js"
 import type * as Transaction from "../../Transaction.js"
 import type * as TransactionHash from "../../TransactionHash.js"
 import type * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
-import type * as CoreUTxO from "../../UTxO.js"
+import type * as UTxO from "../../UTxO.js"
 import type { EffectToPromiseAPI } from "../Type.js"
 
 /**
@@ -56,7 +56,7 @@ export type Network = "Mainnet" | "Testnet" | "Custom"
  * @category model
  */
 export interface ReadOnlyWalletEffect {
-  readonly address: () => Effect.Effect<CoreAddress.Address, WalletError>
+  readonly address: () => Effect.Effect<Address.Address, WalletError>
   readonly rewardAddress: () => Effect.Effect<RewardAddress.RewardAddress | null, WalletError>
 }
 
@@ -88,10 +88,10 @@ export interface SigningWalletEffect extends ReadOnlyWalletEffect {
    */
   readonly signTx: (
     tx: Transaction.Transaction | string,
-    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
+    context?: { utxos?: ReadonlyArray<UTxO.UTxO>; referenceUtxos?: ReadonlyArray<UTxO.UTxO> }
   ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
   readonly signMessage: (
-    address: CoreAddress.Address | RewardAddress.RewardAddress,
+    address: Address.Address | RewardAddress.RewardAddress,
     payload: Payload
   ) => Effect.Effect<SignedMessage, WalletError>
 }
@@ -136,10 +136,10 @@ export interface WalletApi {
 export interface ApiWalletEffect extends ReadOnlyWalletEffect {
   readonly signTx: (
     tx: Transaction.Transaction | string,
-    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }
+    context?: { utxos?: ReadonlyArray<UTxO.UTxO> }
   ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
   readonly signMessage: (
-    address: CoreAddress.Address | RewardAddress.RewardAddress,
+    address: Address.Address | RewardAddress.RewardAddress,
     payload: Payload
   ) => Effect.Effect<SignedMessage, WalletError>
   /**
