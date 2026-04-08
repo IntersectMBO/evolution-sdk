@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import {
   calculateLeftoverAssets,
   calculateMinimumFee,
@@ -80,11 +80,11 @@ describe("TxBuilder Fee Calculation", () => {
   describe("validateTransactionBalance", () => {
     it.effect("should succeed when inputs cover outputs + fee", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 10_000_000n
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n
         })
 
@@ -103,11 +103,11 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should fail when inputs don't cover lovelace", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 1_000_000n
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n
         })
 
@@ -128,12 +128,12 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should fail when inputs don't cover native assets", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 10_000_000n,
           [UNIT1]: 100n
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n,
           [UNIT1]: 500n // More than available
         })
@@ -155,11 +155,11 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should account for fee in lovelace requirement", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 5_200_000n // Exactly outputs + fee
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n
         })
 
@@ -177,11 +177,11 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should fail when inputs are exactly 1 lovelace short", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 5_199_999n // 1 short
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n
         })
 
@@ -201,11 +201,11 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should succeed with zero fee", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 5_000_000n
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n
         })
 
@@ -223,14 +223,14 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should handle multiple native assets", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 10_000_000n,
           [UNIT1]: 1000n,
           [UNIT2]: 500n,
           [UNIT3]: 250n
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n,
           [UNIT1]: 900n,
           [UNIT2]: 400n,
@@ -251,11 +251,11 @@ describe("TxBuilder Fee Calculation", () => {
 
     it.effect("should handle assets that exist in outputs but not inputs", () =>
       Effect.gen(function* () {
-        const totalInputAssets = CoreAssets.fromRecord({
+        const totalInputAssets = Assets.fromRecord({
           lovelace: 10_000_000n
         })
 
-        const totalOutputAssets = CoreAssets.fromRecord({
+        const totalOutputAssets = Assets.fromRecord({
           lovelace: 5_000_000n,
           [UNIT1]: 100n // Not in inputs
         })
@@ -282,11 +282,11 @@ describe("TxBuilder Fee Calculation", () => {
 
   describe("calculateLeftoverAssets", () => {
     it("should calculate leftover lovelace", () => {
-      const totalInputAssets = CoreAssets.fromRecord({
+      const totalInputAssets = Assets.fromRecord({
         lovelace: 10_000_000n
       })
 
-      const totalOutputAssets = CoreAssets.fromRecord({
+      const totalOutputAssets = Assets.fromRecord({
         lovelace: 5_000_000n
       })
 
@@ -299,16 +299,16 @@ describe("TxBuilder Fee Calculation", () => {
       })
 
       // 10M - 5M - 200k = 4.8M
-      expect(CoreAssets.lovelaceOf(leftover)).toBe(4_800_000n)
+      expect(Assets.lovelaceOf(leftover)).toBe(4_800_000n)
     })
 
     it("should calculate leftover native assets", () => {
-      const totalInputAssets = CoreAssets.fromRecord({
+      const totalInputAssets = Assets.fromRecord({
         lovelace: 10_000_000n,
         [UNIT1]: 1000n
       })
 
-      const totalOutputAssets = CoreAssets.fromRecord({
+      const totalOutputAssets = Assets.fromRecord({
         lovelace: 5_000_000n,
         [UNIT1]: 700n
       })
@@ -321,18 +321,18 @@ describe("TxBuilder Fee Calculation", () => {
         totalOutputAssets
       })
 
-      expect(CoreAssets.lovelaceOf(leftover)).toBe(4_800_000n)
+      expect(Assets.lovelaceOf(leftover)).toBe(4_800_000n)
       // Native asset leftover: 1000 - 700 = 300
-      const units = CoreAssets.getUnits(leftover)
+      const units = Assets.getUnits(leftover)
       expect(units.length).toBe(2) // lovelace + 1 native asset
     })
 
     it("should return empty object when exact match", () => {
-      const totalInputAssets = CoreAssets.fromRecord({
+      const totalInputAssets = Assets.fromRecord({
         lovelace: 5_200_000n
       })
 
-      const totalOutputAssets = CoreAssets.fromRecord({
+      const totalOutputAssets = Assets.fromRecord({
         lovelace: 5_000_000n
       })
 
@@ -345,18 +345,18 @@ describe("TxBuilder Fee Calculation", () => {
       })
 
       // Leftover lovelace should be 0 (inputs - outputs - fee = 5.2M - 5M - 0.2M = 0)
-      expect(CoreAssets.lovelaceOf(leftover)).toBe(0n)
+      expect(Assets.lovelaceOf(leftover)).toBe(0n)
       // Should only have lovelace unit (no native assets)
-      expect(CoreAssets.getUnits(leftover).length).toBe(1)
+      expect(Assets.getUnits(leftover).length).toBe(1)
     })
 
     it("should handle zero leftover for native assets", () => {
-      const totalInputAssets = CoreAssets.fromRecord({
+      const totalInputAssets = Assets.fromRecord({
         lovelace: 10_000_000n,
         [UNIT1]: 700n
       })
 
-      const totalOutputAssets = CoreAssets.fromRecord({
+      const totalOutputAssets = Assets.fromRecord({
         lovelace: 5_000_000n,
         [UNIT1]: 700n
       })
@@ -369,19 +369,19 @@ describe("TxBuilder Fee Calculation", () => {
         totalOutputAssets
       })
 
-      expect(CoreAssets.lovelaceOf(leftover)).toBe(4_800_000n)
+      expect(Assets.lovelaceOf(leftover)).toBe(4_800_000n)
       // Native asset is exact match so should be filtered out
-      expect(CoreAssets.getUnits(leftover).length).toBe(1) // only lovelace
+      expect(Assets.getUnits(leftover).length).toBe(1) // only lovelace
     })
 
     it("should calculate leftover for multiple assets", () => {
-      const totalInputAssets = CoreAssets.fromRecord({
+      const totalInputAssets = Assets.fromRecord({
         lovelace: 10_000_000n,
         [UNIT1]: 1000n,
         [UNIT2]: 500n
       })
 
-      const totalOutputAssets = CoreAssets.fromRecord({
+      const totalOutputAssets = Assets.fromRecord({
         lovelace: 5_000_000n,
         [UNIT1]: 600n,
         [UNIT2]: 300n
@@ -395,20 +395,20 @@ describe("TxBuilder Fee Calculation", () => {
         totalOutputAssets
       })
 
-      expect(CoreAssets.lovelaceOf(leftover)).toBe(4_800_000n)
+      expect(Assets.lovelaceOf(leftover)).toBe(4_800_000n)
       // Both native assets have leftover: 1000-600=400, 500-300=200
-      expect(CoreAssets.getUnits(leftover).length).toBe(3) // lovelace + 2 native assets
+      expect(Assets.getUnits(leftover).length).toBe(3) // lovelace + 2 native assets
     })
 
     it("should only include assets with non-zero leftover", () => {
-      const totalInputAssets = CoreAssets.fromRecord({
+      const totalInputAssets = Assets.fromRecord({
         lovelace: 10_000_000n,
         [UNIT1]: 1000n,
         [UNIT2]: 500n,
         [UNIT3]: 300n
       })
 
-      const totalOutputAssets = CoreAssets.fromRecord({
+      const totalOutputAssets = Assets.fromRecord({
         lovelace: 5_000_000n,
         [UNIT1]: 1000n, // Exact match
         [UNIT2]: 500n, // Exact match
@@ -423,9 +423,9 @@ describe("TxBuilder Fee Calculation", () => {
         totalOutputAssets
       })
 
-      expect(CoreAssets.lovelaceOf(leftover)).toBe(4_800_000n)
+      expect(Assets.lovelaceOf(leftover)).toBe(4_800_000n)
       // Only policy3.asset3 has leftover (300-200=100), others are exact match
-      expect(CoreAssets.getUnits(leftover).length).toBe(2) // lovelace + policy3.asset3
+      expect(Assets.getUnits(leftover).length).toBe(2) // lovelace + policy3.asset3
     })
   })
 

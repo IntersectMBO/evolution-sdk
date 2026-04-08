@@ -1,11 +1,11 @@
-import * as CoreAddress from "../../src/Address.js"
-import * as CoreAssets from "../../src/Assets/index.js"
+import * as Address from "../../src/Address.js"
+import * as Assets from "../../src/Assets/index.js"
 import type * as Assets from "../../src/sdk/Assets.js"
 import type * as Datum from "../../src/sdk/Datum.js"
 import type * as Script from "../../src/sdk/Script.js"
 import type * as UTxO from "../../src/sdk/UTxO.js"
-import * as CoreTransactionHash from "../../src/TransactionHash.js"
-import * as CoreUTxO from "../../src/UTxO.js"
+import * as TransactionHash from "../../src/TransactionHash.js"
+import * as UTxO from "../../src/UTxO.js"
 
 /**
  * Options for creating a test UTxO.
@@ -277,7 +277,7 @@ export type CreateCoreTestUtxoOptions = {
  * @since 2.0.0
  * @category test-utils
  */
-export const createCoreTestUtxo = (options: CreateCoreTestUtxoOptions): CoreUTxO.UTxO => {
+export const createCoreTestUtxo = (options: CreateCoreTestUtxoOptions): UTxO.UTxO => {
   const {
     address = DEFAULT_TEST_ADDRESS,
     index: rawIndex = 0,
@@ -299,21 +299,21 @@ export const createCoreTestUtxo = (options: CreateCoreTestUtxoOptions): CoreUTxO
           .padEnd(64, "0")
 
   // Build Core Assets
-  let assets = CoreAssets.fromLovelace(lovelace)
+  let assets = Assets.fromLovelace(lovelace)
 
   if (nativeAssets) {
     for (const [unit, quantity] of Object.entries(nativeAssets)) {
       // Parse unit: first 56 chars are policy ID, rest is asset name
       const policyIdHex = unit.slice(0, 56)
       const assetNameHex = unit.slice(56)
-      assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, quantity)
+      assets = Assets.addByHex(assets, policyIdHex, assetNameHex, quantity)
     }
   }
 
-  return new CoreUTxO.UTxO({
-    transactionId: CoreTransactionHash.fromHex(paddedTxId),
+  return new UTxO.UTxO({
+    transactionId: TransactionHash.fromHex(paddedTxId),
     index: BigInt(index),
-    address: CoreAddress.fromBech32(address),
+    address: Address.fromBech32(address),
     assets
   })
 }
@@ -325,6 +325,6 @@ export const createCoreTestUtxo = (options: CreateCoreTestUtxoOptions): CoreUTxO
  * @since 2.0.0
  * @category test-utils
  */
-export const createCoreTestUtxos = (count: number, options: CreateCoreTestUtxoOptions): Array<CoreUTxO.UTxO> => {
+export const createCoreTestUtxos = (count: number, options: CreateCoreTestUtxoOptions): Array<UTxO.UTxO> => {
   return Array.from({ length: count }, (_, idx) => createCoreTestUtxo({ ...options, index: idx }))
 }

@@ -10,8 +10,8 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as Assets from "../../../Assets/index.js"
+import * as UTxO from "../../../UTxO.js"
 import type { CoinSelectionAlgorithm, CoinSelectionFunction } from "../CoinSelection.js"
 import { largestFirstSelection } from "../CoinSelection.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
@@ -21,10 +21,10 @@ import { negatedMintAssets } from "../operations/Mint.js"
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
  */
-const formatAssetsForLog = (assets: CoreAssets.Assets): string => {
-  const parts: Array<string> = [`lovelace: ${CoreAssets.lovelaceOf(assets)}`]
-  for (const unit of CoreAssets.getUnits(assets)) {
-    const amount = CoreAssets.getByUnit(assets, unit)
+const formatAssetsForLog = (assets: Assets.Assets): string => {
+  const parts: Array<string> = [`lovelace: ${Assets.lovelaceOf(assets)}`]
+  for (const unit of Assets.getUnits(assets)) {
+    const amount = Assets.getByUnit(assets, unit)
     parts.push(`${unit.substring(0, 16)}...: ${amount.toString()}`)
   }
   return parts.join(", ")
@@ -35,14 +35,14 @@ const formatAssetsForLog = (assets: CoreAssets.Assets): string => {
  * Uses Set for O(1) lookup instead of O(n) for better performance.
  */
 const getAvailableUtxos = (
-  allUtxos: ReadonlyArray<CoreUTxO.UTxO>,
-  selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>,
-  referenceInputs: ReadonlyArray<CoreUTxO.UTxO> = []
-): ReadonlyArray<CoreUTxO.UTxO> => {
-  const selectedKeys = new Set(selectedUtxos.map((u) => CoreUTxO.toOutRefString(u)))
-  const referenceKeys = new Set(referenceInputs.map((u) => CoreUTxO.toOutRefString(u)))
+  allUtxos: ReadonlyArray<UTxO.UTxO>,
+  selectedUtxos: ReadonlyArray<UTxO.UTxO>,
+  referenceInputs: ReadonlyArray<UTxO.UTxO> = []
+): ReadonlyArray<UTxO.UTxO> => {
+  const selectedKeys = new Set(selectedUtxos.map((u) => UTxO.toOutRefString(u)))
+  const referenceKeys = new Set(referenceInputs.map((u) => UTxO.toOutRefString(u)))
   return allUtxos.filter((utxo) => {
-    const key = CoreUTxO.toOutRefString(utxo)
+    const key = UTxO.toOutRefString(utxo)
     return !selectedKeys.has(key) && !referenceKeys.has(key)
   })
 }
@@ -88,18 +88,18 @@ const resolveCoinSelectionFn = (
  * Add selected UTxOs to transaction context state.
  * Updates both the selected UTxOs list and total input assets.
  */
-const addUtxosToState = (selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>): Effect.Effect<void, never, Ctx.TxContext> =>
+const addUtxosToState = (selectedUtxos: ReadonlyArray<UTxO.UTxO>): Effect.Effect<void, never, Ctx.TxContext> =>
   Effect.gen(function* () {
     const ctx = yield* Ctx.TxContext
 
     // Log each UTxO being added
     for (const utxo of selectedUtxos) {
-      const outRef = CoreUTxO.toOutRefString(utxo)
+      const outRef = UTxO.toOutRefString(utxo)
       yield* Effect.logDebug(`[Selection] Adding UTxO: ${outRef}, ${formatAssetsForLog(utxo.assets)}.`)
     }
 
     // Calculate total assets from selected UTxOs
-    const additionalAssets = CoreUTxO.totalAssets(selectedUtxos)
+    const additionalAssets = UTxO.totalAssets(selectedUtxos)
 
     // Update state with new UTxOs and input assets
     const state = yield* Ref.get(ctx)
@@ -115,7 +115,7 @@ const addUtxosToState = (selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>): Effect.Ef
       return {
         ...state,
         selectedUtxos: [...state.selectedUtxos, ...selectedUtxos],
-        totalInputAssets: CoreAssets.merge(state.totalInputAssets, additionalAssets),
+        totalInputAssets: Assets.merge(state.totalInputAssets, additionalAssets),
         redeemers: updatedRedeemers
       }
     })
@@ -128,7 +128,7 @@ const addUtxosToState = (selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>): Effect.Ef
 /**
  * Helper: Perform coin selection and update Ctx.TxContext.state
  */
-const performCoinSelectionUpdateState = (assetShortfalls: CoreAssets.Assets) =>
+const performCoinSelectionUpdateState = (assetShortfalls: Assets.Assets) =>
   Effect.gen(function* () {
     const ctx = yield* Ctx.TxContext
     const state = yield* Ref.get(ctx)
@@ -308,17 +308,17 @@ export const executeSelection = (): Effect.Effect<
     // Shortfall contains fee + any missing lovelace for change outputs
     // Mint assets are negated: positive mints reduce requirements, negative burns increase them
     const negatedMint = negatedMintAssets(state.mint)
-    const totalNeeded = CoreAssets.merge(CoreAssets.addLovelace(outputAssets, buildCtx.shortfall), negatedMint)
+    const totalNeeded = Assets.merge(Assets.addLovelace(outputAssets, buildCtx.shortfall), negatedMint)
 
     // Step 4: Calculate asset delta & extract shortfalls
-    const assetDelta = CoreAssets.subtract(totalNeeded, inputAssets)
-    const assetShortfalls = CoreAssets.filter(assetDelta, (_unit, amount) => amount > 0n)
+    const assetDelta = Assets.subtract(totalNeeded, inputAssets)
+    const assetShortfalls = Assets.filter(assetDelta, (_unit, amount) => amount > 0n)
 
     // During reselection (shortfall > 0), we need to select MORE lovelace
     // even if inputAssets >= totalNeeded, because the shortfall indicates
     // insufficient lovelace for change output minUTxO requirement
     const isReselection = buildCtx.shortfall > 0n
-    const needsSelection = !CoreAssets.isEmpty(assetShortfalls) || isReselection
+    const needsSelection = !Assets.isEmpty(assetShortfalls) || isReselection
 
     yield* Effect.logDebug(
       `[Selection] Needed: {${formatAssetsForLog(totalNeeded)}}, ` +
@@ -334,7 +334,7 @@ export const executeSelection = (): Effect.Effect<
       const selectedUtxos = state.selectedUtxos
       yield* Effect.logDebug(
         `[Selection] No selection needed: ${selectedUtxos.length} UTxO(s) already available from explicit inputs (collectFrom), ` +
-          `Total lovelace: ${CoreAssets.lovelaceOf(inputAssets)}`
+          `Total lovelace: ${Assets.lovelaceOf(inputAssets)}`
       )
     } else {
       if (isReselection) {
@@ -343,7 +343,7 @@ export const executeSelection = (): Effect.Effect<
             `Need ${buildCtx.shortfall} more lovelace for change minUTxO`
         )
         // During reselection, select for the shortfall amount only
-        const reselectionShortfall = CoreAssets.fromLovelace(buildCtx.shortfall)
+        const reselectionShortfall = Assets.fromLovelace(buildCtx.shortfall)
         yield* performCoinSelectionUpdateState(reselectionShortfall)
       } else {
         yield* Effect.logDebug(`[Selection] Selecting for shortfall: ${formatAssetsForLog(assetShortfalls)}`)
@@ -374,11 +374,11 @@ export const executeSelection = (): Effect.Effect<
 
       // Select smallest UTxO to minimize excess
       const smallestUtxo = selectableUtxos.reduce((min, utxo) =>
-        CoreAssets.lovelaceOf(utxo.assets) < CoreAssets.lovelaceOf(min.assets) ? utxo : min
+        Assets.lovelaceOf(utxo.assets) < Assets.lovelaceOf(min.assets) ? utxo : min
       )
 
       yield* Effect.logDebug(
-        `[Selection] Enforcing minimum 1 input: selected smallest UTxO with ${CoreAssets.lovelaceOf(smallestUtxo.assets)} lovelace ` +
+        `[Selection] Enforcing minimum 1 input: selected smallest UTxO with ${Assets.lovelaceOf(smallestUtxo.assets)} lovelace ` +
           `(Cardano protocol requirement for replay protection)`
       )
 

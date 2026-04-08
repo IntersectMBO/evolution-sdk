@@ -16,7 +16,7 @@
 
 import { Effect, Ref } from "effect"
 
-import type * as CoreAddress from "../../../Address.js"
+import type * as Address from "../../../Address.js"
 import * as Ctx from "../internal/ctx.js"
 import type { SendAllParams } from "./Operations.js"
 
@@ -48,4 +48,4 @@ export const createSendAllProgram = (params: SendAllParams) =>
  * @since 2.0.0
  * @category types
  */
-export type SendAllTarget = CoreAddress.Address
+export type SendAllTarget = Address.Address

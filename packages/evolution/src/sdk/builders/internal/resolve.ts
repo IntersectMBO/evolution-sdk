@@ -1,8 +1,8 @@
 import { Effect } from "effect"
 
-import type * as CoreAddress from "../../../Address.js"
+import type * as Address from "../../../Address.js"
 import type * as Transaction from "../../../Transaction.js"
-import type * as CoreUTxO from "../../../UTxO.js"
+import type * as UTxO from "../../../UTxO.js"
 import type * as Provider from "../../provider/Provider.js"
 import type * as Wallet from "../../wallet/Wallet.js"
 import * as Ctx from "./ctx.js"
@@ -55,7 +55,7 @@ export const resolveProtocolParameters = (
 export const resolveChangeAddress = (
   config: Ctx.TxBuilderConfig,
   options?: Ctx.BuildOptions
-): Effect.Effect<CoreAddress.Address, Ctx.TransactionBuilderError | Wallet.WalletError> => {
+): Effect.Effect<Address.Address, Ctx.TransactionBuilderError | Wallet.WalletError> => {
   if (options?.changeAddress !== undefined) {
     return Effect.succeed(options.changeAddress)
   }
@@ -82,7 +82,7 @@ export const resolveAvailableUtxos = (
   config: Ctx.TxBuilderConfig,
   options?: Ctx.BuildOptions
 ): Effect.Effect<
-  ReadonlyArray<CoreUTxO.UTxO>,
+  ReadonlyArray<UTxO.UTxO>,
   Ctx.TransactionBuilderError | Wallet.WalletError | Provider.ProviderError
 > => {
   if (options?.availableUtxos !== undefined) {
@@ -122,7 +122,7 @@ export const resolveEvaluator = (
     return {
       evaluate: (
         tx: Transaction.Transaction,
-        additionalUtxos: ReadonlyArray<CoreUTxO.UTxO> | undefined,
+        additionalUtxos: ReadonlyArray<UTxO.UTxO> | undefined,
         _context: Ctx.EvaluationContext
       ) => {
         const utxosToPass = options?.passAdditionalUtxos === true

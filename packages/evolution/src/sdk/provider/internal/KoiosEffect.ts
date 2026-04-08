@@ -1,8 +1,8 @@
 import { FetchHttpClient } from "@effect/platform"
 import { Effect, pipe, Schedule, Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Address from "../../../Address.js"
+import * as Assets from "../../../Assets/index.js"
 import * as AssetsUnit from "../../../Assets/Unit.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
@@ -11,11 +11,11 @@ import type * as DatumHash from "../../../DatumHash.js"
 import * as PolicyId from "../../../PolicyId.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
-import type * as CoreRewardAddress from "../../../RewardAddress.js"
+import type * as RewardAddress from "../../../RewardAddress.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
-import type * as CoreUTxO from "../../../UTxO.js"
+import type * as UTxO from "../../../UTxO.js"
 import type * as EvalRedeemer from "../../EvalRedeemer.js"
 import * as Provider from "../Provider.js"
 import * as HttpUtils from "./HttpUtils.js"
@@ -72,11 +72,11 @@ export const getProtocolParameters = (baseUrl: string, token?: string) =>
   })
 
 export const getUtxos =
-  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
-    // Convert CoreAddress to Bech32 string for Koios API
+  (baseUrl: string, token?: string) => (addressOrCredential: Address.Address | Credential.Credential) => {
+    // Convert Address to Bech32 string for Koios API
     const addressStr =
-      addressOrCredential instanceof CoreAddress.Address
-        ? CoreAddress.toBech32(addressOrCredential)
+      addressOrCredential instanceof Address.Address
+        ? Address.toBech32(addressOrCredential)
         : addressOrCredential
     return pipe(
       _Koios.getUtxosEffect(baseUrl, addressStr, token ? { Authorization: `Bearer ${token}` } : undefined),
@@ -87,17 +87,17 @@ export const getUtxos =
 
 export const getUtxosWithUnit =
   (baseUrl: string, token?: string) =>
-  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) => {
-    // Convert CoreAddress to Bech32 string for Koios API
+  (addressOrCredential: Address.Address | Credential.Credential, unit: string) => {
+    // Convert Address to Bech32 string for Koios API
     const addressStr =
-      addressOrCredential instanceof CoreAddress.Address
-        ? CoreAddress.toBech32(addressOrCredential)
+      addressOrCredential instanceof Address.Address
+        ? Address.toBech32(addressOrCredential)
         : addressOrCredential
     return pipe(
       _Koios.getUtxosEffect(baseUrl, addressStr, token ? { Authorization: `Bearer ${token}` } : undefined),
       Effect.map((utxos) =>
         utxos.filter((utxo) => {
-          const units = CoreAssets.getUnits(utxo.assets)
+          const units = Assets.getUnits(utxo.assets)
           return units.length > 0 && units.includes(unit)
         })
       ),
@@ -136,7 +136,7 @@ export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string)
         Effect.flatMap((address) => _Koios.getUtxosEffect(baseUrl, address.payment_address, bearerToken)),
         Effect.map((utxos) =>
           utxos.filter((utxo) => {
-            const units = CoreAssets.getUnits(utxo.assets)
+            const units = Assets.getUnits(utxo.assets)
             return units.length > 0 && units.includes(unit)
           })
         ),
@@ -187,7 +187,7 @@ export const getUtxosByOutRef =
               inline_datum: koiosInputOutput.inline_datum,
               reference_script: koiosInputOutput.reference_script,
               asset_list: koiosInputOutput.asset_list
-            } satisfies _Koios.UTxO,
+            } satisfies _Koios.KoiosUTxO,
             koiosInputOutput.payment_addr.bech32
           )
         )
@@ -203,7 +203,7 @@ export const getUtxosByOutRef =
       }
     })
 
-export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress: CoreRewardAddress.RewardAddress) =>
+export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress: RewardAddress.RewardAddress) =>
   Effect.gen(function* () {
     const body = {
       _stake_addresses: [rewardAddress]
@@ -312,7 +312,7 @@ export const evaluateTx =
   (baseUrl: string, token?: string) =>
   (
     tx: Transaction.Transaction,
-    additionalUTxOs?: Array<CoreUTxO.UTxO>
+    additionalUTxOs?: Array<UTxO.UTxO>
   ): Effect.Effect<Array<EvalRedeemer.EvalRedeemer>, Provider.ProviderError> =>
     Effect.gen(function* () {
       const txCborHex = Transaction.toCBORHex(tx)

@@ -14,8 +14,8 @@ import { Context, Data } from "effect"
 import type * as Effect from "effect/Effect"
 import type * as Ref from "effect/Ref"
 
-import type * as CoreAddress from "../../../Address.js"
-import type * as CoreAssets from "../../../Assets/index.js"
+import type * as Address from "../../../Address.js"
+import type * as Assets from "../../../Assets/index.js"
 import type * as AuxiliaryData from "../../../AuxiliaryData.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Certificate from "../../../Certificate.js"
@@ -26,11 +26,11 @@ import type * as KeyHash from "../../../KeyHash.js"
 import type * as Mint from "../../../Mint.js"
 import type * as ProposalProcedures from "../../../ProposalProcedures.js"
 import type * as RewardAccount from "../../../RewardAccount.js"
-import type * as CoreScript from "../../../Script.js"
+import type * as Script from "../../../Script.js"
 import type * as Time from "../../../Time/index.js"
 import type * as Transaction from "../../../Transaction.js"
 import type * as TxOut from "../../../TxOut.js"
-import type * as CoreUTxO from "../../../UTxO.js"
+import type * as UTxO from "../../../UTxO.js"
 import type * as VotingProcedures from "../../../VotingProcedures.js"
 import type { Chain } from "../../client/Chain.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
@@ -69,7 +69,7 @@ export interface PhaseContext {
   readonly calculatedFee: bigint
   readonly shortfall: bigint
   readonly changeOutputs: ReadonlyArray<TxOut.TransactionOutput>
-  readonly leftoverAfterFee: CoreAssets.Assets
+  readonly leftoverAfterFee: Assets.Assets
   readonly canUnfrack: boolean
 }
 
@@ -145,7 +145,7 @@ export interface Evaluator {
    */
   evaluate: (
     tx: Transaction.Transaction,
-    additionalUtxos: ReadonlyArray<CoreUTxO.UTxO> | undefined,
+    additionalUtxos: ReadonlyArray<UTxO.UTxO> | undefined,
     context: EvaluationContext
   ) => Effect.Effect<ReadonlyArray<EvalRedeemer>, EvaluationError>
 }
@@ -371,14 +371,14 @@ export interface TxBuilderConfig {
  * @category state
  */
 export interface TxBuilderState {
-  readonly selectedUtxos: ReadonlyArray<CoreUTxO.UTxO> // Core UTxO type
+  readonly selectedUtxos: ReadonlyArray<UTxO.UTxO> // Core UTxO type
   readonly outputs: ReadonlyArray<TxOut.TransactionOutput> // Transaction outputs (no txHash/outputIndex yet)
-  readonly scripts: Map<string, CoreScript.Script> // Scripts attached to the transaction
-  readonly totalOutputAssets: CoreAssets.Assets // Asset totals for balancing
-  readonly totalInputAssets: CoreAssets.Assets // Asset totals for balancing
+  readonly scripts: Map<string, Script.Script> // Scripts attached to the transaction
+  readonly totalOutputAssets: Assets.Assets // Asset totals for balancing
+  readonly totalInputAssets: Assets.Assets // Asset totals for balancing
   readonly redeemers: Map<string, RedeemerData> // Resolved redeemer data (static mode)
   readonly deferredRedeemers: Map<string, DeferredRedeemerData> // Deferred redeemers (self/batch mode)
-  readonly referenceInputs: ReadonlyArray<CoreUTxO.UTxO> // Reference inputs (UTxOs with reference scripts)
+  readonly referenceInputs: ReadonlyArray<UTxO.UTxO> // Reference inputs (UTxOs with reference scripts)
   readonly certificates: ReadonlyArray<Certificate.Certificate> // Certificates for staking operations
   readonly withdrawals: Map<RewardAccount.RewardAccount, bigint> // Withdrawal amounts by reward account
   readonly poolDeposits: Map<string, bigint> // Pool deposits keyed by pool key hash
@@ -387,7 +387,7 @@ export interface TxBuilderState {
   readonly proposalProcedures?: ProposalProcedures.ProposalProcedures // Proposal procedures for governance actions (Conway)
   readonly collateral?: {
     // Collateral data for script transactions
-    readonly inputs: ReadonlyArray<CoreUTxO.UTxO>
+    readonly inputs: ReadonlyArray<UTxO.UTxO>
     readonly totalAmount: bigint
     readonly returnOutput?: TxOut.TransactionOutput // Optional: only if there are leftover assets
   }
@@ -398,7 +398,7 @@ export interface TxBuilderState {
   }
   readonly requiredSigners: ReadonlyArray<KeyHash.KeyHash> // Extra signers required (for script validation)
   readonly auxiliaryData?: AuxiliaryData.AuxiliaryData // Auxiliary data (metadata, scripts, etc.)
-  readonly sendAllTo?: CoreAddress.Address // Target address for sendAll operation
+  readonly sendAllTo?: Address.Address // Target address for sendAll operation
 }
 
 // Build configuration options
@@ -473,7 +473,7 @@ export interface BuildOptions {
    *
    * @since 2.0.0
    */
-  readonly changeAddress?: CoreAddress.Address
+  readonly changeAddress?: Address.Address
 
   /**
    * Override the available UTxOs for this specific transaction build.
@@ -498,7 +498,7 @@ export interface BuildOptions {
    *
    * @since 2.0.0
    */
-  readonly availableUtxos?: ReadonlyArray<CoreUTxO.UTxO>
+  readonly availableUtxos?: ReadonlyArray<UTxO.UTxO>
 
   /**
    * # Change Handling Strategy Matrix
@@ -712,7 +712,7 @@ export class PhaseContextTag extends Context.Tag("PhaseContextTag")<PhaseContext
 
 export class TxContext extends Context.Tag("TxContext")<TxContext, Ref.Ref<TxBuilderState>>() {}
 
-export class ChangeAddressTag extends Context.Tag("ChangeAddress")<ChangeAddressTag, CoreAddress.Address>() {}
+export class ChangeAddressTag extends Context.Tag("ChangeAddress")<ChangeAddressTag, Address.Address>() {}
 
 export class ProtocolParametersTag extends Context.Tag("ProtocolParameters")<
   ProtocolParametersTag,
@@ -723,7 +723,7 @@ export class TxBuilderConfigTag extends Context.Tag("TxBuilderConfig")<TxBuilder
 
 export class AvailableUtxosTag extends Context.Tag("AvailableUtxos")<
   AvailableUtxosTag,
-  ReadonlyArray<CoreUTxO.UTxO>
+  ReadonlyArray<UTxO.UTxO>
 >() {}
 
 export class BuildOptionsTag extends Context.Tag("BuildOptions")<BuildOptionsTag, BuildOptions>() {}

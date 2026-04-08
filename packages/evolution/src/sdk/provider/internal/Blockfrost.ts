@@ -5,7 +5,7 @@
 
 import { Effect, Schema } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets/index.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
@@ -218,7 +218,7 @@ export const transformProtocolParameters = (
 /**
  * Transform Blockfrost amounts to Core Assets
  */
-export const transformAmounts = (amounts: ReadonlyArray<BlockfrostAmount>): CoreAssets.Assets => {
+export const transformAmounts = (amounts: ReadonlyArray<BlockfrostAmount>): Assets.Assets => {
   let lovelace = 0n
   const multiAssetEntries: Array<[string, bigint]> = []
 
@@ -231,14 +231,14 @@ export const transformAmounts = (amounts: ReadonlyArray<BlockfrostAmount>): Core
   }
 
   // Build Core Assets starting with lovelace
-  let assets = CoreAssets.fromLovelace(lovelace)
+  let assets = Assets.fromLovelace(lovelace)
 
   // Add multi-assets if any using hex strings
   for (const [unit, qty] of multiAssetEntries) {
     // Parse unit - policyId is first 56 chars, assetName is remainder
     const policyIdHex = unit.slice(0, 56)
     const assetNameHex = unit.slice(56)
-    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, qty)
+    assets = Assets.addByHex(assets, policyIdHex, assetNameHex, qty)
   }
 
   return assets

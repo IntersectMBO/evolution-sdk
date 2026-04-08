@@ -2,13 +2,13 @@ import { describe, expect, it } from "@effect/vitest"
 import { FastCheck, Schema } from "effect"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import * as KeyHash from "../src/KeyHash.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet } from "../src/sdk/client/index.js"
 import * as FeeValidation from "../src/utils/FeeValidation.js"
-import * as CoreUTxO from "../src/UTxO.js"
+import * as UTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
 /**
@@ -44,7 +44,7 @@ const RECIPIENT_ADDRESS =
  * - Fee: ~0.16 ADA
  * - Leftover: ~0.01 ADA (insufficient for minUtxoValue ~0.172 ADA)
  */
-function createMinimalUtxo(): CoreUTxO.UTxO {
+function createMinimalUtxo(): UTxO.UTxO {
   return createCoreTestUtxo({
     lovelace: 2_170_000n, // 2.17 ADA - will leave ~0.01 ADA insufficient for change
     transactionId: "a".repeat(64),
@@ -71,7 +71,7 @@ const assertFeeValid = async (
 /**
  * Helper: Create UTxO with plenty of ADA for change output
  */
-const createSufficientUtxo = (lovelace: bigint = 100_000_000n): CoreUTxO.UTxO =>
+const createSufficientUtxo = (lovelace: bigint = 100_000_000n): UTxO.UTxO =>
   createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace })
 
 const baseConfig: TxBuilderConfig = { chain: mainnet }
@@ -82,7 +82,7 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
     const utxo = createMinimalUtxo()
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act & Assert: Should fail with default 'error' strategy
@@ -101,7 +101,7 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
     const utxo = createMinimalUtxo()
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act: Explicitly consent to burning leftover
@@ -140,7 +140,7 @@ describe("Fallback Precedence: drainTo before onInsufficientChange", () => {
     const utxo = createMinimalUtxo()
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act: Configure both drainTo and onInsufficientChange='error'
@@ -177,7 +177,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
     const utxo = createSufficientUtxo(100_000_000n) // 100 ADA
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(10_000_000n) // 10 ADA payment
+      assets: Assets.fromLovelace(10_000_000n) // 10 ADA payment
     })
 
     // Act: Build with fallback configured (shouldn't be needed)
@@ -214,7 +214,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
     const utxo = createMinimalUtxo()
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act: Use drainTo for exact amount scenarios
@@ -245,7 +245,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
 describe("Edge Cases", () => {
   it("should handle multiple small UTxOs with drainTo", async () => {
     // Arrange: Multiple UTxOs with insufficient leftover for change
-    const utxos: Array<CoreUTxO.UTxO> = [
+    const utxos: Array<UTxO.UTxO> = [
       createCoreTestUtxo({
         transactionId: "a".repeat(64),
         index: 0,
@@ -262,7 +262,7 @@ describe("Edge Cases", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act: Build with drainTo to merge leftover into payment
@@ -295,7 +295,7 @@ describe("Edge Cases", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_000_000n)
+      assets: Assets.fromLovelace(2_000_000n)
     })
 
     // Act: Burn small leftover
@@ -331,18 +331,18 @@ describe("Multi-Asset minUTxO Calculation", () => {
 
     // Create 10 different asset names as hex-encoded strings
     // Pattern: TOKEN01 = 544f4b454e3031, TOKEN02 = 544f4b454e3032, etc.
-    let assets = CoreAssets.fromLovelace(5_000_000n) // 5 ADA - enough for change with 10 assets
+    let assets = Assets.fromLovelace(5_000_000n) // 5 ADA - enough for change with 10 assets
     // 10 different native assets (worst case for estimation accuracy)
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3031", 100n) // "TOKEN01"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3032", 100n) // "TOKEN02"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3033", 100n) // "TOKEN03"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3034", 100n) // "TOKEN04"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3035", 100n) // "TOKEN05"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3036", 100n) // "TOKEN06"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3037", 100n) // "TOKEN07"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3038", 100n) // "TOKEN08"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3039", 100n) // "TOKEN09"
-    assets = CoreAssets.addByHex(assets, policyId, "544f4b454e3130", 100n) // "TOKEN10"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3031", 100n) // "TOKEN01"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3032", 100n) // "TOKEN02"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3033", 100n) // "TOKEN03"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3034", 100n) // "TOKEN04"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3035", 100n) // "TOKEN05"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3036", 100n) // "TOKEN06"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3037", 100n) // "TOKEN07"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3038", 100n) // "TOKEN08"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3039", 100n) // "TOKEN09"
+    assets = Assets.addByHex(assets, policyId, "544f4b454e3130", 100n) // "TOKEN10"
 
     const multiAssetUtxo = createCoreTestUtxo({
       transactionId: "b".repeat(64),
@@ -351,7 +351,7 @@ describe("Multi-Asset minUTxO Calculation", () => {
       lovelace: 5_000_000n
     })
     // Replace the simple lovelace-only assets with our multi-asset version
-    const multiAssetUtxoWithTokens = new CoreUTxO.UTxO({
+    const multiAssetUtxoWithTokens = new UTxO.UTxO({
       ...multiAssetUtxo,
       assets
     })
@@ -360,7 +360,7 @@ describe("Multi-Asset minUTxO Calculation", () => {
     // This creates leftover with: small lovelace + 10 assets
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(2_500_000n) // Send 2.5 ADA only
+      assets: Assets.fromLovelace(2_500_000n) // Send 2.5 ADA only
     })
 
     // Act: Build transaction
@@ -424,7 +424,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
     })
 
     // Create one UTxO per unique address
-    const utxos: Array<CoreUTxO.UTxO> = uniqueAddresses.map((address, i) =>
+    const utxos: Array<UTxO.UTxO> = uniqueAddresses.map((address, i) =>
       createCoreTestUtxo({
         transactionId: i.toString().repeat(64).substring(0, 64),
         index: i,
@@ -436,7 +436,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
     // Build transaction that will select all 10 inputs
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(45_000_000n) // 45 ADA
+      assets: Assets.fromLovelace(45_000_000n) // 45 ADA
     })
 
     // Act: Build transaction
@@ -476,7 +476,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
   it("should handle deduplication: multiple UTxOs from same address = 1 witness", async () => {
     // Arrange: Create 10 UTxOs from the SAME address
     // Should only create 1 witness due to deduplication by key hash
-    const utxos: Array<CoreUTxO.UTxO> = []
+    const utxos: Array<UTxO.UTxO> = []
 
     for (let i = 0; i < 10; i++) {
       utxos.push(
@@ -491,7 +491,7 @@ describe("Fee Validation: Multiple Witnesses Edge Case", () => {
 
     const builder = makeTxBuilder(baseConfig).payToAddress({
       address: Address.fromBech32(RECIPIENT_ADDRESS),
-      assets: CoreAssets.fromLovelace(45_000_000n)
+      assets: Assets.fromLovelace(45_000_000n)
     })
 
     // Act

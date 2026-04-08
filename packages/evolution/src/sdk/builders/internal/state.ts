@@ -1,4 +1,4 @@
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets/index.js"
 import type * as Ctx from "./ctx.js"
 
 /**
@@ -24,8 +24,8 @@ export const makeInitialTxBuilderState = (): Ctx.TxBuilderState => ({
   selectedUtxos: [],
   outputs: [],
   scripts: new Map(),
-  totalOutputAssets: CoreAssets.zero,
-  totalInputAssets: CoreAssets.zero,
+  totalOutputAssets: Assets.zero,
+  totalInputAssets: Assets.zero,
   redeemers: new Map(),
   deferredRedeemers: new Map(),
   referenceInputs: [],
@@ -48,6 +48,6 @@ export const makeInitialPhaseContext = (options: Ctx.BuildOptions): Ctx.PhaseCon
   calculatedFee: 0n,
   shortfall: 0n,
   changeOutputs: [],
-  leftoverAfterFee: CoreAssets.zero,
+  leftoverAfterFee: Assets.zero,
   canUnfrack: options.unfrack !== undefined
 })

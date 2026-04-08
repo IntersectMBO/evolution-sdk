@@ -1,17 +1,17 @@
 import type { Record } from "effect"
 import { Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
+import * as Address from "../../../Address.js"
 import * as AssetName from "../../../AssetName.js"
-import type * as CoreAssets from "../../../Assets/index.js"
+import type * as Assets from "../../../Assets/index.js"
 import * as Bytes from "../../../Bytes.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as NativeScripts from "../../../NativeScripts.js"
 import * as PolicyId from "../../../PolicyId.js"
-import type * as CoreScript from "../../../Script.js"
+import type * as Script from "../../../Script.js"
 import * as TransactionHash from "../../../TransactionHash.js"
-import type * as CoreUTxO from "../../../UTxO.js"
+import type * as UTxO from "../../../UTxO.js"
 
 export const JSONRPCSchema = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   Schema.Struct({
@@ -152,11 +152,11 @@ export const RedeemerSchema = Schema.Struct({
   })
 }).annotations({ identifier: "RedeemerSchema" })
 
-export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<OgmiosUTxO> => {
+export const toOgmiosUTxOs = (utxos: Array<UTxO.UTxO> | undefined): Array<OgmiosUTxO> => {
   // NOTE: Ogmios only works with single encoding, not double encoding.
   // You will get the following error:
   // "Invalid request: couldn't decode Plutus script."
-  const toOgmiosScript = (script: CoreScript.Script | undefined): OgmiosUTxO["script"] | undefined => {
+  const toOgmiosScript = (script: Script.Script | undefined): OgmiosUTxO["script"] | undefined => {
     if (script) {
       // Script type directly tells us the language
       switch (script._tag) {
@@ -176,7 +176,7 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
     return undefined
   }
 
-  const toOgmiosAssets = (assets: CoreAssets.Assets): OgmiosAssets => {
+  const toOgmiosAssets = (assets: Assets.Assets): OgmiosAssets => {
     const newAssets: OgmiosAssets = {}
     if (assets.multiAsset) {
       for (const [policyId, assetMap] of assets.multiAsset.map.entries()) {
@@ -211,7 +211,7 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
         id: TransactionHash.toHex(utxo.transactionId)
       },
       index: Number(utxo.index),
-      address: CoreAddress.toBech32(utxo.address),
+      address: Address.toBech32(utxo.address),
       value: {
         ada: { lovelace: Number(utxo.assets.lovelace) },
         ...toOgmiosAssets(utxo.assets)

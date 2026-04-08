@@ -11,7 +11,7 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets/index.js"
 import * as TxOut from "../../../TxOut.js"
 import * as UTxO from "../../../UTxO.js"
 import * as Ctx from "../internal/ctx.js"
@@ -42,7 +42,7 @@ const MAX_COLLATERAL_INPUTS = 3
  * @category helpers
  */
 const isPureAda = (utxo: UTxO.UTxO): boolean => {
-  return !CoreAssets.hasMultiAsset(utxo.assets)
+  return !Assets.hasMultiAsset(utxo.assets)
 }
 
 /**
@@ -63,7 +63,7 @@ const sortCollateralCandidates = (utxos: ReadonlyArray<UTxO.UTxO>): Array<UTxO.U
     if (!aIsPure && bIsPure) return 1
 
     // Then by lovelace amount (descending - prefer largest first)
-    return Number(CoreAssets.lovelaceOf(b.assets) - CoreAssets.lovelaceOf(a.assets))
+    return Number(Assets.lovelaceOf(b.assets) - Assets.lovelaceOf(a.assets))
   })
 }
 
@@ -177,7 +177,7 @@ export const executeCollateral = (): Effect.Effect<
     // ═══════════════════════════════════════════════════════════
     const selectedCollateral: Array<UTxO.UTxO> = []
     let totalLovelace = 0n
-    let totalAssets: CoreAssets.Assets = CoreAssets.zero
+    let totalAssets: Assets.Assets = Assets.zero
 
     for (const utxo of sorted) {
       if (selectedCollateral.length >= MAX_COLLATERAL_INPUTS) {
@@ -185,11 +185,11 @@ export const executeCollateral = (): Effect.Effect<
       }
 
       selectedCollateral.push(utxo)
-      totalLovelace += CoreAssets.lovelaceOf(utxo.assets)
-      totalAssets = CoreAssets.merge(totalAssets, utxo.assets)
+      totalLovelace += Assets.lovelaceOf(utxo.assets)
+      totalAssets = Assets.merge(totalAssets, utxo.assets)
 
       yield* Effect.logDebug(
-        `[Collateral] Selected UTxO: ${UTxO.toOutRefString(utxo)} (${CoreAssets.lovelaceOf(utxo.assets)} lovelace)`
+        `[Collateral] Selected UTxO: ${UTxO.toOutRefString(utxo)} (${Assets.lovelaceOf(utxo.assets)} lovelace)`
       )
 
       // Check if we have enough
@@ -224,7 +224,7 @@ export const executeCollateral = (): Effect.Effect<
     // STEP 6: Calculate Return Amount and Assets
     // ═══════════════════════════════════════════════════════════
     const returnLovelace = totalLovelace - totalCollateral
-    const hasTokens = CoreAssets.hasMultiAsset(totalAssets)
+    const hasTokens = Assets.hasMultiAsset(totalAssets)
 
     yield* Effect.logDebug(`[Collateral] Return amount: ${returnLovelace} lovelace${hasTokens ? " + tokens" : ""}`)
 
@@ -257,7 +257,7 @@ export const executeCollateral = (): Effect.Effect<
     // ═══════════════════════════════════════════════════════════
     // STEP 7: Validate MinUTxO for Return Output
     // ═══════════════════════════════════════════════════════════
-    const returnAssets = CoreAssets.withLovelace(totalAssets, returnLovelace)
+    const returnAssets = Assets.withLovelace(totalAssets, returnLovelace)
 
     yield* Effect.logDebug(`[Collateral] Return assets: ${returnAssets.toString()}`)
 

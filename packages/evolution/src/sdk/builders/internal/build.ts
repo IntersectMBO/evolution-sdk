@@ -1,7 +1,7 @@
 import { Effect, Ref } from "effect"
 
 import * as Transaction from "../../../Transaction.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import * as Balance from "../phases/Balance.js"
 import * as ChangeCreation from "../phases/ChangeCreation.js"
 import * as Collateral from "../phases/Collateral.js"
@@ -91,7 +91,7 @@ const assembleAndValidateTransaction = Effect.gen(function* () {
     `Assembling transaction: ${selectedUtxos.length} inputs, ${allOutputs.length} outputs, fee: ${buildContext.calculatedFee}`
   )
 
-  const inputs = CoreUTxO.toInputs(selectedUtxos)
+  const inputs = UTxO.toInputs(selectedUtxos)
   const transaction = yield* TxBuilderImpl.assembleTransaction(inputs, allOutputs, buildContext.calculatedFee)
 
   const allUtxosForWitnesses = finalState.collateral !== undefined

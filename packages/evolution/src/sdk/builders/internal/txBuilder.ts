@@ -3,8 +3,8 @@ import { Effect, Ref } from "effect"
 import type * as Array from "effect/Array"
 
 // Core imports
-import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Address from "../../../Address.js"
+import * as Assets from "../../../Assets/index.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Certificate from "../../../Certificate.js"
 import * as CostModel from "../../../CostModel.js"
@@ -20,7 +20,7 @@ import * as PolicyId from "../../../PolicyId.js"
 import * as Redeemer from "../../../Redeemer.js"
 import * as Redeemers from "../../../Redeemers.js"
 import type * as RewardAccount from "../../../RewardAccount.js"
-import * as CoreScript from "../../../Script.js"
+import * as Script from "../../../Script.js"
 import * as ScriptDataHash from "../../../ScriptDataHash.js"
 import * as ScriptRef from "../../../ScriptRef.js"
 import * as Time from "../../../Time/index.js"
@@ -31,7 +31,7 @@ import type * as TransactionInput from "../../../TransactionInput.js"
 import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
 import * as TxOut from "../../../TxOut.js"
 import { hashAuxiliaryData, hashScriptData } from "../../../utils/Hash.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import * as VKey from "../../../VKey.js"
 import * as Withdrawals from "../../../Withdrawals.js"
 import * as Unfrack from "../Unfrack.js"
@@ -65,7 +65,7 @@ import * as Ctx from "./ctx.js"
  * @since 2.0.0
  * @category helpers
  */
-export const isScriptAddressCore = CoreAddress.isScript
+export const isScriptAddressCore = Address.isScript
 
 /**
  * Check if an address string is a script address (payment credential is ScriptHash).
@@ -78,7 +78,7 @@ export const isScriptAddress = (address: string): Effect.Effect<boolean, Ctx.Tra
   Effect.gen(function* () {
     // Parse address to structure
     const addressStructure = yield* Effect.try({
-      try: () => CoreAddress.fromBech32(address),
+      try: () => Address.fromBech32(address),
       catch: (error) =>
         new Ctx.TransactionBuilderError({
           message: `Failed to parse address: ${address}`,
@@ -87,7 +87,7 @@ export const isScriptAddress = (address: string): Effect.Effect<boolean, Ctx.Tra
     })
 
     // Check if payment credential is a script hash
-    return CoreAddress.isScript(addressStructure)
+    return Address.isScript(addressStructure)
   })
 
 /**
@@ -97,13 +97,13 @@ export const isScriptAddress = (address: string): Effect.Effect<boolean, Ctx.Tra
  * @category helpers
  */
 export const filterScriptUtxos = (
-  utxos: ReadonlyArray<CoreUTxO.UTxO>
-): Effect.Effect<ReadonlyArray<CoreUTxO.UTxO>, Ctx.TransactionBuilderError> =>
+  utxos: ReadonlyArray<UTxO.UTxO>
+): Effect.Effect<ReadonlyArray<UTxO.UTxO>, Ctx.TransactionBuilderError> =>
   Effect.gen(function* () {
-    const scriptUtxos: Array<CoreUTxO.UTxO> = []
+    const scriptUtxos: Array<UTxO.UTxO> = []
 
     for (const utxo of utxos) {
-      if (CoreAddress.isScript(utxo.address)) {
+      if (Address.isScript(utxo.address)) {
         scriptUtxos.push(utxo)
       }
     }
@@ -122,7 +122,7 @@ export const filterScriptUtxos = (
  * @since 2.0.0
  * @category helpers
  */
-export const calculateTotalAssets = CoreUTxO.totalAssets
+export const calculateTotalAssets = UTxO.totalAssets
 
 /**
  * Calculate reference script fees using tiered pricing.
@@ -175,7 +175,7 @@ export const tierRefScriptFee = (
  * @category helpers
  */
 export const calculateReferenceScriptFee = (
-  utxos: ReadonlyArray<CoreUTxO.UTxO>,
+  utxos: ReadonlyArray<UTxO.UTxO>,
   costPerByte: number
 ): Effect.Effect<bigint, Ctx.TransactionBuilderError> =>
   Effect.gen(function* () {
@@ -183,7 +183,7 @@ export const calculateReferenceScriptFee = (
 
     for (const utxo of utxos) {
       if (utxo.scriptRef) {
-        const scriptBytes = CoreScript.toCBOR(utxo.scriptRef).length
+        const scriptBytes = Script.toCBOR(utxo.scriptRef).length
         totalScriptSize += scriptBytes
         const scriptType = utxo.scriptRef._tag === "NativeScript" ? "Native" : "Plutus"
         yield* Effect.logDebug(`[RefScriptFee] ${scriptType} script: ${scriptBytes} bytes`)
@@ -225,14 +225,14 @@ export const calculateReferenceScriptFee = (
  * @category helpers
  */
 export const makeTxOutput = (params: {
-  address: CoreAddress.Address
-  assets: CoreAssets.Assets
+  address: Address.Address
+  assets: Assets.Assets
   datum?: DatumOption.DatumOption
-  scriptRef?: CoreScript.Script
+  scriptRef?: Script.Script
 }): TxOut.TransactionOutput => {
   // Convert Script to ScriptRef for CBOR encoding if provided
   const scriptRefEncoded = params.scriptRef
-    ? new ScriptRef.ScriptRef({ bytes: CoreScript.toCBOR(params.scriptRef) })
+    ? new ScriptRef.ScriptRef({ bytes: Script.toCBOR(params.scriptRef) })
     : undefined
 
   return new TxOut.TransactionOutput({
@@ -255,7 +255,7 @@ export const makeTxOutput = (params: {
  * @since 2.0.0
  * @category assembly
  */
-export const buildTransactionInputs = CoreUTxO.toInputs
+export const buildTransactionInputs = UTxO.toInputs
 
 /**
  * Assemble a Transaction from inputs, outputs, and calculated fee.
@@ -770,7 +770,7 @@ export const calculateMinimumFee = (
  * @category fee-calculation
  * @internal
  */
-const extractPaymentKeyHashFromCore = (address: CoreAddress.Address): Uint8Array | undefined => {
+const extractPaymentKeyHashFromCore = (address: Address.Address): Uint8Array | undefined => {
   // Check if payment credential is a KeyHash
   if (address.paymentCredential._tag === "KeyHash" && address.paymentCredential.hash) {
     return address.paymentCredential.hash
@@ -832,7 +832,7 @@ const buildFakeVKeyWitness = (
  * @category fee-calculation
  */
 export const buildFakeWitnessSet = (
-  inputUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  inputUtxos: ReadonlyArray<UTxO.UTxO>
 ): Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, Ctx.TransactionBuilderError, Ctx.TxContext> =>
   Effect.gen(function* () {
     const stateRef = yield* Ctx.TxContext
@@ -1005,7 +1005,7 @@ export const buildFakeWitnessSet = (
  * @category fee-calculation
  */
 export const calculateFeeIteratively = (
-  inputUtxos: ReadonlyArray<CoreUTxO.UTxO>,
+  inputUtxos: ReadonlyArray<UTxO.UTxO>,
   inputs: ReadonlyArray<TransactionInput.TransactionInput>,
   outputs: ReadonlyArray<TxOut.TransactionOutput>,
   redeemers: Map<
@@ -1219,21 +1219,21 @@ export const calculateFeeIteratively = (
  * @category fee-calculation
  */
 export const verifyTransactionBalance = (
-  selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>,
+  selectedUtxos: ReadonlyArray<UTxO.UTxO>,
   outputs: ReadonlyArray<TxOut.TransactionOutput>,
   fee: bigint
 ): { sufficient: boolean; shortfall: bigint; change: bigint } => {
   // Sum all input assets using Core Assets
-  const totalInputAssets = selectedUtxos.reduce((acc, utxo) => CoreAssets.merge(acc, utxo.assets), CoreAssets.zero)
+  const totalInputAssets = selectedUtxos.reduce((acc, utxo) => Assets.merge(acc, utxo.assets), Assets.zero)
 
   // Sum all output assets using Core Assets
-  const totalOutputAssets = outputs.reduce((acc, output) => CoreAssets.merge(acc, output.assets), CoreAssets.zero)
+  const totalOutputAssets = outputs.reduce((acc, output) => Assets.merge(acc, output.assets), Assets.zero)
 
   // Add fee to required lovelace
-  const requiredAssets = CoreAssets.withLovelace(totalOutputAssets, totalOutputAssets.lovelace + fee)
+  const requiredAssets = Assets.withLovelace(totalOutputAssets, totalOutputAssets.lovelace + fee)
 
   // Calculate balance for ALL assets: inputs - (outputs + fee)
-  const balance = CoreAssets.subtract(totalInputAssets, requiredAssets)
+  const balance = Assets.subtract(totalInputAssets, requiredAssets)
 
   // Check if ANY asset is negative (insufficient)
   let hasShortfall = false
@@ -1247,9 +1247,9 @@ export const verifyTransactionBalance = (
   }
 
   // Check all native assets using Core Assets helpers
-  for (const unit of CoreAssets.getUnits(balance)) {
+  for (const unit of Assets.getUnits(balance)) {
     if (unit !== "lovelace") {
-      const amount = CoreAssets.getByUnit(balance, unit)
+      const amount = Assets.getByUnit(balance, unit)
       if (amount < 0n) {
         hasShortfall = true
         // For native asset shortfalls, we still return lovelace shortfall
@@ -1280,20 +1280,20 @@ export const verifyTransactionBalance = (
  * @category validation
  */
 export const validateTransactionBalance = (params: {
-  totalInputAssets: CoreAssets.Assets
-  totalOutputAssets: CoreAssets.Assets
+  totalInputAssets: Assets.Assets
+  totalOutputAssets: Assets.Assets
   fee: bigint
 }): Effect.Effect<void, Ctx.TransactionBuilderError> =>
   Effect.gen(function* () {
     const { fee, totalInputAssets, totalOutputAssets } = params
 
     // Calculate total outputs including fee (outputs + fee)
-    const totalRequired = CoreAssets.withLovelace(totalOutputAssets, totalOutputAssets.lovelace + fee)
+    const totalRequired = Assets.withLovelace(totalOutputAssets, totalOutputAssets.lovelace + fee)
 
     // Check each asset using Core Assets helpers
-    for (const unit of CoreAssets.getUnits(totalRequired)) {
-      const requiredAmount = CoreAssets.getByUnit(totalRequired, unit)
-      const availableAmount = CoreAssets.getByUnit(totalInputAssets, unit)
+    for (const unit of Assets.getUnits(totalRequired)) {
+      const requiredAmount = Assets.getByUnit(totalRequired, unit)
+      const availableAmount = Assets.getByUnit(totalInputAssets, unit)
 
       if (availableAmount < requiredAmount) {
         const shortfall = requiredAmount - availableAmount
@@ -1322,19 +1322,19 @@ export const validateTransactionBalance = (params: {
  * @category validation
  */
 export const calculateLeftoverAssets = (params: {
-  totalInputAssets: CoreAssets.Assets
-  totalOutputAssets: CoreAssets.Assets
+  totalInputAssets: Assets.Assets
+  totalOutputAssets: Assets.Assets
   fee: bigint
-}): CoreAssets.Assets => {
+}): Assets.Assets => {
   const { fee, totalInputAssets, totalOutputAssets } = params
 
   // Start with inputs, subtract outputs using Core Assets
-  const afterOutputs = CoreAssets.subtract(totalInputAssets, totalOutputAssets)
+  const afterOutputs = Assets.subtract(totalInputAssets, totalOutputAssets)
   // Subtract fee from lovelace
-  const leftover = CoreAssets.withLovelace(afterOutputs, afterOutputs.lovelace - fee)
+  const leftover = Assets.withLovelace(afterOutputs, afterOutputs.lovelace - fee)
 
   // Filter out zero or negative amounts using Core Assets filter
-  return CoreAssets.filter(leftover, (_unit, amount) => amount > 0n)
+  return Assets.filter(leftover, (_unit, amount) => amount > 0n)
 }
 
 /**
@@ -1373,15 +1373,15 @@ const MAX_MIN_UTXO_ITERATIONS = 10
  * @category change
  */
 export const calculateMinimumUtxoLovelace = (params: {
-  address: CoreAddress.Address
-  assets: CoreAssets.Assets
+  address: Address.Address
+  assets: Assets.Assets
   datum?: DatumOption.DatumOption
-  scriptRef?: CoreScript.Script
+  scriptRef?: Script.Script
   coinsPerUtxoByte: bigint
 }): Effect.Effect<bigint, Ctx.TransactionBuilderError> =>
   Effect.gen(function* () {
     const calculateRequiredLovelace = (lovelace: bigint): bigint => {
-      const assetsForSizing = CoreAssets.withLovelace(params.assets, lovelace)
+      const assetsForSizing = Assets.withLovelace(params.assets, lovelace)
 
       const tempOutput = makeTxOutput({
         address: params.address,
@@ -1436,8 +1436,8 @@ export const calculateMinimumUtxoLovelace = (params: {
  * @category change
  */
 export const createChangeOutput = (params: {
-  leftoverAssets: CoreAssets.Assets
-  changeAddress: CoreAddress.Address
+  leftoverAssets: Assets.Assets
+  changeAddress: Address.Address
   coinsPerUtxoByte: bigint
   unfrackOptions?: Ctx.UnfrackOptions
 }): Effect.Effect<ReadonlyArray<TxOut.TransactionOutput>, Ctx.TransactionBuilderError> =>
@@ -1445,7 +1445,7 @@ export const createChangeOutput = (params: {
     const { changeAddress, coinsPerUtxoByte, leftoverAssets, unfrackOptions } = params
 
     // If no leftover, no change needed
-    if (CoreAssets.isEmpty(leftoverAssets)) {
+    if (Assets.isEmpty(leftoverAssets)) {
       yield* Effect.logDebug(`[createChangeOutput] No leftover assets, skipping change`)
       return []
     }

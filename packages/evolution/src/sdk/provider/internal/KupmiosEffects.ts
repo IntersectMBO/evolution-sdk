@@ -1,8 +1,8 @@
 import { FetchHttpClient } from "@effect/platform"
 import { Array as _Array, Effect, pipe, Schedule, Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Address from "../../../Address.js"
+import * as Assets from "../../../Assets/index.js"
 import * as AssetsUnit from "../../../Assets/Unit.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
@@ -17,12 +17,12 @@ import * as PlutusV3 from "../../../PlutusV3.js"
 import * as PolicyId from "../../../PolicyId.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
-import type * as CoreRewardAddress from "../../../RewardAddress.js"
-import type * as CoreScript from "../../../Script.js"
+import type * as RewardAddress from "../../../RewardAddress.js"
+import type * as Script from "../../../Script.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import * as Provider from "../Provider.js"
 import * as HttpUtils from "./HttpUtils.js"
@@ -75,14 +75,14 @@ const toProtocolParameters = (result: Ogmios.ProtocolParameters): Provider.Proto
   }
 }
 
-const toAssets = (value: Kupo.UTxO["value"]): CoreAssets.Assets => {
-  let assets = CoreAssets.fromLovelace(BigInt(value.coins))
+const toAssets = (value: Kupo.KupoUTxO["value"]): Assets.Assets => {
+  let assets = Assets.fromLovelace(BigInt(value.coins))
   for (const unit of Object.keys(value.assets)) {
     const cleanUnit = unit.replace(".", "")
     // Parse policyId (first 56 chars) and assetName (rest)
     const policyIdHex = cleanUnit.slice(0, 56)
     const assetNameHex = cleanUnit.slice(56)
-    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, BigInt(value.assets[unit]))
+    assets = Assets.addByHex(assets, policyIdHex, assetNameHex, BigInt(value.assets[unit]))
   }
   return assets
 }
@@ -90,8 +90,8 @@ const toAssets = (value: Kupo.UTxO["value"]): CoreAssets.Assets => {
 const retrieveDatumEffect =
   (kupoUrl: string, kupoHeader?: Record<string, string>) =>
   (
-    datum_type: Kupo.UTxO["datum_type"],
-    datum_hash: Kupo.UTxO["datum_hash"]
+    datum_type: Kupo.KupoUTxO["datum_type"],
+    datum_hash: Kupo.KupoUTxO["datum_hash"]
   ): Effect.Effect<DatumOption.DatumOption | undefined, Provider.ProviderError> =>
     Effect.gen(function* () {
       if (datum_type === "inline" && datum_hash) {
@@ -119,7 +119,7 @@ const retrieveDatumEffect =
 
 const getScriptEffect =
   (kupoUrl: string, kupoHeader?: Record<string, string>) =>
-  (script_hash: Kupo.UTxO["script_hash"]): Effect.Effect<CoreScript.Script | undefined, Provider.ProviderError> =>
+  (script_hash: Kupo.KupoUTxO["script_hash"]): Effect.Effect<Script.Script | undefined, Provider.ProviderError> =>
     Effect.gen(function* () {
       if (script_hash) {
         const pattern = `${kupoUrl}/scripts/${script_hash}`
@@ -129,7 +129,7 @@ const getScriptEffect =
           Effect.flatMap(Effect.fromNullable),
           Effect.retry(Schedule.compose(Schedule.exponential(50), Schedule.recurs(5))),
           Effect.timeout(5_000),
-          Effect.map(({ language, script }): CoreScript.Script => {
+          Effect.map(({ language, script }): Script.Script => {
             // Convert script hex to bytes - Kupo returns scripts already properly encoded
             const scriptBytes = Bytes.fromHex(script)
 
@@ -161,7 +161,7 @@ const getScriptEffect =
 
 const kupmiosUtxosToUtxos =
   (kupoURL: string, kupoHeader?: Record<string, string>) =>
-  (utxos: ReadonlyArray<Kupo.UTxO>): Effect.Effect<Array<CoreUTxO.UTxO>, Provider.ProviderError> => {
+  (utxos: ReadonlyArray<Kupo.KupoUTxO>): Effect.Effect<Array<UTxO.UTxO>, Provider.ProviderError> => {
     const getDatum = retrieveDatumEffect(kupoURL, kupoHeader)
     const getScript = getScriptEffect(kupoURL, kupoHeader)
     return Effect.forEach(
@@ -169,10 +169,10 @@ const kupmiosUtxosToUtxos =
       (utxo) => {
         return pipe(
           Effect.all([getDatum(utxo.datum_type, utxo.datum_hash), getScript(utxo.script_hash)]),
-          Effect.map(([datumOption, scriptRef]): CoreUTxO.UTxO => {
+          Effect.map(([datumOption, scriptRef]): UTxO.UTxO => {
             const transactionId = TransactionHash.fromHex(utxo.transaction_id)
-            const address = CoreAddress.fromBech32(utxo.address)
-            return new CoreUTxO.UTxO({
+            const address = Address.fromBech32(utxo.address)
+            return new UTxO.UTxO({
               transactionId,
               index: BigInt(utxo.output_index),
               address,
@@ -210,10 +210,10 @@ export const getProtocolParametersEffect = Effect.fn("getProtocolParameters")(fu
 })
 
 export const getUtxosEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<string, string> }) =>
-  Effect.fn("getUtxos")(function* (addressOrCredential: CoreAddress.Address | Credential.Credential) {
+  Effect.fn("getUtxos")(function* (addressOrCredential: Address.Address | Credential.Credential) {
     let pattern: string
-    if (addressOrCredential instanceof CoreAddress.Address) {
-      const addressStr = CoreAddress.toBech32(addressOrCredential)
+    if (addressOrCredential instanceof Address.Address) {
+      const addressStr = Address.toBech32(addressOrCredential)
       pattern = `${kupoUrl}/matches/${addressStr}?unspent`
     } else {
       pattern = `${kupoUrl}/matches/${addressOrCredential.hash}/*?unspent`
@@ -284,7 +284,7 @@ export const getUtxosByOutRefEffect = (kupoUrl: string, headers?: { kupoHeader?:
         Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
     )
-    const utxos: Array<Array<CoreUTxO.UTxO>> = yield* pipe(program, Effect.provide(FetchHttpClient.layer))
+    const utxos: Array<Array<UTxO.UTxO>> = yield* pipe(program, Effect.provide(FetchHttpClient.layer))
 
     return _Array
       .flatten(utxos)
@@ -344,11 +344,11 @@ export const submitTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Rec
 
 export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<string, string> }) =>
   Effect.fn("getUtxosWithUnit")(function* (
-    addressOrCredential: CoreAddress.Address | Credential.Credential,
+    addressOrCredential: Address.Address | Credential.Credential,
     unit: string
   ) {
-    const isAddress = addressOrCredential instanceof CoreAddress.Address
-    const queryPredicate = isAddress ? CoreAddress.toBech32(addressOrCredential) : addressOrCredential.hash
+    const isAddress = addressOrCredential instanceof Address.Address
+    const queryPredicate = isAddress ? Address.toBech32(addressOrCredential) : addressOrCredential.hash
     const { assetName, policyId } = AssetsUnit.fromUnit(unit)
     const policyIdHex = PolicyId.toHex(policyId)
     const assetNameHex = assetName ? Bytes.toHex(assetName.bytes) : undefined
@@ -367,7 +367,7 @@ export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?:
   })
 
 export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Record<string, string> }) =>
-  Effect.fn("evaluateTx")(function* (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) {
+  Effect.fn("evaluateTx")(function* (tx: Transaction.Transaction, additionalUTxOs?: Array<UTxO.UTxO>) {
     const txCborHex = Transaction.toCBORHex(tx)
     // Prepare request data
     const data = {
@@ -437,7 +437,7 @@ export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<s
   })
 
 export const getDelegationEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Record<string, string> }) =>
-  Effect.fn("getDelegation")(function* (rewardAddress: CoreRewardAddress.RewardAddress) {
+  Effect.fn("getDelegation")(function* (rewardAddress: RewardAddress.RewardAddress) {
     const data = {
       jsonrpc: "2.0",
       method: "queryLedgerState/rewardAccountSummaries",

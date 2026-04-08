@@ -1,6 +1,6 @@
 import { type Effect } from "effect"
 
-import type * as CoreUTxO from "../../UTxO.js"
+import type * as UTxO from "../../UTxO.js"
 import type { ReadOnlyTransactionBuilder, SigningTransactionBuilder } from "../builders/TransactionBuilder.js"
 import type * as Provider from "../provider/Provider.js"
 import type { EffectToPromiseAPI } from "../Type.js"
@@ -38,7 +38,7 @@ export interface OfflineSignerClientEffect extends AddressClientEffect {
  */
 export interface ReadOnlyClientEffect extends Provider.ProviderEffect, AddressClientEffect {
   readonly getWalletUtxos: () => Effect.Effect<
-    ReadonlyArray<CoreUTxO.UTxO>,
+    ReadonlyArray<UTxO.UTxO>,
     Wallet.WalletError | Provider.ProviderError
   >
   readonly getWalletDelegation: () => Effect.Effect<Provider.Delegation, Wallet.WalletError | Provider.ProviderError>
@@ -52,7 +52,7 @@ export interface ReadOnlyClientEffect extends Provider.ProviderEffect, AddressCl
  */
 export interface SigningClientEffect extends Provider.ProviderEffect, OfflineSignerClientEffect {
   readonly getWalletUtxos: () => Effect.Effect<
-    ReadonlyArray<CoreUTxO.UTxO>,
+    ReadonlyArray<UTxO.UTxO>,
     Wallet.WalletError | Provider.ProviderError
   >
   readonly getWalletDelegation: () => Effect.Effect<Provider.Delegation, Wallet.WalletError | Provider.ProviderError>

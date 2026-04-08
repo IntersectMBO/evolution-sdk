@@ -14,7 +14,7 @@ import * as Bytes from "../../../Bytes.js"
 import * as CostModel from "../../../CostModel.js"
 import { INT64_MAX } from "../../../Numeric.js"
 import * as PolicyId from "../../../PolicyId.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import type * as Provider from "../../provider/Provider.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
 import * as Ctx from "../internal/ctx.js"
@@ -114,7 +114,7 @@ const enrichFailuresWithLabels = (
  */
 const resolveDeferredRedeemers = (
   deferredRedeemers: Map<string, Ctx.DeferredRedeemerData>,
-  sortedUtxos: ReadonlyArray<CoreUTxO.UTxO>,
+  sortedUtxos: ReadonlyArray<UTxO.UTxO>,
   inputIndexMapping: Map<number, string>
 ): Effect.Effect<Map<string, Ctx.RedeemerData>, Ctx.TransactionBuilderError> =>
   Effect.gen(function* () {
@@ -127,9 +127,9 @@ const resolveDeferredRedeemers = (
     }
 
     // Build UTxO lookup: ref -> UTxO
-    const refToUtxo = new Map<string, CoreUTxO.UTxO>()
+    const refToUtxo = new Map<string, UTxO.UTxO>()
     for (const utxo of sortedUtxos) {
-      refToUtxo.set(CoreUTxO.toOutRefString(utxo), utxo)
+      refToUtxo.set(UTxO.toOutRefString(utxo), utxo)
     }
 
     // Process each deferred redeemer
@@ -174,7 +174,7 @@ const resolveDeferredRedeemers = (
         const batchInputs: Array<IndexedInput> = []
 
         for (const utxo of deferred.inputs) {
-          const ref = CoreUTxO.toOutRefString(utxo)
+          const ref = UTxO.toOutRefString(utxo)
           const index = refToIndex.get(ref)
 
           if (index === undefined) {
@@ -347,7 +347,7 @@ export const executeEvaluation = (): Effect.Effect<
     // Build the mapping while preserving the same order
     for (let i = 0; i < sortedUtxos.length; i++) {
       const utxo = sortedUtxos[i]!
-      const key = CoreUTxO.toOutRefString(utxo)
+      const key = UTxO.toOutRefString(utxo)
       inputIndexMapping.set(i, key)
       yield* Effect.logDebug(`[Evaluation] Input ${i} maps to UTxO: ${key}`)
     }
@@ -450,7 +450,7 @@ export const executeEvaluation = (): Effect.Effect<
       }
     }
 
-    const inputs = CoreUTxO.toInputs(sortedUtxos)
+    const inputs = UTxO.toInputs(sortedUtxos)
     const allOutputs = [...updatedState.outputs, ...buildCtx.changeOutputs]
     const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
 

@@ -22,7 +22,7 @@ import * as TransactionHash from "../../TransactionHash.js"
 import * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
 import type * as TxOut from "../../TxOut.js"
 import { hashTransaction } from "../../utils/Hash.js"
-import * as CoreUTxO from "../../UTxO.js"
+import * as UTxO from "../../UTxO.js"
 import type * as Provider from "../provider/Provider.js"
 import type * as Wallet from "../wallet/Wallet.js"
 import type { SignBuilder, SignBuilderEffect } from "./SignBuilder.js"
@@ -48,13 +48,13 @@ export const makeSignBuilder = (params: {
   transaction: Transaction.Transaction
   transactionWithFakeWitnesses: Transaction.Transaction
   fee: bigint
-  utxos: ReadonlyArray<CoreUTxO.UTxO>
-  referenceUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  utxos: ReadonlyArray<UTxO.UTxO>
+  referenceUtxos: ReadonlyArray<UTxO.UTxO>
   provider: Provider.Provider
   wallet: SignerWallet
   // Data for lazy chainResult computation
   outputs: ReadonlyArray<TxOut.TransactionOutput>
-  availableUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  availableUtxos: ReadonlyArray<UTxO.UTxO>
 }): SignBuilder => {
   const {
     availableUtxos,
@@ -76,9 +76,9 @@ export const makeSignBuilder = (params: {
     const consumed = utxos
     const txHash = hashTransaction(transaction.body)
 
-    const created: Array<CoreUTxO.UTxO> = outputs.map(
+    const created: Array<UTxO.UTxO> = outputs.map(
       (output, index) =>
-        new CoreUTxO.UTxO({
+        new UTxO.UTxO({
           transactionId: txHash,
           index: BigInt(index),
           address: output.address,
@@ -88,8 +88,8 @@ export const makeSignBuilder = (params: {
         })
     )
 
-    const consumedSet = new Set(consumed.map((u) => CoreUTxO.toOutRefString(u)))
-    const remaining = availableUtxos.filter((u) => !consumedSet.has(CoreUTxO.toOutRefString(u)))
+    const consumedSet = new Set(consumed.map((u) => UTxO.toOutRefString(u)))
+    const remaining = availableUtxos.filter((u) => !consumedSet.has(UTxO.toOutRefString(u)))
     const available = [...remaining, ...created]
 
     _chainResult = { consumed, available, txHash: TransactionHash.toHex(txHash) }

@@ -7,7 +7,7 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets/index.js"
 import * as Ctx from "../internal/ctx.js"
 import { makeTxOutput } from "../internal/txBuilder.js"
 import type { PayToAddressParams } from "./Operations.js"
@@ -40,6 +40,6 @@ export const createPayToAddressProgram = (params: PayToAddressParams) =>
     yield* Ref.update(ctx, (state) => ({
       ...state,
       outputs: [...state.outputs, output],
-      totalOutputAssets: CoreAssets.merge(state.totalOutputAssets, params.assets)
+      totalOutputAssets: Assets.merge(state.totalOutputAssets, params.assets)
     }))
   })

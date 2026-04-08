@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 
-import * as CoreAddress from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Address from "../src/Address.js"
+import * as Assets from "../src/Assets/index.js"
 import * as Mint from "../src/Mint.js"
 import * as NativeScripts from "../src/NativeScripts.js"
 import * as ScriptHash from "../src/ScriptHash.js"
@@ -49,14 +49,14 @@ describe("TxBuilder Mint", () => {
     const signBuilder = await makeTxBuilder(baseConfig)
       .attachScript({ script: nativeScript })
       .mintAssets({
-        assets: CoreAssets.fromRecord({ [unit]: 1000n })
+        assets: Assets.fromRecord({ [unit]: 1000n })
       })
       .payToAddress({
-        address: CoreAddress.fromBech32(CHANGE_ADDRESS),
-        assets: CoreAssets.fromLovelace(2_000_000n)
+        address: Address.fromBech32(CHANGE_ADDRESS),
+        assets: Assets.fromLovelace(2_000_000n)
       })
       .build({
-        changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
+        changeAddress: Address.fromBech32(CHANGE_ADDRESS),
         availableUtxos: [utxo],
         protocolParameters: PROTOCOL_PARAMS
       })
@@ -113,17 +113,17 @@ describe("TxBuilder Mint", () => {
     const signBuilder = await makeTxBuilder(baseConfig)
       .attachScript({ script: nativeScript })
       .mintAssets({
-        assets: CoreAssets.fromRecord({ [unit1]: 100n })
+        assets: Assets.fromRecord({ [unit1]: 100n })
       })
       .mintAssets({
-        assets: CoreAssets.fromRecord({ [unit2]: 200n })
+        assets: Assets.fromRecord({ [unit2]: 200n })
       })
       .payToAddress({
-        address: CoreAddress.fromBech32(CHANGE_ADDRESS),
-        assets: CoreAssets.fromLovelace(2_000_000n)
+        address: Address.fromBech32(CHANGE_ADDRESS),
+        assets: Assets.fromLovelace(2_000_000n)
       })
       .build({
-        changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
+        changeAddress: Address.fromBech32(CHANGE_ADDRESS),
         availableUtxos: [utxo],
         protocolParameters: PROTOCOL_PARAMS
       })

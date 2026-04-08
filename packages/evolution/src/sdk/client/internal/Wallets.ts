@@ -1,13 +1,13 @@
 import { Effect, ParseResult, Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
-import * as CoreRewardAccount from "../../../RewardAccount.js"
-import * as CoreRewardAddress from "../../../RewardAddress.js"
+import * as Address from "../../../Address.js"
+import * as RewardAccount from "../../../RewardAccount.js"
+import * as RewardAddress from "../../../RewardAddress.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
 import { runEffectPromise } from "../../../utils/effect-runtime.js"
-import type * as CoreUTxO from "../../../UTxO.js"
+import type * as UTxO from "../../../UTxO.js"
 import * as Derivation from "../../wallet/Derivation.js"
 import * as Wallet from "../../wallet/Wallet.js"
 import type { Chain } from "../Chain.js"
@@ -15,14 +15,14 @@ import type { PrivateKeyWalletConfig, SeedWalletConfig } from "../Client.js"
 import * as Signing from "./Signing.js"
 
 const validateRewardAddressNetwork = (
-  rewardAddress: CoreRewardAddress.RewardAddress | null,
+  rewardAddress: RewardAddress.RewardAddress | null,
   chain: Chain
-): Effect.Effect<CoreRewardAddress.RewardAddress | null, Wallet.WalletError> => {
+): Effect.Effect<RewardAddress.RewardAddress | null, Wallet.WalletError> => {
   if (rewardAddress === null) return Effect.succeed(null)
 
   return Effect.try({
     try: () => {
-      const rewardAccount = CoreRewardAccount.fromBech32(rewardAddress)
+      const rewardAccount = RewardAccount.fromBech32(rewardAddress)
       if (rewardAccount.networkId !== chain.id) {
         throw new Wallet.WalletError({
           message: `Reward address network mismatch: reward address is for network ${rewardAccount.networkId} but chain id is ${chain.id}`
@@ -40,13 +40,13 @@ const validateRewardAddressNetwork = (
 const decodeReadOnlyAddress = (
   address: string,
   chain: Chain
-): Effect.Effect<CoreAddress.Address, Wallet.WalletError> =>
+): Effect.Effect<Address.Address, Wallet.WalletError> =>
   Effect.try({
-    try: () => CoreAddress.fromBech32(address),
+    try: () => Address.fromBech32(address),
     catch: (cause) => new Wallet.WalletError({ message: `Invalid address format: ${address}`, cause })
   }).pipe(
     Effect.flatMap((coreAddress) => {
-      const networkId = CoreAddress.getNetworkId(coreAddress)
+      const networkId = Address.getNetworkId(coreAddress)
       return networkId !== chain.id
         ? Effect.fail(
             new Wallet.WalletError({
@@ -60,10 +60,10 @@ const decodeReadOnlyAddress = (
 const decodeReadOnlyRewardAddress = (
   rewardAddress: string | undefined,
   chain: Chain
-): Effect.Effect<CoreRewardAddress.RewardAddress | null, Wallet.WalletError> =>
+): Effect.Effect<RewardAddress.RewardAddress | null, Wallet.WalletError> =>
   rewardAddress === undefined
     ? Effect.succeed(null)
-    : Schema.decodeUnknown(CoreRewardAddress.RewardAddress)(rewardAddress).pipe(
+    : Schema.decodeUnknown(RewardAddress.RewardAddress)(rewardAddress).pipe(
         Effect.mapError(
           (cause) => new Wallet.WalletError({ message: `Invalid reward address format: ${rewardAddress}`, cause })
         ),
@@ -159,14 +159,14 @@ export const cip30Wallet =
     const addrStr = used[0] ?? unused[0]
     if (!addrStr) return yield* Effect.fail(new Wallet.WalletError({ message: "Wallet API returned no addresses" }))
     const resolvedAddress = yield* Effect.orElse(
-      Effect.try({ try: () => CoreAddress.fromBech32(addrStr), catch: () => addrStr }),
+      Effect.try({ try: () => Address.fromBech32(addrStr), catch: () => addrStr }),
       () =>
         Effect.try({
-          try: () => CoreAddress.fromHex(addrStr),
+          try: () => Address.fromHex(addrStr),
           catch: (e) => new Wallet.WalletError({ message: `Invalid address format from wallet: ${addrStr}`, cause: e as Error })
         })
     )
-    const networkId = CoreAddress.getNetworkId(resolvedAddress)
+    const networkId = Address.getNetworkId(resolvedAddress)
     if (networkId !== chain.id) {
       return yield* Effect.fail(
         new Wallet.WalletError({
@@ -183,7 +183,7 @@ export const cip30Wallet =
       catch: (e) => new Wallet.WalletError({ message: "Failed to fetch reward addresses", cause: e as Error })
     })
     if (!rewards[0]) return null
-    const rewardAddress = yield* Schema.decodeUnknown(CoreRewardAddress.RewardAddress)(rewards[0]).pipe(
+    const rewardAddress = yield* Schema.decodeUnknown(RewardAddress.RewardAddress)(rewards[0]).pipe(
       Effect.mapError((e) => new Wallet.WalletError({ message: `Invalid reward address from wallet`, cause: e }))
     )
     return yield* validateRewardAddressNetwork(rewardAddress, chain)
@@ -192,7 +192,7 @@ export const cip30Wallet =
   const effectInterface: Wallet.ApiWalletEffect = {
     address: () => fetchAddress,
     rewardAddress: () => fetchRewardAddress,
-    signTx: (txOrHex: Transaction.Transaction | string, _context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }) =>
+    signTx: (txOrHex: Transaction.Transaction | string, _context?: { utxos?: ReadonlyArray<UTxO.UTxO> }) =>
       Effect.gen(function* () {
         const cbor = typeof txOrHex === "string" ? txOrHex : Transaction.toCBORHex(txOrHex)
         const witnessHex = yield* Effect.tryPromise({
@@ -207,12 +207,12 @@ export const cip30Wallet =
           Effect.mapError((cause) => new Wallet.WalletError({ message: `Failed to decode witness set: ${cause}`, cause }))
         )
       }),
-    signMessage: (address: CoreAddress.Address | CoreRewardAddress.RewardAddress, payload: Wallet.Payload) =>
+    signMessage: (address: Address.Address | RewardAddress.RewardAddress, payload: Wallet.Payload) =>
       Effect.gen(function* () {
         const addressHex =
-          address instanceof CoreAddress.Address
-            ? CoreAddress.toHex(address)
-            : CoreRewardAccount.toHex(CoreRewardAccount.fromBech32(address))
+          address instanceof Address.Address
+            ? Address.toHex(address)
+            : RewardAccount.toHex(RewardAccount.fromBech32(address))
         const result = yield* Effect.tryPromise({
           try: () => api.signData(addressHex, payload),
           catch: (cause) => new Wallet.WalletError({ message: "User rejected message signing", cause })

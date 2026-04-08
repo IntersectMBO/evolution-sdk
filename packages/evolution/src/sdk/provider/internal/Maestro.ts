@@ -5,8 +5,8 @@
 
 import { Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Address from "../../../Address.js"
+import * as Assets from "../../../Assets/index.js"
 import * as Bytes from "../../../Bytes.js"
 import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
@@ -20,7 +20,7 @@ import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
 import type { Script } from "../../../Script.js"
 import * as TransactionHash from "../../../TransactionHash.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import type * as Provider from "../Provider.js"
 
@@ -270,7 +270,7 @@ export const transformDatumOption = (
  */
 export const transformAssets = (
   maestroAssets: ReadonlyArray<Schema.Schema.Type<typeof MaestroAsset>>
-): CoreAssets.Assets => {
+): Assets.Assets => {
   let lovelace = 0n
   const multiAssetEntries: Array<[string, bigint]> = []
 
@@ -283,14 +283,14 @@ export const transformAssets = (
   }
 
   // Build Core Assets starting with lovelace
-  let assets = CoreAssets.fromLovelace(lovelace)
+  let assets = Assets.fromLovelace(lovelace)
 
   // Add multi-assets using hex strings
   for (const [unit, qty] of multiAssetEntries) {
     // Parse unit - policyId is first 56 chars, assetName is remainder
     const policyIdHex = unit.slice(0, 56)
     const assetNameHex = unit.slice(56)
-    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, qty)
+    assets = Assets.addByHex(assets, policyIdHex, assetNameHex, qty)
   }
 
   return assets
@@ -319,14 +319,14 @@ export const transformScriptRef = (
 /**
  * Transform Maestro UTxO to Core UTxO format
  */
-export const transformUTxO = (maestroUtxo: Schema.Schema.Type<typeof MaestroUTxO>): CoreUTxO.UTxO => {
+export const transformUTxO = (maestroUtxo: Schema.Schema.Type<typeof MaestroUTxO>): UTxO.UTxO => {
   const assets = transformAssets(maestroUtxo.assets)
-  const address = CoreAddress.fromBech32(maestroUtxo.address)
+  const address = Address.fromBech32(maestroUtxo.address)
   const transactionId = TransactionHash.fromHex(maestroUtxo.tx_hash)
   const datumOption = transformDatumOption(maestroUtxo.datum)
   const scriptRef = transformScriptRef(maestroUtxo.reference_script)
 
-  return new CoreUTxO.UTxO({
+  return new UTxO.UTxO({
     transactionId,
     index: BigInt(maestroUtxo.index),
     address,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as Assets from "../src/Assets/index.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet, preprod, preview } from "../src/sdk/client/index.js"
 import * as Time from "../src/Time/index.js"
@@ -35,7 +35,7 @@ describe("TxBuilder slot config resolution", () => {
     const builder = makeTxBuilder({ chain: preview })
 
     const result = await builder
-      .payToAddress({ address: RECEIVER_ADDRESS, assets: CoreAssets.fromLovelace(2_000_000n) })
+      .payToAddress({ address: RECEIVER_ADDRESS, assets: Assets.fromLovelace(2_000_000n) })
       .setValidity({ from: FIXED_TIME, to: FIXED_TIME + 300_000n })
       .build({
         changeAddress: CHANGE_ADDRESS,
@@ -55,7 +55,7 @@ describe("TxBuilder slot config resolution", () => {
     const builder = makeTxBuilder({ chain: preprod })
 
     const result = await builder
-      .payToAddress({ address: RECEIVER_ADDRESS, assets: CoreAssets.fromLovelace(2_000_000n) })
+      .payToAddress({ address: RECEIVER_ADDRESS, assets: Assets.fromLovelace(2_000_000n) })
       .setValidity({ from: FIXED_TIME, to: FIXED_TIME + 300_000n })
       .build({
         changeAddress: CHANGE_ADDRESS,
@@ -75,7 +75,7 @@ describe("TxBuilder slot config resolution", () => {
     const builder = makeTxBuilder({ chain: mainnet })
 
     const result = await builder
-      .payToAddress({ address: RECEIVER_ADDRESS, assets: CoreAssets.fromLovelace(2_000_000n) })
+      .payToAddress({ address: RECEIVER_ADDRESS, assets: Assets.fromLovelace(2_000_000n) })
       .setValidity({ from: FIXED_TIME, to: FIXED_TIME + 300_000n })
       .build({
         changeAddress: CHANGE_ADDRESS,
@@ -95,7 +95,7 @@ describe("TxBuilder slot config resolution", () => {
     const builder = makeTxBuilder({ chain: mainnet })
 
     const result = await builder
-      .payToAddress({ address: RECEIVER_ADDRESS, assets: CoreAssets.fromLovelace(2_000_000n) })
+      .payToAddress({ address: RECEIVER_ADDRESS, assets: Assets.fromLovelace(2_000_000n) })
       .setValidity({ from: FIXED_TIME, to: FIXED_TIME + 300_000n })
       .build({
         changeAddress: CHANGE_ADDRESS,

@@ -6,7 +6,7 @@
 import { HttpClientError } from "@effect/platform"
 import { Effect, Schedule, Schema } from "effect"
 
-import * as CoreAddress from "../../../Address.js"
+import * as Address from "../../../Address.js"
 import * as AssetName from "../../../AssetName.js"
 import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
@@ -23,7 +23,7 @@ import type * as Script from "../../../Script.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
-import * as CoreUTxO from "../../../UTxO.js"
+import * as UTxO from "../../../UTxO.js"
 import type * as Provider from "../Provider.js"
 import { ProviderError } from "../Provider.js"
 import * as Blockfrost from "./Blockfrost.js"
@@ -75,17 +75,17 @@ const is404Error = (error: unknown): boolean => {
 /**
  * Convert address or credential to appropriate Blockfrost endpoint path
  */
-const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Credential): string => {
+const getAddressPath = (addressOrCredential: Address.Address | Credential.Credential): string => {
   // For Core Address, convert to bech32 string
-  if (addressOrCredential instanceof CoreAddress.Address) {
-    return CoreAddress.toBech32(addressOrCredential)
+  if (addressOrCredential instanceof Address.Address) {
+    return Address.toBech32(addressOrCredential)
   }
   // For Credential, convert to string representation
   return addressOrCredential.toString()
 }
 
 const toBlockfrostValue = (
-  assets: CoreUTxO.UTxO["assets"]
+  assets: UTxO.UTxO["assets"]
 ): Record<string, unknown> => {
   const value: Record<string, unknown> = {
     coins: Number(assets.lovelace)
@@ -147,10 +147,10 @@ const toBlockfrostScript = (
   }
 }
 
-const toBlockfrostAdditionalUtxoSet = (additionalUTxOs: Array<CoreUTxO.UTxO>) =>
+const toBlockfrostAdditionalUtxoSet = (additionalUTxOs: Array<UTxO.UTxO>) =>
   additionalUTxOs.map((utxo) => {
     const txOut: Record<string, unknown> = {
-      address: CoreAddress.toBech32(utxo.address),
+      address: Address.toBech32(utxo.address),
       value: toBlockfrostValue(utxo.assets),
       ...toBlockfrostDatum(utxo.datumOption)
     }
@@ -271,7 +271,7 @@ export const getProtocolParameters = (baseUrl: string, projectId?: string) =>
  * Returns: (baseUrl, projectId?) => (addressOrCredential) => Effect<UTxO[], ProviderError>
  */
 export const getUtxos =
-  (baseUrl: string, projectId?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
+  (baseUrl: string, projectId?: string) => (addressOrCredential: Address.Address | Credential.Credential) => {
     const addressPath = getAddressPath(addressOrCredential)
     const fetchScript = getScriptByHash(baseUrl, projectId)
     const fetchDatum = getDatumByHash(baseUrl, projectId)
@@ -313,7 +313,7 @@ export const getUtxos =
     // Transform UTxOs with full script and datum resolution
     const transformWithResolution = (utxo: Blockfrost.BlockfrostUTxO) => {
       const transactionId = TransactionHash.fromHex(utxo.tx_hash)
-      const address = CoreAddress.fromBech32(utxo.address)
+      const address = Address.fromBech32(utxo.address)
 
       const scriptEffect = utxo.reference_script_hash
         ? fetchScript(utxo.reference_script_hash).pipe(
@@ -336,7 +336,7 @@ export const getUtxos =
       return Effect.all([scriptEffect, datumEffect]).pipe(
         Effect.map(([scriptRef, datumOption]) => {
           const assets = Blockfrost.transformAmounts(utxo.amount)
-          return new CoreUTxO.UTxO({
+          return new UTxO.UTxO({
             transactionId,
             index: BigInt(utxo.output_index),
             address,
@@ -367,7 +367,7 @@ export const getUtxos =
  */
 export const getUtxosWithUnit =
   (baseUrl: string, projectId?: string) =>
-  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) => {
+  (addressOrCredential: Address.Address | Credential.Credential, unit: string) => {
     const addressPath = getAddressPath(addressOrCredential)
     const fetchScript = getScriptByHash(baseUrl, projectId)
     const fetchDatum = getDatumByHash(baseUrl, projectId)
@@ -429,10 +429,10 @@ export const getUtxosWithUnit =
       return Effect.all([scriptEffect, datumEffect]).pipe(
         Effect.map(([scriptRef, datumOption]) => {
           const assets = Blockfrost.transformAmounts(utxo.amount)
-          const address = CoreAddress.fromBech32(addressPath)
+          const address = Address.fromBech32(addressPath)
           const transactionId = TransactionHash.fromHex(utxo.tx_hash)
 
-          return new CoreUTxO.UTxO({
+          return new UTxO.UTxO({
             transactionId,
             index: BigInt(utxo.output_index),
             address,
@@ -525,10 +525,10 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
           return Effect.all([scriptEffect, datumEffect]).pipe(
             Effect.map(([scriptRef, datumOption]) => {
               const assets = Blockfrost.transformAmounts(utxo.amount)
-              const coreAddress = CoreAddress.fromBech32(address)
+              const coreAddress = Address.fromBech32(address)
               const transactionId = TransactionHash.fromHex(utxo.tx_hash)
 
-              return new CoreUTxO.UTxO({
+              return new UTxO.UTxO({
                 transactionId,
                 index: BigInt(utxo.output_index),
                 address: coreAddress,
@@ -591,10 +591,10 @@ export const getUtxosByOutRef =
               return Effect.all([scriptEffect, datumEffect]).pipe(
                 Effect.map(([scriptRef, datumOption]) => {
                   const assets = Blockfrost.transformAmounts(output.amount)
-                  const address = CoreAddress.fromBech32(output.address)
+                  const address = Address.fromBech32(output.address)
                   const transactionId = TransactionHash.fromHex(txUtxos.hash)
 
-                  return new CoreUTxO.UTxO({
+                  return new UTxO.UTxO({
                     transactionId,
                     index: BigInt(output.output_index),
                     address,
@@ -712,7 +712,7 @@ export const submitTx = (baseUrl: string, projectId?: string) => (tx: Transactio
  * Returns: (baseUrl, projectId?) => (tx, additionalUTxOs?) => Effect<EvalRedeemer[], ProviderError>
  */
 export const evaluateTx =
-  (baseUrl: string, projectId?: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) => {
+  (baseUrl: string, projectId?: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<UTxO.UTxO>) => {
     // Convert Transaction to CBOR hex for evaluation
     const txCborHex = Transaction.toCBORHex(tx)
 

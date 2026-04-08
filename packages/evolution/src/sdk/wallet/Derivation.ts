@@ -4,13 +4,13 @@ import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 
-import * as CoreAddress from "../../Address.js"
+import * as Address from "../../Address.js"
 import * as AddressEras from "../../AddressEras.js"
 import * as Bip32PrivateKey from "../../Bip32PrivateKey.js"
 import * as KeyHash from "../../KeyHash.js"
 import * as PrivateKey from "../../PrivateKey.js"
 import * as RewardAccount from "../../RewardAccount.js"
-import * as CoreRewardAddress from "../../RewardAddress.js"
+import * as RewardAddress from "../../RewardAddress.js"
 
 export class DerivationError extends Data.TaggedError("DerivationError")<{
   readonly message: string
@@ -26,8 +26,8 @@ export class DerivationError extends Data.TaggedError("DerivationError")<{
  * - paymentKhHex / stakeKhHex: KeyHash hex strings for quick lookup
  */
 export type SeedDerivationResult = {
-  address: CoreAddress.Address
-  rewardAddress: CoreRewardAddress.RewardAddress | undefined
+  address: Address.Address
+  rewardAddress: RewardAddress.RewardAddress | undefined
   paymentKey: string
   stakeKey: string | undefined
   keyStore: Map<string, PrivateKey.PrivateKey>
@@ -68,14 +68,14 @@ export const walletFromSeed = (
     const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
     const networkId = network === "Mainnet" ? 1 : 0
 
-    const address: CoreAddress.Address =
+    const address: Address.Address =
       addressType === "Base"
-        ? new CoreAddress.Address({
+        ? new Address.Address({
             networkId,
             paymentCredential: paymentKeyHash,
             stakingCredential: stakeKeyHash
           })
-        : new CoreAddress.Address({
+        : new Address.Address({
             networkId,
             paymentCredential: paymentKeyHash
           })
@@ -90,7 +90,7 @@ export const walletFromSeed = (
                   stakeCredential: stakeKeyHash
                 })
               )
-              return Schema.decodeSync(CoreRewardAddress.RewardAddress)(bech32Str)
+              return Schema.decodeSync(RewardAddress.RewardAddress)(bech32Str)
             },
             catch: (cause) => new DerivationError({ message: (cause as Error).message, cause: cause as Error })
           })
@@ -149,7 +149,7 @@ export function addressFromSeed(
     accountIndex?: number
     network?: "Mainnet" | "Testnet" | "Custom"
   } = {}
-): { address: CoreAddress.Address; rewardAddress: CoreRewardAddress.RewardAddress | undefined } {
+): { address: Address.Address; rewardAddress: RewardAddress.RewardAddress | undefined } {
   const { accountIndex = 0, addressType = "Base", network = "Mainnet" } = options
   const entropy = mnemonicToEntropy(seed, English)
   const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy, options?.password ?? "")
@@ -164,19 +164,19 @@ export function addressFromSeed(
 
   const address =
     addressType === "Base"
-      ? new CoreAddress.Address({
+      ? new Address.Address({
           networkId,
           paymentCredential: paymentKeyHash,
           stakingCredential: stakeKeyHash
         })
-      : new CoreAddress.Address({
+      : new Address.Address({
           networkId,
           paymentCredential: paymentKeyHash
         })
 
   const rewardAddress =
     addressType === "Base"
-      ? Schema.decodeSync(CoreRewardAddress.RewardAddress)(
+      ? Schema.decodeSync(RewardAddress.RewardAddress)(
           AddressEras.toBech32(
             new RewardAccount.RewardAccount({
               networkId,
@@ -210,21 +210,21 @@ export function walletFromBip32(
   const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
   const networkId = network === "Mainnet" ? 1 : 0
 
-  const address: CoreAddress.Address =
+  const address: Address.Address =
     addressType === "Base"
-      ? new CoreAddress.Address({
+      ? new Address.Address({
           networkId,
           paymentCredential: paymentKeyHash,
           stakingCredential: stakeKeyHash
         })
-      : new CoreAddress.Address({
+      : new Address.Address({
           networkId,
           paymentCredential: paymentKeyHash
         })
 
   const rewardAddress =
     addressType === "Base"
-      ? Schema.decodeSync(CoreRewardAddress.RewardAddress)(
+      ? Schema.decodeSync(RewardAddress.RewardAddress)(
           AddressEras.toBech32(
             new RewardAccount.RewardAccount({
               networkId,
@@ -281,7 +281,7 @@ export function walletFromPrivateKey(
 
     const networkId = network === "Mainnet" ? 1 : 0
 
-    let address: CoreAddress.Address
+    let address: Address.Address
     let stakeKey: PrivateKey.PrivateKey | undefined
     let stakeKeyHash: KeyHash.KeyHash | undefined
 
@@ -294,13 +294,13 @@ export function walletFromPrivateKey(
         (error) => new DerivationError({ message: String(error), cause: error })
       )
       stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
-      address = new CoreAddress.Address({
+      address = new Address.Address({
         networkId,
         paymentCredential: paymentKeyHash,
         stakingCredential: stakeKeyHash
       })
     } else {
-      address = new CoreAddress.Address({
+      address = new Address.Address({
         networkId,
         paymentCredential: paymentKeyHash
       })
@@ -308,7 +308,7 @@ export function walletFromPrivateKey(
 
     const rewardAddress =
       addressType === "Base" && stakeKeyHash
-        ? Schema.decodeSync(CoreRewardAddress.RewardAddress)(
+        ? Schema.decodeSync(RewardAddress.RewardAddress)(
             AddressEras.toBech32(new RewardAccount.RewardAccount({ networkId, stakeCredential: stakeKeyHash }))
           )
         : undefined

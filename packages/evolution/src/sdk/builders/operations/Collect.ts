@@ -7,7 +7,7 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets/index.js"
 import * as ScriptHash from "../../../ScriptHash.js"
 import * as UTxO from "../../../UTxO.js"
 import * as Ctx from "../internal/ctx.js"
@@ -132,7 +132,7 @@ export const createCollectFromProgram = (
         selectedUtxos: [...state.selectedUtxos, ...params.inputs],
         redeemers: newRedeemers,
         deferredRedeemers: newDeferredRedeemers,
-        totalInputAssets: CoreAssets.merge(state.totalInputAssets, inputAssets)
+        totalInputAssets: Assets.merge(state.totalInputAssets, inputAssets)
       }
     })
   })
