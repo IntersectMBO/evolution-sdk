@@ -38,7 +38,7 @@
     "build": "tsc -b tsconfig.build.json && cp -r src/web/. dist/web && cp -r src/bundler/. dist/bundler",
     "dev": "tsc -b tsconfig.build.json --watch",
     "check": "tsc -b tsconfig.json",
-    "type-check": "tsc -b tsconfig.json",
+    "type-check": "tsc -b tsconfig.src.json",
     "lint": "eslint \"src/**/*.{ts,mjs}\"",
     "clean": "rm -rf dist .turbo .tsbuildinfo"
   },

@@ -33,7 +33,7 @@
     "build": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.build.json --watch",
     "check": "tsc -b tsconfig.json",
-    "type-check": "tsc -b tsconfig.json",
+    "type-check": "tsc -b tsconfig.src.json",
     "lint": "eslint \"src/**/*.{ts,mjs}\"",
     "clean": "rm -rf dist .turbo .tsbuildinfo"
   },
