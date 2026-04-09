@@ -241,7 +241,8 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
         for (let i = 0; i < len; i++) {
           arr[i] = yield* encodeCertificate(toA.certificates[i])
         }
-        record.set(4n, arr)
+        // Wrap in tag 258 (nonempty_set per Conway CDDL)
+        record.set(4n, CBOR.Tag.make({ tag: 258, value: arr }))
       }
 
       if (toA.withdrawals) {
@@ -340,7 +341,9 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       // Optional fields - access as record properties
       const ttl = fromA.get(3n) as bigint | undefined
 
-      const certificatesArray = fromA.get(4n) as Array<typeof Certificate.CDDLSchema.Type>
+      // Certificates may be wrapped in tag 258 (nonempty_set per Conway CDDL)
+      const certificatesRaw = fromA.get(4n)
+      const certificatesArray = (CBOR.isTag(certificatesRaw) && (certificatesRaw as any).tag === 258 ? (certificatesRaw as any).value : certificatesRaw) as Array<typeof Certificate.CDDLSchema.Type>
       let certificates: NonEmptyArray<Certificate.Certificate> | undefined
       if (certificatesArray) {
         const len = certificatesArray.length
