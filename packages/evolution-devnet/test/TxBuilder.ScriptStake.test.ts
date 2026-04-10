@@ -13,19 +13,19 @@
  * 4. Deregister the script stake credential (publish)
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as Data from "@evolution-sdk/evolution/Data"
 import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
+import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
+import { inject } from "vitest"
 
 import plutusJson from "../../evolution/test/spec/plutus.json"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 const getStakeMultiValidator = () => {
   const validator = plutusJson.validators.find((v) => v.title === "stake_multivalidator.stake_multivalidator.spend")
@@ -43,12 +43,7 @@ const getStakeMultiValidator = () => {
 const { compiledCode: STAKE_MULTI_COMPILED_CODE, hash: STAKE_MULTI_SCRIPT_HASH } = getStakeMultiValidator()
 
 describe("TxBuilder Script Stake Operations", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
+  let shared: SharedClusterResult
 
   // Redeemer types for the stake_multivalidator
   /** PublishRedeemer: Constr(0, [placeholder: Int]) */
@@ -80,59 +75,17 @@ describe("TxBuilder Script Stake Operations", () => {
     })
   }
 
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1447", ogmiosUrl: "http://localhost:1342" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
-
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedScriptHash).toBe(STAKE_MULTI_SCRIPT_HASH)
 
-    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" })
-
-    const testAddress = await testClient.address()
-    const testAddressHex = CoreAddress.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 500_000_000_000 }
-    }
-
-    // Pre-calculate genesis UTxOs
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "script-stake-test",
-      ports: { node: 6005, submit: 9006 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1447, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1342, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    shared = await useSharedCluster(inject("sharedCluster" as any), [36])
   }, 180_000)
 
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
-
   it("runs full script stake coordination pattern", { timeout: 180_000 }, async () => {
-    if (genesisUtxos.length === 0) {
-      throw new Error("Genesis UTxOs not calculated")
-    }
-
-    const client = createTestClient(0)
+    const client = shared.makeClient(36)
     const scriptPaymentAddress = getScriptPaymentAddress()
+    const genesisUtxo = shared.getGenesisUtxo(36)
 
     // Step 1: Register the script stake credential
 
@@ -145,7 +98,7 @@ describe("TxBuilder Script Stake Operations", () => {
           redeemer: makePublishRedeemer(0n)
         })
         .attachScript({ script: stakeScript })
-        .build({ availableUtxos: [...genesisUtxos] })
+        .build({ availableUtxos: [genesisUtxo] })
 
       const registerSubmitBuilder = await registerSignBuilder.sign()
       registerTxHash = await registerSubmitBuilder.submit()
@@ -188,7 +141,13 @@ describe("TxBuilder Script Stake Operations", () => {
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     // Step 3: Coordination transaction (spend + withdraw)
-    const scriptUtxos = await client.getUtxos(scriptPaymentAddress)
+    const allScriptUtxos = await client.getUtxos(scriptPaymentAddress)
+
+    // Filter by fundTxHash to isolate our UTxOs from other test runs
+    const fundTxHashHex = TransactionHash.toHex(fundTxHash)
+    const scriptUtxos = allScriptUtxos.filter(
+      (u) => TransactionHash.toHex(u.transactionId) === fundTxHashHex
+    )
     expect(scriptUtxos.length).toBeGreaterThanOrEqual(2)
 
     const utxosToSpend = scriptUtxos.slice(0, 2)
@@ -256,11 +215,7 @@ describe("TxBuilder Script Stake Operations", () => {
   })
 
   it("captures script failure with labeled redeemers", { timeout: 180_000 }, async () => {
-    if (genesisUtxos.length === 0) {
-      throw new Error("Genesis UTxOs not calculated")
-    }
-
-    const client = createTestClient(0)
+    const client = shared.makeClient(36)
     const scriptPaymentAddress = getScriptPaymentAddress()
 
     // Ensure stake credential is registered
@@ -287,11 +242,16 @@ describe("TxBuilder Script Stake Operations", () => {
         datum: unitDatum
       })
       .build()
-    await client.awaitTx(await (await fundSignBuilder.sign()).submit(), 1000)
+    const fundTxHash = await (await fundSignBuilder.sign()).submit()
+    await client.awaitTx(fundTxHash, 1000)
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
-    // Get script UTxOs
-    const scriptUtxos = await client.getUtxos(scriptPaymentAddress)
+    // Get script UTxOs - filter by fundTxHash
+    const allScriptUtxos = await client.getUtxos(scriptPaymentAddress)
+    const fundTxHashHex = TransactionHash.toHex(fundTxHash)
+    const scriptUtxos = allScriptUtxos.filter(
+      (u) => TransactionHash.toHex(u.transactionId) === fundTxHashHex
+    )
     expect(scriptUtxos.length).toBeGreaterThan(0)
     const utxoToSpend = scriptUtxos[0]!
 

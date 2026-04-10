@@ -6,11 +6,8 @@
  * - MintRedeemer: Constr(0, [idx: Int]) where idx == 1 to succeed
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano, Client } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -20,6 +17,8 @@ import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
+import { inject } from "vitest"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 const CoreAssets = Cardano.Assets
 
@@ -28,12 +27,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
   // Devnet Setup
   // ============================================================================
 
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
+  let shared: SharedClusterResult
 
   /**
    * simple_mint.simple_mint.mint validator from plutus.json
@@ -63,70 +57,24 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
   const scriptHash = ScriptHash.fromScript(simpleMintScript)
   const calculatedPolicyId = ScriptHash.toHex(scriptHash)
 
-  const createTestClient = () => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1444", ogmiosUrl: "http://localhost:1339" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
-  }
-
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedPolicyId).toBe(SIMPLE_MINT_POLICY_ID_HEX)
 
-    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
-
-    const testAddress = await testClient.address()
-    const testAddressHex = CoreAddress.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 900_000_000_000 }
-    }
-
-    // Pre-calculate genesis UTxOs
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "plutus-minting-test",
-      ports: { node: 6002, submit: 9003 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1444, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1339, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    shared = await useSharedCluster(inject("sharedCluster" as any), [11])
   }, 180_000)
-
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
 
   // ============================================================================
   // Submit Tests
   // ============================================================================
 
   it("should mint tokens with PlutusV3 simple_mint script", { timeout: 60_000 }, async () => {
-    if (genesisUtxos.length === 0) {
-      throw new Error("Genesis UTxOs not calculated")
-    }
+    const genesisUtxo = shared.getGenesisUtxo(11)
 
-    const client = createTestClient()
+    const client = shared.makeClient(11)
     const address = await client.address()
 
     // Use pre-calculated genesis UTxOs (Kupo may not have synced yet)
-    const genesisUtxo = genesisUtxos.find((u) => CoreAddress.toBech32(u.address) === CoreAddress.toBech32(address))
-    if (!genesisUtxo) {
-      throw new Error("Genesis UTxO not found for wallet address")
-    }
-
     const assetNameHex = Text.toHex("PlutusToken")
     const unit = SIMPLE_MINT_POLICY_ID_HEX + assetNameHex
 
@@ -199,7 +147,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
   })
 
   it("should mint then burn tokens with PlutusV3 simple_mint script", { timeout: 60_000 }, async () => {
-    const client = createTestClient()
+    const client = shared.makeClient(11)
     const address = await client.address()
 
     const assetNameHex = Text.toHex("BurnToken")
@@ -209,11 +157,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
     let availableUtxos = await client.getWalletUtxos()
     if (availableUtxos.length === 0) {
       // Fall back to genesis UTxOs if Kupo hasn't synced
-      const genesisUtxo = genesisUtxos.find((u) => CoreAddress.toBech32(u.address) === CoreAddress.toBech32(address))
-      if (!genesisUtxo) {
-        throw new Error("Genesis UTxO not found for wallet address")
-      }
-      availableUtxos = [genesisUtxo]
+      availableUtxos = [shared.getGenesisUtxo(11)]
     }
 
     // Step 1: First mint tokens
@@ -242,7 +186,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
     const mintSubmitBuilder = await mintBuilder.sign()
     const mintTxHash = await mintSubmitBuilder.submit()
     // eslint-disable-next-line no-console
-    console.log(`✓ Submitted Plutus mint tx (for burn test): ${mintTxHash}`)
+    console.log(`Submitted Plutus mint tx (for burn test): ${mintTxHash}`)
     const mintConfirmed = await client.awaitTx(mintTxHash, 1000)
     expect(mintConfirmed).toBe(true)
 
@@ -301,7 +245,7 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
     expect(TransactionHash.toHex(burnTxHash).length).toBe(64)
 
     // eslint-disable-next-line no-console
-    console.log(`✓ Submitted Plutus burn tx: ${burnTxHash}`)
+    console.log(`Submitted Plutus burn tx: ${burnTxHash}`)
 
     const burnConfirmed = await client.awaitTx(burnTxHash, 1000)
     expect(burnConfirmed).toBe(true)

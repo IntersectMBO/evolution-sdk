@@ -1,8 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as NativeScripts from "@evolution-sdk/evolution/NativeScripts"
@@ -10,6 +7,8 @@ import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
+import { inject } from "vitest"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 const CoreAssets = Cardano.Assets
 
@@ -18,79 +17,36 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
   // Devnet Setup
   // ============================================================================
 
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
+  let shared: SharedClusterResult
   let nativeScript: NativeScripts.NativeScript
   let policyId: string
 
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
   const ASSET_NAME = "TestToken"
 
-  const createTestClient = () => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1443", ogmiosUrl: "http://localhost:1338" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
-  }
-
   beforeAll(async () => {
-    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
+    shared = await useSharedCluster(inject("sharedCluster" as any), [7])
 
-    const testAddress = await testClient.address()
-    const testAddressHex = CoreAddress.toHex(testAddress)
+    // Derive native script and policy ID from account 7's payment key
+    const client = shared.makeClient(7)
+    const address = await client.address()
+    const paymentKeyHash = address.paymentCredential.hash
 
-    // Get payment key hash from client's address for native script
-    const paymentKeyHash = testAddress.paymentCredential.hash
-
-    // Create native script requiring signature from payment key
     nativeScript = NativeScripts.makeScriptPubKey(paymentKeyHash)
-
-    // Calculate policy ID from script hash using core module
     const scriptHash = ScriptHash.fromScript(nativeScript)
     policyId = ScriptHash.toHex(scriptHash)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 900_000_000_000 }
-    }
-
-    // Pre-calculate genesis UTxOs (same pattern as Client.Devnet.test.ts)
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "client-minting-test",
-      ports: { node: 6001, submit: 9002 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1443, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1338, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
   }, 180_000)
-
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
 
   // ============================================================================
   // Submit Tests
   // ============================================================================
 
   it("should mint, submit and find asset in UTxO", { timeout: 30_000 }, async () => {
+    const genesisUtxos = shared.genesisUtxos
     if (genesisUtxos.length === 0) {
       throw new Error("Genesis UTxOs not calculated")
     }
 
-    const client = createTestClient()
+    const client = shared.makeClient(7)
     const address = await client.address()
 
     // Use pre-calculated genesis UTxOs (Kupo may not have synced yet)
@@ -153,11 +109,12 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
   })
 
   it("should handle burning (negative amounts) with submit", { timeout: 60_000 }, async () => {
+    const genesisUtxos = shared.genesisUtxos
     if (genesisUtxos.length === 0) {
       throw new Error("Genesis UTxOs not calculated")
     }
 
-    const client = createTestClient()
+    const client = shared.makeClient(7)
     const address = await client.address()
 
     const assetNameHex = Text.toHex(ASSET_NAME)

@@ -11,70 +11,24 @@
  * 3. Verify expired transaction is rejected
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
-import * as Address from "@evolution-sdk/evolution/Address"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano } from "@evolution-sdk/evolution"
+import { inject } from "vitest"
+
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 // Alias for readability
 const Time = Cardano.Time
 
 describe("TxBuilder Validity Interval", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
-
-  // Creates a client with correct slot config for devnet
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1451", ogmiosUrl: "http://localhost:1351" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
+  let shared: SharedClusterResult
 
   beforeAll(async () => {
-    // Create a minimal client just to get the address (before cluster is ready)
-    const tempClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" })
-
-    const testAddress = await tempClient.address()
-    const testAddressHex = Address.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 500_000_000_000 }
-    }
-
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "validity-test",
-      ports: { node: 6009, submit: 9016 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1451, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1351, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
-  }, 180_000)
-
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
+    shared = await useSharedCluster(inject("sharedCluster" as any), [26])
+  })
 
   it("should build and submit transaction with TTL", { timeout: 60_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(26)
     const myAddress = await client.address()
 
     // Set TTL to 5 minutes from now
@@ -87,7 +41,7 @@ describe("TxBuilder Validity Interval", () => {
         address: myAddress,
         assets: Cardano.Assets.fromLovelace(5_000_000n)
       })
-      .build({ availableUtxos: [...genesisUtxos] })
+      .build({ availableUtxos: [...shared.genesisUtxos] })
 
     const tx = await signBuilder.toTransaction()
 
@@ -107,7 +61,7 @@ describe("TxBuilder Validity Interval", () => {
   })
 
   it("should build and submit transaction with both validity bounds", { timeout: 60_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(26)
     const myAddress = await client.address()
 
     // Valid from now until 5 minutes from now
@@ -147,7 +101,7 @@ describe("TxBuilder Validity Interval", () => {
   })
 
   it("should reject expired transaction", { timeout: 60_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(26)
     const myAddress = await client.address()
 
     // Set TTL to 1 second ago (already expired)
@@ -160,7 +114,7 @@ describe("TxBuilder Validity Interval", () => {
         address: myAddress,
         assets: Cardano.Assets.fromLovelace(5_000_000n)
       })
-      .build({ availableUtxos: [...genesisUtxos] })
+      .build({ availableUtxos: [...shared.genesisUtxos] })
 
     const submitBuilder = await signBuilder.sign()
 
@@ -169,7 +123,7 @@ describe("TxBuilder Validity Interval", () => {
   })
 
   it("should reject transaction before validity start", { timeout: 60_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(26)
     const myAddress = await client.address()
 
     // Valid starting 5 minutes from now (not valid yet)
@@ -183,7 +137,7 @@ describe("TxBuilder Validity Interval", () => {
         address: myAddress,
         assets: Cardano.Assets.fromLovelace(5_000_000n)
       })
-      .build({ availableUtxos: [...genesisUtxos] })
+      .build({ availableUtxos: [...shared.genesisUtxos] })
 
     const submitBuilder = await signBuilder.sign()
 

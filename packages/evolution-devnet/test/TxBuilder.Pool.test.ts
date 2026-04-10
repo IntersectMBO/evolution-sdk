@@ -1,6 +1,9 @@
 /**
  * Devnet tests for TxBuilder pool operations.
  * Tests stake pool registration and retirement.
+ *
+ * Uses a dedicated cluster (not the shared cluster) because the retirePool
+ * test requires Genesis.queryCurrentEpoch which needs a Cluster object.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
@@ -8,7 +11,6 @@ import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
 import type { Cardano } from "@evolution-sdk/evolution"
-import { Client, preprod } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Bytes32 from "@evolution-sdk/evolution/Bytes32"
 import type * as EpochNo from "@evolution-sdk/evolution/EpochNo"
@@ -22,81 +24,42 @@ import * as SingleHostAddr from "@evolution-sdk/evolution/SingleHostAddr"
 import * as UnitInterval from "@evolution-sdk/evolution/UnitInterval"
 import * as Url from "@evolution-sdk/evolution/Url"
 import * as VrfKeyHash from "@evolution-sdk/evolution/VrfKeyHash"
+import {
+  type ClusterSetupResult,
+  setupCluster,
+  teardownCluster
+} from "./utils/shared-cluster.js"
 
 describe("TxBuilder Pool Operations", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  const genesisUtxosByAccount: Map<number, Cardano.UTxO.UTxO> = new Map()
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
-
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1453", ogmiosUrl: "http://localhost:1343" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
+  let setup: ClusterSetupResult
 
   beforeAll(async () => {
-    // Create clients for pool tests
-    const accounts = [0, 1].map((accountIndex) =>
-      Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-    )
-
-    const addresses = await Promise.all(accounts.map((client) => client.address()))
-    const addressHexes = addresses.map((addr) => Address.toHex(addr))
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: {
-        [addressHexes[0]]: 1_000_000_000_000,
-        [addressHexes[1]]: 1_000_000_000_000
-      },
-      protocolParams: {
-        ...Config.DEFAULT_SHELLEY_GENESIS.protocolParams,
-        keyDeposit: 2_000_000,
-        poolDeposit: 500_000_000
-      }
-    }
-
-    const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    for (let i = 0; i < addresses.length; i++) {
-      const utxo = genesisUtxos.find((u) => Address.toBech32(u.address) === Address.toBech32(addresses[i]))
-      if (utxo) genesisUtxosByAccount.set(i, utxo)
-    }
-
-    devnetCluster = await Cluster.make({
+    setup = await setupCluster({
       clusterName: "pool-ops-test",
-      ports: { node: 6006, submit: 9007 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1453, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1343, logLevel: "info" }
+      accountIndices: [12, 13],
+      ports: { node: 6006, submit: 9007, kupo: 1453, ogmios: 1343 },
+      shelleyGenesisOverrides: {
+        protocolParams: {
+          ...Config.DEFAULT_SHELLEY_GENESIS.protocolParams,
+          keyDeposit: 2_000_000,
+          poolDeposit: 500_000_000
+        }
+      }
     })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
   }, 180_000)
 
   afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
+    await teardownCluster(setup?.cluster)
   }, 60_000)
 
   it("registerPool - registers a new stake pool", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 0
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
+    const ACCOUNT_INDEX = 12
+    const genesisUtxo = setup.genesisUtxosByAccount.get(ACCOUNT_INDEX)
     if (!genesisUtxo) {
       throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
     }
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = setup.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
 
     const poolKeyHash =
@@ -152,13 +115,13 @@ describe("TxBuilder Pool Operations", () => {
   })
 
   it("retirePool - retires a stake pool", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 1
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
+    const ACCOUNT_INDEX = 13
+    const genesisUtxo = setup.genesisUtxosByAccount.get(ACCOUNT_INDEX)
     if (!genesisUtxo) {
       throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
     }
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = setup.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
 
     const poolKeyHash =
@@ -212,7 +175,7 @@ describe("TxBuilder Pool Operations", () => {
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     // Query current epoch and retire in future epoch
-    const currentEpoch = await Genesis.queryCurrentEpoch(devnetCluster!)
+    const currentEpoch = await Genesis.queryCurrentEpoch(setup.cluster)
     const retirementEpoch: EpochNo.EpochNo = currentEpoch + 5n
     const retireTxHash = await client
       .newTx()

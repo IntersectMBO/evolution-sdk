@@ -5,68 +5,23 @@
  * into a single transaction, enabling modular and reusable transaction patterns.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
-import * as Address from "@evolution-sdk/evolution/Address"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano } from "@evolution-sdk/evolution"
+import { inject } from "vitest"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 // Alias for readability
 const Time = Cardano.Time
 
 describe("TxBuilder compose (Devnet Submit)", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
-
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1458", ogmiosUrl: "http://localhost:1350" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
+  let shared: SharedClusterResult
 
   beforeAll(async () => {
-    const tempClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" })
-
-    const testAddress = await tempClient.address()
-    const testAddressHex = Address.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 500_000_000_000 }
-    }
-
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "compose-test",
-      ports: { node: 6015, submit: 9015 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1458, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1350, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    shared = await useSharedCluster(inject("sharedCluster" as any), [4, 5])
   }, 180_000)
 
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
-
   it("should compose payment with validity constraints", { timeout: 60_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(4)
     const myAddress = await client.address()
 
     // Create a payment builder
@@ -85,7 +40,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
       .newTx()
       .compose(paymentBuilder)
       .compose(validityBuilder)
-      .build({ availableUtxos: [...genesisUtxos] })
+      .build({ availableUtxos: [shared.getGenesisUtxo(4)] })
 
     const tx = await signBuilder.toTransaction()
 
@@ -103,8 +58,8 @@ describe("TxBuilder compose (Devnet Submit)", () => {
   })
 
   it("should compose multiple payment builders to different addresses", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(4)
+    const client2 = shared.makeClient(5)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
@@ -143,7 +98,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
   })
 
   it("should compose builder with addSigner + metadata + payment", { timeout: 60_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(4)
     const myAddress = await client.address()
 
     // Extract payment credential
@@ -190,7 +145,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
   })
 
   it("should compose stake registration with payment and metadata", { timeout: 90_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(4)
     const myAddress = await client.address()
 
     // Get stake credential from address
@@ -239,7 +194,7 @@ describe("TxBuilder compose (Devnet Submit)", () => {
   })
 
   it("should verify getPrograms returns accumulated operations", { timeout: 30_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(4)
     const myAddress = await client.address()
 
     // Build a transaction with multiple operations
@@ -276,8 +231,8 @@ describe("TxBuilder compose (Devnet Submit)", () => {
   })
 
   it("should compose builders created from different clients", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(4)
+    const client2 = shared.makeClient(5)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
