@@ -1,69 +1,25 @@
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
-import * as Address from "@evolution-sdk/evolution/Address"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano } from "@evolution-sdk/evolution"
 import type { SignBuilder } from "@evolution-sdk/evolution/sdk/builders/SignBuilder"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
+import { inject } from "vitest"
+
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 describe("TxBuilder.chainResult", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
-
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1456", ogmiosUrl: "http://localhost:1348" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
+  let shared: SharedClusterResult
 
   beforeAll(async () => {
-    const tempClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" })
-
-    const testAddress = await tempClient.address()
-    const testAddressHex = Address.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 500_000_000_000 }
-    }
-
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "chain-test",
-      ports: { node: 6013, submit: 9013 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1456, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1348, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 5_000))
-  }, 180_000)
-
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
+    shared = await useSharedCluster(inject("sharedCluster" as any), [3])
+  })
 
   it("should chain multiple transactions and submit them all", { timeout: 90_000 }, async () => {
-    const client = createTestClient(0)
+    const client = shared.makeClient(3)
     const address = await client.address()
     const TX_COUNT = 5
 
     // Build chained transactions using build() + chainResult
-    let available = [...genesisUtxos]
+    let available = [...shared.genesisUtxos]
     const txs: Array<SignBuilder> = []
 
     for (let i = 0; i < TX_COUNT; i++) {

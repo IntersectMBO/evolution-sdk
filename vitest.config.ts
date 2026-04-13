@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => ({
     hookTimeout: 30000,
     teardownTimeout: 30000,
     pool: "threads",
-    retry: 2,
+    retry: 0,
     bail: 1,
     exclude: ["**/node_modules/**", "**/dist/**", "**/temp/**", "**/.direnv/**", "**/.{idea,git,cache,output,temp}/**"],
     coverage: {

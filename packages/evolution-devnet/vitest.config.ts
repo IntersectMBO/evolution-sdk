@@ -8,8 +8,9 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 90_000,
     teardownTimeout: 60_000,
-    // Serialize all test files — each file creates its own cluster (cardano-node + kupo + ogmios)
-    // Running them concurrently exhausts Docker resources on CI / local machines
+    // globalSetup starts a shared cluster once; most tests connect to it.
+    // Isolated tests (Genesis, integration, VoteValidators) still create their own clusters.
+    globalSetup: ["./test/global-setup.ts"],
     pool: "forks",
     poolOptions: {
       forks: {

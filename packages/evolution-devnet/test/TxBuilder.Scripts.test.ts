@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
 import { createAikenEvaluator } from "@evolution-sdk/aiken-uplc"
 import { Cardano } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
@@ -13,9 +13,10 @@ import { makeTxBuilder } from "@evolution-sdk/evolution/sdk/builders/Transaction
 import { KupmiosProvider } from "@evolution-sdk/evolution/sdk/provider/Kupmios"
 import { createScalusEvaluator } from "@evolution-sdk/scalus-uplc"
 import { Schema } from "effect"
+import { inject } from "vitest"
 
 import plutusJson from "../../evolution/test/spec/plutus.json"
-import * as Cluster from "../src/Cluster.js"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
 // Alias for Cardano.Assets
@@ -23,69 +24,26 @@ const CoreAssets = Cardano.Assets
 
 describe("TxBuilder Script Handling", () => {
   // ============================================================================
-  // Devnet Setup (Ogmios for script evaluation)
+  // Shared Cluster Setup (Ogmios for script evaluation)
   // ============================================================================
 
-  let devnetCluster: Cluster.Cluster | undefined
+  let shared: SharedClusterResult
   let kupmiosProvider: KupmiosProvider
 
   beforeAll(async () => {
-    try {
-      devnetCluster = await Cluster.make({
-        clusterName: "txbuilder-plutus-script-eval",
-        ports: {
-          node: 5001,
-          submit: 9001
-        },
-        shelleyGenesis: {
-          slotLength: 0.02, // 20ms per slot (fast)
-          epochLength: 50,
-          activeSlotsCoeff: 1.0
-        },
-        ogmios: {
-          enabled: true,
-          port: 1337,
-          logLevel: "info"
-        }
-      })
+    shared = await useSharedCluster(inject("sharedCluster" as any), [15])
 
-      await Cluster.start(devnetCluster)
+    // Parse cluster info to get ogmios port
+    const info = JSON.parse(inject("sharedCluster" as any))
+    const ogmiosUrl = `http://localhost:${info.ports.ogmios}`
 
-      // Wait for Ogmios to be ready
-      await new Promise((resolve) => setTimeout(resolve, 2_000))
-
-      // Ogmios serves both HTTP (for JSON-RPC) and WebSocket on the same port
-      const ogmiosUrl = "http://localhost:1337"
-
-      // Create provider using local Ogmios
-      // Note: Kupo URL is required but not used in these tests (only Ogmios for evaluation)
-      kupmiosProvider = new KupmiosProvider(
-        "http://localhost:1442", // Kupo (not used)
-        ogmiosUrl // Ogmios for script evaluation via HTTP
-      )
-
-      // eslint-disable-next-line no-console
-      console.log(`✓ Devnet ready - Ogmios: ${ogmiosUrl}`)
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to start devnet:", error)
-      throw error
-    }
+    // Create provider using shared cluster Ogmios
+    // Note: Kupo URL is required but not used in these tests (only Ogmios for evaluation)
+    kupmiosProvider = new KupmiosProvider(
+      `http://localhost:${info.ports.kupo}`, // Kupo (not used in script eval tests)
+      ogmiosUrl // Ogmios for script evaluation via HTTP
+    )
   }, 180_000)
-
-  afterAll(async () => {
-    if (devnetCluster) {
-      try {
-        await Cluster.stop(devnetCluster)
-        await Cluster.remove(devnetCluster)
-        // eslint-disable-next-line no-console
-        console.log("✓ Devnet stopped")
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Failed to stop devnet:", error)
-      }
-    }
-  }, 60_000)
 
   // ============================================================================
   // Test Configuration
@@ -106,10 +64,21 @@ describe("TxBuilder Script Handling", () => {
   const CHANGE_ADDRESS = TESTNET_ADDRESSES[0]
   const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
-  // baseConfig will use kupmiosProvider and devnetCluster which are set in beforeAll
+  // baseConfig will use kupmiosProvider and shared cluster chain
   const baseConfig: TxBuilderConfig = {
     get chain() {
-      return Cluster.getChain(devnetCluster!)
+      const info = JSON.parse(inject("sharedCluster" as any))
+      return {
+        id: info.chain.id,
+        name: info.chain.name,
+        networkMagic: info.chain.networkMagic,
+        epochLength: info.chain.epochLength,
+        slotConfig: {
+          zeroTime: BigInt(info.chain.slotConfig.zeroTime),
+          zeroSlot: BigInt(info.chain.slotConfig.zeroSlot),
+          slotLength: info.chain.slotConfig.slotLength
+        }
+      }
     },
     get provider() {
       return kupmiosProvider

@@ -5,11 +5,8 @@
  * This requires reading the datum from each UTxO and combining it with the resolved index.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano, Client } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -21,6 +18,8 @@ import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import { Schema } from "effect"
+import { inject } from "vitest"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 import plutusJson from "../../evolution/test/spec/plutus.json"
 
@@ -42,12 +41,7 @@ const getMintMultiValidator = () => {
 const { compiledCode: MINT_MULTI_COMPILED_CODE, hash: MINT_MULTI_POLICY_ID_HEX } = getMintMultiValidator()
 
 describe("TxBuilder RedeemerBuilder", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
+  let shared: SharedClusterResult
 
   /** SpendRedeemer: Constr(0, [value: Int]) where value = datum.counter + input_index */
   const makeSpendRedeemer = (value: bigint): Data.Data => Data.constr(0n, [Data.int(value)])
@@ -82,67 +76,18 @@ describe("TxBuilder RedeemerBuilder", () => {
   const scriptHashValue = ScriptHash.fromScript(mintMultiScript)
   const calculatedPolicyId = ScriptHash.toHex(scriptHashValue)
 
-  const createTestClient = () => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1445", ogmiosUrl: "http://localhost:1340" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
-  }
-
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedPolicyId).toBe(MINT_MULTI_POLICY_ID_HEX)
 
-    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
-
-    const testAddress = await testClient.address()
-    const testAddressHex = CoreAddress.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 900_000_000_000 }
-    }
-
-    // Pre-calculate genesis UTxOs
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "redeemer-builder-test",
-      ports: { node: 6003, submit: 9004 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1445, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1340, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    shared = await useSharedCluster(inject("sharedCluster" as any), [14])
   }, 180_000)
 
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
-
   it("resolves redeemers using datum + index from multiple script UTxOs", { timeout: 120_000 }, async () => {
-    if (genesisUtxos.length === 0) {
-      throw new Error("Genesis UTxOs not calculated")
-    }
+    const genesisUtxo = shared.getGenesisUtxo(14)
 
-    const client = createTestClient()
+    const client = shared.makeClient(14)
     const walletAddress = await client.address()
-
-    // Use pre-calculated genesis UTxOs
-    const genesisUtxo = genesisUtxos.find(
-      (u) => CoreAddress.toBech32(u.address) === CoreAddress.toBech32(walletAddress)
-    )
-    if (!genesisUtxo) {
-      throw new Error("Genesis UTxO not found for wallet address")
-    }
 
     // Use unique token name with timestamp to avoid UTxO accumulation from retries
     const timestamp = Date.now().toString(36)

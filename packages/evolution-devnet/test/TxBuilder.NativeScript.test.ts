@@ -7,83 +7,54 @@
  * - Multi-sig native scripts
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
+import { Cardano, Client } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as NativeScripts from "@evolution-sdk/evolution/NativeScripts"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import * as UTxO from "@evolution-sdk/evolution/UTxO"
+import { inject } from "vitest"
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
-// Time utility functions (duplicated from core since Time module is not externally accessible)
+// Slot config type (replaces Cluster.SlotConfig)
+type SlotConfig = {
+  readonly zeroTime: bigint
+  readonly zeroSlot: bigint
+  readonly slotLength: number
+}
+
+// Time utility functions
 const now = (): bigint => BigInt(Date.now())
-const unixTimeToSlot = (unixTime: bigint, slotConfig: Cluster.SlotConfig): bigint => {
+const unixTimeToSlot = (unixTime: bigint, slotConfig: SlotConfig): bigint => {
   const timePassed = unixTime - slotConfig.zeroTime
   const slotsPassed = timePassed / BigInt(slotConfig.slotLength)
   return slotsPassed + slotConfig.zeroSlot
 }
-const slotToUnixTime = (slot: bigint, slotConfig: Cluster.SlotConfig): bigint => {
+const slotToUnixTime = (slot: bigint, slotConfig: SlotConfig): bigint => {
   const msAfterBegin = (slot - slotConfig.zeroSlot) * BigInt(slotConfig.slotLength)
   return slotConfig.zeroTime + msAfterBegin
 }
 
 describe("TxBuilder NativeScript (Devnet Submit)", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  let genesisUtxos: ReadonlyArray<Cardano.UTxO.UTxO> = []
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
-
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1449", ogmiosUrl: "http://localhost:1344" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
+  let shared: SharedClusterResult
+  let slotConfig: SlotConfig
 
   beforeAll(async () => {
-    const tempClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" })
-
-    const testAddress = await tempClient.address()
-    const testAddressHex = Address.toHex(testAddress)
-
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: { [testAddressHex]: 500_000_000_000 }
+    const injectData = inject("sharedCluster" as any)
+    const info = JSON.parse(injectData)
+    slotConfig = {
+      zeroTime: BigInt(info.chain.slotConfig.zeroTime),
+      zeroSlot: BigInt(info.chain.slotConfig.zeroSlot),
+      slotLength: info.chain.slotConfig.slotLength
     }
-
-    genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    devnetCluster = await Cluster.make({
-      clusterName: "nativescript-test",
-      ports: { node: 6007, submit: 9008 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1449, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1344, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 5_000))
+    shared = await useSharedCluster(injectData, [8, 9, 10])
   }, 180_000)
 
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
-
   it("should handle multi-sig native script (all)", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(8)
+    const client2 = shared.makeClient(9)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
@@ -116,7 +87,7 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
         address: address1,
         assets: Cardano.Assets.fromLovelace(2_000_000n)
       })
-      .build({ availableUtxos: [...genesisUtxos] })
+      .build({ availableUtxos: [...shared.genesisUtxos] })
 
     const tx = await signBuilder.toTransaction()
 
@@ -143,8 +114,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should handle multi-sig native script (any - 1 of N)", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(8)
+    const client2 = shared.makeClient(9)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
@@ -196,9 +167,9 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should handle N-of-K native script (2 of 3)", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
-    const client3 = createTestClient(2)
+    const client1 = shared.makeClient(8)
+    const client2 = shared.makeClient(9)
+    const client3 = shared.makeClient(10)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
@@ -256,9 +227,7 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should handle time-locked native script (invalidHereafter)", { timeout: 60_000 }, async () => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-
-    const client = createTestClient(0)
+    const client = shared.makeClient(8)
     const myAddress = await client.address()
 
     const paymentCredential = myAddress.paymentCredential
@@ -266,8 +235,6 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
       throw new Error("Expected KeyHash credential")
     }
 
-    // Use the same slot config that the client uses
-    const slotConfig = Cluster.getSlotConfig(devnetCluster)
     const currentTime = now()
     const currentSlot = unixTimeToSlot(currentTime, slotConfig)
 
@@ -314,9 +281,7 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should handle complex nested native script (sig AND (any of time conditions))", { timeout: 60_000 }, async () => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-
-    const client = createTestClient(0)
+    const client = shared.makeClient(8)
     const myAddress = await client.address()
 
     const paymentCredential = myAddress.paymentCredential
@@ -324,8 +289,6 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
       throw new Error("Expected KeyHash credential")
     }
 
-    // Use the same slot config that the client uses
-    const slotConfig = Cluster.getSlotConfig(devnetCluster)
     const currentTime = now()
     const currentSlot = unixTimeToSlot(currentTime, slotConfig)
 
@@ -383,8 +346,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should spend from a 2-of-2 multi-sig script address", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(8)
+    const client2 = shared.makeClient(9)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
@@ -460,8 +423,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should use native script as reference script for minting", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(8)
+    const client2 = shared.makeClient(9)
 
     const address1 = await client1.address()
     const address2 = await client2.address()
@@ -540,8 +503,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   })
 
   it("should spend from script address using native script as reference input", { timeout: 60_000 }, async () => {
-    const client1 = createTestClient(0)
-    const client2 = createTestClient(1)
+    const client1 = shared.makeClient(8)
+    const client2 = shared.makeClient(9)
 
     const address1 = await client1.address()
     const address2 = await client2.address()

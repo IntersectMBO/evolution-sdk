@@ -11,99 +11,28 @@
  * using simple key credentials that don't require script witnesses.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import * as Cluster from "@evolution-sdk/devnet/Cluster"
-import * as Config from "@evolution-sdk/devnet/Config"
-import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import type { Cardano } from "@evolution-sdk/evolution"
-import { Client, preprod } from "@evolution-sdk/evolution"
-import * as Address from "@evolution-sdk/evolution/Address"
+import { beforeAll, describe, expect, it } from "@effect/vitest"
 import * as DRep from "@evolution-sdk/evolution/DRep"
 import * as PoolKeyHash from "@evolution-sdk/evolution/PoolKeyHash"
+import { inject } from "vitest"
+
+import { type SharedClusterResult, useSharedCluster } from "./utils/shared-cluster.js"
 
 // Default devnet stake pool ID from Config.ts
 const DEVNET_POOL_ID = "8a219b698d3b6e034391ae84cee62f1d76b6fbc45ddfe4e31e0d4b60"
 
 describe("TxBuilder Stake Operations", () => {
-  let devnetCluster: Cluster.Cluster | undefined
-  let genesisConfig: Config.ShelleyGenesis
-  // Store genesis UTxOs per account index for independent tests
-  const genesisUtxosByAccount: Map<number, Cardano.UTxO.UTxO> = new Map()
-
-  const TEST_MNEMONIC =
-    "test test test test test test test test test test test test test test test test test test test test test test test sauce"
-
-  // Create client for a specific account index (each test uses different account)
-  const createTestClient = (accountIndex: number = 0) => {
-    if (!devnetCluster) throw new Error("Cluster not initialized")
-    return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1446", ogmiosUrl: "http://localhost:1341" })
-      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-  }
+  let shared: SharedClusterResult
 
   beforeAll(async () => {
-    // Create clients for each account we'll use in tests
-    const accounts = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((accountIndex) =>
-      Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
-    )
-
-    const addresses = await Promise.all(accounts.map((client) => client.address()))
-    const addressHexes = addresses.map((addr) => Address.toHex(addr))
-
-    // Fund each account independently so tests don't share UTxOs
-    genesisConfig = {
-      ...Config.DEFAULT_SHELLEY_GENESIS,
-      slotLength: 0.02,
-      epochLength: 50,
-      activeSlotsCoeff: 1.0,
-      initialFunds: {
-        [addressHexes[0]]: 300_000_000_000, // Test 1: Full flow (register + delegate separately)
-        [addressHexes[1]]: 300_000_000_000, // Test 2: Pool-only delegation (StakeDelegation)
-        [addressHexes[2]]: 300_000_000_000, // Test 3: DRep-only delegation (VoteDelegCert)
-        [addressHexes[3]]: 300_000_000_000, // Test 4: Combined register+delegate pool (StakeRegDelegCert)
-        [addressHexes[4]]: 300_000_000_000, // Test 5: Combined register+delegate DRep (VoteRegDelegCert)
-        [addressHexes[5]]: 300_000_000_000, // Test 6: Combined register+delegate both (StakeVoteRegDelegCert)
-        [addressHexes[6]]: 300_000_000_000, // Test 7: NEW API - delegateToPool
-        [addressHexes[7]]: 300_000_000_000, // Test 8: NEW API - delegateToDRep
-        [addressHexes[8]]: 300_000_000_000 // Test 9: NEW API - delegateToPoolAndDRep
-      }
-    }
-
-    // Pre-calculate genesis UTxOs and map by account
-    const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
-
-    for (let i = 0; i < addresses.length; i++) {
-      const utxo = genesisUtxos.find((u) => Address.toBech32(u.address) === Address.toBech32(addresses[i]))
-      if (utxo) genesisUtxosByAccount.set(i, utxo)
-    }
-
-    devnetCluster = await Cluster.make({
-      clusterName: "stake-ops-test",
-      ports: { node: 6004, submit: 9005 },
-      shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1446, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1341, logLevel: "info" }
-    })
-
-    await Cluster.start(devnetCluster)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    shared = await useSharedCluster(inject("sharedCluster" as any), [17, 18, 19, 20, 21, 22, 23, 24, 25])
   }, 180_000)
 
-  afterAll(async () => {
-    if (devnetCluster) {
-      await Cluster.stop(devnetCluster)
-      await Cluster.remove(devnetCluster)
-    }
-  }, 60_000)
-
   it("registers, delegates, withdraws, and deregisters (key credential)", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 0
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 17
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
 
     // Extract stake credential from wallet address
@@ -162,13 +91,10 @@ describe("TxBuilder Stake Operations", () => {
   })
 
   it("delegates to pool only (StakeDelegation)", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 1
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 18
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
@@ -212,13 +138,10 @@ describe("TxBuilder Stake Operations", () => {
   })
 
   it("delegates to DRep only (VoteDelegCert)", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 2
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 19
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
@@ -262,13 +185,10 @@ describe("TxBuilder Stake Operations", () => {
   })
 
   it("registers and delegates to pool in one cert (StakeRegDelegCert)", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 3
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 20
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
@@ -301,13 +221,10 @@ describe("TxBuilder Stake Operations", () => {
   })
 
   it("registers and delegates to DRep in one cert (VoteRegDelegCert)", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 4
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 21
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
@@ -343,13 +260,10 @@ describe("TxBuilder Stake Operations", () => {
     "registers and delegates to both pool+DRep in one cert (StakeVoteRegDelegCert)",
     { timeout: 180_000 },
     async () => {
-      const ACCOUNT_INDEX = 5
-      const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-      if (!genesisUtxo) {
-        throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-      }
+      const ACCOUNT_INDEX = 22
+      const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-      const client = createTestClient(ACCOUNT_INDEX)
+      const client = shared.makeClient(ACCOUNT_INDEX)
       const walletAddress = await client.address()
       const addressStruct = walletAddress
 
@@ -388,13 +302,10 @@ describe("TxBuilder Stake Operations", () => {
   // ============================================================================
 
   it("NEW API: delegateToPool - delegates stake to pool only", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 6
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 23
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
@@ -438,13 +349,10 @@ describe("TxBuilder Stake Operations", () => {
   })
 
   it("NEW API: delegateToDRep - delegates voting power to DRep only", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 7
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 24
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
@@ -488,13 +396,10 @@ describe("TxBuilder Stake Operations", () => {
   })
 
   it("NEW API: delegateToPoolAndDRep - delegates both stake and voting power", { timeout: 180_000 }, async () => {
-    const ACCOUNT_INDEX = 8
-    const genesisUtxo = genesisUtxosByAccount.get(ACCOUNT_INDEX)
-    if (!genesisUtxo) {
-      throw new Error(`Genesis UTxO not found for account ${ACCOUNT_INDEX}`)
-    }
+    const ACCOUNT_INDEX = 25
+    const genesisUtxo = shared.getGenesisUtxo(ACCOUNT_INDEX)
 
-    const client = createTestClient(ACCOUNT_INDEX)
+    const client = shared.makeClient(ACCOUNT_INDEX)
     const walletAddress = await client.address()
     const addressStruct = walletAddress
 
