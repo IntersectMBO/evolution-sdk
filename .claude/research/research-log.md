@@ -26,7 +26,7 @@
 |-------|------|--------|---------|-----------|
 | 1 | Effect Schema Annotation Deep-Dive | done | 2026-04-14 | 2026-04-14 |
 | 2 | Catalog All Plutus Data Patterns | done | 2026-04-14 | 2026-04-14 |
-| 3 | Design Candidates | pending | - | - |
+| 3 | Design Candidates | done | 2026-04-14 | 2026-04-14 |
 | 4 | Evaluate & Select Winners | pending | - | - |
 | 5 | Prototype Winner | pending | - | - |
 | 6 | Edge Cases & Completeness | pending | - | - |
@@ -38,8 +38,20 @@
 - Validation rules: tag uniqueness, index collision detection, field order preservation
 - Output: `phase2-pattern-catalog.md`
 
+### 2026-04-14 — Phase 3 Complete: Design Candidates
+- 4 candidates designed with full API examples for all pattern categories
+- **A: Annotation-Driven** — pure Effect annotations + AST compiler
+- **B: Fluent Builder** — thin Plutus-domain wrapper over TSchema
+- **C: Schema.Class Protocol** — Haskell-like class instances
+- **D: Hybrid** — annotated Effect Schema + derive layer, coexists with TSchema
+- Preliminary scoring favors D (Hybrid) on most criteria
+- Output: `phase3-candidates.md`
+
 ## Candidates Tracker
 
 | ID | Name | Status | Phase Introduced | Notes |
 |----|------|--------|-----------------|-------|
-| - | - | - | - | (none yet) |
+| A | Annotation-Driven (AST Compiler) | candidate | Phase 3 | Pure Effect annotations + Match<A> compiler |
+| B | Fluent Builder | candidate | Phase 3 | Thin wrapper, Plutus vocabulary |
+| C | Schema.Class Protocol | candidate | Phase 3 | Haskell-like, class-per-constructor |
+| D | Hybrid (Annotated TSchema + Derive) | candidate | Phase 3 | Best of both, type inference, non-breaking |

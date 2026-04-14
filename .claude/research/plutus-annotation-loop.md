@@ -73,7 +73,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Write matrix to `phase2-pattern-catalog.md`
 
 ### Phase 3: Design Candidates
-**Status**: pending
+**Status**: done
 **Goal**: Propose 3+ distinct API designs for the annotation system.
 **Actions**:
 1. Review Phase 1 and Phase 2 outputs
