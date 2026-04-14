@@ -37,7 +37,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 ## Phases
 
 ### Phase 1: Effect Schema Annotation Deep-Dive
-**Status**: pending
+**Status**: done
 **Goal**: Understand Effect Schema v3 annotation system internals - how annotations attach to AST nodes, how to read/write custom annotations, how `Schema.annotations()` works at the AST level, and what annotation patterns exist in the Effect source.
 **Actions**:
 1. Use `effect-local-source` skill to access Effect v3 source
