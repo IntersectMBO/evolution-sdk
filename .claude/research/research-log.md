@@ -27,7 +27,7 @@
 | 1 | Effect Schema Annotation Deep-Dive | done | 2026-04-14 | 2026-04-14 |
 | 2 | Catalog All Plutus Data Patterns | done | 2026-04-14 | 2026-04-14 |
 | 3 | Design Candidates | done | 2026-04-14 | 2026-04-14 |
-| 4 | Evaluate & Select Winners | pending | - | - |
+| 4 | Evaluate & Select Winners | done | 2026-04-14 | 2026-04-14 |
 | 5 | Prototype Winner | pending | - | - |
 | 6 | Edge Cases & Completeness | pending | - | - |
 
@@ -37,6 +37,15 @@
 - Documented real-world compositions: Address, Value, CIP68Metadata, MultisigScript
 - Validation rules: tag uniqueness, index collision detection, field order preservation
 - Output: `phase2-pattern-catalog.md`
+
+### 2026-04-14 — Phase 4 Complete: Evaluation & Selection
+- **Winner: Candidate D (Hybrid)** — weighted score 48.5/50
+- Runner-up: A (Annotation-Driven) at 39.5
+- Rejected: B (37.5), C (33.5)
+- Key winning factors: non-breaking migration, dual-path (TSchema + Plutus.data), type inference, Effect-native
+- A's AST compiler pattern incorporated as D's implementation strategy
+- Implementation plan: Plutus.data() + variant() + option() + codec(), AST compiler internally
+- Output: `phase4-evaluation.md`
 
 ### 2026-04-14 — Phase 3 Complete: Design Candidates
 - 4 candidates designed with full API examples for all pattern categories
@@ -51,7 +60,7 @@
 
 | ID | Name | Status | Phase Introduced | Notes |
 |----|------|--------|-----------------|-------|
-| A | Annotation-Driven (AST Compiler) | candidate | Phase 3 | Pure Effect annotations + Match<A> compiler |
-| B | Fluent Builder | candidate | Phase 3 | Thin wrapper, Plutus vocabulary |
-| C | Schema.Class Protocol | candidate | Phase 3 | Haskell-like, class-per-constructor |
-| D | Hybrid (Annotated TSchema + Derive) | candidate | Phase 3 | Best of both, type inference, non-breaking |
+| A | Annotation-Driven (AST Compiler) | runner-up | Phase 3 | Score 39.5 — strong extensibility, verbose annotations |
+| B | Fluent Builder | rejected | Phase 3 | Score 37.5 — renamed TSchema, low Effect alignment |
+| C | Schema.Class Protocol | rejected | Phase 3 | Score 33.5 — heavyweight, weak completeness/migration |
+| D | Hybrid (Annotated TSchema + Derive) | **WINNER** | Phase 3 | Score 48.5 — non-breaking, dual-path, type inference |

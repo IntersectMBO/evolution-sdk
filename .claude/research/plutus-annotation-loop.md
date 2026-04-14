@@ -92,7 +92,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Write candidates to `phase3-candidates.md`
 
 ### Phase 4: Evaluate & Select Winners
-**Status**: pending
+**Status**: done
 **Goal**: Score candidates against criteria and select winner(s).
 **Criteria**:
 1. Type safety - does TS catch errors at compile time?
