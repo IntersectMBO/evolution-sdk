@@ -25,11 +25,18 @@
 | Phase | Name | Status | Started | Completed |
 |-------|------|--------|---------|-----------|
 | 1 | Effect Schema Annotation Deep-Dive | done | 2026-04-14 | 2026-04-14 |
-| 2 | Catalog All Plutus Data Patterns | pending | - | - |
+| 2 | Catalog All Plutus Data Patterns | done | 2026-04-14 | 2026-04-14 |
 | 3 | Design Candidates | pending | - | - |
 | 4 | Evaluate & Select Winners | pending | - | - |
 | 5 | Prototype Winner | pending | - | - |
 | 6 | Edge Cases & Completeness | pending | - | - |
+
+### 2026-04-14 — Phase 2 Complete: Pattern Catalog
+- Cataloged 33 distinct patterns across 8 categories
+- Key categories: 4 primitives, 3 collections, 8 struct variants, 6 union variants, 2 nullable, 3 literal, 3 recursive, 4 composition
+- Documented real-world compositions: Address, Value, CIP68Metadata, MultisigScript
+- Validation rules: tag uniqueness, index collision detection, field order preservation
+- Output: `phase2-pattern-catalog.md`
 
 ## Candidates Tracker
 

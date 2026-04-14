@@ -48,7 +48,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Write findings to `phase1-effect-annotations.md`
 
 ### Phase 2: Catalog All Plutus Data Patterns
-**Status**: pending
+**Status**: done
 **Goal**: Enumerate every Plutus Data encoding pattern that the annotation system must support.
 **Actions**:
 1. Read existing `TSchema.ts` combinators and test files to catalog current patterns
