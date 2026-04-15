@@ -208,6 +208,30 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 8. **Fix or document**: For each issue found, either fix the code (with tests) or document it as a known limitation with a clear rationale for why it's acceptable.
 **Output**: Adversarial test file + fixes + updated limitations doc, committed locally
 
+### Phase 12+: Continuous Improvement (repeating)
+**Status**: pending
+**Goal**: Each iteration picks the highest-value improvement from the backlog, implements it, and updates the backlog. This phase repeats indefinitely — it is never marked `done`.
+**Backlog** (ordered by priority — work top-down):
+1. **Reduce encode/decode overhead** — Profile why Plutus.data() codec is up to 5x slower than TSchema. The `Schema.transform` wrapper and `Schema.encodeSync`/`decodeSync` in the Transformation handler may be the bottleneck. Try: compile TSchema fields directly instead of going through Schema.encodeSync.
+2. **Implement flatFields in compiler** — The `FlatFieldsId` annotation is defined but the compiler doesn't handle it. Add support in the TypeLiteral handler: when a field has `FlatFieldsId: true`, inline its sub-fields into the parent Constr.
+3. **Schema.Class support** — Declaration AST nodes for known class patterns (e.g., classes where the surrogate AST is a TypeLiteral) could be compiled by looking through to the surrogate fields instead of falling through to passthrough.
+4. **Map auto-derivation** — Detect `Schema.Map`/`Schema.MapFromSelf` Declaration nodes and compile them to Plutus Map encoding, eliminating the need for `Plutus.Map()` combinator.
+5. **Effect error channel** — Replace raw `toData`/`fromData` throws with `Effect`-based `ParseResult.encode`/`ParseResult.decode` for proper error composition. This would make the compiler produce `Schema.transformOrFail` instead of `Schema.transform`.
+6. **Mutual recursion** — Test and support cross-schema cycles (type A → type B → type A) by sharing a memo map across compilations.
+7. **Module augmentation for type-safe annotations** — Add `declare module "effect/Schema"` augmentation so that `[ConstrIndexId]` autocompletes in `.annotations()` calls and has the right type.
+8. **Documentation** — Write a migration guide showing side-by-side TSchema vs Plutus.data() for each pattern.
+**How each iteration works**:
+1. Read this backlog
+2. Pick the top unfinished item
+3. Implement it with tests
+4. Commit locally
+5. Update the research log
+6. Move the completed item to a `## Completed Backlog` section below
+7. Stop — wait for next iteration
+
+## Completed Backlog
+_(Items moved here after completion)_
+
 ## Rules for Loop Execution
 
 1. **One phase per iteration** — complete the current pending phase, update its status to `done`, then stop
@@ -217,6 +241,6 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 5. **Annotation-first** — every implementation decision must use Effect's annotation system. If you find yourself writing `switch(ast._tag)` manually, STOP and use `Match<A>` + `getCompiler` instead
 6. **Read before writing** — always read current state of tracking files before updating
 7. **If stuck** — document what's blocking in the log, mark phase as `blocked`, move to next actionable phase
-8. **Delete wrong code** — the current `PlutusSchema.ts` prototype is WRONG (manual AST switch, no annotations). It must be rewritten from scratch using the compiler pattern
+8. **No manual AST dispatch** — never use `switch(ast._tag)`. Always use `Match<A>` + `getCompiler`
 9. **Test each phase** — every phase that produces code must include tests that pass
 10. **Candidates stay** — never delete candidate designs from research files, only annotate with winner/loser
