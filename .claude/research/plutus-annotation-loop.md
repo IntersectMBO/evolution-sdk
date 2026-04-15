@@ -176,7 +176,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Updated code + comprehensive tests + limitations doc, committed locally
 
 ### Phase 10: Real-World Validation
-**Status**: pending
+**Status**: done
 **Goal**: Validate the annotation system works for real Cardano types.
 **Actions**:
 1. Re-implement `Address`, `Credential`, `Value` using `Plutus.data()` alongside existing TSchema versions
