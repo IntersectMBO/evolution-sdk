@@ -84,6 +84,14 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 4: Map auto-derivation
+- **Backlog item**: Map required `Plutus.Map()` combinator — couldn't use `Schema.MapFromSelf` with `Plutus.data()`
+- **Fix**: Declaration handler detects Map via Description annotation ("Map<...") + 2 typeParameters. Recursively compiles key/value codecs.
+- **Schema.Map** (Transformation wrapper) handled automatically via existing `go(ast.to, path)` fallback → hits Declaration → Map detected
+- **Tests**: MapFromSelf, Schema.Map, CBOR match with TSchema.Map, nested maps (Value pattern), Map in struct field
+- 259 total tests passing
+- **Phase 9 limitation removed**: Map is no longer a limitation
+
 ### 2026-04-15 — Phase 12+ Iteration 3: Schema.Class support
 - **Backlog item**: Schema.Class/TaggedClass passed through as opaque (Declaration → passthrough)
 - **Root cause**: Transformation handler's fallback `go(ast.to, path)` hit the Declaration handler which returned passthrough

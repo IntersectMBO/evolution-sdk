@@ -277,11 +277,35 @@ export const match: SchemaAST.Match<PlutusCodec> = {
     }
   },
 
-  "Declaration": (ast) => {
+  "Declaration": (ast, go, path) => {
     const id = getIdentifier(ast)
     if (id === "Uint8ArrayFromSelf" || id === "Uint8Array") {
       return byteArrayCodec
     }
+
+    // Detect Map/MapFromSelf: Description starts with "Map<" and has 2 type parameters
+    const desc = ast.annotations?.[Symbol.for("effect/annotation/Description")] as string | undefined
+    if (desc?.startsWith("Map<") && ast.typeParameters.length === 2) {
+      const keyCodec = go(ast.typeParameters[0], [...path, "key"])
+      const valueCodec = go(ast.typeParameters[1], [...path, "value"])
+      return {
+        toData: (a: globalThis.Map<any, any>) => {
+          const result = new globalThis.Map<Data.Data, Data.Data>()
+          for (const [k, v] of a) {
+            result.set(keyCodec.toData(k), valueCodec.toData(v))
+          }
+          return result
+        },
+        fromData: (d: Data.Data) => {
+          const result = new globalThis.Map<any, any>()
+          for (const [k, v] of d as globalThis.Map<Data.Data, Data.Data>) {
+            result.set(keyCodec.fromData(k), valueCodec.fromData(v))
+          }
+          return result
+        }
+      }
+    }
+
     // Unknown declaration — treat as opaque PlutusData passthrough
     return passthroughCodec
   },

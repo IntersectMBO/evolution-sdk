@@ -9,14 +9,8 @@ All 33 patterns from the Phase 2 catalog are supported through one of:
 
 ## Patterns Not Supported by Plutus.data() (Use TSchema Directly)
 
-### 1. Plutus Map
-`Plutus.data()` does not auto-derive Map encoding from `Schema.Map`. Maps require TSchema.Map:
-```typescript
-// Won't work: Plutus.data(Schema.Map({ key: ..., value: ... }))
-// Use instead:
-const MyMap = Plutus.Map(Plutus.ByteArray, Plutus.Integer)
-```
-**Why**: Schema.Map uses a Declaration AST node, and the compiler treats unknown Declarations as passthrough. Map encoding requires a specific CBOR map representation that differs from the standard Schema.Map behavior.
+### ~~1. Plutus Map~~ — RESOLVED in Phase 12+ Iteration 4
+Map now auto-derived from `Schema.MapFromSelf` and `Schema.Map` via Declaration handler detection.
 
 ### ~~2. FlatFields~~ — RESOLVED in Phase 12+ Iteration 2
 FlatFields now supported via `FlatFieldsId` annotation and TSchema backward compat.

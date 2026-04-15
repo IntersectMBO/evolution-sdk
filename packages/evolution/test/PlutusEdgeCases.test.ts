@@ -527,6 +527,96 @@ describe("complex compositions", () => {
     expect(decoded).toEqual(input)
   })
 
+  it("Map auto-derivation via Schema.MapFromSelf", () => {
+    const MyMap = Plutus.data(
+      Schema.MapFromSelf({ key: Schema.BigIntFromSelf, value: Schema.Uint8ArrayFromSelf })
+    )
+    const codec = Plutus.codec(MyMap)
+
+    const input = new Map<bigint, Uint8Array>([
+      [1n, new Uint8Array([0x01])],
+      [2n, new Uint8Array([0x02, 0x03])]
+    ])
+
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor)
+    expect([...decoded.entries()]).toEqual([...input.entries()])
+  })
+
+  it("Map auto-derivation via Schema.Map", () => {
+    const MyMap = Plutus.data(
+      Schema.Map({ key: Schema.BigIntFromSelf, value: Schema.BigIntFromSelf })
+    )
+    const codec = Plutus.codec(MyMap)
+
+    const input = new Map<bigint, bigint>([[10n, 100n], [20n, 200n]])
+
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor)
+    expect([...decoded.entries()]).toEqual([...input.entries()])
+  })
+
+  it("Map auto-derivation matches TSchema.Map CBOR", () => {
+    const tschemaMap = TSchema.Map(TSchema.ByteArray, TSchema.Integer)
+    const plutusMap = Plutus.data(
+      Schema.MapFromSelf({ key: Schema.Uint8ArrayFromSelf, value: Schema.BigIntFromSelf })
+    )
+
+    const input = new Map<Uint8Array, bigint>([
+      [new Uint8Array([0xaa]), 42n],
+      [new Uint8Array([0xbb]), 99n]
+    ])
+
+    const tchemaCbor = Plutus.codec(tschemaMap).toCBORHex(input)
+    const plutusCbor = Plutus.codec(plutusMap).toCBORHex(input)
+    expect(plutusCbor).toBe(tchemaCbor)
+  })
+
+  it("nested Map (Map<ByteArray, Map<ByteArray, Integer>>) — Value pattern", () => {
+    const Value = Plutus.data(
+      Schema.MapFromSelf({
+        key: Schema.Uint8ArrayFromSelf,
+        value: Schema.MapFromSelf({
+          key: Schema.Uint8ArrayFromSelf,
+          value: Schema.BigIntFromSelf
+        })
+      })
+    )
+    const codec = Plutus.codec(Value)
+
+    const policyId = new Uint8Array(28).fill(0xaa)
+    const assetName = new Uint8Array([0x41, 0x42])
+    const input = new Map([[policyId, new Map([[assetName, 1000n]])]])
+
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor)
+    const entries = [...decoded.entries()]
+    expect(entries).toHaveLength(1)
+    const innerEntries = [...(entries[0][1] as Map<any, any>).entries()]
+    expect(innerEntries[0][1]).toBe(1000n)
+  })
+
+  it("Map in struct field", () => {
+    const MyStruct = Plutus.data(Schema.Struct({
+      name: Schema.Uint8ArrayFromSelf,
+      balances: Schema.MapFromSelf({
+        key: Schema.Uint8ArrayFromSelf,
+        value: Schema.BigIntFromSelf
+      })
+    }))
+    const codec = Plutus.codec(MyStruct)
+
+    const input = {
+      name: new Uint8Array([0x01]),
+      balances: new Map([[new Uint8Array([0xaa]), 100n]])
+    }
+
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor)
+    expect(decoded.name).toEqual(new Uint8Array([0x01]))
+    expect([...decoded.balances.entries()]).toEqual([...input.balances.entries()])
+  })
+
   it("flatFields with TSchema.flatFields annotation (backward compat)", () => {
     // TSchema uses string-key annotation "TSchema.flatFields": true
     const Inner = TSchema.Struct(
