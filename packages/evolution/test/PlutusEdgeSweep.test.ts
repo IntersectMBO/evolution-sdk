@@ -426,6 +426,77 @@ describe("Declaration: unknown types throw", () => {
 })
 
 // ============================================================
+// Enum shorthand
+// ============================================================
+
+describe("Plutus.makeEnum", () => {
+  it("basic 3-variant enum", () => {
+    const Color = Plutus.makeEnum("Red", "Green", "Blue")
+    const codec = Plutus.codec(Color)
+
+    const red = codec.toData({ _tag: "Red" })
+    expect((red as Data.Constr).index).toBe(0n)
+    expect((red as Data.Constr).fields).toHaveLength(0)
+
+    const green = codec.toData({ _tag: "Green" })
+    expect((green as Data.Constr).index).toBe(1n)
+
+    const blue = codec.toData({ _tag: "Blue" })
+    expect((blue as Data.Constr).index).toBe(2n)
+
+    // Roundtrip
+    expect(codec.fromCBORHex(codec.toCBORHex({ _tag: "Red" }))._tag).toBe("Red")
+    expect(codec.fromCBORHex(codec.toCBORHex({ _tag: "Green" }))._tag).toBe("Green")
+    expect(codec.fromCBORHex(codec.toCBORHex({ _tag: "Blue" }))._tag).toBe("Blue")
+  })
+
+  it("CBOR matches manual makeIsDataIndexed equivalent", () => {
+    const enumVersion = Plutus.makeEnum("A", "B", "C")
+    const manualVersion = Plutus.makeIsDataIndexed(
+      { A: {}, B: {}, C: {} },
+      { A: 0, B: 1, C: 2 }
+    )
+
+    for (const tag of ["A", "B", "C"] as const) {
+      const enumCbor = Plutus.codec(enumVersion).toCBORHex({ _tag: tag })
+      const manualCbor = Plutus.codec(manualVersion).toCBORHex({ _tag: tag })
+      expect(enumCbor).toBe(manualCbor)
+    }
+  })
+
+  it("10+ variants", () => {
+    const BigEnum = Plutus.makeEnum(
+      "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10"
+    )
+    const codec = Plutus.codec(BigEnum)
+
+    for (let i = 0; i <= 10; i++) {
+      const tag = `V${i}`
+      const data = codec.toData({ _tag: tag })
+      expect((data as Data.Constr).index).toBe(BigInt(i))
+
+      const decoded = codec.fromCBORHex(codec.toCBORHex({ _tag: tag }))
+      expect(decoded._tag).toBe(tag)
+    }
+  })
+
+  it("enum as field type inside Plutus.data()", () => {
+    const Direction = Plutus.makeEnum("Up", "Down", "Left", "Right")
+    const Move = Plutus.data(Schema.Struct({
+      direction: Direction,
+      distance: Schema.BigIntFromSelf
+    }))
+    const codec = Plutus.codec(Move)
+
+    const input = { direction: { _tag: "Left" as const }, distance: 5n }
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor)
+    expect(decoded.direction._tag).toBe("Left")
+    expect(decoded.distance).toBe(5n)
+  })
+})
+
+// ============================================================
 // Transformation edge cases
 // ============================================================
 

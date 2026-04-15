@@ -169,6 +169,33 @@ export const makeIsDataIndexed = <
 // Convenience Combinators
 // ============================================================
 
+/**
+ * Enum shorthand — nullary constructors with auto-assigned indices.
+ * Equivalent to Haskell's `makeIsData` on a sum type with no fields.
+ *
+ * @example
+ * ```typescript
+ * const Color = Plutus.enum("Red", "Green", "Blue")
+ * // Red → Constr(0, []), Green → Constr(1, []), Blue → Constr(2, [])
+ *
+ * const codec = Plutus.codec(Color)
+ * codec.toData({ _tag: "Red" })  // Constr(0n, [])
+ * ```
+ *
+ * @since 2.0.0
+ */
+export const makeEnum = <const Names extends readonly [string, ...string[]]>(
+  ...names: Names
+) => {
+  const variants: Record<string, Schema.Struct.Fields> = {}
+  const indices: Record<string, number> = {}
+  for (let i = 0; i < names.length; i++) {
+    variants[names[i]] = {}
+    indices[names[i]] = i
+  }
+  return makeIsDataIndexed(variants, indices as { readonly [K in Names[number]]: number })
+}
+
 /** Maybe/Option encoding — Constr(0,[value]) for Just, Constr(1,[]) for Nothing */
 export const option = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   data(Schema.NullOr(schema) as Schema.Schema<A | null, I | null, R>)

@@ -84,6 +84,12 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 14: Enum shorthand
+- **Backlog item**: `Plutus.makeEnum("Red", "Green", "Blue")` — one-line nullary constructor enums
+- **Implementation**: Builds variants/indices objects from names array, delegates to `makeIsDataIndexed`
+- **Tests**: basic 3-variant, CBOR match with manual equivalent, 10+ variants, enum as field type
+- 312 total tests passing
+
 ### 2026-04-15 — Phase 12+ Iteration 13: Benchmark improvements
 - **Backlog item**: Replace loose threshold benchmarks with proper profiling and realistic workloads
 - **Key finding**: Plutus.data() is at parity with TSchema (1.0x). Earlier 3-5x overhead was warmup artifact in old benchmarks.
