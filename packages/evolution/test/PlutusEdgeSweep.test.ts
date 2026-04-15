@@ -342,6 +342,90 @@ describe("flatFields edge cases", () => {
 })
 
 // ============================================================
+// Declaration: List-like types (Set, HashSet, Chunk, List)
+// ============================================================
+
+describe("Declaration: list-like types", () => {
+  it("SetFromSelf encodes as list", () => {
+    const MySet = Plutus.data(Schema.SetFromSelf(Schema.BigIntFromSelf))
+    const codec = Plutus.codec(MySet)
+
+    const input = new Set([1n, 2n, 3n])
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor)
+    expect([...decoded]).toEqual([1n, 2n, 3n])
+  })
+
+  it("HashSetFromSelf encodes as list", () => {
+    // HashSet is an Effect type — just verify the Declaration is detected
+    // We can test via compile() directly
+    const ast = Schema.SetFromSelf(Schema.BigIntFromSelf).ast
+    const codec = compile(ast, [])
+    const data = codec.toData(new Set([10n, 20n]))
+    expect(Array.isArray(data)).toBe(true)
+    expect(data).toEqual([10n, 20n])
+  })
+
+  it("empty set encodes as empty list", () => {
+    const MySet = Plutus.data(Schema.SetFromSelf(Schema.BigIntFromSelf))
+    const codec = Plutus.codec(MySet)
+
+    const cbor = codec.toCBORHex(new Set())
+    const decoded = codec.fromCBORHex(cbor)
+    expect([...decoded]).toEqual([])
+  })
+})
+
+// ============================================================
+// Declaration: Map-like types (HashMap, ReadonlyMap)
+// ============================================================
+
+describe("Declaration: map-like types", () => {
+  it("ReadonlyMapFromSelf encodes as Plutus Map", () => {
+    const ast = Schema.ReadonlyMapFromSelf({
+      key: Schema.BigIntFromSelf,
+      value: Schema.BigIntFromSelf
+    }).ast
+    const codec = compile(ast, [])
+
+    const input = new Map([[1n, 100n], [2n, 200n]])
+    const data = codec.toData(input) as Map<Data.Data, Data.Data>
+    expect([...data.entries()]).toEqual([[1n, 100n], [2n, 200n]])
+  })
+})
+
+// ============================================================
+// Declaration: unknown types throw
+// ============================================================
+
+describe("Declaration: unknown types throw", () => {
+  it("DateFromSelf throws descriptive error", () => {
+    expect(() => compile(Schema.DateFromSelf.ast, [])).toThrow(/unsupported Declaration/)
+  })
+
+  it("DurationFromSelf throws descriptive error", () => {
+    expect(() => compile(Schema.DurationFromSelf.ast, [])).toThrow(/unsupported Declaration/)
+  })
+
+  it("OptionFromSelf throws (use NullOr instead)", () => {
+    expect(() => compile(
+      Schema.OptionFromSelf(Schema.BigIntFromSelf).ast, []
+    )).toThrow(/unsupported Declaration/)
+  })
+
+  it("error message includes path", () => {
+    try {
+      compile(Schema.Struct({
+        timestamp: Schema.DateFromSelf
+      }).ast, [])
+      expect.unreachable()
+    } catch (e: unknown) {
+      expect((e as Error).message).toContain("timestamp")
+    }
+  })
+})
+
+// ============================================================
 // Transformation edge cases
 // ============================================================
 

@@ -36,12 +36,26 @@ export interface PlutusCodec {
 // ============================================================
 
 const IdentifierAnnotationId = Symbol.for("effect/annotation/Identifier")
+const DescriptionAnnotationId = Symbol.for("effect/annotation/Description")
 
 // ============================================================
 // Known tag field names for auto-detection
 // ============================================================
 
 const KNOWN_TAG_FIELDS = ["_tag", "type", "kind", "variant"] as const
+
+// ============================================================
+// Declaration type detection via Description annotation
+// ============================================================
+
+/** Description prefixes for Map-like types (2 type parameters: key, value) */
+const MAP_LIKE_PREFIXES = ["Map<", "HashMap<", "ReadonlyMap<"]
+
+/** Description prefixes for Set-like types (1 type parameter, decoded to Set) */
+const SET_LIKE_PREFIXES = ["Set<", "HashSet<", "ReadonlySet<"]
+
+/** Description prefixes for Array-like types (1 type parameter, decoded to Array) */
+const ARRAY_LIKE_PREFIXES = ["List<", "Chunk<"]
 
 // ============================================================
 // Helpers
@@ -282,9 +296,10 @@ export const match: SchemaAST.Match<PlutusCodec> = {
       return byteArrayCodec
     }
 
-    // Detect Map/MapFromSelf: Description starts with "Map<" and has 2 type parameters
-    const desc = ast.annotations?.[Symbol.for("effect/annotation/Description")] as string | undefined
-    if (desc?.startsWith("Map<") && ast.typeParameters.length === 2) {
+    const desc = ast.annotations?.[DescriptionAnnotationId] as string | undefined
+
+    // --- Map types: Map<K,V>, HashMap<K,V>, ReadonlyMap<K,V> ---
+    if (desc && MAP_LIKE_PREFIXES.some((p) => desc.startsWith(p)) && ast.typeParameters.length === 2) {
       const keyCodec = go(ast.typeParameters[0], [...path, "key"])
       const valueCodec = go(ast.typeParameters[1], [...path, "value"])
       return {
@@ -305,8 +320,45 @@ export const match: SchemaAST.Match<PlutusCodec> = {
       }
     }
 
-    // Unknown declaration — treat as opaque PlutusData passthrough
-    return passthroughCodec
+    // --- Set-like types: Set<T>, HashSet<T>, ReadonlySet<T> ---
+    const isSetLike = desc && SET_LIKE_PREFIXES.some((p) => desc.startsWith(p))
+    if (isSetLike && ast.typeParameters.length >= 1) {
+      const itemCodec = go(ast.typeParameters[0], [...path, "item"])
+      return {
+        toData: (a: Iterable<any>) => {
+          const result: Data.Data[] = []
+          for (const item of a) {
+            result.push(itemCodec.toData(item))
+          }
+          return result
+        },
+        fromData: (d: Data.Data) => new globalThis.Set((d as Data.Data[]).map((item) => itemCodec.fromData(item)))
+      }
+    }
+
+    // --- Array-like types: List<T>, Chunk<T> ---
+    const isArrayLike = desc && ARRAY_LIKE_PREFIXES.some((p) => desc.startsWith(p))
+    if (isArrayLike && ast.typeParameters.length >= 1) {
+      const itemCodec = go(ast.typeParameters[0], [...path, "item"])
+      return {
+        toData: (a: Iterable<any>) => {
+          const result: Data.Data[] = []
+          for (const item of a) {
+            result.push(itemCodec.toData(item))
+          }
+          return result
+        },
+        fromData: (d: Data.Data) => (d as Data.Data[]).map((item) => itemCodec.fromData(item))
+      }
+    }
+
+    // --- Unknown Declaration: throw instead of silently passing through ---
+    // Following JSON Schema's approach: unknown types must be explicitly annotated.
+    const typeName = desc || id || "<unknown declaration>"
+    throw new Error(
+      `PlutusCompiler: unsupported Declaration type "${typeName}" at path [${path.join(".")}]. ` +
+      `Use Plutus primitives (ByteArray, Integer, Boolean) or annotate with a Plutus encoding.`
+    )
   },
 
   // --- Struct (TypeLiteral) ---

@@ -84,6 +84,12 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 12: Fix silent passthrough for unknown Declarations
+- **Backlog item**: Unknown Declaration types (Set, Date, Duration, OptionFromSelf, etc.) silently fell through to passthroughCodec — producing wrong output with no error
+- **Fix**: Declaration handler now throws by default. Added detection for Set-like (Set→Set, HashSet→Set, ReadonlySet→Set), Array-like (List→Array, Chunk→Array), and Map-like (HashMap→Map, ReadonlyMap→Map) types via Description annotation prefixes. Unsupported types (Date, Duration, FiberId, OptionFromSelf, SortedSet) throw descriptive errors with path.
+- **Bug found during testing**: Set fromData needed to return `new Set(...)` not `[...]` — Schema.SetFromSelf validates the decoded type
+- 8 new tests, 300 total tests passing
+
 ### 2026-04-15 — Phase 12+ Iteration 11: Edge case sweep
 - **Backlog item**: handler-by-handler audit for silent wrong output
 - 30 new tests across 10 categories: TypeLiteral (tag-only, all-flat, field order), Union (single-member, all-flat, mixed primitive, NullOr(union)), TupleType (empty, single, nested, mixed), Suspend (double-wrapped, primitive), Literal (0n, negative, boolean, number, long string), Map (empty, single, nested), flatFields (empty flat, nested flat), Transformation (look-through, refinement chain), roundtrip stress (deeply nested heterogeneous, null at every level)

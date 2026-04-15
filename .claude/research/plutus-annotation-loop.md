@@ -223,6 +223,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 9. ~~**Eliminate unnecessary `as any` casts**~~ — DONE (moved to Completed Backlog)
 10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
 11. ~~**Edge case sweep**~~ — DONE (moved to Completed Backlog)
+12. ~~**Fix silent passthrough for unknown Declarations**~~ — DONE (moved to Completed Backlog)
 **How each iteration works**:
 1. Read this backlog
 2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
@@ -246,6 +247,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 9. **Eliminate `as any`** — Removed all `as any` from production code (PlutusCompiler.ts: 10→0, PlutusSchema.ts: 4→0, PlutusAnnotation.ts: already 0). Used proper discriminated union narrowing for AST types, replaced return-type casts with `as unknown as Schema<A, Data.Data, R>` with documented reasons. TypeScript compilation clean. 262 tests passing.
 10. **Eliminate `as any` from tests** — 31→2 across 4 test files. Key fix: recursive schemas use `Schema.suspend((): Schema.Schema<T, Data.Data> => X)` with explicit encoded type annotation — matches Effect's own test pattern from TSchema.recursive.test.ts. No casts needed. Remaining 2 are intentional wrong-type error tests (`"not a bigint" as any`). 262 tests passing.
 11. **Edge case sweep** — 30 new tests across 10 handler categories. All pass without compiler fixes needed. Tested: tag-only structs, all-flat structs, field order, single-member unions, mixed primitive unions, NullOr(union), empty/nested tuples, double-wrapped suspend, all literal types (0n, negative, boolean, number, long string), empty/nested maps, nested flatFields, refinement chains, deeply nested heterogeneous roundtrip, null at every nesting level. No silent wrong output found. 292 total tests passing.
+12. **Fix silent passthrough for unknown Declarations** — Declaration handler now throws by default for unrecognized types (following JSON Schema's approach). Added explicit detection: Set/HashSet/ReadonlySet→Set (CBOR list, decoded back to Set), List/Chunk→Array (CBOR list), HashMap/ReadonlyMap→Map (already handled). Date, Duration, FiberId, OptionFromSelf, SortedSet, custom Schema.declare all throw with descriptive error including path. 8 new tests (Set encode/decode, empty Set, ReadonlyMap, DateFromSelf/DurationFromSelf/OptionFromSelf throw, error path). 300 total tests passing.
 
 ## Rules for Loop Execution
 
