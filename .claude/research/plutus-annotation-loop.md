@@ -222,6 +222,17 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 8. ~~**Documentation**~~ — DONE (moved to Completed Backlog)
 9. ~~**Eliminate unnecessary `as any` casts**~~ — DONE (moved to Completed Backlog)
 10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
+11. **Edge case sweep** — Read through `PlutusCompiler.ts` handler by handler. For each handler, ask: "what input would make this silently produce wrong output?" Write a test for each answer. Specific areas to probe:
+    - **TypeLiteral**: struct with 0 fields, struct with only tag fields, struct where all fields are flat, struct with duplicate field names
+    - **Union**: union with 0 members, union with 1 member, union where all members are flat, union where tag values collide, union with mixed struct/primitive members, union where NullOr/UndefinedOr inner type is itself a union
+    - **TupleType**: empty tuple, tuple with 1 element, tuple where elements are themselves tuples, tuple with mixed primitives and structs
+    - **Suspend**: double-wrapped suspend (`suspend(() => suspend(() => X))`), suspend that resolves to a primitive (not a struct)
+    - **Transformation**: triple-nested transformations, transformation where both from and to are Transformations
+    - **Declaration**: Declaration with >2 type parameters, Declaration with 0 type parameters
+    - **Literal**: bigint literal 0n, negative bigint, boolean literal, very long string literal
+    - **Map**: empty map, map with single entry, map where keys are Constrs, map where values are maps
+    - **flatFields**: flat field that is itself flat (nested flatFields), flat field in a union member, flat field with 0 sub-fields
+    - For each edge case: if it works correctly, keep the test. If it silently produces wrong output, fix the compiler and add a regression test. If it throws, verify the error message is clear.
 **How each iteration works**:
 1. Read this backlog
 2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
