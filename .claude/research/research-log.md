@@ -41,7 +41,7 @@
 | 4 | Evaluate & Select Winners | done | 2026-04-14 | 2026-04-14 |
 | 5 | Study Effect AST Compiler Impls | done | 2026-04-15 | 2026-04-15 |
 | 6 | Define Plutus Annotation Symbols | done | 2026-04-15 | 2026-04-15 |
-| 7 | Build AST Compiler (Match<PlutusCodec>) | pending | - | - |
+| 7 | Build AST Compiler (Match<PlutusCodec>) | done | 2026-04-15 | 2026-04-15 |
 | 8 | Plutus.data() Public API | pending | - | - |
 | 9 | Edge Cases & Completeness | pending | - | - |
 | 10 | Real-World Validation | pending | - | - |
@@ -81,6 +81,18 @@
 - **22 AST tags** must be covered — Match enforces exhaustiveness at compile time
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
+
+### 2026-04-15 — Phase 7 Complete: AST Compiler (Match<PlutusCodec>)
+- Created `PlutusCompiler.ts` using `SchemaAST.Match<PlutusCodec>` + `SchemaAST.getCompiler(match)`
+- Follows Pretty.ts single-phase pattern exactly
+- All 22 AST tags handled: primitives, struct, union, array/tuple, suspend, transformation, refinement, unsupported
+- Annotation-first in TypeLiteral (ConstrIndex) and Union (ConstrIndex, FlatInUnion)
+- Suspend uses memoizeThunk for recursion breaking
+- Transformation: passes through TSchema-annotated nodes, looks through others to `ast.to`
+- NullOr/UndefinedOr auto-detection in Union handler
+- Tag field auto-detection and stripping in TypeLiteral handler
+- 25 tests — all passing
+- Output: `packages/evolution/src/PlutusCompiler.ts` + `packages/evolution/test/PlutusCompiler.test.ts`
 
 ### 2026-04-15 — Phase 6 Complete: Plutus Annotation Symbols
 - Created `PlutusAnnotation.ts` with 5 annotation symbols following Effect conventions

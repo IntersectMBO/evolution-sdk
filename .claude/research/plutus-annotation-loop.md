@@ -124,7 +124,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Working annotation symbols + tests, committed locally
 
 ### Phase 7: Build the AST Compiler (Match<PlutusCodec>)
-**Status**: pending
+**Status**: done
 **Goal**: Implement the core `Match<PlutusCodec>` that walks annotated Effect Schema AST and produces Plutus Data encoder/decoder.
 **Actions**:
 1. Define `PlutusCodec` type: `{ toData: (a: any) => Data.Data, fromData: (d: Data.Data) => any }`
