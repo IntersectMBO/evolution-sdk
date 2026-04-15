@@ -89,6 +89,92 @@ describe("deeply nested recursive types", () => {
 })
 
 // ============================================================
+// 1b. Mutual Recursion
+// ============================================================
+
+describe("mutual recursion", () => {
+  it("Expr/BinOp mutual recursion via Schema.suspend", () => {
+    // Mutual recursion: Expr = Lit | BinOp, BinOp has left/right: Expr
+    type Expr = Lit | BinOp
+    interface Lit { readonly _tag: "Lit"; readonly value: bigint }
+    interface BinOp { readonly _tag: "BinOp"; readonly left: Expr; readonly right: Expr }
+
+    const Expr: Schema.Schema<Expr, Data.Data> = Plutus.data(
+      Schema.Union(
+        Schema.Struct({ _tag: Schema.Literal("Lit"), value: Schema.BigIntFromSelf }),
+        Schema.Struct({
+          _tag: Schema.Literal("BinOp"),
+          left: Schema.suspend((): Schema.Schema<Expr> => Expr as any),
+          right: Schema.suspend((): Schema.Schema<Expr> => Expr as any)
+        })
+      )
+    ) as any
+
+    const codec = Plutus.codec(Expr as any)
+
+    const expr: Expr = {
+      _tag: "BinOp",
+      left: { _tag: "Lit", value: 1n },
+      right: {
+        _tag: "BinOp",
+        left: { _tag: "Lit", value: 2n },
+        right: { _tag: "Lit", value: 3n }
+      }
+    }
+
+    const cbor = codec.toCBORHex(expr)
+    const decoded = codec.fromCBORHex(cbor) as BinOp
+    expect(decoded._tag).toBe("BinOp")
+    expect((decoded.left as Lit)._tag).toBe("Lit")
+    expect((decoded.left as Lit).value).toBe(1n)
+    expect((decoded.right as BinOp)._tag).toBe("BinOp")
+    expect(((decoded.right as BinOp).right as Lit).value).toBe(3n)
+  })
+
+  it("A → B → A mutual recursion (separate schemas)", () => {
+    // Type A contains a B, type B contains an optional A
+    interface A { readonly value: bigint; readonly b: B }
+    interface B { readonly label: bigint; readonly a: A | null }
+
+    // Both reference each other via Schema.suspend
+    const ASchema: Schema.Schema<A, Data.Data> = Plutus.data(
+      Schema.Struct({
+        value: Schema.BigIntFromSelf,
+        b: Schema.suspend((): Schema.Schema<B> => BSchema as any)
+      })
+    ) as any
+
+    const BSchema: Schema.Schema<B, Data.Data> = Plutus.data(
+      Schema.Struct({
+        label: Schema.BigIntFromSelf,
+        a: Schema.NullOr(Schema.suspend((): Schema.Schema<A> => ASchema as any))
+      })
+    ) as any
+
+    const codec = Plutus.codec(ASchema as any)
+
+    const input: A = {
+      value: 1n,
+      b: {
+        label: 2n,
+        a: {
+          value: 3n,
+          b: { label: 4n, a: null }
+        }
+      }
+    }
+
+    const cbor = codec.toCBORHex(input)
+    const decoded = codec.fromCBORHex(cbor) as A
+    expect(decoded.value).toBe(1n)
+    expect(decoded.b.label).toBe(2n)
+    expect(decoded.b.a!.value).toBe(3n)
+    expect(decoded.b.a!.b.label).toBe(4n)
+    expect(decoded.b.a!.b.a).toBeNull()
+  })
+})
+
+// ============================================================
 // 2. Option/Nullable Combinations
 // ============================================================
 

@@ -15,14 +15,8 @@ Map now auto-derived from `Schema.MapFromSelf` and `Schema.Map` via Declaration 
 ### ~~2. FlatFields~~ — RESOLVED in Phase 12+ Iteration 2
 FlatFields now supported via `FlatFieldsId` annotation and TSchema backward compat.
 
-### 3. Mutual Recursion
-Only self-recursion via `Schema.suspend` is supported. Mutual recursion (type A references type B which references type A) is not tested and may not work:
-```typescript
-// Not supported:
-// type Expr = Literal | BinOp
-// type BinOp = { left: Expr, right: Expr }
-```
-**Why**: The memoizeThunk approach handles single-schema cycles but may not handle cross-schema cycles. This would require a shared memo map across compilations.
+### ~~3. Mutual Recursion~~ — RESOLVED in Phase 12+ Iteration 6
+Mutual recursion works via `memoizeThunk` + `Schema.suspend`. Tested with Expr/BinOp and A→B→A patterns.
 
 ### 4. TypeScript Enums
 TS `enum` types (`Schema.Enums`) throw an error. Use `Schema.Literal` instead:

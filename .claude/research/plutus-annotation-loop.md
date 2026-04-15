@@ -216,8 +216,8 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 2. ~~**Implement flatFields in compiler**~~ — DONE (moved to Completed Backlog)
 3. ~~**Schema.Class support**~~ — DONE (moved to Completed Backlog)
 4. ~~**Map auto-derivation**~~ — DONE (moved to Completed Backlog)
-5. **Effect error channel** — Replace raw `toData`/`fromData` throws with `Effect`-based `ParseResult.encode`/`ParseResult.decode` for proper error composition. This would make the compiler produce `Schema.transformOrFail` instead of `Schema.transform`.
-6. **Mutual recursion** — Test and support cross-schema cycles (type A → type B → type A) by sharing a memo map across compilations.
+5. ~~**Effect error channel**~~ — DEFERRED (moved to Completed Backlog — deliberately kept as raw throws)
+6. ~~**Mutual recursion**~~ — DONE (moved to Completed Backlog — already works)
 7. **Module augmentation for type-safe annotations** — Add `declare module "effect/Schema"` augmentation so that `[ConstrIndexId]` autocompletes in `.annotations()` calls and has the right type.
 8. **Documentation** — Write a migration guide showing side-by-side TSchema vs Plutus.data() for each pattern.
 **How each iteration works**:
@@ -235,6 +235,8 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 2. **Implement flatFields in compiler** — Added `FlatFieldsId` support in TypeLiteral handler + `countStructFields` helper. When a field has `FlatFieldsId: true` (or TSchema's `"TSchema.flatFields": true`), its sub-fields are inlined into the parent Constr during encoding and reconstructed during decoding. Supports multiple flat fields, mixed flat+non-flat, backward compat with TSchema string annotations. 4 new tests, 254 total passing.
 3. **Schema.Class support** — Transformation handler now detects `Transformation(from: TypeLiteral, to: Declaration)` pattern (Schema.Class/TaggedClass) and compiles the `from` side (TypeLiteral with struct fields) instead of falling through to passthrough. TaggedClass `_tag` field auto-stripped. 254 tests passing.
 4. **Map auto-derivation** — Declaration handler detects Map/MapFromSelf via Description annotation starting with "Map<" and 2 typeParameters. Compiles key/value codecs recursively. Schema.Map (Transformation wrapper) handled via existing fallback `go(ast.to, path)`. Nested maps (Value pattern), maps in struct fields, CBOR byte-for-byte match with TSchema.Map. 5 new tests, 259 total passing.
+5. **Effect error channel** — DEFERRED. Phase 11 confirmed: raw throws in codec are caught by `Schema.encodeSync`/`decodeSync` in `Data.withSchema`, so users already get `ParseError`. Converting all 22 Match handlers to return `Effect` would be massive churn for marginal benefit. Error messages already include paths. Acceptable tradeoff.
+6. **Mutual recursion** — Already works! `memoizeThunk` in the Suspend handler + `Schema.suspend` handles both self-recursion and cross-schema cycles (A→B→A). Tested with Expr/BinOp pattern and A→B→A separate schemas. 2 new tests, 261 total passing. Phase 9 limitation removed.
 
 ## Rules for Loop Execution
 

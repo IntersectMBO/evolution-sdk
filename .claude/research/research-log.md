@@ -84,6 +84,11 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iterations 5-6: Effect error channel + Mutual recursion
+- **Effect error channel**: DEFERRED — raw throws already caught by `Schema.encodeSync` in `Data.withSchema` → users get `ParseError`. Converting 22 handlers to Effect would be massive churn for marginal benefit.
+- **Mutual recursion**: Already works via `memoizeThunk` + `Schema.suspend`. Tested Expr/BinOp pattern and A→B→A separate schemas with CBOR roundtrip. 2 new tests, 261 total.
+- **Phase 9 limitation removed**: mutual recursion is no longer a limitation
+
 ### 2026-04-15 — Phase 12+ Iteration 4: Map auto-derivation
 - **Backlog item**: Map required `Plutus.Map()` combinator — couldn't use `Schema.MapFromSelf` with `Plutus.data()`
 - **Fix**: Declaration handler detects Map via Description annotation ("Map<...") + 2 typeParameters. Recursively compiles key/value codecs.
