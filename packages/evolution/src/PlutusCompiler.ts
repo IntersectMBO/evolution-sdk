@@ -143,6 +143,36 @@ const passthroughCodec: PlutusCodec = {
   fromData: (d: Data.Data) => d
 }
 
+/**
+ * Count the number of non-tag struct fields in an AST node.
+ * Used to know how many parent Constr fields to slice when decoding a flat struct.
+ */
+const countStructFields = (ast: SchemaAST.AST): number => {
+  // Look through Transformation to find TypeLiteral
+  let typeLiteral: SchemaAST.AST | undefined
+  if (ast._tag === "TypeLiteral") {
+    typeLiteral = ast
+  } else if (ast._tag === "Transformation") {
+    typeLiteral = (ast as any).to?._tag === "TypeLiteral" ? (ast as any).to : undefined
+  }
+
+  if (!typeLiteral || typeLiteral._tag !== "TypeLiteral") return 1 // fallback: treat as single field
+
+  const ps = (typeLiteral as SchemaAST.TypeLiteral).propertySignatures
+  // Count non-tag fields (same logic as the TypeLiteral handler)
+  let count = 0
+  for (const p of ps) {
+    const name = p.name as string
+    if ((KNOWN_TAG_FIELDS as readonly string[]).includes(name)) {
+      // Check if it's actually a literal tag
+      if (p.type._tag === "Literal") continue
+      if (p.type._tag === "Transformation" && (p.type as any).to?._tag === "Literal") continue
+    }
+    count++
+  }
+  return count
+}
+
 // ============================================================
 // TSchema fast-path codecs
 // ============================================================
@@ -272,18 +302,37 @@ export const match: SchemaAST.Match<PlutusCodec> = {
 
     // Compile each field
     const propertySignatures = ast.propertySignatures
-    const fieldCodecs: Array<{ name: string; codec: PlutusCodec; isTag: boolean; tagValue: any }> = []
+    const fieldCodecs: Array<{
+      name: string
+      codec: PlutusCodec
+      isTag: boolean
+      tagValue: any
+      isFlat: boolean
+      flatFieldCount: number // number of sub-fields when flat (for decoding)
+    }> = []
 
     for (const ps of propertySignatures) {
       const name = ps.name as string
       const isTag = isLiteralTag(ps, tagFieldOverride)
       const tagValue = isTag ? getLiteralValue(ps) : undefined
 
+      // Check for flatFields annotation on the field's type
+      const isFlat = Option.getOrElse(PA.getFlatFields(ps.type), () => false)
+        || (ps.type.annotations?.["TSchema.flatFields"] === true)
+
+      // Count sub-fields for flat structs (needed during decoding)
+      let flatFieldCount = 0
+      if (isFlat) {
+        flatFieldCount = countStructFields(ps.type)
+      }
+
       fieldCodecs.push({
         name,
         codec: go(ps.type, [...path, ps.name]),
         isTag,
-        tagValue
+        tagValue,
+        isFlat,
+        flatFieldCount
       })
     }
 
@@ -292,7 +341,13 @@ export const match: SchemaAST.Match<PlutusCodec> = {
         const fields: Data.Data[] = []
         for (const fc of fieldCodecs) {
           if (fc.isTag) continue // Strip tag field
-          fields.push(fc.codec.toData(a[fc.name]))
+          const encoded = fc.codec.toData(a[fc.name])
+          if (fc.isFlat && encoded instanceof Data.Constr) {
+            // Spread inner Constr fields into parent
+            fields.push(...encoded.fields)
+          } else {
+            fields.push(encoded)
+          }
         }
         return new Data.Constr({ index: BigInt(constrIndex), fields })
       },
@@ -303,6 +358,12 @@ export const match: SchemaAST.Match<PlutusCodec> = {
         for (const fc of fieldCodecs) {
           if (fc.isTag) {
             result[fc.name] = fc.tagValue
+          } else if (fc.isFlat) {
+            // Reconstruct inner Constr from sliced parent fields
+            const nestedFields = constr.fields.slice(fieldIdx, fieldIdx + fc.flatFieldCount)
+            const nestedConstr = new Data.Constr({ index: 0n, fields: nestedFields })
+            result[fc.name] = fc.codec.fromData(nestedConstr)
+            fieldIdx += fc.flatFieldCount
           } else {
             result[fc.name] = fc.codec.fromData(constr.fields[fieldIdx])
             fieldIdx++

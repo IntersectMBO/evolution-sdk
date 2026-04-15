@@ -84,6 +84,15 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 2: Implement flatFields in compiler
+- **Backlog item**: flatFields — FlatFieldsId annotation was defined but compiler ignored it
+- **Implementation**: TypeLiteral handler now checks `FlatFieldsId` (and TSchema `"TSchema.flatFields"`) on each field's AST. `countStructFields()` helper counts non-tag fields in a struct AST for decoding.
+- **Encoding**: when flat field produces a Constr, spreads its fields into parent
+- **Decoding**: slices the right number of parent fields, reconstructs inner Constr, delegates to inner codec
+- **Tests**: 4 new tests — basic flat, multiple flat structs, mixed flat+non-flat, TSchema backward compat
+- 254 total tests passing
+- **Phase 9 limitation removed**: flatFields is no longer a limitation
+
 ### 2026-04-15 — Phase 12+ Iteration 1: Reduce encode/decode overhead
 - **Backlog item**: Reduce encode/decode overhead (was up to 5x slower than TSchema)
 - **Root cause**: Transformation handler used `Schema.encodeSync`/`Schema.decodeSync` for ALL TSchema fields — runs full Effect pipeline on every encode/decode

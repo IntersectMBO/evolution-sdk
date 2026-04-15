@@ -449,6 +449,107 @@ describe("complex compositions", () => {
     expect(codec.fromCBORHex(codec.toCBORHex(complex))).toEqual(complex)
   })
 
+  it("flatFields: inner struct fields inlined into parent Constr", () => {
+    const Inner = Schema.Struct({
+      x: Schema.BigIntFromSelf,
+      y: Schema.BigIntFromSelf
+    }).annotations({ [PA.FlatFieldsId]: true })
+
+    const Outer = Plutus.data(Schema.Struct({
+      inner: Inner,
+      z: Schema.BigIntFromSelf
+    }))
+
+    const codec = Plutus.codec(Outer)
+    const input = { inner: { x: 1n, y: 2n }, z: 3n }
+
+    const data = codec.toData(input)
+    // Inner fields should be inlined: Constr(0, [1n, 2n, 3n]) not Constr(0, [Constr(0, [1n, 2n]), 3n])
+    expect((data as Data.Constr).fields).toEqual([1n, 2n, 3n])
+    expect((data as Data.Constr).fields).toHaveLength(3)
+
+    // Roundtrip
+    const decoded = codec.fromData(data)
+    expect(decoded).toEqual(input)
+  })
+
+  it("flatFields: multiple flat structs in parent", () => {
+    const Point = Schema.Struct({
+      x: Schema.BigIntFromSelf,
+      y: Schema.BigIntFromSelf
+    }).annotations({ [PA.FlatFieldsId]: true })
+
+    const Line = Plutus.data(Schema.Struct({
+      start: Point,
+      end: Point
+    }))
+
+    const codec = Plutus.codec(Line)
+    const input = { start: { x: 1n, y: 2n }, end: { x: 3n, y: 4n } }
+
+    const data = codec.toData(input)
+    // All 4 fields inlined: Constr(0, [1n, 2n, 3n, 4n])
+    expect((data as Data.Constr).fields).toEqual([1n, 2n, 3n, 4n])
+
+    const decoded = codec.fromData(data)
+    expect(decoded).toEqual(input)
+  })
+
+  it("flatFields: mixed flat and non-flat fields", () => {
+    const FlatPart = Schema.Struct({
+      a: Schema.BigIntFromSelf,
+      b: Schema.BigIntFromSelf
+    }).annotations({ [PA.FlatFieldsId]: true })
+
+    const NonFlatPart = Schema.Struct({
+      c: Schema.BigIntFromSelf
+    })
+    // No flatFields annotation → stays nested
+
+    const Mixed = Plutus.data(Schema.Struct({
+      flat: FlatPart,
+      nested: NonFlatPart,
+      z: Schema.BigIntFromSelf
+    }))
+
+    const codec = Plutus.codec(Mixed)
+    const input = { flat: { a: 1n, b: 2n }, nested: { c: 3n }, z: 4n }
+
+    const data = codec.toData(input)
+    // flat inlined, nested stays as Constr: Constr(0, [1n, 2n, Constr(0, [3n]), 4n])
+    expect((data as Data.Constr).fields).toHaveLength(4)
+    expect((data as Data.Constr).fields[0]).toBe(1n)
+    expect((data as Data.Constr).fields[1]).toBe(2n)
+    expect((data as Data.Constr).fields[2]).toBeInstanceOf(Data.Constr)
+    expect((data as Data.Constr).fields[3]).toBe(4n)
+
+    const decoded = codec.fromData(data)
+    expect(decoded).toEqual(input)
+  })
+
+  it("flatFields with TSchema.flatFields annotation (backward compat)", () => {
+    // TSchema uses string-key annotation "TSchema.flatFields": true
+    const Inner = TSchema.Struct(
+      { x: TSchema.Integer, y: TSchema.Integer },
+      { flatFields: true }
+    )
+
+    const Outer = Plutus.data(Schema.Struct({
+      inner: Inner,
+      z: Schema.BigIntFromSelf
+    }))
+
+    const codec = Plutus.codec(Outer)
+    const input = { inner: { x: 1n, y: 2n }, z: 3n }
+
+    const data = codec.toData(input)
+    // Should be inlined
+    expect((data as Data.Constr).fields).toEqual([1n, 2n, 3n])
+
+    const decoded = codec.fromData(data)
+    expect(decoded).toEqual(input)
+  })
+
   it("tuple of heterogeneous types", () => {
     const MyTuple = Plutus.data(Schema.Tuple(
       Schema.BigIntFromSelf,

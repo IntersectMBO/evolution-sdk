@@ -18,13 +18,8 @@ const MyMap = Plutus.Map(Plutus.ByteArray, Plutus.Integer)
 ```
 **Why**: Schema.Map uses a Declaration AST node, and the compiler treats unknown Declarations as passthrough. Map encoding requires a specific CBOR map representation that differs from the standard Schema.Map behavior.
 
-### 2. FlatFields (Nested Struct Inlining)
-The `flatFields` annotation is defined but not yet implemented in the compiler. Structs are always encoded as nested Constrs:
-```typescript
-// Currently: inner struct is always a nested Constr
-// flatFields would inline inner fields into parent
-```
-**Why**: This is a complex encoding that requires coordinating field counts between parent and child structs during both encoding and decoding. TSchema implements this via string annotations, but the compiler doesn't yet handle it. Use TSchema.Struct with `flatFields: true` for now.
+### ~~2. FlatFields~~ — RESOLVED in Phase 12+ Iteration 2
+FlatFields now supported via `FlatFieldsId` annotation and TSchema backward compat.
 
 ### 3. Mutual Recursion
 Only self-recursion via `Schema.suspend` is supported. Mutual recursion (type A references type B which references type A) is not tested and may not work:
