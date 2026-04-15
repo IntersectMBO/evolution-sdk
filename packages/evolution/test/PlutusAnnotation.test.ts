@@ -1,6 +1,7 @@
 import { Option, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
+// Import PlutusAnnotation to activate module augmentation
 import * as PA from "../src/PlutusAnnotation.js"
 
 describe("PlutusAnnotation", () => {
@@ -141,6 +142,30 @@ describe("PlutusAnnotation", () => {
 
       expect(Option.getOrThrow(PA.getConstrIndex(MyStruct.ast))).toBe(2)
       expect(Option.getOrThrow(PA.getFlatInUnion(MyStruct.ast))).toBe(true)
+      expect(Option.getOrThrow(PA.getTagField(MyStruct.ast))).toBe("_tag")
+    })
+  })
+
+  describe("module augmentation", () => {
+    it("annotations with symbol keys flow through to AST", () => {
+      // This tests that the module augmentation doesn't break annotation flow.
+      // With the augmentation, symbol keys are typed on the Annotations interface,
+      // so .annotations() accepts them with proper types.
+      const MyStruct = Schema.Struct({
+        amount: Schema.BigIntFromSelf
+      }).annotations({
+        [PA.ConstrIndexId]: 42,
+        [PA.FlatInUnionId]: true,
+        [PA.EncodingId]: "constr" as PA.PlutusEncoding,
+        [PA.FlatFieldsId]: false,
+        [PA.TagFieldId]: "_tag"
+      })
+
+      // Verify all annotations are readable from the AST
+      expect(Option.getOrThrow(PA.getConstrIndex(MyStruct.ast))).toBe(42)
+      expect(Option.getOrThrow(PA.getFlatInUnion(MyStruct.ast))).toBe(true)
+      expect(Option.getOrThrow(PA.getEncoding(MyStruct.ast))).toBe("constr")
+      expect(Option.getOrThrow(PA.getFlatFields(MyStruct.ast))).toBe(false)
       expect(Option.getOrThrow(PA.getTagField(MyStruct.ast))).toBe("_tag")
     })
   })

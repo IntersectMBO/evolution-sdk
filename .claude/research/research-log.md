@@ -84,6 +84,13 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 7: Module augmentation
+- **Backlog item**: Symbol annotation keys didn't autocomplete in `.annotations()` calls
+- **Fix**: Added `declare module "effect/SchemaAST"` augmentation extending the `Annotations` interface with all 5 Plutus annotation symbols and their correct value types
+- **TypeScript compilation**: Clean (no errors)
+- 1 new test verifying all 5 annotations flow through augmented interface
+- 262 total tests passing
+
 ### 2026-04-15 — Phase 12+ Iterations 5-6: Effect error channel + Mutual recursion
 - **Effect error channel**: DEFERRED — raw throws already caught by `Schema.encodeSync` in `Data.withSchema` → users get `ParseError`. Converting 22 handlers to Effect would be massive churn for marginal benefit.
 - **Mutual recursion**: Already works via `memoizeThunk` + `Schema.suspend`. Tested Expr/BinOp pattern and A→B→A separate schemas with CBOR roundtrip. 2 new tests, 261 total.

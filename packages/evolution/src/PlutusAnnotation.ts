@@ -183,3 +183,33 @@ export const flatFields = () => ({ [FlatFieldsId]: true }) as const
  * @since 2.0.0
  */
 export const tagField = (name: string | false) => ({ [TagFieldId]: name }) as const
+
+// ============================================================
+// Module Augmentation — Type-safe annotations in .annotations()
+// ============================================================
+
+/**
+ * Extends Effect Schema's annotation interfaces so that Plutus annotation
+ * symbols appear in autocomplete when calling `.annotations({...})`.
+ *
+ * @example
+ * ```typescript
+ * import "@evolution-sdk/evolution/PlutusAnnotation"
+ *
+ * Schema.Struct({ ... }).annotations({
+ *   [ConstrIndexId]: 5,        // ← autocompletes with type: number
+ *   [FlatInUnionId]: true,     // ← autocompletes with type: boolean
+ * })
+ * ```
+ *
+ * @since 2.0.0
+ */
+declare module "effect/SchemaAST" {
+  interface Annotations {
+    readonly [ConstrIndexId]?: number
+    readonly [EncodingId]?: PlutusEncoding
+    readonly [FlatInUnionId]?: boolean
+    readonly [FlatFieldsId]?: boolean
+    readonly [TagFieldId]?: string | false
+  }
+}
