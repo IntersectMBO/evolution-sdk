@@ -225,6 +225,9 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 11. ~~**Edge case sweep**~~ — DONE (moved to Completed Backlog)
 12. ~~**Fix silent passthrough for unknown Declarations**~~ — DONE (moved to Completed Backlog)
 13. ~~**Benchmark improvements**~~ — DONE (moved to Completed Backlog)
+14. **Enum shorthand** — Add `Plutus.enum("Red", "Green", "Blue")` that produces `makeIsDataIndexed({Red: {}, Green: {}, Blue: {}}, {Red: 0, Green: 1, Blue: 2})` automatically. Indices assigned from declaration order. Should also work as a field type inside `Plutus.data()`. Test: roundtrip, CBOR match with manual equivalent, 10+ variants.
+15. **Newtype flattening** — Add `Plutus.newtype(Schema.BigIntFromSelf)` or a `NewtypeId` annotation that encodes a single-field struct as its inner value directly (no Constr wrapper). Haskell: `newtype Lovelace = Lovelace Integer` encodes as just `Integer`. Test: roundtrip, nested newtypes, newtype inside struct, newtype inside union.
+16. **Auto-index sum types** — Add `Plutus.makeIsData` overload for sum types that auto-assigns indices from object key order (like Haskell's `unstableMakeIsData`). E.g., `Plutus.makeIsData({ Mint: { amount: ... }, Burn: { amount: ... } })` → Mint=0, Burn=1 without explicit indices. Test: verify index matches key order, roundtrip.
 **How each iteration works**:
 1. Read this backlog
 2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
