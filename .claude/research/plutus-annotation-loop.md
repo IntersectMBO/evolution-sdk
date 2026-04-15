@@ -224,12 +224,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
 11. ~~**Edge case sweep**~~ — DONE (moved to Completed Backlog)
 12. ~~**Fix silent passthrough for unknown Declarations**~~ — DONE (moved to Completed Backlog)
-13. **Benchmark improvements** — The current benchmarks in `PlutusChallenge.test.ts` use loose thresholds (3-10x). Improve them:
-    - **Profile the hot path**: For a simple struct encode, measure where time is spent: AST compile vs codec.toData vs Schema.transform wrapper vs Data.Constr construction. Identify the actual bottleneck.
-    - **Eliminate Schema.transform overhead**: `Plutus.data()` wraps the codec in `Schema.transform(DataSchema, typeSchema, { encode, decode })`. Every encode/decode goes through Effect's transform pipeline. Try: bypass the transform and call `codec.toData` directly in `Data.withSchema`'s encode path. Measure the difference.
-    - **Cache compiled codecs**: `Plutus.data()` compiles the AST every time it's called. If the same schema is used multiple times, the compilation is redundant. Try: memoize `compile()` results keyed by AST identity. Measure the difference for repeated compilations.
-    - **Benchmark realistic workloads**: Current benchmarks use simple 2-field structs. Add benchmarks for: Address (nested unions), Value (nested maps), NativeScript (recursive 6-variant sum), and a 10-field struct. Compare Plutus.data() vs TSchema for each.
-    - **Report actual numbers**: Instead of just asserting `< Nx`, log the actual ms/op for both TSchema and Plutus.data() so regressions are visible.
+13. ~~**Benchmark improvements**~~ — DONE (moved to Completed Backlog)
 **How each iteration works**:
 1. Read this backlog
 2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
@@ -254,6 +249,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 10. **Eliminate `as any` from tests** — 31→2 across 4 test files. Key fix: recursive schemas use `Schema.suspend((): Schema.Schema<T, Data.Data> => X)` with explicit encoded type annotation — matches Effect's own test pattern from TSchema.recursive.test.ts. No casts needed. Remaining 2 are intentional wrong-type error tests (`"not a bigint" as any`). 262 tests passing.
 11. **Edge case sweep** — 30 new tests across 10 handler categories. All pass without compiler fixes needed. Tested: tag-only structs, all-flat structs, field order, single-member unions, mixed primitive unions, NullOr(union), empty/nested tuples, double-wrapped suspend, all literal types (0n, negative, boolean, number, long string), empty/nested maps, nested flatFields, refinement chains, deeply nested heterogeneous roundtrip, null at every nesting level. No silent wrong output found. 292 total tests passing.
 12. **Fix silent passthrough for unknown Declarations** — Declaration handler now throws by default for unrecognized types (following JSON Schema's approach). Added explicit detection: Set/HashSet/ReadonlySet→Set (CBOR list, decoded back to Set), List/Chunk→Array (CBOR list), HashMap/ReadonlyMap→Map (already handled). Date, Duration, FiberId, OptionFromSelf, SortedSet, custom Schema.declare all throw with descriptive error including path. 8 new tests (Set encode/decode, empty Set, ReadonlyMap, DateFromSelf/DurationFromSelf/OptionFromSelf throw, error path). 300 total tests passing.
+13. **Benchmark improvements** — Comprehensive benchmark suite with proper warmup (5000 iterations each). Key finding: **Plutus.data() is at parity with TSchema** — earlier 3-5x overhead was warmup artifact. Results: 2-field encode 1.0x, 10-field encode 1.0x, Address (nested unions) 0.7x (Plutus faster!), decode 1.0x, CBOR roundtrip 1.0x. Schema.transform overhead: negligible (1.0x vs direct). AST compilation: 0.001ms. No optimization needed — the compiler adds zero measurable overhead. 8 new benchmark tests, 308 total passing.
 
 ## Rules for Loop Execution
 

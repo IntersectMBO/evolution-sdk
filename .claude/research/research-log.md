@@ -84,6 +84,19 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 13: Benchmark improvements
+- **Backlog item**: Replace loose threshold benchmarks with proper profiling and realistic workloads
+- **Key finding**: Plutus.data() is at parity with TSchema (1.0x). Earlier 3-5x overhead was warmup artifact in old benchmarks.
+- **Results** (5000 iterations, proper warmup):
+  - 2-field encode: TSchema 0.027ms, Plutus 0.028ms (1.0x)
+  - 10-field encode: TSchema 0.035ms, Plutus 0.034ms (1.0x)
+  - Address (nested unions): TSchema 0.332ms, Plutus 0.220ms (0.7x — Plutus faster!)
+  - Decode: 1.0x, CBOR roundtrip: 1.0x
+  - Schema.transform overhead: negligible (1.0x vs direct codec.toData)
+  - AST compilation: 0.001ms per schema
+- **Conclusion**: No optimization needed — compiler adds zero measurable overhead
+- 8 new benchmark tests, 308 total passing
+
 ### 2026-04-15 — Phase 12+ Iteration 12: Fix silent passthrough for unknown Declarations
 - **Backlog item**: Unknown Declaration types (Set, Date, Duration, OptionFromSelf, etc.) silently fell through to passthroughCodec — producing wrong output with no error
 - **Fix**: Declaration handler now throws by default. Added detection for Set-like (Set→Set, HashSet→Set, ReadonlySet→Set), Array-like (List→Array, Chunk→Array), and Map-like (HashMap→Map, ReadonlyMap→Map) types via Description annotation prefixes. Unsupported types (Date, Duration, FiberId, OptionFromSelf, SortedSet) throw descriptive errors with path.
