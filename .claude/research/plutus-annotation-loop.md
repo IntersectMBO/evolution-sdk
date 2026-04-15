@@ -1,270 +1,149 @@
 # Plutus Data Annotation Research Loop
 
+## Phase System
+
+Read `.loop-phase` to determine the current phase.
+If the file doesn't exist, start at Phase 1.
+After completing a phase, update `.loop-phase` to the next phase.
+After the last numbered phase, enter Phase 12 (Continuous Improvement) and increment cycle count.
+
+---
+
 ## Goal
 
-Design a TypeScript annotation system using Effect Schema that mirrors Haskell's Plutus data derivation (`makeIsData`, `makeIsDataIndexed`), enabling users to declaratively annotate TypeScript types and automatically derive Plutus Data encoding/decoding. Must handle all Plutus Data constructors, recursive types, nested unions, maps, options, and custom constructor indices.
+Design a TypeScript annotation system using Effect Schema that mirrors Haskell's Plutus data derivation (`makeIsData`, `makeIsDataIndexed`), enabling users to declaratively annotate TypeScript types and automatically derive Plutus Data encoding/decoding.
 
 **Implementation constraint**: Uses Effect Schema's annotation system (`Schema.annotations()`, custom `Symbol.for()` keys, `AST.Match<A>` + `AST.getCompiler` pattern). See `PlutusCompiler.ts` for the working implementation.
 
 ## Context
 
 - **Codebase**: `evolution-sdk` monorepo, `packages/evolution/src/`
-- **Existing**: `TSchema.ts` (~860 lines) provides manual schema combinators (Struct, Union, Variant, Literal, etc.) that transform TS types <-> Plutus Data <-> CBOR
-- **Existing**: `Data.ts` defines Plutus Data model: `Constr | Map<Data,Data> | Data[] | bigint | Uint8Array`
+- **Key files**: `PlutusCompiler.ts` (AST compiler), `PlutusSchema.ts` (public API), `PlutusAnnotation.ts` (annotation symbols)
+- **Existing**: `TSchema.ts` provides manual schema combinators, `Data.ts` defines Plutus Data model
 - **Effect version**: v3.19.3
 - **Effect source clones**: available via `effect-local-source` skill — USE THIS for all Effect source research
 
-## Key Research Findings (Phases 1-4)
+---
 
-### Phase 1 Discovery: How Effect Does Derivation
+## Every Phase: Non-Negotiable
 
-Effect's canonical derivation pattern (used by Pretty, Arbitrary, Equivalence):
+1. Run `npx turbo run test --filter=@evolution-sdk/evolution -- --run "Plutus"` — must pass before committing
+2. Run `npx tsc --noEmit --project packages/evolution/tsconfig.json` — must have zero errors
+3. Log actions to `research-log.md` (structured entry: cycle, phase, action, result, next)
+4. Commit locally with descriptive message
+5. Update `.loop-phase` to the next phase
 
-```typescript
-// SchemaAST.ts
-type Match<A> = {
-  [K in AST["_tag"]]: (
-    ast: Extract<AST, { _tag: K }>,
-    compile: Compiler<A>,
-    path: ReadonlyArray<PropertyKey>
-  ) => A
-}
-const getCompiler = <A>(match: Match<A>): Compiler<A>
-```
+---
 
-Custom annotations use `Symbol.for()` and attach to any AST node:
-```typescript
-const ConstrIndexId = Symbol.for("plutus/annotation/ConstrIndex")
-const mySchema = Schema.Struct({...}).annotations({ [ConstrIndexId]: 0 })
-// Read back: AST.getAnnotation<number>(ast, ConstrIndexId)
-```
+## Phase 1: Effect Schema Annotation Deep-Dive
+**Status**: done | **Output**: `phase1-effect-annotations.md`
 
-### Phase 4 Winner: Candidate D (Hybrid)
+## Phase 2: Catalog All Plutus Data Patterns
+**Status**: done | **Output**: `phase2-pattern-catalog.md`
 
-Two paths coexist:
-1. **TSchema path** — existing combinators, unchanged
-2. **Plutus.data() path** — annotate any Effect Schema, derive Plutus encoding via AST compiler
+## Phase 3: Design Candidates
+**Status**: done | **Output**: `phase3-candidates.md`
 
-```typescript
-// User writes standard Effect Schema + Plutus.data() wrapper
-const MyDatum = Plutus.data(Schema.Struct({
-  owner: Schema.Uint8ArrayFromSelf,
-  amount: Schema.BigIntFromSelf
-}))
-// Compiler infers: Uint8Array -> ByteArray, bigint -> Integer, Struct -> Constr(0)
+## Phase 4: Evaluate & Select Winners
+**Status**: done | **Output**: `phase4-evaluation.md`
 
-const codec = Plutus.codec(MyDatum)
-```
+## Phase 5: Study Effect's Real AST Compiler Implementations
+**Status**: done | **Output**: `phase5-ast-compiler-study.md`
 
-## Haskell Reference Patterns
+## Phase 6: Define Plutus Annotation Symbols
+**Status**: done | **Output**: `PlutusAnnotation.ts` + tests
 
-```haskell
--- Simple product type
-data MyDatum = MyDatum { owner :: PubKeyHash, amount :: Integer }
-PlutusTx.unstableMakeIsData ''MyDatum
--- Encodes as: Constr 0 [ownerBytes, amountInt]
+## Phase 7: Build the AST Compiler (Match<PlutusCodec>)
+**Status**: done | **Output**: `PlutusCompiler.ts` + tests
 
--- Sum type with explicit indices
-data Credential = PubKeyCredential PubKeyHash | ScriptCredential ScriptHash
-PlutusTx.makeIsDataIndexed ''Credential [('PubKeyCredential, 0), ('ScriptCredential, 1)]
+## Phase 8: Plutus.data() and Public API
+**Status**: done | **Output**: `PlutusSchema.ts` + tests
 
--- Recursive type
-data Value = Value (Map CurrencySymbol (Map TokenName Integer))
+## Phase 9: Edge Cases & Completeness
+**Status**: done | **Output**: Edge case tests + `phase9-limitations.md`
 
--- Nested sum in product
-data TxOut = TxOut { address :: Address, value :: Value, datum :: OutputDatum }
-data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
-```
+## Phase 10: Real-World Validation
+**Status**: done | **Output**: Real-world tests + `migration-guide.md`
 
-## Phases
+## Phase 11: Challenge the Implementation
+**Status**: done | **Output**: Adversarial tests + fixes
 
-### Phase 1: Effect Schema Annotation Deep-Dive
-**Status**: done
-**Output**: `phase1-effect-annotations.md`
+---
 
-### Phase 2: Catalog All Plutus Data Patterns
-**Status**: done
-**Output**: `phase2-pattern-catalog.md`
+## Phase 12: Continuous Improvement (repeating)
 
-### Phase 3: Design Candidates
-**Status**: done
-**Output**: `phase3-candidates.md`
+Goal: Pick the highest-value improvement from the backlog, implement it with tests, and update the backlog.
 
-### Phase 4: Evaluate & Select Winners
-**Status**: done
-**Output**: `phase4-evaluation.md`
+### Backlog (work top-down)
 
-### Phase 5: Study Effect's Real AST Compiler Implementations
-**Status**: done
-**Goal**: Read the ACTUAL Effect source code for Pretty, Arbitrary, and Equivalence to understand exactly how `Match<A>` + `getCompiler` work in practice. The current prototype skipped this and wrote a manual `switch` — that's wrong.
-**Actions**:
-1. Use `effect-local-source` skill to find the Effect v3 source
-2. Read `packages/effect/src/Pretty.ts` — study the full `Match<Pretty>` implementation
-3. Read `packages/effect/src/Arbitrary.ts` — study how it handles Suspend (recursion), Union, TypeLiteral
-4. Read `packages/effect/src/Equivalence.ts` — another derivation example
-5. Read `packages/effect/src/SchemaAST.ts` — find `getCompiler`, `Match`, `Compiler` types and understand the exact contract
-6. Document: exact function signatures, how each AST tag is handled, how annotations override default behavior, how memoization works for Suspend
-7. Pay special attention to: how annotations are checked FIRST before structural derivation, how errors are reported for unsupported types
-**Output**: Write findings to `phase5-ast-compiler-study.md`
+_(Empty — all items completed or dropped. See Completed Backlog below.)_
 
-### Phase 6: Define Plutus Annotation Symbols
-**Status**: done
-**Goal**: Define the custom annotation symbols that carry Plutus encoding metadata on Schema AST nodes.
-**Actions**:
-1. Based on Phase 5 findings, define annotation symbols following Effect conventions:
-   - `PlutusConstrIndexId` — constructor index (number)
-   - `PlutusEncodingId` — encoding strategy override ("constr" | "integer" | "bytes" | "list" | "map" | "bool" | "passthrough")
-   - `PlutusFlatInUnionId` — flat union encoding (boolean)
-   - `PlutusFlatFieldsId` — flatten nested struct fields (boolean)
-   - `PlutusTagFieldId` — tag field name to strip (string | false)
-2. Define TypeScript types for annotation values
-3. Define `getAnnotation` helpers (curried form like Effect does)
-4. Write a small `PlutusAnnotation.ts` module (or section within PlutusSchema.ts)
-5. Write tests: attach annotations to schemas, read them back
-**Output**: Working annotation symbols + tests, committed locally
+### When Backlog is Empty: Watchdog Mode
 
-### Phase 7: Build the AST Compiler (Match<PlutusCodec>)
-**Status**: done
-**Goal**: Implement the core `Match<PlutusCodec>` that walks annotated Effect Schema AST and produces Plutus Data encoder/decoder.
-**Actions**:
-1. Define `PlutusCodec` type: `{ toData: (a: any) => Data.Data, fromData: (d: Data.Data) => any }`
-2. Implement `Match<PlutusCodec>` with handlers for every relevant AST tag:
-   - `TypeLiteral` → check for ConstrIndex annotation, build Constr encoder from property signatures
-   - `BigIntKeyword` → Integer passthrough
-   - `BooleanKeyword` → Boolean Constr(0/1)
-   - `Literal` → handle tag literals, enum values
-   - `Declaration` → detect Uint8ArrayFromSelf, etc.
-   - `Union` → detect NullOr/UndefinedOr patterns, else build indexed union
-   - `TupleType` → Array or Tuple encoding
-   - `Suspend` → memoized recursive thunk (MUST follow Effect's Suspend pattern exactly)
-   - `Transformation` → check if already TSchema-annotated, otherwise look-through
-   - `Refinement` → look through to base type
-   - All other tags → throw descriptive error
-3. Each handler MUST check for annotation override FIRST, then fall back to structural inference
-4. Use `AST.getCompiler(match)` to get the compiler function
-5. Write tests for each AST tag handler individually
-**Output**: Working AST compiler + tests, committed locally
+If the backlog has no unfinished items, run watchdog checks instead of reporting "nothing to do":
 
-### Phase 8: Plutus.data() and Public API
-**Status**: done
-**Goal**: Wire the AST compiler into the public `Plutus.data()` / `Plutus.fromSchema()` API.
-**Actions**:
-1. `Plutus.data(schema, options?)` — applies annotations from options, then runs compiler
-2. `Plutus.makeIsData(fields, options?)` — shorthand for `Plutus.data(Schema.Struct(fields))`
-3. `Plutus.makeIsDataIndexed(variants, indices)` — shorthand that applies ConstrIndex annotations per variant
-4. `Plutus.variant(variants)` — Aiken-style, delegates to TSchema.Variant
-5. `Plutus.codec(schema)` — wraps `Data.withSchema()`
-6. Re-export primitives: `Plutus.ByteArray`, `Plutus.Integer`, `Plutus.Boolean`, etc.
-7. Write comprehensive tests covering ALL patterns from Phase 2 catalog
-8. Verify roundtrip: TS value -> Plutus Data -> CBOR -> Plutus Data -> TS value
-9. Verify compatibility: `Data.withSchema(Plutus.data(schema))` works
-**Output**: Working `PlutusSchema.ts` + comprehensive tests, committed locally
+1. **Regression scan**: Run full test suite. If anything fails, fix it.
+2. **Effect version check**: Has Effect released a new version? Check if `SchemaAST.Match`, `getCompiler`, or `getAnnotation` APIs changed. If so, add a backlog item to update.
+3. **Coverage gap scan**: Read `PlutusCompiler.ts` and count how many AST handlers use `go(ast.to, path)` or `go(ast.from, path)` as pass-through. For each, ask: "could this silently produce wrong output?" If yes, add a backlog item.
+4. **External research** (Rule 11): Search for how other Cardano libraries handle Plutus Data encoding. Check Aiken, Lucid, Mesh, Blaze for patterns we haven't considered. Log findings even if no immediate action.
+5. If all checks pass and nothing found → log "watchdog: all clear" and stop.
 
-### Phase 9: Edge Cases & Completeness
-**Status**: done
-**Goal**: Handle remaining edge cases and ensure full coverage of the Phase 2 pattern catalog.
-**Actions**:
-1. Test deeply nested recursive types (mutual recursion if possible)
-2. Test all Option/Nullable combinations (nested options, optional in union, etc.)
-3. Test custom constructor indices in nested unions
-4. Test flatFields interop
-5. Test tag field auto-detection with annotations
-6. Test mixing TSchema fields inside Plutus.data() schemas (passthrough)
-7. Test error messages for unsupported types (string, number, etc.)
-8. Performance: ensure annotation traversal doesn't add measurable runtime overhead vs direct TSchema
-9. Document any patterns that can't be supported and why
-**Output**: Updated code + comprehensive tests + limitations doc, committed locally
+### How Each Iteration Works
 
-### Phase 10: Real-World Validation
-**Status**: done
-**Goal**: Validate the annotation system works for real Cardano types.
-**Actions**:
-1. Re-implement `Address`, `Credential`, `Value` using `Plutus.data()` alongside existing TSchema versions
-2. Verify CBOR output matches byte-for-byte with existing TSchema versions
-3. Re-implement `CIP68Metadata` and `MultisigScript` patterns
-4. Verify recursive types (MultisigScript) work correctly
-5. Write migration examples showing TSchema -> Plutus.data() for each real type
-6. If any real type can't be expressed, go back and fix the compiler
-**Output**: Real-world validation tests + migration examples, committed locally
+1. Read `.loop-phase` — if not Phase 12, execute that phase instead
+2. Read this backlog
+3. If unfinished items exist → pick the top one, implement with tests, commit, move to Completed Backlog
+4. If backlog is empty → run Watchdog Mode checks above
+5. Update `research-log.md` with structured entry
+6. Update `.loop-phase` (increment cycle if watchdog, stay at Phase 12)
+7. Stop — wait for next iteration
 
-### Phase 11: Challenge the Implementation
-**Status**: done
-**Goal**: Adversarial review — stress-test assumptions, find holes, and prove the design is sound or fix what isn't.
-**Actions**:
-1. **Question the compiler pattern**: Is `Match<PlutusCodec>` the right abstraction? The codec returns raw `toData`/`fromData` functions, but `Data.withSchema` expects `Schema<A, Data.Data>`. Are we losing Effect's error channel by using synchronous encode/decode? What happens when encoding fails — do we get a useful ParseError or a raw throw?
-2. **Question annotation coverage**: Are there real Plutus patterns that CANNOT be expressed via annotations alone? Can a user annotate a `Schema.Class` (Declaration AST)? What about branded types, newtypes, or opaque wrappers?
-3. **Type safety audit**: Does `Plutus.data()` return a properly typed `Schema<A, Data.Data>`? Or does it lose type information via `as any` casts? Can users compose `Plutus.data()` schemas with Effect's `Schema.compose`, `Schema.transform`, `Schema.filter`?
-4. **Try to break it**: Write adversarial test cases designed to fail:
-   - Schema with index signatures (`Record<string, bigint>`)
-   - Schema with optional properties (`Schema.optional(...)`)
-   - Schema.Class / Schema.TaggedClass as input to `Plutus.data()`
-   - Deeply nested transformations (3+ levels of Schema.transform)
-   - Union with non-struct members (e.g., `Schema.Union(Schema.BigIntFromSelf, Schema.Boolean)`)
-   - Empty union, single-member union
-   - Tuple with rest elements (`Schema.Array` inside a tuple)
-5. **Compare with Haskell**: Pick 3 complex Plutus types from real contracts and verify the annotation system can express them. If not, document what's missing.
-6. **Benchmark against TSchema**: For the same types, measure compilation time and encode/decode throughput. Is the compiler overhead justified?
-7. **Review error quality**: Trigger every error path in the compiler. Are the messages actionable? Do they include the AST path?
-8. **Fix or document**: For each issue found, either fix the code (with tests) or document it as a known limitation with a clear rationale for why it's acceptable.
-**Output**: Adversarial test file + fixes + updated limitations doc, committed locally
+### Transition Rules
 
-### Phase 12+: Continuous Improvement (repeating)
-**Status**: pending
-**Goal**: Each iteration picks the highest-value improvement from the backlog, implements it, and updates the backlog. This phase repeats indefinitely — it is never marked `done`.
-**Backlog** (ordered by priority — work top-down):
-1. ~~**Reduce encode/decode overhead**~~ — DONE (moved to Completed Backlog)
-2. ~~**Implement flatFields in compiler**~~ — DONE (moved to Completed Backlog)
-3. ~~**Schema.Class support**~~ — DONE (moved to Completed Backlog)
-4. ~~**Map auto-derivation**~~ — DONE (moved to Completed Backlog)
-5. ~~**Effect error channel**~~ — DEFERRED (moved to Completed Backlog — deliberately kept as raw throws)
-6. ~~**Mutual recursion**~~ — DONE (moved to Completed Backlog — already works)
-7. ~~**Module augmentation for type-safe annotations**~~ — DONE (moved to Completed Backlog)
-8. ~~**Documentation**~~ — DONE (moved to Completed Backlog)
-9. ~~**Eliminate unnecessary `as any` casts**~~ — DONE (moved to Completed Backlog)
-10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
-11. ~~**Edge case sweep**~~ — DONE (moved to Completed Backlog)
-12. ~~**Fix silent passthrough for unknown Declarations**~~ — DONE (moved to Completed Backlog)
-13. ~~**Benchmark improvements**~~ — DONE (moved to Completed Backlog)
-14. ~~**Enum shorthand**~~ — DONE (moved to Completed Backlog)
-15. ~~**Newtype flattening**~~ — DROPPED. Users should use the raw schema directly (`Schema.BigIntFromSelf` for Lovelace, `Schema.Uint8ArrayFromSelf` for PolicyId). No need for a convenience wrapper — it would just obscure what the encoding actually is.
-16. ~~**Auto-index sum types**~~ ��� DROPPED. `makeIsDataIndexed` with explicit indices is clearer and less error-prone. Implicit index assignment from key order is fragile — reordering keys silently changes on-chain encoding. Users should be explicit about constructor indices.
-**How each iteration works**:
-1. Read this backlog
-2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
-3. Pick the top unfinished item
-4. Implement it with tests
-5. Commit locally
-6. Update the research log
-7. Move the completed item to a `## Completed Backlog` section below
-8. Stop — wait for next iteration
+- If a backlog item requires research → use `effect-local-source` skill first
+- If a backlog item is blocked → mark as `BLOCKED: [reason]`, skip to next item
+- If watchdog finds a regression → fix it immediately, don't add to backlog
+- If watchdog finds an API change → add backlog item, don't fix in watchdog cycle
+- If user adds a new backlog item between iterations → it appears at the priority they placed it
+
+---
 
 ## Completed Backlog
 
-1. **Reduce encode/decode overhead** — Added `tschemaFastCodec()` fast-path in Transformation handler. Known TSchema types (Boolean, NullOr, UndefinedOr) now use direct codec functions instead of `Schema.encodeSync`/`Schema.decodeSync`. Unknown TSchema transforms still fall back to the slow path. Encode with TSchema.Boolean field now within 3x of pure TSchema (was 5x). 250 tests passing.
-2. **Implement flatFields in compiler** — Added `FlatFieldsId` support in TypeLiteral handler + `countStructFields` helper. When a field has `FlatFieldsId: true` (or TSchema's `"TSchema.flatFields": true`), its sub-fields are inlined into the parent Constr during encoding and reconstructed during decoding. Supports multiple flat fields, mixed flat+non-flat, backward compat with TSchema string annotations. 4 new tests, 254 total passing.
-3. **Schema.Class support** — Transformation handler now detects `Transformation(from: TypeLiteral, to: Declaration)` pattern (Schema.Class/TaggedClass) and compiles the `from` side (TypeLiteral with struct fields) instead of falling through to passthrough. TaggedClass `_tag` field auto-stripped. 254 tests passing.
-4. **Map auto-derivation** — Declaration handler detects Map/MapFromSelf via Description annotation starting with "Map<" and 2 typeParameters. Compiles key/value codecs recursively. Schema.Map (Transformation wrapper) handled via existing fallback `go(ast.to, path)`. Nested maps (Value pattern), maps in struct fields, CBOR byte-for-byte match with TSchema.Map. 5 new tests, 259 total passing.
-5. **Effect error channel** — DEFERRED. Phase 11 confirmed: raw throws in codec are caught by `Schema.encodeSync`/`decodeSync` in `Data.withSchema`, so users already get `ParseError`. Converting all 22 Match handlers to return `Effect` would be massive churn for marginal benefit. Error messages already include paths. Acceptable tradeoff.
-6. **Mutual recursion** — Already works! `memoizeThunk` in the Suspend handler + `Schema.suspend` handles both self-recursion and cross-schema cycles (A→B→A). Tested with Expr/BinOp pattern and A→B→A separate schemas. 2 new tests, 261 total passing. Phase 9 limitation removed.
-7. **Module augmentation** — Added `declare module "effect/SchemaAST"` augmentation to `PlutusAnnotation.ts`. Symbol keys (`ConstrIndexId`, `EncodingId`, `FlatInUnionId`, `FlatFieldsId`, `TagFieldId`) are now typed on the `Annotations` interface with correct value types. TypeScript compilation passes. 1 new test, 262 total passing.
-8. **Documentation** — Migration guide covering all patterns: primitives, struct (basic/nested/flat/tagged), sum types (Variant vs makeIsDataIndexed), Option, Map, Array, recursive types, Schema.Class, codec usage, real-world Address example. Side-by-side TSchema vs Plutus.data() with notes on API differences.
-9. **Eliminate `as any`** — Removed all `as any` from production code (PlutusCompiler.ts: 10→0, PlutusSchema.ts: 4→0, PlutusAnnotation.ts: already 0). Used proper discriminated union narrowing for AST types, replaced return-type casts with `as unknown as Schema<A, Data.Data, R>` with documented reasons. TypeScript compilation clean. 262 tests passing.
-10. **Eliminate `as any` from tests** — 31→2 across 4 test files. Key fix: recursive schemas use `Schema.suspend((): Schema.Schema<T, Data.Data> => X)` with explicit encoded type annotation — matches Effect's own test pattern from TSchema.recursive.test.ts. No casts needed. Remaining 2 are intentional wrong-type error tests (`"not a bigint" as any`). 262 tests passing.
-11. **Edge case sweep** — 30 new tests across 10 handler categories. All pass without compiler fixes needed. Tested: tag-only structs, all-flat structs, field order, single-member unions, mixed primitive unions, NullOr(union), empty/nested tuples, double-wrapped suspend, all literal types (0n, negative, boolean, number, long string), empty/nested maps, nested flatFields, refinement chains, deeply nested heterogeneous roundtrip, null at every nesting level. No silent wrong output found. 292 total tests passing.
-12. **Fix silent passthrough for unknown Declarations** — Declaration handler now throws by default for unrecognized types (following JSON Schema's approach). Added explicit detection: Set/HashSet/ReadonlySet→Set (CBOR list, decoded back to Set), List/Chunk→Array (CBOR list), HashMap/ReadonlyMap→Map (already handled). Date, Duration, FiberId, OptionFromSelf, SortedSet, custom Schema.declare all throw with descriptive error including path. 8 new tests (Set encode/decode, empty Set, ReadonlyMap, DateFromSelf/DurationFromSelf/OptionFromSelf throw, error path). 300 total tests passing.
-13. **Benchmark improvements** — Comprehensive benchmark suite with proper warmup (5000 iterations each). Key finding: **Plutus.data() is at parity with TSchema** — earlier 3-5x overhead was warmup artifact. Results: 2-field encode 1.0x, 10-field encode 1.0x, Address (nested unions) 0.7x (Plutus faster!), decode 1.0x, CBOR roundtrip 1.0x. Schema.transform overhead: negligible (1.0x vs direct). AST compilation: 0.001ms. No optimization needed — the compiler adds zero measurable overhead. 8 new benchmark tests, 308 total passing.
-14. **Enum shorthand** — Added `Plutus.makeEnum("Red", "Green", "Blue")` that auto-generates `makeIsDataIndexed` with empty fields and indices from declaration order. CBOR byte-for-byte match with manual equivalent. Works as field type inside `Plutus.data()`. 4 new tests (basic, CBOR match, 10+ variants, as field type). 312 total passing.
+| # | Item | Result |
+|---|------|--------|
+| 1 | Reduce encode/decode overhead | TSchema fast-path codecs for Boolean, NullOr, UndefinedOr |
+| 2 | Implement flatFields | FlatFieldsId annotation + countStructFields helper |
+| 3 | Schema.Class support | Compile from-side TypeLiteral for Transformation→Declaration |
+| 4 | Map auto-derivation | Detect Map/HashMap/ReadonlyMap via Description prefix |
+| 5 | Effect error channel | DEFERRED — raw throws caught by Data.withSchema, acceptable |
+| 6 | Mutual recursion | Already works via memoizeThunk + Schema.suspend |
+| 7 | Module augmentation | declare module "effect/SchemaAST" for typed annotations |
+| 8 | Documentation | Migration guide: TSchema vs Plutus.data() for all patterns |
+| 9 | Eliminate `as any` (prod) | 14→0 using discriminated union narrowing |
+| 10 | Eliminate `as any` (tests) | 31→2 using explicit encoded type in suspend thunks |
+| 11 | Edge case sweep | 30 tests, zero bugs found |
+| 12 | Fix silent passthrough | Unknown Declarations throw, added Set/List/Chunk/HashMap support |
+| 13 | Benchmark improvements | Plutus.data() at parity with TSchema (1.0x), Address 0.7x faster |
+| 14 | Enum shorthand | Plutus.makeEnum("A", "B", "C") with auto indices |
+| 15 | Newtype flattening | DROPPED — use raw schema directly |
+| 16 | Auto-index sum types | DROPPED — explicit indices safer than implicit key order |
+
+**Total**: 312 tests across 13 files, zero `as any` in production code, zero TypeScript errors.
+
+---
 
 ## Rules for Loop Execution
 
-1. **One phase per iteration** — complete the current pending phase, update its status to `done`, then stop
-2. **Always commit** — after completing a phase, `git add` and `git commit` locally with a descriptive message
-3. **Update the log** — append to `research-log.md` after each phase
-4. **Use effect-local-source skill** — for ANY Effect source research, invoke this skill FIRST
-5. **Annotation-first** — every implementation decision must use Effect's annotation system. If you find yourself writing `switch(ast._tag)` manually, STOP and use `Match<A>` + `getCompiler` instead
-6. **Read before writing** — always read current state of tracking files before updating
-7. **If stuck** — document what's blocking in the log, mark phase as `blocked`, move to next actionable phase
-8. **No manual AST dispatch** — never use `switch(ast._tag)`. Always use `Match<A>` + `getCompiler`
-9. **Test each phase** — every phase that produces code must include tests that pass
-10. **Candidates stay** — never delete candidate designs from research files, only annotate with winner/loser
-11. **No `as any`** — production code must have zero `as any`. Use discriminated union narrowing, `as unknown as X` with comments, or explicit type annotations. Test files: only for intentional wrong-type error tests
+1. **One phase per iteration** — complete the current pending phase, then stop
+2. **Health check first** — run tests + tsc before committing (see "Every Phase: Non-Negotiable")
+3. **Always commit** — `git add` + `git commit` locally with descriptive message after each phase
+4. **Update the log** — structured entry in `research-log.md` (cycle, phase, action, result, next)
+5. **Use effect-local-source skill** — for ANY Effect source research, invoke this skill FIRST
+6. **Annotation-first** — use Effect's annotation system, never manual `switch(ast._tag)`
+7. **Read before writing** — always read current state of tracking files before updating
+8. **If stuck** — document what's blocking in the log, mark phase as `blocked`, skip to next
+9. **Test each phase** — every phase that produces code must include passing tests
+10. **No `as any`** — production: zero. Tests: only for intentional wrong-type error tests
+11. **No convenience wrappers** — users compose from primitives (`data()`, `makeIsDataIndexed`, annotations)
+12. **Draft before commit** — exploratory work goes in `_candidate-*.ts` files, promoted or discarded in the next phase
