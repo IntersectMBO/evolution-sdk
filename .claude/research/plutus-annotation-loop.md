@@ -187,6 +187,27 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 6. If any real type can't be expressed, go back and fix the compiler
 **Output**: Real-world validation tests + migration examples, committed locally
 
+### Phase 11: Challenge the Implementation
+**Status**: pending
+**Goal**: Adversarial review — stress-test assumptions, find holes, and prove the design is sound or fix what isn't.
+**Actions**:
+1. **Question the compiler pattern**: Is `Match<PlutusCodec>` the right abstraction? The codec returns raw `toData`/`fromData` functions, but `Data.withSchema` expects `Schema<A, Data.Data>`. Are we losing Effect's error channel by using synchronous encode/decode? What happens when encoding fails — do we get a useful ParseError or a raw throw?
+2. **Question annotation coverage**: Are there real Plutus patterns that CANNOT be expressed via annotations alone? Can a user annotate a `Schema.Class` (Declaration AST)? What about branded types, newtypes, or opaque wrappers?
+3. **Type safety audit**: Does `Plutus.data()` return a properly typed `Schema<A, Data.Data>`? Or does it lose type information via `as any` casts? Can users compose `Plutus.data()` schemas with Effect's `Schema.compose`, `Schema.transform`, `Schema.filter`?
+4. **Try to break it**: Write adversarial test cases designed to fail:
+   - Schema with index signatures (`Record<string, bigint>`)
+   - Schema with optional properties (`Schema.optional(...)`)
+   - Schema.Class / Schema.TaggedClass as input to `Plutus.data()`
+   - Deeply nested transformations (3+ levels of Schema.transform)
+   - Union with non-struct members (e.g., `Schema.Union(Schema.BigIntFromSelf, Schema.Boolean)`)
+   - Empty union, single-member union
+   - Tuple with rest elements (`Schema.Array` inside a tuple)
+5. **Compare with Haskell**: Pick 3 complex Plutus types from real contracts and verify the annotation system can express them. If not, document what's missing.
+6. **Benchmark against TSchema**: For the same types, measure compilation time and encode/decode throughput. Is the compiler overhead justified?
+7. **Review error quality**: Trigger every error path in the compiler. Are the messages actionable? Do they include the AST path?
+8. **Fix or document**: For each issue found, either fix the code (with tests) or document it as a known limitation with a clear rationale for why it's acceptable.
+**Output**: Adversarial test file + fixes + updated limitations doc, committed locally
+
 ## Rules for Loop Execution
 
 1. **One phase per iteration** — complete the current pending phase, update its status to `done`, then stop
