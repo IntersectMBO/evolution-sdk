@@ -84,6 +84,14 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 8: Documentation
+- **Backlog item**: Migration guide — side-by-side TSchema vs Plutus.data()
+- Covers all Phase 2 patterns: primitives, struct (S1-S8), union (U1-U6), nullable (N1-N2), map (C2), array (C1), tuple (C3), recursive (R1-R3), Schema.Class, codec usage
+- Highlights API difference: Variant `{Name: {fields}}` vs makeIsDataIndexed `{_tag: "Name", ...fields}`
+- Real-world Address example showing full migration
+- Output: `migration-guide.md`
+- **All 8 backlog items complete** — backlog is empty
+
 ### 2026-04-15 — Phase 12+ Iteration 7: Module augmentation
 - **Backlog item**: Symbol annotation keys didn't autocomplete in `.annotations()` calls
 - **Fix**: Added `declare module "effect/SchemaAST"` augmentation extending the `Annotations` interface with all 5 Plutus annotation symbols and their correct value types

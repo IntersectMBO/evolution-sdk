@@ -219,7 +219,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 5. ~~**Effect error channel**~~ — DEFERRED (moved to Completed Backlog — deliberately kept as raw throws)
 6. ~~**Mutual recursion**~~ — DONE (moved to Completed Backlog — already works)
 7. ~~**Module augmentation for type-safe annotations**~~ — DONE (moved to Completed Backlog)
-8. **Documentation** — Write a migration guide showing side-by-side TSchema vs Plutus.data() for each pattern.
+8. ~~**Documentation**~~ — DONE (moved to Completed Backlog)
 **How each iteration works**:
 1. Read this backlog
 2. Pick the top unfinished item
@@ -238,6 +238,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 5. **Effect error channel** — DEFERRED. Phase 11 confirmed: raw throws in codec are caught by `Schema.encodeSync`/`decodeSync` in `Data.withSchema`, so users already get `ParseError`. Converting all 22 Match handlers to return `Effect` would be massive churn for marginal benefit. Error messages already include paths. Acceptable tradeoff.
 6. **Mutual recursion** — Already works! `memoizeThunk` in the Suspend handler + `Schema.suspend` handles both self-recursion and cross-schema cycles (A→B→A). Tested with Expr/BinOp pattern and A→B→A separate schemas. 2 new tests, 261 total passing. Phase 9 limitation removed.
 7. **Module augmentation** — Added `declare module "effect/SchemaAST"` augmentation to `PlutusAnnotation.ts`. Symbol keys (`ConstrIndexId`, `EncodingId`, `FlatInUnionId`, `FlatFieldsId`, `TagFieldId`) are now typed on the `Annotations` interface with correct value types. TypeScript compilation passes. 1 new test, 262 total passing.
+8. **Documentation** — Migration guide covering all patterns: primitives, struct (basic/nested/flat/tagged), sum types (Variant vs makeIsDataIndexed), Option, Map, Array, recursive types, Schema.Class, codec usage, real-world Address example. Side-by-side TSchema vs Plutus.data() with notes on API differences.
 
 ## Rules for Loop Execution
 
