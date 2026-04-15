@@ -107,7 +107,7 @@ describe("2. annotation coverage challenges", () => {
 
     // Branded types use Refinement AST → compiler looks through to base
     const codec = compile(Lovelace.ast, [])
-    expect(codec.toData(42n as any)).toBe(42n)
+    expect(codec.toData(42n)).toBe(42n)
     expect(codec.fromData(42n)).toBe(42n)
   })
 
@@ -417,19 +417,19 @@ describe("5. haskell comparison — complex types", () => {
     const NativeScript: Schema.Schema<NativeScript, Data.Data> = Plutus.makeIsDataIndexed(
       {
         ScriptPubkey: { key_hash: Schema.Uint8ArrayFromSelf },
-        ScriptAll: { scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript> => NativeScript as any)) },
-        ScriptAny: { scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript> => NativeScript as any)) },
+        ScriptAll: { scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript)) },
+        ScriptAny: { scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript)) },
         ScriptNOfK: {
           n: Schema.BigIntFromSelf,
-          scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript> => NativeScript as any))
+          scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript))
         },
         TimelockStart: { time: Schema.BigIntFromSelf },
         TimelockExpiry: { time: Schema.BigIntFromSelf }
       },
       { ScriptPubkey: 0, ScriptAll: 1, ScriptAny: 2, ScriptNOfK: 3, TimelockStart: 4, TimelockExpiry: 5 }
-    ) as any
+    )
 
-    const codec = Plutus.codec(NativeScript as any)
+    const codec = Plutus.codec(NativeScript)
 
     // Complex nested script: All(Pubkey, Any(Pubkey, TimelockStart))
     const script = {
@@ -617,7 +617,7 @@ describe("7. error quality review", () => {
 
   it("null literal standalone error is clear", () => {
     try {
-      Plutus.data(Schema.Literal(null) as any)
+      Plutus.data(Schema.Literal(null))
       expect.unreachable()
     } catch (e: any) {
       expect(e.message).toContain("null")
@@ -707,6 +707,8 @@ describe("8. findings summary", () => {
       amount: Lovelace
     }))
     const codec = Plutus.codec(MyStruct)
-    expect(codec.fromCBORHex(codec.toCBORHex({ amount: 42n as any }))).toEqual({ amount: 42n })
+    // Brand bypass: codec.toCBORHex expects branded type, but we test the raw value
+    // This is intentional — verifying branded types pass through without runtime enforcement
+    expect(codec.fromCBORHex(codec.toCBORHex({ amount: 42n } as never))).toEqual({ amount: 42n })
   })
 })

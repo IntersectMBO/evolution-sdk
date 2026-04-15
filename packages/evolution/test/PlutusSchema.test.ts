@@ -311,14 +311,16 @@ describe("data() / fromSchema", () => {
         readonly next: LinkedList | null
       }
 
+      // Recursive schemas: annotate the thunk return type with Data.Data to match
+      // the Plutus.data() wrapped type. Same pattern as TSchema recursive tests.
       const LinkedList: Schema.Schema<LinkedList, Data.Data> = Plutus.data(
         Schema.Struct({
           value: Schema.BigIntFromSelf,
-          next: Schema.NullOr(Schema.suspend((): Schema.Schema<LinkedList> => LinkedList as any))
+          next: Schema.NullOr(Schema.suspend((): Schema.Schema<LinkedList, Data.Data> => LinkedList))
         })
-      ) as any
+      )
 
-      const codec = Plutus.codec(LinkedList as any)
+      const codec = Plutus.codec(LinkedList)
 
       const list: LinkedList = {
         value: 1n,
@@ -431,7 +433,7 @@ describe("compatibility", () => {
   it("data() result works with Data.withSchema directly", () => {
     const MyDatum = Plutus.data(Schema.Struct({ amount: Schema.BigIntFromSelf }))
 
-    const codec = Data.withSchema(MyDatum as any)
+    const codec = Data.withSchema(MyDatum)
     const data = codec.toData({ amount: 42n })
     expect(data).toBeInstanceOf(Data.Constr)
     expect((data as Data.Constr).fields[0]).toBe(42n)

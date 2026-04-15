@@ -21,12 +21,12 @@ describe("deeply nested recursive types", () => {
     const TreeSchema: Schema.Schema<Tree, Data.Data> = Plutus.data(
       Schema.Struct({
         value: Schema.BigIntFromSelf,
-        left: Schema.NullOr(Schema.suspend((): Schema.Schema<Tree> => TreeSchema as any)),
-        right: Schema.NullOr(Schema.suspend((): Schema.Schema<Tree> => TreeSchema as any))
+        left: Schema.NullOr(Schema.suspend((): Schema.Schema<Tree, Data.Data> => TreeSchema)),
+        right: Schema.NullOr(Schema.suspend((): Schema.Schema<Tree, Data.Data> => TreeSchema))
       })
-    ) as any
+    )
 
-    const codec = Plutus.codec(TreeSchema as any)
+    const codec = Plutus.codec(TreeSchema)
 
     const tree: Tree = {
       value: 1n,
@@ -62,11 +62,11 @@ describe("deeply nested recursive types", () => {
     const LinkedListSchema: Schema.Schema<LinkedList, Data.Data> = Plutus.data(
       Schema.Struct({
         value: Schema.BigIntFromSelf,
-        next: Schema.NullOr(Schema.suspend((): Schema.Schema<LinkedList> => LinkedListSchema as any))
+        next: Schema.NullOr(Schema.suspend((): Schema.Schema<LinkedList, Data.Data> => LinkedListSchema))
       })
-    ) as any
+    )
 
-    const codec = Plutus.codec(LinkedListSchema as any)
+    const codec = Plutus.codec(LinkedListSchema)
 
     // Build a 10-level deep list
     let list: LinkedList = { value: 10n, next: null }
@@ -104,13 +104,13 @@ describe("mutual recursion", () => {
         Schema.Struct({ _tag: Schema.Literal("Lit"), value: Schema.BigIntFromSelf }),
         Schema.Struct({
           _tag: Schema.Literal("BinOp"),
-          left: Schema.suspend((): Schema.Schema<Expr> => Expr as any),
-          right: Schema.suspend((): Schema.Schema<Expr> => Expr as any)
+          left: Schema.suspend((): Schema.Schema<Expr, Data.Data> => Expr),
+          right: Schema.suspend((): Schema.Schema<Expr, Data.Data> => Expr)
         })
       )
-    ) as any
+    )
 
-    const codec = Plutus.codec(Expr as any)
+    const codec = Plutus.codec(Expr)
 
     const expr: Expr = {
       _tag: "BinOp",
@@ -140,18 +140,18 @@ describe("mutual recursion", () => {
     const ASchema: Schema.Schema<A, Data.Data> = Plutus.data(
       Schema.Struct({
         value: Schema.BigIntFromSelf,
-        b: Schema.suspend((): Schema.Schema<B> => BSchema as any)
+        b: Schema.suspend((): Schema.Schema<B, Data.Data> => BSchema)
       })
-    ) as any
+    )
 
     const BSchema: Schema.Schema<B, Data.Data> = Plutus.data(
       Schema.Struct({
         label: Schema.BigIntFromSelf,
-        a: Schema.NullOr(Schema.suspend((): Schema.Schema<A> => ASchema as any))
+        a: Schema.NullOr(Schema.suspend((): Schema.Schema<A, Data.Data> => ASchema))
       })
-    ) as any
+    )
 
-    const codec = Plutus.codec(ASchema as any)
+    const codec = Plutus.codec(ASchema)
 
     const input: A = {
       value: 1n,
@@ -468,7 +468,7 @@ describe("error messages", () => {
   })
 
   it("null literal standalone gives helpful error", () => {
-    expect(() => Plutus.data(Schema.Literal(null) as any)).toThrow(/null cannot be encoded standalone/)
+    expect(() => Plutus.data(Schema.Literal(null))).toThrow(/null cannot be encoded standalone/)
   })
 })
 

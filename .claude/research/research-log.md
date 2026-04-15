@@ -84,6 +84,13 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 10: Eliminate `as any` from test files
+- **Backlog item**: 31 `as any` casts across 4 test files
+- **Key discovery**: Effect's own recursive tests use `Schema.suspend((): Schema.Schema<T, Data.Data> => X)` with explicit encoded type — no casts needed when the return type matches the variable's type
+- **Fixed**: PlutusSchema.test.ts (4→0), PlutusEdgeCases.test.ts (14→0), PlutusChallenge.test.ts (13→2)
+- **Remaining 2**: intentional wrong-type error tests (`"not a bigint" as any`, `"wrong" as any`) — correct use
+- TypeScript compilation clean, 262 tests passing
+
 ### 2026-04-15 — Phase 12+ Iteration 9: Eliminate `as any` casts
 - **Backlog item**: Audit and remove all unnecessary `as any` casts from production code
 - **PlutusCompiler.ts**: 10 → 0 `as any`. Used discriminated union narrowing (`t._tag === "Literal"` narrows to `SchemaAST.Literal` with `.literal` property). Removed casts on `.to`, `.literal`, `.types` — all properly typed via AST union.

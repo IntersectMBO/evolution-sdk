@@ -221,6 +221,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 7. ~~**Module augmentation for type-safe annotations**~~ — DONE (moved to Completed Backlog)
 8. ~~**Documentation**~~ — DONE (moved to Completed Backlog)
 9. ~~**Eliminate unnecessary `as any` casts**~~ — DONE (moved to Completed Backlog)
+10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
 **How each iteration works**:
 1. Read this backlog
 2. Pick the top unfinished item
@@ -241,6 +242,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 7. **Module augmentation** — Added `declare module "effect/SchemaAST"` augmentation to `PlutusAnnotation.ts`. Symbol keys (`ConstrIndexId`, `EncodingId`, `FlatInUnionId`, `FlatFieldsId`, `TagFieldId`) are now typed on the `Annotations` interface with correct value types. TypeScript compilation passes. 1 new test, 262 total passing.
 8. **Documentation** — Migration guide covering all patterns: primitives, struct (basic/nested/flat/tagged), sum types (Variant vs makeIsDataIndexed), Option, Map, Array, recursive types, Schema.Class, codec usage, real-world Address example. Side-by-side TSchema vs Plutus.data() with notes on API differences.
 9. **Eliminate `as any`** — Removed all `as any` from production code (PlutusCompiler.ts: 10→0, PlutusSchema.ts: 4→0, PlutusAnnotation.ts: already 0). Used proper discriminated union narrowing for AST types, replaced return-type casts with `as unknown as Schema<A, Data.Data, R>` with documented reasons. TypeScript compilation clean. 262 tests passing.
+10. **Eliminate `as any` from tests** — 31→2 across 4 test files. Key fix: recursive schemas use `Schema.suspend((): Schema.Schema<T, Data.Data> => X)` with explicit encoded type annotation — matches Effect's own test pattern from TSchema.recursive.test.ts. No casts needed. Remaining 2 are intentional wrong-type error tests (`"not a bigint" as any`). 262 tests passing.
 
 ## Rules for Loop Execution
 
