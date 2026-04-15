@@ -108,7 +108,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Write findings to `phase5-ast-compiler-study.md`
 
 ### Phase 6: Define Plutus Annotation Symbols
-**Status**: pending
+**Status**: done
 **Goal**: Define the custom annotation symbols that carry Plutus encoding metadata on Schema AST nodes.
 **Actions**:
 1. Based on Phase 5 findings, define annotation symbols following Effect conventions:

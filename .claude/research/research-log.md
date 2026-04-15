@@ -40,7 +40,7 @@
 | 3 | Design Candidates | done | 2026-04-14 | 2026-04-14 |
 | 4 | Evaluate & Select Winners | done | 2026-04-14 | 2026-04-14 |
 | 5 | Study Effect AST Compiler Impls | done | 2026-04-15 | 2026-04-15 |
-| 6 | Define Plutus Annotation Symbols | pending | - | - |
+| 6 | Define Plutus Annotation Symbols | done | 2026-04-15 | 2026-04-15 |
 | 7 | Build AST Compiler (Match<PlutusCodec>) | pending | - | - |
 | 8 | Plutus.data() Public API | pending | - | - |
 | 9 | Edge Cases & Completeness | pending | - | - |
@@ -81,6 +81,15 @@
 - **22 AST tags** must be covered — Match enforces exhaustiveness at compile time
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
+
+### 2026-04-15 — Phase 6 Complete: Plutus Annotation Symbols
+- Created `PlutusAnnotation.ts` with 5 annotation symbols following Effect conventions
+- Symbols: `ConstrIndexId`, `EncodingId`, `FlatInUnionId`, `FlatFieldsId`, `TagFieldId`
+- All use `Symbol.for("plutus/annotation/...")` — globally unique, namespaced
+- Curried getters via `SchemaAST.getAnnotation<T>(symbolId)` — matches Effect pattern
+- Convenience helpers: `constrIndex(n)`, `encoding(s)`, `flatInUnion()`, `flatFields()`, `tagField(name)`
+- 15 tests — all passing: symbol identity, attach+read, missing=None, multiple annotations, convenience helpers
+- Output: `packages/evolution/src/PlutusAnnotation.ts` + `packages/evolution/test/PlutusAnnotation.test.ts`
 
 ## Candidates Tracker
 
