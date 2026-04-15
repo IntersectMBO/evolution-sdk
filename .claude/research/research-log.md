@@ -39,7 +39,7 @@
 | 2 | Catalog All Plutus Data Patterns | done | 2026-04-14 | 2026-04-14 |
 | 3 | Design Candidates | done | 2026-04-14 | 2026-04-14 |
 | 4 | Evaluate & Select Winners | done | 2026-04-14 | 2026-04-14 |
-| 5 | Study Effect AST Compiler Impls | pending | - | - |
+| 5 | Study Effect AST Compiler Impls | done | 2026-04-15 | 2026-04-15 |
 | 6 | Define Plutus Annotation Symbols | pending | - | - |
 | 7 | Build AST Compiler (Match<PlutusCodec>) | pending | - | - |
 | 8 | Plutus.data() Public API | pending | - | - |
@@ -70,6 +70,17 @@
 - **D: Hybrid** — annotated Effect Schema + derive layer, coexists with TSchema
 - Preliminary scoring favors D (Hybrid) on most criteria
 - Output: `phase3-candidates.md`
+
+### 2026-04-15 — Phase 5 Complete: AST Compiler Study
+- Read Pretty.ts (205 lines) — canonical single-phase `Match<A>` + `getCompiler` example
+- Read Arbitrary.ts (1101 lines) — two-phase approach (Description → LazyArbitrary) for constraint accumulation
+- Read Schema.equivalence() — older manual `switch(ast._tag)` pattern, same principles
+- Read SchemaAST.ts — `Match<A>`, `Compiler<A>`, `getCompiler`, `getAnnotation` types
+- Read memoizeThunk implementation — simple closure memoization for Suspend recursion breaking
+- **Key decision**: Use Pretty.ts single-phase pattern (not Arbitrary's two-phase). Plutus encoding doesn't accumulate constraints.
+- **22 AST tags** must be covered — Match enforces exhaustiveness at compile time
+- **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
+- Output: `phase5-ast-compiler-study.md`
 
 ## Candidates Tracker
 

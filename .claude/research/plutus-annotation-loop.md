@@ -95,7 +95,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: `phase4-evaluation.md`
 
 ### Phase 5: Study Effect's Real AST Compiler Implementations
-**Status**: pending
+**Status**: done
 **Goal**: Read the ACTUAL Effect source code for Pretty, Arbitrary, and Equivalence to understand exactly how `Match<A>` + `getCompiler` work in practice. The current prototype skipped this and wrote a manual `switch` — that's wrong.
 **Actions**:
 1. Use `effect-local-source` skill to find the Effect v3 source
