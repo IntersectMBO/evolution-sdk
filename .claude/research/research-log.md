@@ -84,6 +84,11 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12 Cycle 16: Remove convenience wrappers
+**Action:** Removed `makeIsData`, `makeIsDataIndexed`, `makeEnum` from PlutusSchema.ts. Rewrote all 6 test files to use `Plutus.data()` + `Schema.Struct/Union` + annotations directly.
+**Result:** Zero convenience wrappers. Users compose from primitives: `data()`, `Schema.Struct`, `Schema.Union`, `ConstrIndexId`/`FlatInUnionId` annotations. 312 tests pass, zero TS errors.
+**Next:** Phase 12 (watchdog or new backlog items)
+
 ### 2026-04-15 — Phase 12 Cycle 15: Watchdog
 **Action:** Backlog empty — ran watchdog checks
 **Result:** 312 tests pass, zero TS errors, 3 pass-through sites in compiler all safe (Schema.Class, generic Transformation, Refinement — all tested). No coverage gaps. No regressions.

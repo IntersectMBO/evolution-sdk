@@ -267,14 +267,14 @@ describe("option/nullable combinations", () => {
 
 describe("custom constructor indices in nested unions", () => {
   it("nested sum type: OutputDatum inside TxOut-like struct", () => {
-    const OutputDatum = Plutus.makeIsDataIndexed(
-      {
-        NoDatum: {},
-        DatumHash: { hash: Schema.Uint8ArrayFromSelf },
-        InlineDatum: { datum: Schema.BigIntFromSelf }
-      },
-      { NoDatum: 0, DatumHash: 1, InlineDatum: 2 }
-    )
+    const OutputDatum = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("NoDatum") })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("DatumHash"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("InlineDatum"), datum: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true })
+    ))
 
     const TxOut = Plutus.data(Schema.Struct({
       value: Schema.BigIntFromSelf,
@@ -307,14 +307,14 @@ describe("custom constructor indices in nested unions", () => {
   })
 
   it("non-sequential indices", () => {
-    const Action = Plutus.makeIsDataIndexed(
-      {
-        Mint: { amount: Schema.BigIntFromSelf },
-        Burn: { amount: Schema.BigIntFromSelf },
-        Transfer: { from: Schema.Uint8ArrayFromSelf, to: Schema.Uint8ArrayFromSelf }
-      },
-      { Mint: 0, Burn: 5, Transfer: 10 }
-    )
+    const Action = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("Mint"), amount: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Burn"), amount: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 5, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Transfer"), from: Schema.Uint8ArrayFromSelf, to: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 10, [PA.FlatInUnionId]: true })
+    ))
 
     const codec = Plutus.codec(Action)
 

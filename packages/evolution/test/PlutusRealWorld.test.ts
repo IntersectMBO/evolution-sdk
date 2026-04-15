@@ -34,34 +34,32 @@ const OutputReference_v2 = Plutus.data(Schema.Struct({
 
 // --- Credential ---
 
-const Credential_v2 = Plutus.makeIsDataIndexed(
-  {
-    VerificationKey: { hash: Schema.Uint8ArrayFromSelf },
-    Script: { hash: Schema.Uint8ArrayFromSelf }
-  },
-  { VerificationKey: 0, Script: 1 }
-)
+const Credential_v2 = Plutus.data(Schema.Union(
+  Schema.Struct({ _tag: Schema.Literal("VerificationKey"), hash: Schema.Uint8ArrayFromSelf })
+    .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+  Schema.Struct({ _tag: Schema.Literal("Script"), hash: Schema.Uint8ArrayFromSelf })
+    .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+))
 
 // PaymentCredential is same structure as Credential
-const PaymentCredential_v2 = Plutus.makeIsDataIndexed(
-  {
-    VerificationKey: { hash: Schema.Uint8ArrayFromSelf },
-    Script: { hash: Schema.Uint8ArrayFromSelf }
-  },
-  { VerificationKey: 0, Script: 1 }
-)
+const PaymentCredential_v2 = Plutus.data(Schema.Union(
+  Schema.Struct({ _tag: Schema.Literal("VerificationKey"), hash: Schema.Uint8ArrayFromSelf })
+    .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+  Schema.Struct({ _tag: Schema.Literal("Script"), hash: Schema.Uint8ArrayFromSelf })
+    .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+))
 
-const StakeCredential_v2 = Plutus.makeIsDataIndexed(
-  {
-    Inline: { credential: Credential_v2 },
-    Pointer: {
-      slot_number: Schema.BigIntFromSelf,
-      transaction_index: Schema.BigIntFromSelf,
-      certificate_index: Schema.BigIntFromSelf
-    }
-  },
-  { Inline: 0, Pointer: 1 }
-)
+const StakeCredential_v2 = Plutus.data(Schema.Union(
+  Schema.Struct({ _tag: Schema.Literal("Inline"), credential: Credential_v2 })
+    .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+  Schema.Struct({
+    _tag: Schema.Literal("Pointer"),
+    slot_number: Schema.BigIntFromSelf,
+    transaction_index: Schema.BigIntFromSelf,
+    certificate_index: Schema.BigIntFromSelf
+  })
+    .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+))
 
 // --- Address ---
 // Address uses existing TSchema types for credential fields since
@@ -178,7 +176,7 @@ describe("real-world validation", () => {
       expect(decoded.hash).toEqual(hash28)
     })
 
-    it("migration example: TSchema.Variant → Plutus.makeIsDataIndexed", () => {
+    it("migration example: TSchema.Variant → Plutus.data(Schema.Union(...))", () => {
       // BEFORE (TSchema):
       // const Credential = TSchema.Variant({
       //   VerificationKey: { hash: TSchema.ByteArray },
@@ -186,15 +184,17 @@ describe("real-world validation", () => {
       // })
       // Usage: { VerificationKey: { hash: bytes } }
 
-      // AFTER (Plutus.data):
-      // const Credential = Plutus.makeIsDataIndexed({
-      //   VerificationKey: { hash: Schema.Uint8ArrayFromSelf },
-      //   Script: { hash: Schema.Uint8ArrayFromSelf }
-      // }, { VerificationKey: 0, Script: 1 })
+      // AFTER (Plutus.data with annotations):
+      // const Credential = Plutus.data(Schema.Union(
+      //   Schema.Struct({ _tag: Schema.Literal("VerificationKey"), hash: Schema.Uint8ArrayFromSelf })
+      //     .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      //   Schema.Struct({ _tag: Schema.Literal("Script"), hash: Schema.Uint8ArrayFromSelf })
+      //     .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+      // ))
       // Usage: { _tag: "VerificationKey", hash: bytes }
 
       // Note: API style differs (Variant uses {Name: {fields}} wrapper,
-      // makeIsDataIndexed uses {_tag: "Name", ...fields} discriminated union)
+      // annotated union uses {_tag: "Name", ...fields} discriminated union)
       // but CBOR encoding is identical
     })
   })
@@ -403,11 +403,11 @@ describe("real-world validation", () => {
       // where metadata is opaque PlutusData, version is Integer, extra is Array<PlutusData>
 
       // Using TSchema directly (can't fully express opaque Data with Plutus.data)
-      const CIP68_v2 = Plutus.makeIsData({
+      const CIP68_v2 = Plutus.data(Schema.Struct({
         metadata: Schema.Unknown,
         version: Schema.BigIntFromSelf,
         extra: Schema.Array(Schema.Unknown)
-      })
+      }))
 
       const input = { metadata: 42n, version: 1n, extra: [] as unknown[] }
 
@@ -418,11 +418,11 @@ describe("real-world validation", () => {
     })
 
     it("roundtrips CIP68 datum with metadata map", () => {
-      const CIP68_v2 = Plutus.makeIsData({
+      const CIP68_v2 = Plutus.data(Schema.Struct({
         metadata: Schema.Unknown,
         version: Schema.BigIntFromSelf,
         extra: Schema.Array(Schema.Unknown)
-      })
+      }))
 
       const codec = Plutus.codec(CIP68_v2)
 
@@ -454,9 +454,14 @@ describe("real-world validation", () => {
       // AFTER:  Plutus.data(Schema.Struct({ field: Schema.BigIntFromSelf }))
     })
 
-    it("TSchema.Variant → Plutus.makeIsDataIndexed", () => {
+    it("TSchema.Variant → Plutus.data(Schema.Union(...)) with annotations", () => {
       // BEFORE: TSchema.Variant({ A: { x: TSchema.Integer }, B: { y: TSchema.ByteArray } })
-      // AFTER:  Plutus.makeIsDataIndexed({ A: { x: Schema.BigIntFromSelf }, B: { y: Schema.Uint8ArrayFromSelf } }, { A: 0, B: 1 })
+      // AFTER:  Plutus.data(Schema.Union(
+      //   Schema.Struct({ _tag: Schema.Literal("A"), x: Schema.BigIntFromSelf })
+      //     .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      //   Schema.Struct({ _tag: Schema.Literal("B"), y: Schema.Uint8ArrayFromSelf })
+      //     .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+      // ))
       // Note: API style changes from { A: { fields } } to { _tag: "A", ...fields }
     })
 

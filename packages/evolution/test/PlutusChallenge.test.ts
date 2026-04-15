@@ -312,14 +312,14 @@ describe("5. haskell comparison — complex types", () => {
     // TxOut = { address: Address, value: bigint, datum: OutputDatum }
     // OutputDatum = NoDatum | DatumHash bytes | InlineDatum Data
 
-    const OutputDatum = Plutus.makeIsDataIndexed(
-      {
-        NoDatum: {},
-        DatumHash: { hash: Schema.Uint8ArrayFromSelf },
-        InlineDatum: { datum: Schema.BigIntFromSelf }
-      },
-      { NoDatum: 0, DatumHash: 1, InlineDatum: 2 }
-    )
+    const OutputDatum = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("NoDatum") })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("DatumHash"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("InlineDatum"), datum: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true })
+    ))
 
     const TxOut = Plutus.data(Schema.Struct({
       address: Schema.Uint8ArrayFromSelf, // simplified
@@ -360,18 +360,19 @@ describe("5. haskell comparison — complex types", () => {
 
   it("Haskell ScriptContext-like type (deeply nested)", () => {
     // ScriptPurpose = Minting PolicyId | Spending TxOutRef | Rewarding StakeCred | Certifying DCert
-    const ScriptPurpose = Plutus.makeIsDataIndexed(
-      {
-        Minting: { policy_id: Schema.Uint8ArrayFromSelf },
-        Spending: { tx_out_ref: Schema.Struct({
-          tx_id: Schema.Uint8ArrayFromSelf,
-          idx: Schema.BigIntFromSelf
-        }) },
-        Rewarding: { stake_cred: Schema.Uint8ArrayFromSelf },
-        Certifying: { cert_idx: Schema.BigIntFromSelf }
-      },
-      { Minting: 0, Spending: 1, Rewarding: 2, Certifying: 3 }
-    )
+    const ScriptPurpose = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("Minting"), policy_id: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Spending"), tx_out_ref: Schema.Struct({
+        tx_id: Schema.Uint8ArrayFromSelf,
+        idx: Schema.BigIntFromSelf
+      }) })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Rewarding"), stake_cred: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Certifying"), cert_idx: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 3, [PA.FlatInUnionId]: true })
+    ))
 
     const codec = Plutus.codec(ScriptPurpose)
 
@@ -414,20 +415,24 @@ describe("5. haskell comparison — complex types", () => {
       readonly [key: string]: any
     }
 
-    const NativeScript: Schema.Schema<NativeScript, Data.Data> = Plutus.makeIsDataIndexed(
-      {
-        ScriptPubkey: { key_hash: Schema.Uint8ArrayFromSelf },
-        ScriptAll: { scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript)) },
-        ScriptAny: { scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript)) },
-        ScriptNOfK: {
-          n: Schema.BigIntFromSelf,
-          scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript))
-        },
-        TimelockStart: { time: Schema.BigIntFromSelf },
-        TimelockExpiry: { time: Schema.BigIntFromSelf }
-      },
-      { ScriptPubkey: 0, ScriptAll: 1, ScriptAny: 2, ScriptNOfK: 3, TimelockStart: 4, TimelockExpiry: 5 }
-    )
+    const NativeScript: Schema.Schema<NativeScript, Data.Data> = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("ScriptPubkey"), key_hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("ScriptAll"), scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript)) })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("ScriptAny"), scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript)) })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true }),
+      Schema.Struct({
+        _tag: Schema.Literal("ScriptNOfK"),
+        n: Schema.BigIntFromSelf,
+        scripts: Schema.Array(Schema.suspend((): Schema.Schema<NativeScript, Data.Data> => NativeScript))
+      })
+        .annotations({ [PA.ConstrIndexId]: 3, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("TimelockStart"), time: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 4, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("TimelockExpiry"), time: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 5, [PA.FlatInUnionId]: true })
+    ))
 
     const codec = Plutus.codec(NativeScript)
 

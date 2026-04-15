@@ -429,9 +429,16 @@ describe("Declaration: unknown types throw", () => {
 // Enum shorthand
 // ============================================================
 
-describe("Plutus.makeEnum", () => {
+describe("Plutus.data(Schema.Union(...)) enum pattern", () => {
   it("basic 3-variant enum", () => {
-    const Color = Plutus.makeEnum("Red", "Green", "Blue")
+    const Color = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("Red") })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Green") })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Blue") })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true })
+    ))
     const codec = Plutus.codec(Color)
 
     const red = codec.toData({ _tag: "Red" })
@@ -450,12 +457,23 @@ describe("Plutus.makeEnum", () => {
     expect(codec.fromCBORHex(codec.toCBORHex({ _tag: "Blue" }))._tag).toBe("Blue")
   })
 
-  it("CBOR matches manual makeIsDataIndexed equivalent", () => {
-    const enumVersion = Plutus.makeEnum("A", "B", "C")
-    const manualVersion = Plutus.makeIsDataIndexed(
-      { A: {}, B: {}, C: {} },
-      { A: 0, B: 1, C: 2 }
-    )
+  it("CBOR matches manual annotation-based equivalent", () => {
+    const enumVersion = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("A") })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("B") })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("C") })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true })
+    ))
+    const manualVersion = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("A") })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("B") })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("C") })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true })
+    ))
 
     for (const tag of ["A", "B", "C"] as const) {
       const enumCbor = Plutus.codec(enumVersion).toCBORHex({ _tag: tag })
@@ -465,9 +483,19 @@ describe("Plutus.makeEnum", () => {
   })
 
   it("10+ variants", () => {
-    const BigEnum = Plutus.makeEnum(
-      "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10"
-    )
+    const BigEnum = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("V0") }).annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V1") }).annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V2") }).annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V3") }).annotations({ [PA.ConstrIndexId]: 3, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V4") }).annotations({ [PA.ConstrIndexId]: 4, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V5") }).annotations({ [PA.ConstrIndexId]: 5, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V6") }).annotations({ [PA.ConstrIndexId]: 6, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V7") }).annotations({ [PA.ConstrIndexId]: 7, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V8") }).annotations({ [PA.ConstrIndexId]: 8, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V9") }).annotations({ [PA.ConstrIndexId]: 9, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("V10") }).annotations({ [PA.ConstrIndexId]: 10, [PA.FlatInUnionId]: true })
+    ))
     const codec = Plutus.codec(BigEnum)
 
     for (let i = 0; i <= 10; i++) {
@@ -481,7 +509,12 @@ describe("Plutus.makeEnum", () => {
   })
 
   it("enum as field type inside Plutus.data()", () => {
-    const Direction = Plutus.makeEnum("Up", "Down", "Left", "Right")
+    const Direction = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("Up") }).annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Down") }).annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Left") }).annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Right") }).annotations({ [PA.ConstrIndexId]: 3, [PA.FlatInUnionId]: true })
+    ))
     const Move = Plutus.data(Schema.Struct({
       direction: Direction,
       distance: Schema.BigIntFromSelf

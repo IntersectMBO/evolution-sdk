@@ -2,19 +2,20 @@ import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import * as Data from "../src/Data.js"
+import * as PA from "../src/PlutusAnnotation.js"
 import * as Plutus from "../src/PlutusSchema.js"
 import * as TSchema from "../src/TSchema.js"
 
 // ============================================================
-// makeIsData — product types
+// Plutus.data(Schema.Struct(...)) — product types
 // ============================================================
 
-describe("makeIsData", () => {
+describe("Plutus.data(Schema.Struct(...))", () => {
   it("encodes a struct as Constr(0, [fields])", () => {
-    const MyDatum = Plutus.makeIsData({
+    const MyDatum = Plutus.data(Schema.Struct({
       owner: Schema.Uint8ArrayFromSelf,
       amount: Schema.BigIntFromSelf
-    })
+    }))
 
     const codec = Plutus.codec(MyDatum)
     const input = { owner: new Uint8Array([1, 2, 3]), amount: 42n }
@@ -33,8 +34,8 @@ describe("makeIsData", () => {
   })
 
   it("supports custom constructor index", () => {
-    const MyAction = Plutus.makeIsData(
-      { value: Schema.BigIntFromSelf },
+    const MyAction = Plutus.data(
+      Schema.Struct({ value: Schema.BigIntFromSelf }),
       { index: 5 }
     )
 
@@ -44,10 +45,10 @@ describe("makeIsData", () => {
   })
 
   it("handles Boolean fields", () => {
-    const MyStruct = Plutus.makeIsData({
+    const MyStruct = Plutus.data(Schema.Struct({
       amount: Schema.BigIntFromSelf,
       active: Schema.Boolean
-    })
+    }))
 
     const codec = Plutus.codec(MyStruct)
 
@@ -63,10 +64,10 @@ describe("makeIsData", () => {
   })
 
   it("handles NullOr fields", () => {
-    const MyStruct = Plutus.makeIsData({
+    const MyStruct = Plutus.data(Schema.Struct({
       value: Schema.BigIntFromSelf,
       optional: Schema.NullOr(Schema.BigIntFromSelf)
-    })
+    }))
 
     const codec = Plutus.codec(MyStruct)
 
@@ -92,18 +93,17 @@ describe("makeIsData", () => {
 })
 
 // ============================================================
-// makeIsDataIndexed — sum types
+// Plutus.data(Schema.Union(...)) — sum types
 // ============================================================
 
-describe("makeIsDataIndexed", () => {
+describe("Plutus.data(Schema.Union(...)) with annotations", () => {
   it("creates a flat tagged union with explicit indices", () => {
-    const Credential = Plutus.makeIsDataIndexed(
-      {
-        PubKeyCredential: { hash: Schema.Uint8ArrayFromSelf },
-        ScriptCredential: { hash: Schema.Uint8ArrayFromSelf }
-      },
-      { PubKeyCredential: 0, ScriptCredential: 1 }
-    )
+    const Credential = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("PubKeyCredential"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("ScriptCredential"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+    ))
 
     const codec = Plutus.codec(Credential)
 
@@ -125,14 +125,14 @@ describe("makeIsDataIndexed", () => {
   })
 
   it("supports multi-field constructors", () => {
-    const OutputDatum = Plutus.makeIsDataIndexed(
-      {
-        NoDatum: {},
-        DatumHash: { hash: Schema.Uint8ArrayFromSelf },
-        InlineDatum: { datum: Schema.BigIntFromSelf }
-      },
-      { NoDatum: 0, DatumHash: 1, InlineDatum: 2 }
-    )
+    const OutputDatum = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("NoDatum") })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("DatumHash"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("InlineDatum"), datum: Schema.BigIntFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 2, [PA.FlatInUnionId]: true })
+    ))
 
     const codec = Plutus.codec(OutputDatum)
 

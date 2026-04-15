@@ -209,17 +209,23 @@ describe("4. realistic workloads", () => {
     const tCodec = Data.withSchema(TAddress)
 
     // Plutus.data
-    const PCredential = Plutus.makeIsDataIndexed(
-      { VerificationKey: { hash: Schema.Uint8ArrayFromSelf }, Script: { hash: Schema.Uint8ArrayFromSelf } },
-      { VerificationKey: 0, Script: 1 }
-    )
-    const PStakeCred = Plutus.makeIsDataIndexed(
-      {
-        Inline: { credential: PCredential },
-        Pointer: { slot: Schema.BigIntFromSelf, tx_idx: Schema.BigIntFromSelf, cert_idx: Schema.BigIntFromSelf }
-      },
-      { Inline: 0, Pointer: 1 }
-    )
+    const PCredential = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("VerificationKey"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({ _tag: Schema.Literal("Script"), hash: Schema.Uint8ArrayFromSelf })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+    ))
+    const PStakeCred = Plutus.data(Schema.Union(
+      Schema.Struct({ _tag: Schema.Literal("Inline"), credential: PCredential })
+        .annotations({ [PA.ConstrIndexId]: 0, [PA.FlatInUnionId]: true }),
+      Schema.Struct({
+        _tag: Schema.Literal("Pointer"),
+        slot: Schema.BigIntFromSelf,
+        tx_idx: Schema.BigIntFromSelf,
+        cert_idx: Schema.BigIntFromSelf
+      })
+        .annotations({ [PA.ConstrIndexId]: 1, [PA.FlatInUnionId]: true })
+    ))
     const PAddress = Plutus.data(Schema.Struct({
       payment: PCredential,
       stake: Schema.UndefinedOr(PStakeCred)
