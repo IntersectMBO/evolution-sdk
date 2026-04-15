@@ -226,8 +226,8 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 12. ~~**Fix silent passthrough for unknown Declarations**~~ — DONE (moved to Completed Backlog)
 13. ~~**Benchmark improvements**~~ — DONE (moved to Completed Backlog)
 14. ~~**Enum shorthand**~~ — DONE (moved to Completed Backlog)
-15. **Newtype flattening** — Add `Plutus.newtype(Schema.BigIntFromSelf)` or a `NewtypeId` annotation that encodes a single-field struct as its inner value directly (no Constr wrapper). Haskell: `newtype Lovelace = Lovelace Integer` encodes as just `Integer`. Test: roundtrip, nested newtypes, newtype inside struct, newtype inside union.
-16. **Auto-index sum types** — Add `Plutus.makeIsData` overload for sum types that auto-assigns indices from object key order (like Haskell's `unstableMakeIsData`). E.g., `Plutus.makeIsData({ Mint: { amount: ... }, Burn: { amount: ... } })` → Mint=0, Burn=1 without explicit indices. Test: verify index matches key order, roundtrip.
+15. ~~**Newtype flattening**~~ — DROPPED. Users should use the raw schema directly (`Schema.BigIntFromSelf` for Lovelace, `Schema.Uint8ArrayFromSelf` for PolicyId). No need for a convenience wrapper — it would just obscure what the encoding actually is.
+16. ~~**Auto-index sum types**~~ ��� DROPPED. `makeIsDataIndexed` with explicit indices is clearer and less error-prone. Implicit index assignment from key order is fragile — reordering keys silently changes on-chain encoding. Users should be explicit about constructor indices.
 **How each iteration works**:
 1. Read this backlog
 2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
