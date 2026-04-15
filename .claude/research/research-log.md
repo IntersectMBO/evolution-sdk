@@ -84,6 +84,12 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 11: Edge case sweep
+- **Backlog item**: handler-by-handler audit for silent wrong output
+- 30 new tests across 10 categories: TypeLiteral (tag-only, all-flat, field order), Union (single-member, all-flat, mixed primitive, NullOr(union)), TupleType (empty, single, nested, mixed), Suspend (double-wrapped, primitive), Literal (0n, negative, boolean, number, long string), Map (empty, single, nested), flatFields (empty flat, nested flat), Transformation (look-through, refinement chain), roundtrip stress (deeply nested heterogeneous, null at every level)
+- **No bugs found** — all handlers produce correct output for degenerate inputs
+- 292 total tests passing across 12 files
+
 ### 2026-04-15 — Phase 12+ Iteration 10: Eliminate `as any` from test files
 - **Backlog item**: 31 `as any` casts across 4 test files
 - **Key discovery**: Effect's own recursive tests use `Schema.suspend((): Schema.Schema<T, Data.Data> => X)` with explicit encoded type — no casts needed when the return type matches the variable's type
