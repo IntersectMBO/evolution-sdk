@@ -84,6 +84,14 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 9: Eliminate `as any` casts
+- **Backlog item**: Audit and remove all unnecessary `as any` casts from production code
+- **PlutusCompiler.ts**: 10 → 0 `as any`. Used discriminated union narrowing (`t._tag === "Literal"` narrows to `SchemaAST.Literal` with `.literal` property). Removed casts on `.to`, `.literal`, `.types` — all properly typed via AST union.
+- **PlutusSchema.ts**: 4 → 0 `as any`. Replaced with narrower casts: `as unknown as Schema<A, Data.Data, R>` (return type), `as Schema.Schema.Any` (Union spread), `as Schema.Schema<A | null>` (NullOr). Each cast has a comment explaining why it's needed.
+- **PlutusAnnotation.ts**: Already 0 — no changes needed.
+- TypeScript compilation: clean (no errors)
+- 262 total tests passing
+
 ### 2026-04-15 — Phase 12+ Iteration 8: Documentation
 - **Backlog item**: Migration guide — side-by-side TSchema vs Plutus.data()
 - Covers all Phase 2 patterns: primitives, struct (S1-S8), union (U1-U6), nullable (N1-N2), map (C2), array (C1), tuple (C3), recursive (R1-R3), Schema.Class, codec usage

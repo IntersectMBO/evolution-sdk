@@ -86,8 +86,7 @@ const isLiteralTag = (ps: SchemaAST.PropertySignature, tagFieldOverride: string 
   const type = ps.type
   if (type._tag === "Literal") return true
   if (type._tag === "Transformation") {
-    const to = (type as any).to
-    return to?._tag === "Literal"
+    return type.to._tag === "Literal"
   }
   return false
 }
@@ -95,12 +94,12 @@ const isLiteralTag = (ps: SchemaAST.PropertySignature, tagFieldOverride: string 
 /**
  * Extract the literal value from a property signature's type AST.
  */
-const getLiteralValue = (ps: SchemaAST.PropertySignature): any => {
+const getLiteralValue = (ps: SchemaAST.PropertySignature): SchemaAST.LiteralValue | undefined => {
   const type = ps.type
-  if (type._tag === "Literal") return (type as any).literal
+  if (type._tag === "Literal") return type.literal
   if (type._tag === "Transformation") {
-    const to = (type as any).to
-    if (to?._tag === "Literal") return to.literal
+    const to = type.to
+    if (to._tag === "Literal") return to.literal
   }
   return undefined
 }
@@ -149,16 +148,16 @@ const passthroughCodec: PlutusCodec = {
  */
 const countStructFields = (ast: SchemaAST.AST): number => {
   // Look through Transformation to find TypeLiteral
-  let typeLiteral: SchemaAST.AST | undefined
+  let typeLiteral: SchemaAST.TypeLiteral | undefined
   if (ast._tag === "TypeLiteral") {
     typeLiteral = ast
-  } else if (ast._tag === "Transformation") {
-    typeLiteral = (ast as any).to?._tag === "TypeLiteral" ? (ast as any).to : undefined
+  } else if (ast._tag === "Transformation" && ast.to._tag === "TypeLiteral") {
+    typeLiteral = ast.to
   }
 
-  if (!typeLiteral || typeLiteral._tag !== "TypeLiteral") return 1 // fallback: treat as single field
+  if (!typeLiteral) return 1 // fallback: treat as single field
 
-  const ps = (typeLiteral as SchemaAST.TypeLiteral).propertySignatures
+  const ps = typeLiteral.propertySignatures
   // Count non-tag fields (same logic as the TypeLiteral handler)
   let count = 0
   for (const p of ps) {
@@ -166,7 +165,7 @@ const countStructFields = (ast: SchemaAST.AST): number => {
     if ((KNOWN_TAG_FIELDS as readonly string[]).includes(name)) {
       // Check if it's actually a literal tag
       if (p.type._tag === "Literal") continue
-      if (p.type._tag === "Transformation" && (p.type as any).to?._tag === "Literal") continue
+      if (p.type._tag === "Transformation" && p.type.to._tag === "Literal") continue
     }
     count++
   }
@@ -206,9 +205,9 @@ const tschemaFastCodec = (
 
     default:
       // Check for NullOr / UndefinedOr by looking at the "to" side
-      if (ast.to._tag === "Union" && (ast.to as any).types?.length === 2) {
-        const types = (ast.to as any).types as SchemaAST.AST[]
-        const nullIdx = types.findIndex((t: any) => t._tag === "Literal" && t.literal === null)
+      if (ast.to._tag === "Union" && ast.to.types.length === 2) {
+        const types = ast.to.types
+        const nullIdx = types.findIndex((t) => t._tag === "Literal" && t.literal === null)
         if (nullIdx >= 0) {
           // NullOr — compile the inner type
           const innerCodec = go(types[1 - nullIdx], path)
@@ -223,7 +222,7 @@ const tschemaFastCodec = (
             }
           }
         }
-        const undefIdx = types.findIndex((t: any) => t._tag === "UndefinedKeyword")
+        const undefIdx = types.findIndex((t) => t._tag === "UndefinedKeyword")
         if (undefIdx >= 0) {
           const innerCodec = go(types[1 - undefIdx], path)
           return {
@@ -404,7 +403,7 @@ export const match: SchemaAST.Match<PlutusCodec> = {
     const types = ast.types
 
     // Detect NullOr pattern: Union(T, null)
-    const nullIdx = types.findIndex((t) => t._tag === "Literal" && (t as any).literal === null)
+    const nullIdx = types.findIndex((t) => t._tag === "Literal" && t.literal === null)
     if (nullIdx >= 0 && types.length === 2) {
       const innerCodec = go(types[1 - nullIdx], path)
       return {
@@ -459,11 +458,9 @@ export const match: SchemaAST.Match<PlutusCodec> = {
       for (let i = 0; i < types.length; i++) {
         const t = types[i]
         if (t._tag !== "TypeLiteral") { allHave = false; break }
-        const ps = (t as SchemaAST.TypeLiteral).propertySignatures.find(
-          (p) => p.name === name
-        )
+        const ps = t.propertySignatures.find((p) => p.name === name)
         if (!ps || ps.type._tag !== "Literal") { allHave = false; break }
-        values.set(String((ps.type as any).literal), i)
+        values.set(String(ps.type.literal), i)
       }
 
       if (allHave && values.size === types.length) {

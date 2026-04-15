@@ -91,7 +91,9 @@ export const data = <A, I, R>(
     }
   ).annotations({
     identifier: "PlutusSchema.data"
-  }) as any
+  }) as unknown as Schema.Schema<A, Data.Data, R>
+  // Cast required: Schema.transform produces a complex intersection type that
+  // doesn't unify with Schema<A, Data.Data, R> even though it's structurally compatible.
 }
 
 /** Alias for `data()` */
@@ -120,7 +122,8 @@ export const makeIsData = <Fields extends Schema.Struct.Fields>(
   fields: Fields,
   options?: DataOptions
 ): Schema.Schema<Schema.Struct.Type<Fields>, Data.Data> => {
-  return data(Schema.Struct(fields), options) as any
+  return data(Schema.Struct(fields), options) as Schema.Schema<Schema.Struct.Type<Fields>, Data.Data>
+  // Cast: data() returns Schema<Struct.Type<Fields>, Data.Data> but TS can't infer this through Struct's generics
 }
 
 /**
@@ -157,7 +160,9 @@ export const makeIsDataIndexed = <
       [PA.FlatInUnionId]: true
     })
   })
-  return data(Schema.Union(...(members as any)) as any)
+  // Cast: members is Array<Schema.Struct> but Schema.Union expects a specific tuple spread.
+  // The dynamic Object.entries mapping can't produce a static tuple type.
+  return data(Schema.Union(...members as ReadonlyArray<Schema.Schema.Any>) as Schema.Schema<any>)
 }
 
 // ============================================================
@@ -166,7 +171,8 @@ export const makeIsDataIndexed = <
 
 /** Maybe/Option encoding — Constr(0,[value]) for Just, Constr(1,[]) for Nothing */
 export const option = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
-  data(Schema.NullOr(schema) as any)
+  data(Schema.NullOr(schema) as Schema.Schema<A | null, I | null, R>)
+  // Cast: Schema.NullOr produces Schema<A | null, I | null, R> but TS struggles with the union inference
 
 /** Aiken-style named sum types — delegates to TSchema.Variant */
 export const variant: typeof TSchema.Variant = TSchema.Variant
