@@ -4,7 +4,7 @@
 
 Design a TypeScript annotation system using Effect Schema that mirrors Haskell's Plutus data derivation (`makeIsData`, `makeIsDataIndexed`), enabling users to declaratively annotate TypeScript types and automatically derive Plutus Data encoding/decoding. Must handle all Plutus Data constructors, recursive types, nested unions, maps, options, and custom constructor indices.
 
-**CRITICAL**: The implementation MUST use Effect Schema's annotation system (`Schema.annotations()`, custom `Symbol.for()` keys, `AST.Match<A>` + `AST.getCompiler` pattern). Do NOT copy the existing manual `switch(ast._tag)` approach from the current `PlutusSchema.ts` — that file is wrong and must be replaced.
+**Implementation constraint**: Uses Effect Schema's annotation system (`Schema.annotations()`, custom `Symbol.for()` keys, `AST.Match<A>` + `AST.getCompiler` pattern). See `PlutusCompiler.ts` for the working implementation.
 
 ## Context
 
@@ -224,12 +224,13 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
 **How each iteration works**:
 1. Read this backlog
-2. Pick the top unfinished item
-3. Implement it with tests
-4. Commit locally
-5. Update the research log
-6. Move the completed item to a `## Completed Backlog` section below
-7. Stop — wait for next iteration
+2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
+3. Pick the top unfinished item
+4. Implement it with tests
+5. Commit locally
+6. Update the research log
+7. Move the completed item to a `## Completed Backlog` section below
+8. Stop — wait for next iteration
 
 ## Completed Backlog
 
@@ -256,3 +257,4 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 8. **No manual AST dispatch** — never use `switch(ast._tag)`. Always use `Match<A>` + `getCompiler`
 9. **Test each phase** — every phase that produces code must include tests that pass
 10. **Candidates stay** — never delete candidate designs from research files, only annotate with winner/loser
+11. **No `as any`** — production code must have zero `as any`. Use discriminated union narrowing, `as unknown as X` with comments, or explicit type annotations. Test files: only for intentional wrong-type error tests
