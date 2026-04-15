@@ -20,6 +20,17 @@
 - **Implication**: Can build Plutus derivation as `Match<PlutusEncoder>` that walks annotated Effect schemas
 - Output: `phase1-effect-annotations.md`
 
+### 2026-04-14 — Loop Instruction Rewritten (Phases 5-10)
+- Old phases 5-6 scrapped — prototype was wrong (manual `switch(ast._tag)` instead of annotations)
+- Current `PlutusSchema.ts` copies TSchema pattern, does NOT use Effect's annotation system
+- New phases 5-10 designed to properly use `Match<A>` + `getCompiler` + custom annotation symbols
+- Phase 5: study real Effect compiler impls (Pretty, Arbitrary, Equivalence)
+- Phase 6: define Plutus annotation symbols
+- Phase 7: build AST compiler (`Match<PlutusCodec>`)
+- Phase 8: public API (`Plutus.data()`, `Plutus.makeIsData()`, etc.)
+- Phase 9: edge cases & completeness
+- Phase 10: real-world validation (Address, Credential, Value, CIP68)
+
 ## Phase Status Tracker
 
 | Phase | Name | Status | Started | Completed |
@@ -28,8 +39,12 @@
 | 2 | Catalog All Plutus Data Patterns | done | 2026-04-14 | 2026-04-14 |
 | 3 | Design Candidates | done | 2026-04-14 | 2026-04-14 |
 | 4 | Evaluate & Select Winners | done | 2026-04-14 | 2026-04-14 |
-| 5 | Prototype Winner | pending | - | - |
-| 6 | Edge Cases & Completeness | pending | - | - |
+| 5 | Study Effect AST Compiler Impls | pending | - | - |
+| 6 | Define Plutus Annotation Symbols | pending | - | - |
+| 7 | Build AST Compiler (Match<PlutusCodec>) | pending | - | - |
+| 8 | Plutus.data() Public API | pending | - | - |
+| 9 | Edge Cases & Completeness | pending | - | - |
+| 10 | Real-World Validation | pending | - | - |
 
 ### 2026-04-14 — Phase 2 Complete: Pattern Catalog
 - Cataloged 33 distinct patterns across 8 categories
