@@ -551,6 +551,12 @@ export const match: SchemaAST.Match<PlutusCodec> = {
       }
     }
 
+    // Schema.Class / Schema.TaggedClass: Transformation(from: TypeLiteral, to: Declaration)
+    // Compile the "from" side (TypeLiteral with struct fields), not the "to" (class Declaration)
+    if (ast.to._tag === "Declaration" && ast.from._tag === "TypeLiteral") {
+      return go(ast.from, path)
+    }
+
     // Otherwise look through to the decoded ("to") side
     if (ast.to) {
       return go(ast.to, path)

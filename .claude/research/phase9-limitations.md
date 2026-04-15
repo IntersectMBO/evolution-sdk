@@ -44,9 +44,8 @@ These have no Plutus Data representation and throw descriptive errors. Use `Sche
 `Schema.Record({ key: Schema.String, value: ... })` now throws instead of silently producing an empty Constr. Use `Plutus.Map()` for key-value data.
 **Fixed in Phase 11**: Previously silently ignored index signatures, losing all data.
 
-### 7. Schema.Class / Schema.TaggedClass
-`Schema.Class` produces a Declaration AST node. The compiler treats unknown Declarations as passthrough, so class instances are NOT auto-encoded. Use `Plutus.data(Schema.Struct({...}))` instead.
-**Why**: Classes carry constructor metadata, surrogate annotations, and prototype chains that don't map to Plutus Data. The Struct fields are what matter.
+### ~~7. Schema.Class / Schema.TaggedClass~~ — RESOLVED in Phase 12+ Iteration 3
+Schema.Class now compiles via from-side TypeLiteral. TaggedClass `_tag` auto-stripped.
 
 ### 8. Optional Properties (Schema.optional)
 `Schema.optional(T)` creates a field that may be absent. The compiler encodes whatever value is present (including `undefined`). For Plutus optional semantics, use `Schema.NullOr()` or `Schema.UndefinedOr()` explicitly.

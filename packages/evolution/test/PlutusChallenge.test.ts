@@ -63,35 +63,43 @@ describe("1. compiler pattern challenges", () => {
 // ============================================================
 
 describe("2. annotation coverage challenges", () => {
-  it("Schema.Class as input — hits Declaration handler", () => {
+  it("Schema.Class as input — compiles via from-side TypeLiteral", () => {
     class MyClass extends Schema.Class<MyClass>("MyClass")({
       value: Schema.BigIntFromSelf
     }) {}
 
-    // Schema.Class produces a Declaration AST node.
-    // The compiler's Declaration handler only recognizes Uint8ArrayFromSelf.
-    // Unknown declarations fall through to passthroughCodec.
+    // Schema.Class AST: Transformation(from: TypeLiteral, to: Declaration)
+    // The compiler now detects this pattern and compiles the from-side TypeLiteral
     const codec = compile(MyClass.ast, [])
 
-    // passthroughCodec just returns the value as-is
-    // This means Schema.Class instances can't be auto-derived — they need
-    // explicit annotation or the user should use Plutus.data(Schema.Struct(...)) instead.
     const instance = new MyClass({ value: 42n })
     const result = codec.toData(instance)
-    // passthrough: returns the instance itself (which is NOT Data.Data)
-    expect(result).toBe(instance)
-    // This is a limitation: Schema.Class instances are not auto-encoded
+    expect(result).toBeInstanceOf(Data.Constr)
+    expect((result as Data.Constr).index).toBe(0n)
+    expect((result as Data.Constr).fields[0]).toBe(42n)
+
+    // Roundtrip
+    const decoded = codec.fromData(result)
+    expect(decoded.value).toBe(42n)
   })
 
-  it("Schema.TaggedClass — same Declaration limitation", () => {
+  it("Schema.TaggedClass — compiles with _tag stripping", () => {
     class Tagged extends Schema.TaggedClass<Tagged>()("Tagged", {
       x: Schema.BigIntFromSelf
     }) {}
 
     const codec = compile(Tagged.ast, [])
-    // Falls through to passthrough
     const instance = new Tagged({ x: 1n })
-    expect(codec.toData(instance)).toBe(instance)
+    const result = codec.toData(instance)
+    expect(result).toBeInstanceOf(Data.Constr)
+    // _tag:"Tagged" should be stripped, leaving just x
+    expect((result as Data.Constr).fields).toHaveLength(1)
+    expect((result as Data.Constr).fields[0]).toBe(1n)
+
+    // Roundtrip
+    const decoded = codec.fromData(result)
+    expect(decoded._tag).toBe("Tagged")
+    expect(decoded.x).toBe(1n)
   })
 
   it("branded type (Schema.BigIntFromSelf.pipe(Schema.brand('Lovelace'))) looks through", () => {
@@ -660,10 +668,18 @@ describe("7. error quality review", () => {
 // ============================================================
 
 describe("8. findings summary", () => {
-  it("FINDING: Schema.Class/TaggedClass pass through as opaque — use Plutus.data(Schema.Struct) instead", () => {
-    // Schema.Class produces Declaration AST → passthrough codec
-    // This is acceptable: Plutus.data() is designed for Schema.Struct
-    // Users should use Plutus.data(Schema.Struct({...})) or Plutus.makeIsData
+  it("RESOLVED: Schema.Class/TaggedClass now compile via from-side TypeLiteral", () => {
+    // Schema.Class AST: Transformation(from: TypeLiteral, to: Declaration)
+    // The compiler detects this pattern and compiles from-side, same as Schema.Struct
+    class MyClass extends Schema.Class<MyClass>("MyClass")({
+      amount: Schema.BigIntFromSelf
+    }) {}
+
+    const plutusSchema = Plutus.data(MyClass)
+    const codec = Plutus.codec(plutusSchema)
+    const data = codec.toData(new MyClass({ amount: 42n }))
+    expect(data).toBeInstanceOf(Data.Constr)
+    expect((data as Data.Constr).fields[0]).toBe(42n)
   })
 
   it("FINDING: Error channel is synchronous throw, not Effect ParseError", () => {

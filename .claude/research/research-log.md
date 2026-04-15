@@ -84,6 +84,15 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 3: Schema.Class support
+- **Backlog item**: Schema.Class/TaggedClass passed through as opaque (Declaration → passthrough)
+- **Root cause**: Transformation handler's fallback `go(ast.to, path)` hit the Declaration handler which returned passthrough
+- **Fix**: Detect `Transformation(from: TypeLiteral, to: Declaration)` pattern and compile `ast.from` instead — the TypeLiteral has the struct fields
+- **TaggedClass**: `_tag` field auto-stripped by existing tag detection in TypeLiteral handler
+- **Tests updated**: Challenge tests now verify Schema.Class encodes as Constr with correct fields
+- 254 total tests passing
+- **Phase 9 limitation removed**: Schema.Class is no longer a limitation
+
 ### 2026-04-15 — Phase 12+ Iteration 2: Implement flatFields in compiler
 - **Backlog item**: flatFields — FlatFieldsId annotation was defined but compiler ignored it
 - **Implementation**: TypeLiteral handler now checks `FlatFieldsId` (and TSchema `"TSchema.flatFields"`) on each field's AST. `countStructFields()` helper counts non-tag fields in a struct AST for decoding.

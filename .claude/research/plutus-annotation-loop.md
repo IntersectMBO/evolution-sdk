@@ -214,7 +214,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Backlog** (ordered by priority — work top-down):
 1. ~~**Reduce encode/decode overhead**~~ — DONE (moved to Completed Backlog)
 2. ~~**Implement flatFields in compiler**~~ — DONE (moved to Completed Backlog)
-3. **Schema.Class support** — Declaration AST nodes for known class patterns (e.g., classes where the surrogate AST is a TypeLiteral) could be compiled by looking through to the surrogate fields instead of falling through to passthrough.
+3. ~~**Schema.Class support**~~ — DONE (moved to Completed Backlog)
 4. **Map auto-derivation** — Detect `Schema.Map`/`Schema.MapFromSelf` Declaration nodes and compile them to Plutus Map encoding, eliminating the need for `Plutus.Map()` combinator.
 5. **Effect error channel** — Replace raw `toData`/`fromData` throws with `Effect`-based `ParseResult.encode`/`ParseResult.decode` for proper error composition. This would make the compiler produce `Schema.transformOrFail` instead of `Schema.transform`.
 6. **Mutual recursion** — Test and support cross-schema cycles (type A → type B → type A) by sharing a memo map across compilations.
@@ -233,6 +233,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 
 1. **Reduce encode/decode overhead** — Added `tschemaFastCodec()` fast-path in Transformation handler. Known TSchema types (Boolean, NullOr, UndefinedOr) now use direct codec functions instead of `Schema.encodeSync`/`Schema.decodeSync`. Unknown TSchema transforms still fall back to the slow path. Encode with TSchema.Boolean field now within 3x of pure TSchema (was 5x). 250 tests passing.
 2. **Implement flatFields in compiler** — Added `FlatFieldsId` support in TypeLiteral handler + `countStructFields` helper. When a field has `FlatFieldsId: true` (or TSchema's `"TSchema.flatFields": true`), its sub-fields are inlined into the parent Constr during encoding and reconstructed during decoding. Supports multiple flat fields, mixed flat+non-flat, backward compat with TSchema string annotations. 4 new tests, 254 total passing.
+3. **Schema.Class support** — Transformation handler now detects `Transformation(from: TypeLiteral, to: Declaration)` pattern (Schema.Class/TaggedClass) and compiles the `from` side (TypeLiteral with struct fields) instead of falling through to passthrough. TaggedClass `_tag` field auto-stripped. 254 tests passing.
 
 ## Rules for Loop Execution
 
