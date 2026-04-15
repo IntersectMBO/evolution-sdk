@@ -45,6 +45,30 @@ TS `enum` types (`Schema.Enums`) throw an error. Use `Schema.Literal` instead:
 ### 5. String / Number Types
 These have no Plutus Data representation and throw descriptive errors. Use `Schema.BigIntFromSelf` for numbers and `Schema.Uint8ArrayFromSelf` for byte data.
 
+### 6. Schema.Record / Index Signatures
+`Schema.Record({ key: Schema.String, value: ... })` now throws instead of silently producing an empty Constr. Use `Plutus.Map()` for key-value data.
+**Fixed in Phase 11**: Previously silently ignored index signatures, losing all data.
+
+### 7. Schema.Class / Schema.TaggedClass
+`Schema.Class` produces a Declaration AST node. The compiler treats unknown Declarations as passthrough, so class instances are NOT auto-encoded. Use `Plutus.data(Schema.Struct({...}))` instead.
+**Why**: Classes carry constructor metadata, surrogate annotations, and prototype chains that don't map to Plutus Data. The Struct fields are what matter.
+
+### 8. Optional Properties (Schema.optional)
+`Schema.optional(T)` creates a field that may be absent. The compiler encodes whatever value is present (including `undefined`). For Plutus optional semantics, use `Schema.NullOr()` or `Schema.UndefinedOr()` explicitly.
+
+## Phase 11 Findings
+
+### Design Validations (Sound)
+- **Compiler pattern**: `Match<PlutusCodec>` + `getCompiler` is correct. Exhaustive, type-safe, idiomatic.
+- **Error channel**: Raw throws in codec, but `Data.withSchema` wraps via `Schema.encodeSync/decodeSync` → users get `ParseError`. Acceptable tradeoff.
+- **Type safety**: `Plutus.data()` returns properly typed `Schema<A, Data.Data>`. Composes with `Schema.encodeSync/decodeSync`.
+- **Branded types**: Work transparently via Refinement look-through.
+- **Complex Haskell types**: TxInfo, ScriptContext, NativeScript (recursive 6-variant sum) all work correctly with CBOR roundtrip.
+- **Determinism**: Same AST → same codec behavior.
+
+### Bug Fixed
+- **Schema.Record**: Now throws descriptive error instead of silently producing empty Constr.
+
 ## Performance Notes
 
 - Schema compilation (AST walk) takes < 0.1ms for typical schemas

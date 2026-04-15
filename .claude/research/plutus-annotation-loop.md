@@ -188,7 +188,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Real-world validation tests + migration examples, committed locally
 
 ### Phase 11: Challenge the Implementation
-**Status**: pending
+**Status**: done
 **Goal**: Adversarial review — stress-test assumptions, find holes, and prove the design is sound or fix what isn't.
 **Actions**:
 1. **Question the compiler pattern**: Is `Match<PlutusCodec>` the right abstraction? The codec returns raw `toData`/`fromData` functions, but `Data.withSchema` expects `Schema<A, Data.Data>`. Are we losing Effect's error channel by using synchronous encode/decode? What happens when encoding fails — do we get a useful ParseError or a raw throw?

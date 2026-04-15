@@ -189,6 +189,13 @@ export const match: SchemaAST.Match<PlutusCodec> = {
   // --- Struct (TypeLiteral) ---
 
   "TypeLiteral": (ast, go, path) => {
+    // Reject index signatures — Plutus Data has no concept of string-keyed records
+    if (ast.indexSignatures.length > 0) {
+      throw new Error(
+        `PlutusCompiler: index signatures (Record<K, V>) are not supported at path [${path.join(".")}]. Use Plutus.Map() for key-value data.`
+      )
+    }
+
     // Read Plutus annotations
     const constrIndex = Option.getOrElse(PA.getConstrIndex(ast), () => 0)
     const tagFieldOverride = Option.getOrUndefined(PA.getTagField(ast))

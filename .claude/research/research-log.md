@@ -45,7 +45,7 @@
 | 8 | Plutus.data() Public API | done | 2026-04-15 | 2026-04-15 |
 | 9 | Edge Cases & Completeness | done | 2026-04-15 | 2026-04-15 |
 | 10 | Real-World Validation | done | 2026-04-15 | 2026-04-15 |
-| 11 | Challenge the Implementation | pending | - | - |
+| 11 | Challenge the Implementation | done | 2026-04-15 | 2026-04-15 |
 
 ### 2026-04-14 — Phase 2 Complete: Pattern Catalog
 - Cataloged 33 distinct patterns across 8 categories
@@ -82,6 +82,19 @@
 - **22 AST tags** must be covered — Match enforces exhaustiveness at compile time
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
+
+### 2026-04-15 — Phase 11 Complete: Challenge the Implementation
+- 35 adversarial tests — all passing
+- **Bug found and fixed**: Schema.Record silently produced empty Constr → now throws descriptive error
+- **Compiler pattern validated**: Match<PlutusCodec> + getCompiler is sound, exhaustive, deterministic
+- **Error channel acceptable**: Raw throws in codec, but Data.withSchema wraps into ParseError for users
+- **Type safety confirmed**: Plutus.data() returns Schema<A, Data.Data>, composes with Schema.encodeSync
+- **Schema.Class/TaggedClass**: Pass through as opaque — documented as limitation (use Schema.Struct)
+- **Branded types**: Work transparently via Refinement look-through
+- **Complex Haskell types proven**: TxInfo (nested struct+union+option), ScriptContext (4-variant sum with nested struct), NativeScript (6-variant recursive sum) — all roundtrip correctly
+- **Benchmarks**: Plutus.data() compilation within 10x of TSchema construction; encode/decode within 5x — acceptable for the flexibility gained
+- **Error quality**: All error paths tested — messages include path, type name, and actionable suggestions
+- **All 249 tests passing** across 11 test files
 
 ### 2026-04-15 — Phase 10 Complete: Real-World Validation
 - Re-implemented OutputReference, Credential, StakeCredential, Address using Plutus.data()
