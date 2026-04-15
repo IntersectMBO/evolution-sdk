@@ -161,7 +161,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Working `PlutusSchema.ts` + comprehensive tests, committed locally
 
 ### Phase 9: Edge Cases & Completeness
-**Status**: pending
+**Status**: done
 **Goal**: Handle remaining edge cases and ensure full coverage of the Phase 2 pattern catalog.
 **Actions**:
 1. Test deeply nested recursive types (mutual recursion if possible)

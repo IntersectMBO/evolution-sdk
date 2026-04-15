@@ -43,7 +43,7 @@
 | 6 | Define Plutus Annotation Symbols | done | 2026-04-15 | 2026-04-15 |
 | 7 | Build AST Compiler (Match<PlutusCodec>) | done | 2026-04-15 | 2026-04-15 |
 | 8 | Plutus.data() Public API | done | 2026-04-15 | 2026-04-15 |
-| 9 | Edge Cases & Completeness | pending | - | - |
+| 9 | Edge Cases & Completeness | done | 2026-04-15 | 2026-04-15 |
 | 10 | Real-World Validation | pending | - | - |
 
 ### 2026-04-14 — Phase 2 Complete: Pattern Catalog
@@ -81,6 +81,18 @@
 - **22 AST tags** must be covered — Match enforces exhaustiveness at compile time
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
+
+### 2026-04-15 — Phase 9 Complete: Edge Cases & Completeness
+- 27 edge case tests — all passing
+- Binary tree recursion (6 nodes), 10-level linked list
+- Nested options, Option(Boolean), Option(Array), UndefinedOr
+- Non-sequential constructor indices (0, 5, 10)
+- Tag field auto-detection for _tag, type; disable with tagField:false
+- TSchema field mixing: Boolean, Integer, ByteArray, NullOr all work inside Plutus.data()
+- Complex compositions: array of structs, struct with array, heterogeneous tuples, empty structs
+- Performance: 100 compilations < 100ms, 1000 roundtrips < 100ms
+- Limitations documented: Map (use TSchema.Map), flatFields (not yet compiled), mutual recursion (untested), TS enums (unsupported)
+- Output: `packages/evolution/test/PlutusEdgeCases.test.ts` + `phase9-limitations.md`
 
 ### 2026-04-15 — Phase 8 Complete: Plutus.data() Public API
 - Created `PlutusSchema.ts` — public API wiring the AST compiler into Schema transforms
