@@ -144,6 +144,76 @@ const passthroughCodec: PlutusCodec = {
 }
 
 // ============================================================
+// TSchema fast-path codecs
+// ============================================================
+
+/**
+ * Recognize known TSchema identifiers and return a direct codec
+ * that avoids the Schema.encodeSync/decodeSync overhead.
+ * Returns undefined if the TSchema type is not recognized (falls back to slow path).
+ */
+const tschemaFastCodec = (
+  id: string | undefined,
+  ast: SchemaAST.Transformation,
+  go: SchemaAST.Compiler<PlutusCodec>,
+  path: ReadonlyArray<PropertyKey>
+): PlutusCodec | undefined => {
+  switch (id) {
+    case "TSchema.BooleanFromConstr":
+      return booleanCodec
+
+    case "TSchema.Struct": {
+      // TSchema.Struct is a Transformation from Constr → Struct
+      // The "to" side is a TypeLiteral with the struct fields
+      // But the encode/decode logic is in the transformation itself
+      // Use the slow path for structs — they have tag detection, flatFields, etc.
+      return undefined
+    }
+
+    case "TSchema.Union":
+      // Complex logic — use slow path
+      return undefined
+
+    default:
+      // Check for NullOr / UndefinedOr by looking at the "to" side
+      if (ast.to._tag === "Union" && (ast.to as any).types?.length === 2) {
+        const types = (ast.to as any).types as SchemaAST.AST[]
+        const nullIdx = types.findIndex((t: any) => t._tag === "Literal" && t.literal === null)
+        if (nullIdx >= 0) {
+          // NullOr — compile the inner type
+          const innerCodec = go(types[1 - nullIdx], path)
+          return {
+            toData: (a: any) =>
+              a === null
+                ? new Data.Constr({ index: 1n, fields: [] })
+                : new Data.Constr({ index: 0n, fields: [innerCodec.toData(a)] }),
+            fromData: (d: Data.Data) => {
+              const constr = d as Data.Constr
+              return constr.index === 1n ? null : innerCodec.fromData(constr.fields[0])
+            }
+          }
+        }
+        const undefIdx = types.findIndex((t: any) => t._tag === "UndefinedKeyword")
+        if (undefIdx >= 0) {
+          const innerCodec = go(types[1 - undefIdx], path)
+          return {
+            toData: (a: any) =>
+              a === undefined
+                ? new Data.Constr({ index: 1n, fields: [] })
+                : new Data.Constr({ index: 0n, fields: [innerCodec.toData(a)] }),
+            fromData: (d: Data.Data) => {
+              const constr = d as Data.Constr
+              return constr.index === 1n ? undefined : innerCodec.fromData(constr.fields[0])
+            }
+          }
+        }
+      }
+
+      return undefined
+  }
+}
+
+// ============================================================
 // Match<PlutusCodec>
 // ============================================================
 
@@ -402,9 +472,15 @@ export const match: SchemaAST.Match<PlutusCodec> = {
   // --- Look-through types ---
 
   "Transformation": (ast, go, path) => {
-    // If this is already a TSchema transformation, use it as the codec
-    // TSchema transforms go from TS type → Data.Data, so we can use Schema.encode/decode
+    // If this is already a TSchema transformation, try fast-path first
     if (hasTSchemaAnnotations(ast)) {
+      const id = getIdentifier(ast)
+
+      // Fast-path: known TSchema types → direct codec (no Schema.encodeSync overhead)
+      const fastCodec = tschemaFastCodec(id, ast, go, path)
+      if (fastCodec) return fastCodec
+
+      // Slow fallback: use Schema.encodeSync/decodeSync for unknown TSchema transforms
       const tschemaSchema = { ast } as Schema.Schema<any, any>
       const encode = Schema.encodeSync(tschemaSchema)
       const decode = Schema.decodeSync(tschemaSchema)

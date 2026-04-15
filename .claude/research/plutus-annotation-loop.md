@@ -212,7 +212,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Status**: pending
 **Goal**: Each iteration picks the highest-value improvement from the backlog, implements it, and updates the backlog. This phase repeats indefinitely — it is never marked `done`.
 **Backlog** (ordered by priority — work top-down):
-1. **Reduce encode/decode overhead** — Profile why Plutus.data() codec is up to 5x slower than TSchema. The `Schema.transform` wrapper and `Schema.encodeSync`/`decodeSync` in the Transformation handler may be the bottleneck. Try: compile TSchema fields directly instead of going through Schema.encodeSync.
+1. ~~**Reduce encode/decode overhead**~~ — DONE (moved to Completed Backlog)
 2. **Implement flatFields in compiler** — The `FlatFieldsId` annotation is defined but the compiler doesn't handle it. Add support in the TypeLiteral handler: when a field has `FlatFieldsId: true`, inline its sub-fields into the parent Constr.
 3. **Schema.Class support** — Declaration AST nodes for known class patterns (e.g., classes where the surrogate AST is a TypeLiteral) could be compiled by looking through to the surrogate fields instead of falling through to passthrough.
 4. **Map auto-derivation** — Detect `Schema.Map`/`Schema.MapFromSelf` Declaration nodes and compile them to Plutus Map encoding, eliminating the need for `Plutus.Map()` combinator.
@@ -230,7 +230,8 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 7. Stop — wait for next iteration
 
 ## Completed Backlog
-_(Items moved here after completion)_
+
+1. **Reduce encode/decode overhead** — Added `tschemaFastCodec()` fast-path in Transformation handler. Known TSchema types (Boolean, NullOr, UndefinedOr) now use direct codec functions instead of `Schema.encodeSync`/`Schema.decodeSync`. Unknown TSchema transforms still fall back to the slow path. Encode with TSchema.Boolean field now within 3x of pure TSchema (was 5x). 250 tests passing.
 
 ## Rules for Loop Execution
 

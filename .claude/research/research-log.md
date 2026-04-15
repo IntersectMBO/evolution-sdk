@@ -84,6 +84,13 @@
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
 
+### 2026-04-15 — Phase 12+ Iteration 1: Reduce encode/decode overhead
+- **Backlog item**: Reduce encode/decode overhead (was up to 5x slower than TSchema)
+- **Root cause**: Transformation handler used `Schema.encodeSync`/`Schema.decodeSync` for ALL TSchema fields — runs full Effect pipeline on every encode/decode
+- **Fix**: Added `tschemaFastCodec()` function that recognizes known TSchema identifiers (Boolean, NullOr, UndefinedOr) and returns direct codec functions, bypassing Schema.encodeSync entirely
+- **Result**: TSchema.Boolean field encode now within 3x of pure TSchema (was 5x). Unknown TSchema transforms still fall back to slow path.
+- 250 tests passing (36 challenge tests including new benchmark)
+
 ### 2026-04-15 — Phase 11 Complete: Challenge the Implementation
 - 35 adversarial tests — all passing
 - **Bug found and fixed**: Schema.Record silently produced empty Constr → now throws descriptive error

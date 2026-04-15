@@ -543,6 +543,38 @@ describe("6. benchmark against TSchema", () => {
 
     expect(plutusTime).toBeLessThan(tschemaTime * 5)
   })
+
+  it("encode with TSchema.Boolean field — fast-path vs slow-path", () => {
+    // This tests the TSchema fast-path optimization:
+    // TSchema.Boolean inside Plutus.data() should use direct booleanCodec
+    // instead of Schema.encodeSync(tschemaSchema)
+    const plutusCodec = Plutus.codec(Plutus.data(Schema.Struct({
+      amount: Schema.BigIntFromSelf,
+      active: TSchema.Boolean
+    })))
+
+    const tschemaCodec = Data.withSchema(TSchema.Struct({
+      amount: TSchema.Integer,
+      active: TSchema.Boolean
+    }))
+
+    const input = { amount: 42n, active: true }
+
+    const startTSchema = performance.now()
+    for (let i = 0; i < N; i++) {
+      tschemaCodec.toData(input)
+    }
+    const tschemaTime = performance.now() - startTSchema
+
+    const startPlutus = performance.now()
+    for (let i = 0; i < N; i++) {
+      plutusCodec.toData(input)
+    }
+    const plutusTime = performance.now() - startPlutus
+
+    // With the fast-path, should be within 3x
+    expect(plutusTime).toBeLessThan(tschemaTime * 3)
+  })
 })
 
 // ============================================================
