@@ -42,7 +42,7 @@
 | 5 | Study Effect AST Compiler Impls | done | 2026-04-15 | 2026-04-15 |
 | 6 | Define Plutus Annotation Symbols | done | 2026-04-15 | 2026-04-15 |
 | 7 | Build AST Compiler (Match<PlutusCodec>) | done | 2026-04-15 | 2026-04-15 |
-| 8 | Plutus.data() Public API | pending | - | - |
+| 8 | Plutus.data() Public API | done | 2026-04-15 | 2026-04-15 |
 | 9 | Edge Cases & Completeness | pending | - | - |
 | 10 | Real-World Validation | pending | - | - |
 
@@ -81,6 +81,18 @@
 - **22 AST tags** must be covered — Match enforces exhaustiveness at compile time
 - **Pattern**: annotation-first in every handler, structural fallback, memoizeThunk for Suspend, look-through for Transformation/Refinement
 - Output: `phase5-ast-compiler-study.md`
+
+### 2026-04-15 — Phase 8 Complete: Plutus.data() Public API
+- Created `PlutusSchema.ts` — public API wiring the AST compiler into Schema transforms
+- `Plutus.data(schema, options?)` — annotate + compile any Effect Schema → `Schema<A, Data.Data>`
+- `Plutus.makeIsData(fields, options?)` — Haskell `unstableMakeIsData` equivalent
+- `Plutus.makeIsDataIndexed(variants, indices)` — Haskell `makeIsDataIndexed` equivalent
+- `Plutus.codec(schema)` — wraps `Data.withSchema()` for CBOR roundtrip
+- Re-exports: `ByteArray`, `Integer`, `Boolean`, `Map`, `List`, `Tuple`, `Literal`, `Variant`
+- Annotation re-exports: `ConstrIndexId`, `FlatInUnionId`, convenience helpers
+- Fixed TSchema interop: Transformation handler now uses `Schema.encodeSync/decodeSync` for TSchema nodes
+- 24 PlutusSchema tests + 25 PlutusCompiler + 15 PlutusAnnotation = 64 new tests, all passing
+- All 161 tests in evolution package pass (including existing plutus module tests)
 
 ### 2026-04-15 — Phase 7 Complete: AST Compiler (Match<PlutusCodec>)
 - Created `PlutusCompiler.ts` using `SchemaAST.Match<PlutusCodec>` + `SchemaAST.getCompiler(match)`

@@ -146,7 +146,7 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 **Output**: Working AST compiler + tests, committed locally
 
 ### Phase 8: Plutus.data() and Public API
-**Status**: pending
+**Status**: done
 **Goal**: Wire the AST compiler into the public `Plutus.data()` / `Plutus.fromSchema()` API.
 **Actions**:
 1. `Plutus.data(schema, options?)` — applies annotations from options, then runs compiler

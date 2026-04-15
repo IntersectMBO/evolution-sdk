@@ -9,7 +9,7 @@
  * @since 2.0.0
  * @internal
  */
-import { Option, SchemaAST } from "effect"
+import { Option, Schema, SchemaAST } from "effect"
 
 import * as Data from "./Data.js"
 import * as PA from "./PlutusAnnotation.js"
@@ -395,9 +395,16 @@ export const match: SchemaAST.Match<PlutusCodec> = {
   // --- Look-through types ---
 
   "Transformation": (ast, go, path) => {
-    // If this is already a TSchema transformation, pass through
+    // If this is already a TSchema transformation, use it as the codec
+    // TSchema transforms go from TS type → Data.Data, so we can use Schema.encode/decode
     if (hasTSchemaAnnotations(ast)) {
-      return passthroughCodec
+      const tschemaSchema = { ast } as Schema.Schema<any, any>
+      const encode = Schema.encodeSync(tschemaSchema)
+      const decode = Schema.decodeSync(tschemaSchema)
+      return {
+        toData: (a: any) => encode(a),
+        fromData: (d: Data.Data) => decode(d)
+      }
     }
 
     // Otherwise look through to the decoded ("to") side
