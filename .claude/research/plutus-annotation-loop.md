@@ -224,6 +224,12 @@ data OutputDatum = NoOutputDatum | OutputDatumHash DatumHash | OutputDatum Datum
 10. ~~**Eliminate `as any` from test files**~~ — DONE (moved to Completed Backlog)
 11. ~~**Edge case sweep**~~ — DONE (moved to Completed Backlog)
 12. ~~**Fix silent passthrough for unknown Declarations**~~ — DONE (moved to Completed Backlog)
+13. **Benchmark improvements** — The current benchmarks in `PlutusChallenge.test.ts` use loose thresholds (3-10x). Improve them:
+    - **Profile the hot path**: For a simple struct encode, measure where time is spent: AST compile vs codec.toData vs Schema.transform wrapper vs Data.Constr construction. Identify the actual bottleneck.
+    - **Eliminate Schema.transform overhead**: `Plutus.data()` wraps the codec in `Schema.transform(DataSchema, typeSchema, { encode, decode })`. Every encode/decode goes through Effect's transform pipeline. Try: bypass the transform and call `codec.toData` directly in `Data.withSchema`'s encode path. Measure the difference.
+    - **Cache compiled codecs**: `Plutus.data()` compiles the AST every time it's called. If the same schema is used multiple times, the compilation is redundant. Try: memoize `compile()` results keyed by AST identity. Measure the difference for repeated compilations.
+    - **Benchmark realistic workloads**: Current benchmarks use simple 2-field structs. Add benchmarks for: Address (nested unions), Value (nested maps), NativeScript (recursive 6-variant sum), and a 10-field struct. Compare Plutus.data() vs TSchema for each.
+    - **Report actual numbers**: Instead of just asserting `< Nx`, log the actual ms/op for both TSchema and Plutus.data() so regressions are visible.
 **How each iteration works**:
 1. Read this backlog
 2. If all items are struck through (done/deferred), report "backlog empty" and stop — do NOT invent work
