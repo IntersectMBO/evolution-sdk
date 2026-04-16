@@ -178,23 +178,17 @@ export {
 
 /**
  * Apply DataOptions as Plutus annotations to an AST node.
- * Uses the same clone technique as SchemaAST.annotations().
+ * Delegates to SchemaAST.annotations() which handles the clone.
  */
 const applyAnnotations = (ast: SchemaAST.AST, options: DataOptions): SchemaAST.AST => {
-  const annotations: Record<symbol, unknown> = {}
+  const overrides: Record<symbol, unknown> = {}
 
-  if (options.index !== undefined) annotations[PA.ConstrIndexId] = options.index
-  if (options.flatInUnion !== undefined) annotations[PA.FlatInUnionId] = options.flatInUnion
-  if (options.flatFields !== undefined) annotations[PA.FlatFieldsId] = options.flatFields
-  if (options.tagField !== undefined) annotations[PA.TagFieldId] = options.tagField
+  if (options.index !== undefined) overrides[PA.ConstrIndexId] = options.index
+  if (options.flatInUnion !== undefined) overrides[PA.FlatInUnionId] = options.flatInUnion
+  if (options.flatFields !== undefined) overrides[PA.FlatFieldsId] = options.flatFields
+  if (options.tagField !== undefined) overrides[PA.TagFieldId] = options.tagField
 
-  if (Object.getOwnPropertySymbols(annotations).length === 0) return ast
+  if (Object.getOwnPropertySymbols(overrides).length === 0) return ast
 
-  // Clone AST with merged annotations (same technique as SchemaAST.annotations)
-  const d = Object.getOwnPropertyDescriptors(ast)
-  d.annotations = {
-    ...d.annotations,
-    value: { ...ast.annotations, ...annotations }
-  }
-  return Object.create(Object.getPrototypeOf(ast), d) as SchemaAST.AST
+  return SchemaAST.annotations(ast, overrides)
 }
