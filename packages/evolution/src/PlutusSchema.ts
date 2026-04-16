@@ -8,11 +8,11 @@
  * 1. `Plutus.data(schema)` — annotate any Effect Schema, derive Plutus encoding via AST compiler
  * 2. Direct combinators — TSchema re-exports for power users
  *
- * Mirrors Haskell's PlutusTx.makeIsData / PlutusTx.makeIsDataIndexed
+ * Mirrors Haskell's PlutusTx deriving pattern for Plutus Data encoding
  *
  * @since 2.0.0
  */
-import { Schema } from "effect"
+import { Schema, SchemaAST } from "effect"
 
 import * as Data from "./Data.js"
 import * as PA from "./PlutusAnnotation.js"
@@ -96,9 +96,6 @@ export const data = <A, I, R>(
   // doesn't unify with Schema<A, Data.Data, R> even though it's structurally compatible.
 }
 
-/** Alias for `data()` */
-export const fromSchema = data
-
 // ============================================================
 // Convenience Combinators
 // ============================================================
@@ -107,9 +104,6 @@ export const fromSchema = data
 export const option = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   data(Schema.NullOr(schema) as Schema.Schema<A | null, I | null, R>)
   // Cast: Schema.NullOr produces Schema<A | null, I | null, R> but TS struggles with the union inference
-
-/** Aiken-style named sum types — delegates to TSchema.Variant */
-export const variant: typeof TSchema.Variant = TSchema.Variant
 
 /** Recursive schema — breaks cycles for self-referencing types */
 export const lazy: typeof Schema.suspend = Schema.suspend
@@ -145,7 +139,7 @@ export const Tuple: typeof TSchema.Tuple = TSchema.Tuple
 /** String/number enum values encoded as Constr(index, []) */
 export const Literal: typeof TSchema.Literal = TSchema.Literal
 
-/** Variant re-export */
+/** Aiken-style named sum types — delegates to TSchema.Variant */
 export const Variant: typeof TSchema.Variant = TSchema.Variant
 
 // ============================================================
@@ -184,9 +178,10 @@ export {
 
 /**
  * Apply DataOptions as Plutus annotations to an AST node.
+ * Uses the same clone technique as SchemaAST.annotations().
  */
-const applyAnnotations = (ast: any, options: DataOptions): any => {
-  const annotations: Record<symbol, any> = {}
+const applyAnnotations = (ast: SchemaAST.AST, options: DataOptions): SchemaAST.AST => {
+  const annotations: Record<symbol, unknown> = {}
 
   if (options.index !== undefined) annotations[PA.ConstrIndexId] = options.index
   if (options.flatInUnion !== undefined) annotations[PA.FlatInUnionId] = options.flatInUnion
@@ -201,5 +196,5 @@ const applyAnnotations = (ast: any, options: DataOptions): any => {
     ...d.annotations,
     value: { ...ast.annotations, ...annotations }
   }
-  return Object.create(Object.getPrototypeOf(ast), d)
+  return Object.create(Object.getPrototypeOf(ast), d) as SchemaAST.AST
 }

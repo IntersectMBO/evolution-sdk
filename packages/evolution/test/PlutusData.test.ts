@@ -1429,10 +1429,6 @@ describe("Public API", () => {
       expect((data as Data.Constr).fields[0]).toBe(42n)
     })
 
-    it("fromSchema is an alias for data", () => {
-      expect(Plutus.fromSchema).toBe(Plutus.data)
-    })
-
     it("Plutus.data() return type is Schema<A, Data.Data>", () => {
       const MyDatum = Plutus.data(Schema.Struct({
         amount: Schema.BigIntFromSelf
