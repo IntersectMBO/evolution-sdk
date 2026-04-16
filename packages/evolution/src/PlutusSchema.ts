@@ -119,15 +119,15 @@ export const ByteArray: TSchema.ByteArray = TSchema.ByteArray
 export const Integer: TSchema.Integer = TSchema.Integer
 
 /** Plutus Boolean — boolean encoded as Constr(0/1, []) */
-// eslint-disable-next-line @typescript-eslint/no-shadow
+ 
 export const Boolean: TSchema.Boolean = TSchema.Boolean
 
 /** Opaque PlutusData — passes through encoding unchanged */
-// eslint-disable-next-line @typescript-eslint/no-shadow
+ 
 export const PlutusData: TSchema.PlutusData = TSchema.PlutusData
 
 /** Plutus Map — Map<K,V> encoded as CBOR map */
-// eslint-disable-next-line @typescript-eslint/no-shadow
+ 
 export const Map: typeof TSchema.Map = TSchema.Map
 
 /** Plutus List — Array<T> encoded as CBOR array */
@@ -160,17 +160,16 @@ export const codec: typeof Data.withSchema = Data.withSchema
 // ============================================================
 
 export {
-  ConstrIndexId,
-  EncodingId,
-  FlatFieldsId,
-  FlatInUnionId,
-  TagFieldId,
   constrIndex,
+  ConstrIndexId,
   encoding,
+  EncodingId,
   flatFields,
+  FlatFieldsId,
   flatInUnion,
-  tagField
-} from "./PlutusAnnotation.js"
+  FlatInUnionId,
+  tagField,
+  TagFieldId} from "./PlutusAnnotation.js"
 
 // ============================================================
 // Internal: Apply Options as Annotations

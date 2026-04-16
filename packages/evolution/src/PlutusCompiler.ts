@@ -94,7 +94,7 @@ const isLiteralTag = (ps: SchemaAST.PropertySignature, tagFieldOverride: string 
   if (typeof tagFieldOverride === "string") return name === tagFieldOverride
 
   // Auto-detect from known tag fields
-  if (!(KNOWN_TAG_FIELDS as readonly string[]).includes(name)) return false
+  if (!(KNOWN_TAG_FIELDS as ReadonlyArray<string>).includes(name)) return false
 
   // Check if the type is a Literal
   const type = ps.type
@@ -176,7 +176,7 @@ const countStructFields = (ast: SchemaAST.AST): number => {
   let count = 0
   for (const p of ps) {
     const name = p.name as string
-    if ((KNOWN_TAG_FIELDS as readonly string[]).includes(name)) {
+    if ((KNOWN_TAG_FIELDS as ReadonlyArray<string>).includes(name)) {
       // Check if it's actually a literal tag
       if (p.type._tag === "Literal") continue
       if (p.type._tag === "Transformation" && p.type.to._tag === "Literal") continue
@@ -326,13 +326,13 @@ export const match: SchemaAST.Match<PlutusCodec> = {
       const itemCodec = go(ast.typeParameters[0], [...path, "item"])
       return {
         toData: (a: Iterable<any>) => {
-          const result: Data.Data[] = []
+          const result: Array<Data.Data> = []
           for (const item of a) {
             result.push(itemCodec.toData(item))
           }
           return result
         },
-        fromData: (d: Data.Data) => new globalThis.Set((d as Data.Data[]).map((item) => itemCodec.fromData(item)))
+        fromData: (d: Data.Data) => new globalThis.Set((d as Array<Data.Data>).map((item) => itemCodec.fromData(item)))
       }
     }
 
@@ -342,13 +342,13 @@ export const match: SchemaAST.Match<PlutusCodec> = {
       const itemCodec = go(ast.typeParameters[0], [...path, "item"])
       return {
         toData: (a: Iterable<any>) => {
-          const result: Data.Data[] = []
+          const result: Array<Data.Data> = []
           for (const item of a) {
             result.push(itemCodec.toData(item))
           }
           return result
         },
-        fromData: (d: Data.Data) => (d as Data.Data[]).map((item) => itemCodec.fromData(item))
+        fromData: (d: Data.Data) => (d as Array<Data.Data>).map((item) => itemCodec.fromData(item))
       }
     }
 
@@ -413,7 +413,7 @@ export const match: SchemaAST.Match<PlutusCodec> = {
 
     return {
       toData: (a: Record<string, any>) => {
-        const fields: Data.Data[] = []
+        const fields: Array<Data.Data> = []
         for (const fc of fieldCodecs) {
           if (fc.isTag) continue // Strip tag field
           const encoded = fc.codec.toData(a[fc.name])
@@ -572,8 +572,8 @@ export const match: SchemaAST.Match<PlutusCodec> = {
     if (rest.length > 0 && elements.length === 0) {
       const itemCodec = go(rest[0].type, path)
       return {
-        toData: (a: any[]) => a.map((item) => itemCodec.toData(item)),
-        fromData: (d: Data.Data) => (d as Data.Data[]).map((item) => itemCodec.fromData(item))
+        toData: (a: Array<any>) => a.map((item) => itemCodec.toData(item)),
+        fromData: (d: Data.Data) => (d as Array<Data.Data>).map((item) => itemCodec.fromData(item))
       }
     }
 
@@ -581,14 +581,14 @@ export const match: SchemaAST.Match<PlutusCodec> = {
     if (elements.length > 0) {
       const elementCodecs = elements.map((e, i) => go(e.type, [...path, i]))
       return {
-        toData: (a: any[]) => a.map((item, i) => elementCodecs[i].toData(item)),
-        fromData: (d: Data.Data) => (d as Data.Data[]).map((item, i) => elementCodecs[i].fromData(item))
+        toData: (a: Array<any>) => a.map((item, i) => elementCodecs[i].toData(item)),
+        fromData: (d: Data.Data) => (d as Array<Data.Data>).map((item, i) => elementCodecs[i].fromData(item))
       }
     }
 
     // Empty array
     return {
-      toData: () => [] as Data.Data[],
+      toData: () => [] as Array<Data.Data>,
       fromData: () => []
     }
   },

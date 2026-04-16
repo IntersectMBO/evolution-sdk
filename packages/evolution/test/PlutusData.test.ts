@@ -2,17 +2,16 @@ import { Option, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import * as Data from "../src/Data.js"
-import * as PA from "../src/PlutusAnnotation.js"
-import { compile } from "../src/PlutusCompiler.js"
-import * as Plutus from "../src/PlutusSchema.js"
-import * as TSchema from "../src/TSchema.js"
-
 // Existing TSchema modules for byte-for-byte comparison
 import * as ExistingAddress from "../src/plutus/Address.js"
 import * as ExistingCIP68 from "../src/plutus/CIP68Metadata.js"
 import * as ExistingCredential from "../src/plutus/Credential.js"
 import * as ExistingOutputRef from "../src/plutus/OutputReference.js"
 import * as ExistingValue from "../src/plutus/Value.js"
+import * as PA from "../src/PlutusAnnotation.js"
+import { compile } from "../src/PlutusCompiler.js"
+import * as Plutus from "../src/PlutusSchema.js"
+import * as TSchema from "../src/TSchema.js"
 
 // Helper: compile a schema into a PlutusCodec
 const codecFor = <A, I, R>(schema: Schema.Schema<A, I, R>) => compile(schema.ast, [])
@@ -685,8 +684,8 @@ describe("Compiler", () => {
       const codec = compile(Schema.Tuple(Schema.BigIntFromSelf, Schema.Struct({ x: Schema.BigIntFromSelf })).ast, [])
 
       const data = codec.toData([42n, { x: 1n }])
-      expect((data as Data.Data[])[0]).toBe(42n)
-      expect(((data as Data.Data[])[1] as Data.Constr).fields[0]).toBe(1n)
+      expect((data as Array<Data.Data>)[0]).toBe(42n)
+      expect(((data as Array<Data.Data>)[1] as Data.Constr).fields[0]).toBe(1n)
     })
 
     it("empty array", () => {
@@ -1770,7 +1769,7 @@ describe("Real-world types", () => {
         extra: Schema.Array(Schema.Unknown)
       }))
 
-      const input = { metadata: 42n, version: 1n, extra: [] as unknown[] }
+      const input = { metadata: 42n, version: 1n, extra: [] as Array<unknown> }
 
       const existingCbor = ExistingCIP68.Codec.toCBORHex(input)
       const v2Cbor = Plutus.codec(CIP68_v2).toCBORHex(input)
@@ -2603,6 +2602,7 @@ describe("Benchmarks", () => {
     const elapsed = performance.now() - start
     const msPerOp = elapsed / N
 
+    // eslint-disable-next-line no-console
     console.log(`  [bench] ${name}: ${msPerOp.toFixed(4)} ms/op (${N} iterations, ${elapsed.toFixed(1)}ms total)`)
     return msPerOp
   }
@@ -2655,6 +2655,7 @@ describe("Benchmarks", () => {
 
       const tMs = bench("TSchema 2-field encode", () => { tschemaCodec.toData(input) })
       const pMs = bench("Plutus  2-field encode", () => { plutusCodec.toData(input) })
+      // eslint-disable-next-line no-console
       console.log(`  [ratio] ${(pMs / tMs).toFixed(1)}x`)
       expect(pMs).toBeLessThan(tMs * 5)
     })
@@ -2680,6 +2681,7 @@ describe("Benchmarks", () => {
 
       const tMs = bench("TSchema 10-field encode", () => { tschemaCodec.toData(input) })
       const pMs = bench("Plutus  10-field encode", () => { plutusCodec.toData(input) })
+      // eslint-disable-next-line no-console
       console.log(`  [ratio] ${(pMs / tMs).toFixed(1)}x`)
       expect(pMs).toBeLessThan(tMs * 5)
     })
@@ -2734,6 +2736,7 @@ describe("Benchmarks", () => {
 
       const tMs = bench("TSchema Address encode", () => { tCodec.toData(tInput) })
       const pMs = bench("Plutus  Address encode", () => { pCodec.toData(pInput) })
+      // eslint-disable-next-line no-console
       console.log(`  [ratio] ${(pMs / tMs).toFixed(1)}x`)
       expect(pMs).toBeLessThan(tMs * 5)
     })
@@ -2752,6 +2755,7 @@ describe("Benchmarks", () => {
 
       const tMs = bench("TSchema 2-field decode", () => { tschemaCodec.fromData(data) })
       const pMs = bench("Plutus  2-field decode", () => { plutusCodec.fromData(data) })
+      // eslint-disable-next-line no-console
       console.log(`  [ratio] ${(pMs / tMs).toFixed(1)}x`)
       expect(pMs).toBeLessThan(tMs * 5)
     })
@@ -2773,6 +2777,7 @@ describe("Benchmarks", () => {
       const pMs = bench("Plutus  CBOR roundtrip", () => {
         plutusCodec.fromCBORHex(plutusCodec.toCBORHex(input))
       })
+      // eslint-disable-next-line no-console
       console.log(`  [ratio] ${(pMs / tMs).toFixed(1)}x`)
       expect(pMs).toBeLessThan(tMs * 3)
     })

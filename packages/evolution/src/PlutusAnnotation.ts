@@ -12,6 +12,7 @@
  *
  * @since 2.0.0
  */
+import type { Option } from "effect"
 import { SchemaAST } from "effect"
 
 // ============================================================
@@ -110,7 +111,7 @@ export type TagFieldId = typeof TagFieldId
  *
  * @since 2.0.0
  */
-export const getConstrIndex: (annotated: SchemaAST.Annotated) => import("effect/Option").Option<number> =
+export const getConstrIndex: (annotated: SchemaAST.Annotated) => Option.Option<number> =
   SchemaAST.getAnnotation<number>(ConstrIndexId)
 
 /**
@@ -118,7 +119,7 @@ export const getConstrIndex: (annotated: SchemaAST.Annotated) => import("effect/
  *
  * @since 2.0.0
  */
-export const getEncoding: (annotated: SchemaAST.Annotated) => import("effect/Option").Option<PlutusEncoding> =
+export const getEncoding: (annotated: SchemaAST.Annotated) => Option.Option<PlutusEncoding> =
   SchemaAST.getAnnotation<PlutusEncoding>(EncodingId)
 
 /**
@@ -126,7 +127,7 @@ export const getEncoding: (annotated: SchemaAST.Annotated) => import("effect/Opt
  *
  * @since 2.0.0
  */
-export const getFlatInUnion: (annotated: SchemaAST.Annotated) => import("effect/Option").Option<boolean> =
+export const getFlatInUnion: (annotated: SchemaAST.Annotated) => Option.Option<boolean> =
   SchemaAST.getAnnotation<boolean>(FlatInUnionId)
 
 /**
@@ -134,7 +135,7 @@ export const getFlatInUnion: (annotated: SchemaAST.Annotated) => import("effect/
  *
  * @since 2.0.0
  */
-export const getFlatFields: (annotated: SchemaAST.Annotated) => import("effect/Option").Option<boolean> =
+export const getFlatFields: (annotated: SchemaAST.Annotated) => Option.Option<boolean> =
   SchemaAST.getAnnotation<boolean>(FlatFieldsId)
 
 /**
@@ -142,7 +143,7 @@ export const getFlatFields: (annotated: SchemaAST.Annotated) => import("effect/O
  *
  * @since 2.0.0
  */
-export const getTagField: (annotated: SchemaAST.Annotated) => import("effect/Option").Option<string | false> =
+export const getTagField: (annotated: SchemaAST.Annotated) => Option.Option<string | false> =
   SchemaAST.getAnnotation<string | false>(TagFieldId)
 
 // ============================================================
