@@ -45,7 +45,7 @@
   "devDependencies": {
     "@dcspark/cardano-multiplatform-lib-nodejs": "^6.2.0",
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
-    "tinybench": "^5.0.0",
+    "tinybench": "^6.0.0",
     "tsx": "^4.20.4",
     "typescript": "^5.9.2"
   },
