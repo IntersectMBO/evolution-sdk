@@ -37,7 +37,7 @@ updates:
         patterns:
           - "effect"
           - "@effect/*"
-        group-by: dependency-name
+
 
       noble-scure-crypto:
         patterns:
@@ -45,7 +45,7 @@ updates:
           - "@scure/*"
           - "bip39"
           - "@types/bip39"
-        group-by: dependency-name
+
 
       cardano-ecosystem:
         patterns:
@@ -53,7 +53,7 @@ updates:
           - "@emurgo/*"
           - "@cardano-foundation/*"
           - "scalus"
-        group-by: dependency-name
+
 
       # --- Auto-mergeable: tooling groups ---
       eslint:
@@ -62,25 +62,25 @@ updates:
           - "@eslint/*"
           - "eslint-*"
           - "@typescript-eslint/*"
-        group-by: dependency-name
+
 
       babel:
         patterns:
           - "@babel/*"
           - "babel-plugin-*"
-        group-by: dependency-name
+
 
       vitest:
         patterns:
           - "vitest"
           - "@vitest/*"
-        group-by: dependency-name
+
 
       turbo:
         patterns:
           - "turbo"
           - "@turbo/*"
-        group-by: dependency-name
+
 
       typescript:
         patterns:
@@ -91,12 +91,12 @@ updates:
           - "@types/dockerode"
           - "@types/react"
           - "@types/react-dom"
-        group-by: dependency-name
+
 
       changesets:
         patterns:
           - "@changesets/*"
-        group-by: dependency-name
+
 
       react:
         patterns:
@@ -105,7 +105,7 @@ updates:
           - "@types/react"
           - "@types/react-dom"
           - "@vitejs/plugin-react"
-        group-by: dependency-name
+
 
       docs-tooling:
         patterns:
@@ -123,7 +123,7 @@ updates:
           - "@orama/*"
           - "next"
           - "@next/*"
-        group-by: dependency-name
+
 
       # Catch-all for remaining devDependencies — patch + minor only
       # (any dep not matched above that's a devDep)
@@ -132,7 +132,7 @@ updates:
         update-types:
           - "patch"
           - "minor"
-        group-by: dependency-name
+
 
   # ------------------------------------------------------------
   # GitHub Actions — keep workflow actions up to date
