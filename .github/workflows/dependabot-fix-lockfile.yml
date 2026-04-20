@@ -27,7 +27,7 @@ jobs:
           ref: ${{ github.ref }}
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v6.3.0
