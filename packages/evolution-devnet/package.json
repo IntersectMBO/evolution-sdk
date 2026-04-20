@@ -50,9 +50,9 @@
     "@evolution-sdk/aiken-uplc": "workspace:*",
     "@evolution-sdk/evolution": "workspace:*",
     "@evolution-sdk/scalus-uplc": "workspace:*",
-    "@effect/platform": "^0.90.10",
-    "@effect/platform-node": "^0.96.1",
-    "effect": "^3.19.3"
+    "@effect/platform": "^0.96.0",
+    "@effect/platform-node": "^0.106.0",
+    "effect": "^3.21.1"
   },
   "keywords": [
     "cardano",
