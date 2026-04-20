@@ -50,7 +50,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@effect/platform": "^0.90.10",
+    "@effect/platform": "^0.96.0",
     "@effect/platform-node": "^0.106.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^1.8.0",
@@ -59,7 +59,7 @@
     "@scure/bip39": "^1.6.0",
     "@types/bip39": "^3.0.4",
     "bip39": "^3.1.0",
-    "effect": "^3.19.3"
+    "effect": "^3.21.1"
   },
   "keywords": [
     "cardano",

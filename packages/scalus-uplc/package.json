@@ -37,7 +37,7 @@
     "clean": "rm -rf dist .turbo .tsbuildinfo"
   },
   "dependencies": {
-    "effect": "^3.19.3",
+    "effect": "^3.21.1",
     "scalus": "^0.15.0"
   },
   "peerDependencies": {

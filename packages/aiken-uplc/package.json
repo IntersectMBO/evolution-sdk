@@ -45,7 +45,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "effect": "^3.19.3"
+    "effect": "^3.21.1"
   },
   "peerDependencies": {
     "@evolution-sdk/evolution": "workspace:*"

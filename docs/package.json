@@ -38,7 +38,7 @@
     "@types/react": "^19.1.11",
     "@types/react-dom": "^19.1.7",
     "baseline-browser-mapping": "^2.9.8",
-    "effect": "^3.19.3",
+    "effect": "^3.21.1",
     "postcss": "^8.5.6",
     "shiki": "^3.15.0",
     "tailwindcss": "^4.1.12",
