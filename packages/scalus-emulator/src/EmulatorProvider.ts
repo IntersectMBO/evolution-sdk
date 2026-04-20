@@ -1,8 +1,13 @@
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as CBOR from "@evolution-sdk/evolution/CBOR"
+import * as CostModel from "@evolution-sdk/evolution/CostModel"
 import type * as Credential from "@evolution-sdk/evolution/Credential"
+import * as Data from "@evolution-sdk/evolution/Data"
+import * as DatumOption from "@evolution-sdk/evolution/DatumOption"
+import * as PoolKeyHash from "@evolution-sdk/evolution/PoolKeyHash"
 import * as Redeemer from "@evolution-sdk/evolution/Redeemer"
+import * as RewardAccount from "@evolution-sdk/evolution/RewardAccount"
 import * as Script from "@evolution-sdk/evolution/Script"
 import * as ScriptRef from "@evolution-sdk/evolution/ScriptRef"
 import type { EvalRedeemer } from "@evolution-sdk/evolution/sdk/EvalRedeemer"
@@ -15,6 +20,8 @@ import * as TxOut from "@evolution-sdk/evolution/TxOut"
 import * as UTxO from "@evolution-sdk/evolution/UTxO"
 import { Effect, Equal, Schema } from "effect"
 import * as Scalus from "scalus"
+
+import { DEFAULT_COST_MODELS } from "./DefaultCostModels.js"
 
 type Emulator = Scalus.Emulator
 type SlotConfig = Scalus.SlotConfig
@@ -41,7 +48,7 @@ function decodeUtxoEntry(cborBytes: Uint8Array): UTxO.UTxO {
 /**
  * Build CBOR-encoded UTxO map from Evolution SDK UTxOs for Scalus evaluation.
  */
-function buildUtxoMapCBOR(utxos: ReadonlyArray<UTxO.UTxO>): Uint8Array {
+export function buildUtxoMapCBOR(utxos: ReadonlyArray<UTxO.UTxO>): Uint8Array {
   const utxoMap = new Map<CBOR.CBOR, CBOR.CBOR>()
   for (const utxo of utxos) {
     const txInput = new TransactionInput.TransactionInput({
@@ -80,11 +87,28 @@ const DEFAULT_PROTOCOL_PARAMETERS: ProtocolParameters = {
   collateralPercentage: 150,
   maxCollateralInputs: 3,
   minFeeRefScriptCostPerByte: 15,
-  costModels: {
-    PlutusV1: {},
-    PlutusV2: {},
-    PlutusV3: {}
+  costModels: costModelsToProtocolShape(DEFAULT_COST_MODELS)
+}
+
+function costModelsToProtocolShape(costModels: CostModel.CostModels): ProtocolParameters["costModels"] {
+  const toRecord = (cm: CostModel.CostModel): Record<string, number> => {
+    const record: Record<string, number> = {}
+    for (let i = 0; i < cm.costs.length; i++) record[String(i)] = Number(cm.costs[i])
+    return record
   }
+  return {
+    PlutusV1: toRecord(costModels.PlutusV1),
+    PlutusV2: toRecord(costModels.PlutusV2),
+    PlutusV3: toRecord(costModels.PlutusV3)
+  }
+}
+
+function costModelsToScalusArrays(costModels: CostModel.CostModels): Array<Array<number>> {
+  return [
+    costModels.PlutusV1.costs.map(Number),
+    costModels.PlutusV2.costs.map(Number),
+    costModels.PlutusV3.costs.map(Number)
+  ]
 }
 
 /** Redeemer tag mapping from Scalus to Evolution SDK. */
@@ -109,10 +133,12 @@ export class ScalusEmulatorProvider implements Provider {
   readonly emulator: Emulator
   readonly slotConfig: SlotConfig
   readonly protocolParameters: ProtocolParameters
+  readonly costModels: CostModel.CostModels
 
-  constructor(emulator: Emulator, slotConfig: SlotConfig, protocolParameters?: ProtocolParameters) {
+  constructor(emulator: Emulator, slotConfig: SlotConfig, protocolParameters?: ProtocolParameters, costModels?: CostModel.CostModels) {
     this.emulator = emulator
     this.slotConfig = slotConfig
+    this.costModels = costModels ?? DEFAULT_COST_MODELS
     this.protocolParameters = protocolParameters ?? DEFAULT_PROTOCOL_PARAMETERS
 
     const self = this
@@ -189,15 +215,45 @@ export class ScalusEmulatorProvider implements Provider {
           catch: (error) => new ProviderError({ cause: error, message: `Failed to get UTxOs by outRef: ${error}` })
         }),
 
-      getDelegation: () =>
-        Effect.succeed({ poolId: null, rewards: 0n }),
+      getDelegation: (rewardAddress) =>
+        Effect.try({
+          try: () => {
+            const rewardAccount = RewardAccount.fromBech32(rewardAddress)
+            const cred = rewardAccount.stakeCredential
+            const credCbor = CBOR.toCBORBytes(
+              cred._tag === "KeyHash" ? [0n, cred.hash] : [1n, cred.hash],
+              CBOR.CML_DEFAULT_OPTIONS
+            )
+            const info = self.emulator.getDelegation(credCbor)
+            const poolId = info.poolId
+              ? new PoolKeyHash.PoolKeyHash({ hash: info.poolId })
+              : null
+            return { poolId, rewards: info.rewards }
+          },
+          catch: (error) => new ProviderError({ cause: error, message: `Failed to get delegation: ${error}` })
+        }),
 
       getDatum: (datumHash) =>
-        Effect.fail(
-          new ProviderError({ cause: null, message: `getDatum not supported by emulator (hash: ${datumHash})` })
-        ),
+        Effect.try({
+          try: () => {
+            const hashBytes = datumHash.hash
+            const result = self.emulator.getDatum(hashBytes)
+            if (!result) {
+              throw new Error(`Datum not found for hash: ${Bytes.toHex(hashBytes)}`)
+            }
+            return Data.fromCBORBytes(result)
+          },
+          catch: (error) => new ProviderError({ cause: error, message: `Failed to get datum: ${error}` })
+        }),
 
-      awaitTx: () => Effect.succeed(true),
+      awaitTx: (txHash) =>
+        Effect.try({
+          try: () => {
+            const hashBytes = TransactionHash.toBytes(txHash)
+            return self.emulator.hasTx(hashBytes)
+          },
+          catch: (error) => new ProviderError({ cause: error, message: `Failed to check tx: ${error}` })
+        }),
 
       submitTx: (tx) =>
         Effect.try({
@@ -224,12 +280,7 @@ export class ScalusEmulatorProvider implements Provider {
             }
             const utxosBytes = buildUtxoMapCBOR(allUtxos)
 
-            const costModels = self.protocolParameters.costModels
-            const costModelArrays = [
-              Object.values(costModels.PlutusV1),
-              Object.values(costModels.PlutusV2),
-              Object.values(costModels.PlutusV3)
-            ]
+            const costModelArrays = costModelsToScalusArrays(self.costModels)
 
             const scalusSlotConfig = new Scalus.SlotConfig(
               self.slotConfig.slotToTime(0),
