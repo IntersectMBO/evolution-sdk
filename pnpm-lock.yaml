@@ -154,8 +154,8 @@ importers:
         version: 0.3.8(typescript@5.9.3)
     devDependencies:
       '@shikijs/twoslash':
-        specifier: ^3.14.0
-        version: 3.23.0(typescript@5.9.3)
+        specifier: ^4.0.2
+        version: 4.0.2(typescript@5.9.3)
       '@tailwindcss/postcss':
         specifier: ^4.1.12
         version: 4.2.2
@@ -2244,11 +2244,6 @@ packages:
 
   '@shikijs/transformers@3.23.0':
     resolution: {integrity: sha512-F9msZVxdF+krQNSdQ4V+Ja5QemeAoTQ2jxt7nJCwhDsdF1JWS3KxIQXA3lQbyKwS3J61oHRUSv4jYWv3CkaKTQ==}
-
-  '@shikijs/twoslash@3.23.0':
-    resolution: {integrity: sha512-pNaLJWMA3LU7PhT8tm9OQBZ1epy0jmdgeJzntBtr1EVXLbHxGzTj3mnf9vOdcl84l96qnlJXkJ/NGXZYBpXl5g==}
-    peerDependencies:
-      typescript: '>=5.5.0'
 
   '@shikijs/twoslash@4.0.2':
     resolution: {integrity: sha512-yHRudhirlMxOwDO6Q4OFU9hJMvUqNkY8hwtUfbaSEoG7A2cYicdO4c8fdDaDtyJ50HK7I8vTokrkIHTK3DCkLQ==}
@@ -8963,15 +8958,6 @@ snapshots:
     dependencies:
       '@shikijs/core': 3.23.0
       '@shikijs/types': 3.23.0
-
-  '@shikijs/twoslash@3.23.0(typescript@5.9.3)':
-    dependencies:
-      '@shikijs/core': 3.23.0
-      '@shikijs/types': 3.23.0
-      twoslash: 0.3.8(typescript@5.9.3)
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - supports-color
 
   '@shikijs/twoslash@4.0.2(typescript@5.9.3)':
     dependencies:

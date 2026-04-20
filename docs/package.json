@@ -31,7 +31,7 @@
     "twoslash": "^0.3.4"
   },
   "devDependencies": {
-    "@shikijs/twoslash": "^3.14.0",
+    "@shikijs/twoslash": "^4.0.2",
     "@tailwindcss/postcss": "^4.1.12",
     "@types/mdx": "^2.0.13",
     "@types/node": "24.3.0",
