@@ -65,7 +65,7 @@ jobs:
 
           # Grouped PRs from allow-listed groups → auto-merge
           case "$DEPENDENCY_GROUP" in
-            eslint|babel|vitest|turbo|typescript|changesets|react|docs-tooling|misc-devdeps-patch-minor|github-actions)
+            eslint|babel|vitest|turbo|typescript|changesets|react|docs-tooling|misc-devdeps-patch-minor)
               echo "mergeable=true" >> "$GITHUB_OUTPUT"
               echo "reason=group '$DEPENDENCY_GROUP' is auto-mergeable" >> "$GITHUB_OUTPUT"
               exit 0

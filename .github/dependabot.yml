@@ -38,7 +38,6 @@ updates:
           - "effect"
           - "@effect/*"
 
-
       noble-scure-crypto:
         patterns:
           - "@noble/*"
@@ -46,14 +45,12 @@ updates:
           - "bip39"
           - "@types/bip39"
 
-
       cardano-ecosystem:
         patterns:
           - "@dcspark/*"
           - "@emurgo/*"
           - "@cardano-foundation/*"
           - "scalus"
-
 
       # --- Auto-mergeable: tooling groups ---
       eslint:
@@ -63,24 +60,20 @@ updates:
           - "eslint-*"
           - "@typescript-eslint/*"
 
-
       babel:
         patterns:
           - "@babel/*"
           - "babel-plugin-*"
-
 
       vitest:
         patterns:
           - "vitest"
           - "@vitest/*"
 
-
       turbo:
         patterns:
           - "turbo"
           - "@turbo/*"
-
 
       typescript:
         patterns:
@@ -92,11 +85,9 @@ updates:
           - "@types/react"
           - "@types/react-dom"
 
-
       changesets:
         patterns:
           - "@changesets/*"
-
 
       react:
         patterns:
@@ -105,7 +96,6 @@ updates:
           - "@types/react"
           - "@types/react-dom"
           - "@vitejs/plugin-react"
-
 
       docs-tooling:
         patterns:
@@ -124,7 +114,6 @@ updates:
           - "next"
           - "@next/*"
 
-
       # Catch-all for remaining devDependencies — patch + minor only
       # (any dep not matched above that's a devDep)
       misc-devdeps-patch-minor:
@@ -132,7 +121,6 @@ updates:
         update-types:
           - "patch"
           - "minor"
-
 
   # ------------------------------------------------------------
   # GitHub Actions — keep workflow actions up to date
