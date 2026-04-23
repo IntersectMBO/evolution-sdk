@@ -29,6 +29,9 @@ export const BlockfrostProtocolParameters = Schema.Struct({
   max_val_size: Schema.optional(Schema.String),
   utxo_cost_per_word: Schema.optional(Schema.String),
   cost_models: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  cost_models_raw: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.Array(Schema.Number) })
+  ),
   price_mem: Schema.optional(Schema.Number),
   price_step: Schema.optional(Schema.Number),
   max_tx_ex_mem: Schema.optional(Schema.String),
@@ -187,6 +190,15 @@ export type JsonwspOgmiosEvaluationResponse = Schema.Schema.Type<typeof JsonwspO
 /**
  * Transform Blockfrost protocol parameters to Evolution SDK format
  */
+const costModelFromBlockfrost = (
+  params: BlockfrostProtocolParameters,
+  lang: "PlutusV1" | "PlutusV2" | "PlutusV3"
+): Record<string, number> => {
+  const raw = params.cost_models_raw?.[lang]
+  if (raw) return Object.fromEntries(raw.map((v, i) => [i.toString(), v]))
+  return (params.cost_models?.[lang] as Record<string, number>) ?? {}
+}
+
 export const transformProtocolParameters = (
   blockfrostParams: BlockfrostProtocolParameters
 ): Provider.ProtocolParameters => {
@@ -208,9 +220,9 @@ export const transformProtocolParameters = (
     drepDeposit: blockfrostParams.drep_deposit ? BigInt(blockfrostParams.drep_deposit) : 0n,
     govActionDeposit: blockfrostParams.gov_action_deposit ? BigInt(blockfrostParams.gov_action_deposit) : 0n,
     costModels: {
-      PlutusV1: (blockfrostParams.cost_models?.PlutusV1 as Record<string, number>) || {},
-      PlutusV2: (blockfrostParams.cost_models?.PlutusV2 as Record<string, number>) || {},
-      PlutusV3: (blockfrostParams.cost_models?.PlutusV3 as Record<string, number>) || {}
+      PlutusV1: costModelFromBlockfrost(blockfrostParams, "PlutusV1"),
+      PlutusV2: costModelFromBlockfrost(blockfrostParams, "PlutusV2"),
+      PlutusV3: costModelFromBlockfrost(blockfrostParams, "PlutusV3")
     }
   }
 }
