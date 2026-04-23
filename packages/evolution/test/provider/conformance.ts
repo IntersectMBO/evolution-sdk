@@ -2,6 +2,7 @@ import { beforeAll, expect, it } from "vitest"
 
 import * as Address from "../../src/Address.js"
 import * as Assets from "../../src/Assets.js"
+import * as Credential from "../../src/Credential.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import { type Provider } from "../../src/sdk/provider/Provider.js"
 import * as Transaction from "../../src/Transaction.js"
@@ -30,7 +31,12 @@ import { evalSample1, evalSample2, evalSample3, evalSample4 } from "./fixtures/e
  * Schema validation inside the provider guarantees type correctness —
  * assertions here focus on sanity (non-empty, positive, expected shape).
  */
-export function registerConformanceTests(factory: () => Provider) {
+export interface ConformanceOptions {
+  supportsCredentialQueries?: boolean
+}
+
+export function registerConformanceTests(factory: () => Provider, options?: ConformanceOptions) {
+  const { supportsCredentialQueries = false } = options ?? {}
   let provider: Provider
   beforeAll(() => {
     provider = factory()
@@ -51,6 +57,22 @@ export function registerConformanceTests(factory: () => Provider) {
 
   it("getUtxosWithUnit", async () => {
     const utxos = await provider.getUtxosWithUnit(preprodScriptAddress(), PREPROD_UNIT)
+    expect(utxos).toBeInstanceOf(Array)
+    expect(utxos.length).toBeGreaterThan(0)
+  })
+
+  it.skipIf(!supportsCredentialQueries)("getUtxos with Credential", async () => {
+    const credential = preprodAddress().paymentCredential
+    expect(Credential.is(credential)).toBe(true)
+    const utxos = await provider.getUtxos(credential)
+    expect(utxos).toBeInstanceOf(Array)
+    expect(utxos.length).toBeGreaterThan(0)
+  })
+
+  it.skipIf(!supportsCredentialQueries)("getUtxosWithUnit with Credential", async () => {
+    const credential = preprodScriptAddress().paymentCredential
+    expect(Credential.is(credential)).toBe(true)
+    const utxos = await provider.getUtxosWithUnit(credential, PREPROD_UNIT)
     expect(utxos).toBeInstanceOf(Array)
     expect(utxos.length).toBeGreaterThan(0)
   })

@@ -46,7 +46,7 @@ const OGMIOS_HEADER = parseHeaderJson(process.env.KUPMIOS_OGMIOS_HEADER_JSON) ??
 
 // ── Koios (no API key) ────────────────────────────────────────────────────────
 describe.skipIf(!process.env.KOIOS_ENABLED)("Koios", () => {
-  registerConformanceTests(() => new Koios(KOIOS_URL))
+  registerConformanceTests(() => new Koios(KOIOS_URL), { supportsCredentialQueries: true })
 })
 
 // ── Koios preview: awaitTx with Haskell show string asset_list ────────────────
@@ -63,7 +63,7 @@ describe.skipIf(!process.env.KOIOS_PREVIEW_ENABLED)("Koios (preview)", () => {
 
 // ── Blockfrost ────────────────────────────────────────────────────────────────
 describe.skipIf(!isConfigured(BLOCKFROST_KEY, "preprodXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))("Blockfrost", () => {
-  registerConformanceTests(() => new BlockfrostProvider(BLOCKFROST_URL, BLOCKFROST_KEY))
+  registerConformanceTests(() => new BlockfrostProvider(BLOCKFROST_URL, BLOCKFROST_KEY), { supportsCredentialQueries: true })
 })
 
 // ── Maestro ───────────────────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ describe.skipIf(
       new KupmiosProvider(KUPO_URL!, OGMIOS_URL!, {
         kupoHeader: KUPO_HEADER,
         ogmiosHeader: OGMIOS_HEADER
-      })
+      }),
+    { supportsCredentialQueries: true }
   )
 })
