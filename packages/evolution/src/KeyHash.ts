@@ -1,5 +1,6 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { bech32 } from "@scure/base"
+import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Hash28 from "./Hash28.js"
@@ -99,6 +100,52 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @category encoding/decoding
  */
 export const toHex = Schema.encodeSync(FromHex)
+
+/**
+ * Schema transformer from bech32 string (addr_vkh1...) to KeyHash.
+ * Uses the CIP-0005 `addr_vkh` prefix for address verification key hashes.
+ *
+ * @since 2.0.0
+ * @category transformer
+ */
+export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(KeyHash), {
+  strict: true,
+  encode: (keyHash) =>
+    Eff.gen(function* () {
+      const words = bech32.toWords(keyHash.hash)
+      return bech32.encode("addr_vkh", words, false)
+    }),
+  decode: (fromA, _, ast) =>
+    Eff.gen(function* () {
+      const result = yield* Eff.try({
+        try: () => {
+          const decoded = bech32.decode(fromA as any, false)
+          return new Uint8Array(bech32.fromWords(decoded.words))
+        },
+        catch: () => new ParseResult.Type(ast, fromA, `Failed to decode Bech32 key hash: ${fromA}`)
+      })
+      return yield* ParseResult.decode(FromBytes)(result)
+    })
+}).annotations({
+  identifier: "KeyHash.FromBech32",
+  description: "Transforms Bech32 addr_vkh string to KeyHash"
+})
+
+/**
+ * Parse a KeyHash from a bech32 string (addr_vkh1...).
+ *
+ * @since 2.0.0
+ * @category encoding/decoding
+ */
+export const fromBech32 = Schema.decodeSync(FromBech32)
+
+/**
+ * Convert a KeyHash to a bech32 string (addr_vkh1...).
+ *
+ * @since 2.0.0
+ * @category encoding/decoding
+ */
+export const toBech32 = Schema.encodeSync(FromBech32)
 
 /**
  * FastCheck arbitrary for generating random KeyHash instances.

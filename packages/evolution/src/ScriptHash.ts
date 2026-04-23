@@ -1,5 +1,6 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { bech32 } from "@scure/base"
+import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Hash28 from "./Hash28.js"
@@ -102,6 +103,52 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @category encoding
  */
 export const toHex = Schema.encodeSync(FromHex)
+
+/**
+ * Schema transformer from bech32 string (script1...) to ScriptHash.
+ * Uses the CIP-0005 `script` prefix for script hashes.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(ScriptHash), {
+  strict: true,
+  encode: (scriptHash) =>
+    Eff.gen(function* () {
+      const words = bech32.toWords(scriptHash.hash)
+      return bech32.encode("script", words, false)
+    }),
+  decode: (fromA, _, ast) =>
+    Eff.gen(function* () {
+      const result = yield* Eff.try({
+        try: () => {
+          const decoded = bech32.decode(fromA as any, false)
+          return new Uint8Array(bech32.fromWords(decoded.words))
+        },
+        catch: () => new ParseResult.Type(ast, fromA, `Failed to decode Bech32 script hash: ${fromA}`)
+      })
+      return yield* ParseResult.decode(FromBytes)(result)
+    })
+}).annotations({
+  identifier: "ScriptHash.FromBech32",
+  description: "Transforms Bech32 script string to ScriptHash"
+})
+
+/**
+ * Parse a ScriptHash from a bech32 string (script1...).
+ *
+ * @since 2.0.0
+ * @category parsing
+ */
+export const fromBech32 = Schema.decodeSync(FromBech32)
+
+/**
+ * Convert a ScriptHash to a bech32 string (script1...).
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toBech32 = Schema.encodeSync(FromBech32)
 
 /**
  * FastCheck arbitrary for generating random ScriptHash instances.
