@@ -6,7 +6,6 @@ import type { ParseError } from "effect/ParseResult"
 import * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets.js"
 import * as Bytes from "../../../Bytes.js"
-import type * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
@@ -340,9 +339,25 @@ export const toUTxO = (koiosUTxO: UTxO, addressStr: string): CoreUTxO.UTxO => {
   })
 }
 
+export const CredentialUTxOSchema = Schema.Struct({
+  tx_hash: Schema.String,
+  tx_index: Schema.Number,
+  address: Schema.String,
+  value: Schema.String,
+  datum_hash: Schema.NullOr(Schema.String),
+  inline_datum: Schema.NullOr(
+    Schema.Struct({
+      bytes: Schema.NullOr(Schema.String),
+      value: Schema.Unknown
+    })
+  ),
+  reference_script: Schema.NullOr(ReferenceScriptSchema),
+  asset_list: Schema.NullOr(Schema.Array(AssetSchema))
+})
+
 export const getUtxosEffect = (
   baseUrl: string,
-  addressOrCredential: string | Credential.Credential,
+  address: string,
   headers: Record<string, string> | undefined
 ): Effect.Effect<
   Array<CoreUTxO.UTxO>,
@@ -351,15 +366,48 @@ export const getUtxosEffect = (
 > => {
   const url = `${baseUrl}/address_info`
   const body = {
-    _addresses: [addressOrCredential]
+    _addresses: [address]
   }
-  const schema = AddressInfoSchema
   const result = pipe(
-    Effect.if(typeof addressOrCredential === "string", {
-      onFalse: () => Effect.fail("Credential Type is not supported in Koios yet."),
-      onTrue: () => HttpUtils.postJson(url, body, schema, headers)
-    }),
+    HttpUtils.postJson(url, body, AddressInfoSchema, headers),
     Effect.map(([result]) => (result ? result.utxo_set.map((koiosUtxo) => toUTxO(koiosUtxo, result.address)) : [])),
+    Effect.provide(FetchHttpClient.layer)
+  )
+  return result
+}
+
+export const getCredentialUtxosEffect = (
+  baseUrl: string,
+  credentialHash: string,
+  headers: Record<string, string> | undefined
+): Effect.Effect<
+  Array<CoreUTxO.UTxO>,
+  string | HttpBody.HttpBodyError | HttpClientError.HttpClientError | ParseError,
+  never
+> => {
+  const url = `${baseUrl}/credential_utxos`
+  const body = {
+    _payment_credentials: [credentialHash],
+    _extended: true
+  }
+  const result = pipe(
+    HttpUtils.postJson(url, body, Schema.Array(CredentialUTxOSchema), headers),
+    Effect.map((utxos) =>
+      utxos.map((u) => toUTxO(
+        {
+          tx_hash: u.tx_hash,
+          tx_index: u.tx_index,
+          block_time: 0,
+          block_height: null,
+          value: u.value,
+          datum_hash: u.datum_hash,
+          inline_datum: u.inline_datum,
+          reference_script: u.reference_script,
+          asset_list: u.asset_list
+        },
+        u.address
+      ))
+    ),
     Effect.provide(FetchHttpClient.layer)
   )
   return result

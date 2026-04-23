@@ -4,7 +4,7 @@ import { Effect, pipe, Schedule, Schema } from "effect"
 import * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets.js"
 import * as Bytes from "../../../Bytes.js"
-import type * as Credential from "../../../Credential.js"
+import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
 import * as PolicyId from "../../../PolicyId.js"
@@ -71,30 +71,31 @@ export const getProtocolParameters = (baseUrl: string, token?: string) =>
     }
   })
 
+const getUtxosForAddressOrCredential = (
+  baseUrl: string,
+  addressOrCredential: CoreAddress.Address | Credential.Credential,
+  token?: string
+) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+  if (addressOrCredential instanceof CoreAddress.Address) {
+    return _Koios.getUtxosEffect(baseUrl, CoreAddress.toBech32(addressOrCredential), headers)
+  }
+  return _Koios.getCredentialUtxosEffect(baseUrl, Credential.toHex(addressOrCredential), headers)
+}
+
 export const getUtxos =
-  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
-    // Convert CoreAddress to Bech32 string for Koios API
-    const addressStr =
-      addressOrCredential instanceof CoreAddress.Address
-        ? CoreAddress.toBech32(addressOrCredential)
-        : addressOrCredential
-    return pipe(
-      _Koios.getUtxosEffect(baseUrl, addressStr, token ? { Authorization: `Bearer ${token}` } : undefined),
+  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) =>
+    pipe(
+      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token),
       Effect.timeout(10_000),
       Effect.catchAll(wrapError("getUtxos"))
     )
-  }
 
 export const getUtxosWithUnit =
   (baseUrl: string, token?: string) =>
-  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) => {
-    // Convert CoreAddress to Bech32 string for Koios API
-    const addressStr =
-      addressOrCredential instanceof CoreAddress.Address
-        ? CoreAddress.toBech32(addressOrCredential)
-        : addressOrCredential
-    return pipe(
-      _Koios.getUtxosEffect(baseUrl, addressStr, token ? { Authorization: `Bearer ${token}` } : undefined),
+  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) =>
+    pipe(
+      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token),
       Effect.map((utxos) =>
         utxos.filter((utxo) => {
           const units = CoreAssets.getUnits(utxo.assets)
@@ -104,7 +105,6 @@ export const getUtxosWithUnit =
       Effect.timeout(10_000),
       Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
-  }
 
 export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string) =>
   pipe(

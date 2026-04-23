@@ -9,7 +9,7 @@ import { Effect, Schedule, Schema } from "effect"
 import * as CoreAddress from "../../../Address.js"
 import * as AssetName from "../../../AssetName.js"
 import * as Bytes from "../../../Bytes.js"
-import type * as Credential from "../../../Credential.js"
+import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
@@ -73,15 +73,15 @@ const is404Error = (error: unknown): boolean => {
 }
 
 /**
- * Convert address or credential to appropriate Blockfrost endpoint path
+ * Convert address or credential to Blockfrost endpoint path.
+ * Blockfrost /addresses/{address} endpoints accept payment credentials
+ * in bech32 format (CIP-0005: addr_vkh for key hashes, script for script hashes).
  */
 const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Credential): string => {
-  // For Core Address, convert to bech32 string
   if (addressOrCredential instanceof CoreAddress.Address) {
     return CoreAddress.toBech32(addressOrCredential)
   }
-  // For Credential, convert to string representation
-  return addressOrCredential.toString()
+  return Credential.toBech32(addressOrCredential)
 }
 
 const toBlockfrostValue = (
@@ -429,7 +429,7 @@ export const getUtxosWithUnit =
       return Effect.all([scriptEffect, datumEffect]).pipe(
         Effect.map(([scriptRef, datumOption]) => {
           const assets = Blockfrost.transformAmounts(utxo.amount)
-          const address = CoreAddress.fromBech32(addressPath)
+          const address = CoreAddress.fromBech32(utxo.address)
           const transactionId = TransactionHash.fromHex(utxo.tx_hash)
 
           return new CoreUTxO.UTxO({
