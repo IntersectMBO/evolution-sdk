@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  scalus: link:./vendor/scalus
+
 importers:
 
   .:
@@ -199,6 +202,9 @@ importers:
       '@effect/platform-node':
         specifier: ^0.96.1
         version: 0.96.1(@effect/cluster@0.48.2(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.44.2(@effect/experimental@0.54.6(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/workflow@0.9.2(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(@effect/rpc@0.69.1(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.44.2(@effect/experimental@0.54.6(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.90.10(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
+      '@evolution-sdk/scalus-emulator':
+        specifier: workspace:*
+        version: link:../scalus-emulator
       '@noble/curves':
         specifier: ^2.0.1
         version: 2.0.1
@@ -260,6 +266,9 @@ importers:
       '@evolution-sdk/evolution':
         specifier: workspace:*
         version: link:../evolution
+      '@evolution-sdk/scalus-emulator':
+        specifier: workspace:*
+        version: link:../scalus-emulator
       '@evolution-sdk/scalus-uplc':
         specifier: workspace:*
         version: link:../scalus-uplc
@@ -292,8 +301,8 @@ importers:
         specifier: ^3.19.3
         version: 3.19.3
       scalus:
-        specifier: ^0.15.0
-        version: 0.15.0
+        specifier: link:../../vendor/scalus
+        version: link:../../vendor/scalus
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -308,8 +317,8 @@ importers:
         specifier: ^3.19.3
         version: 3.19.3
       scalus:
-        specifier: ^0.14.2
-        version: 0.14.2
+        specifier: link:../../vendor/scalus
+        version: link:../../vendor/scalus
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -5377,12 +5386,6 @@ packages:
     resolution: {integrity: sha512-Zx+lVyoWqXZxHuYWlTA17Z5sczJ6braNT2C7rmClw+c4E7r/n911Zwss3h1uHI9reR5AgHZyNHF7c2+VIp5AUA==}
     engines: {node: '>=18'}
     hasBin: true
-
-  scalus@0.14.2:
-    resolution: {integrity: sha512-dobDMIUDUVhtxoX3ceGlaykKQGkph4HOE9hjkLsmwVgYf24fIik6YrZzVFrZSNCTvI2WN7hjEknehIrEJo1CMQ==}
-
-  scalus@0.15.0:
-    resolution: {integrity: sha512-4yWMpHkGj89/VUUn18kXZHjUHdJDSw2Se9E1Aa3xmNWSe5YdWyGclpRlqfih5mTFuQik9/vt0fgrh3HaEUVqUw==}
 
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
@@ -12097,10 +12100,6 @@ snapshots:
     dependencies:
       commander: 12.1.0
       enhanced-resolve: 5.18.3
-
-  scalus@0.14.2: {}
-
-  scalus@0.15.0: {}
 
   scheduler@0.27.0: {}
 

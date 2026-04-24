@@ -265,8 +265,7 @@ export interface KoiosConfig {
  * Node-emulator provider configuration.
  *
  * Backed by the Scalus emulator (compiled from Scala via Scala.js), this runs an
- * in-process Cardano node simulation — no docker, no external services.
- * Requires `@evolution-sdk/scalus-emulator` to be installed.
+ * in-process Cardano node simulation.
  *
  */
 export interface NodeEmulatorConfig {
@@ -294,27 +293,15 @@ export interface NodeEmulatorConfig {
     readonly deposit: bigint
     readonly anchor?: Uint8Array
   }>
-  /** Pre-seeded datum store entries (hex hash → hex CBOR datum). */
+  /** Pre-seeded datum store entries (hex hash -> hex CBOR datum). */
   readonly datums?: ReadonlyArray<{
     readonly hash: string
     readonly datum: string
   }>
 }
 
-/**
- * Provider configuration union type.
- *
- * @since 2.0.0
- * @category model
- */
 export type ProviderConfig = BlockfrostConfig | KupmiosConfig | MaestroConfig | KoiosConfig | NodeEmulatorConfig
 
-/**
- * Seed phrase wallet configuration.
- *
- * @since 2.0.0
- * @category model
- */
 export interface SeedWalletConfig {
   readonly type: "seed"
   readonly mnemonic: string
@@ -325,12 +312,6 @@ export interface SeedWalletConfig {
   readonly password?: string
 }
 
-/**
- * Private key wallet configuration.
- *
- * @since 2.0.0
- * @category model
- */
 export interface PrivateKeyWalletConfig {
   readonly type: "private-key"
   readonly paymentKey: string
@@ -338,34 +319,16 @@ export interface PrivateKeyWalletConfig {
   readonly addressType?: "Base" | "Enterprise"
 }
 
-/**
- * Read-only wallet configuration.
- *
- * @since 2.0.0
- * @category model
- */
 export interface ReadOnlyWalletConfig {
   readonly type: "read-only"
   readonly address: string
   readonly rewardAddress?: string
 }
 
-/**
- * CIP-30 API wallet configuration.
- *
- * @since 2.0.0
- * @category model
- */
 export interface ApiWalletConfig {
   readonly type: "api"
   readonly api: WalletApi
 }
 
-/**
- * Wallet configuration union type.
- *
- * @since 2.0.0
- * @category model
- */
 export type WalletConfig = SeedWalletConfig | PrivateKeyWalletConfig | ReadOnlyWalletConfig | ApiWalletConfig
 

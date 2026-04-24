@@ -1,0 +1,39 @@
+{
+  "name": "scalus",
+  "version": "0.15.0",
+  "description": "Scalus – Cardano on-chain / off-chain toolkit compiled with Scala.js",
+  "files": [
+    "scalus.js",
+    "scalus.d.ts",
+    "README.md"
+  ],
+  "keywords": [
+    "cardano",
+    "plutus",
+    "script",
+    "evaluator",
+    "scala",
+    "scalajs"
+  ],
+  "main": "scalus.js",
+  "types": "scalus.d.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:browser-tests": "esbuild __tests__/shared-tests.ts --bundle --outfile=shared-tests-bundle.js --format=iife --global-name=SharedTests"
+  },
+  "devDependencies": {
+    "@meshsdk/core": "^1.9.0-beta.98",
+    "@types/node": "^22.0.0",
+    "cbor-x": "^1.6.0",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nau/scalus.git"
+  },
+  "homepage": "https://scalus.org",
+  "license": "Apache-2.0"
+}

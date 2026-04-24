@@ -58,6 +58,11 @@
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
+  "pnpm": {
+    "overrides": {
+      "scalus": "link:./vendor/scalus"
+    }
+  },
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
