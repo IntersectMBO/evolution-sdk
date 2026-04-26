@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.5.5
+
+### Patch Changes
+
+- [#308](https://github.com/IntersectMBO/evolution-sdk/pull/308) [`0da877a`](https://github.com/IntersectMBO/evolution-sdk/commit/0da877a0c9a2147832affc83e15d85ec758dc23a) Thanks [@Mavis2103](https://github.com/Mavis2103)! - Replace instanceof checks with duck-typing for Address vs Credential discrimination in provider implementations
+
 ## 0.5.4
 
 ### Patch Changes
