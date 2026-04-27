@@ -17,8 +17,10 @@ import type {
   DelegateToParams,
   DelegateToPoolAndDRepParams,
   DelegateToPoolParams,
+  DeregisterStakeLegacyParams,
   DeregisterStakeParams,
   RegisterAndDelegateToParams,
+  RegisterStakeLegacyParams,
   RegisterStakeParams,
   WithdrawParams
 } from "./Operations.js"
@@ -111,6 +113,74 @@ export const createRegisterStakeProgram = (
     })
 
     yield* Effect.logDebug(`[RegisterStake] Added RegCert certificate with deposit ${keyDeposit}`)
+  })
+
+/**
+ * Creates a ProgramStep for legacy (pre-Conway) stake registration.
+ * Adds a StakeRegistration (CDDL tag 0) certificate with no deposit.
+ *
+ * @since 2.0.0
+ * @category programs
+ */
+export const createRegisterStakeLegacyProgram = (
+  params: RegisterStakeLegacyParams
+): Effect.Effect<void, TransactionBuilderError, TxContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* TxContext
+
+    // Check if script-controlled
+    const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
+
+    if (isScriptControlled && !params.redeemer) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message: "Redeemer required for script-controlled stake credential registration"
+        })
+      )
+    }
+
+    // Create legacy StakeRegistration certificate (no deposit)
+    const certificate = new Certificate.StakeRegistration({
+      stakeCredential: params.stakeCredential
+    })
+
+    yield* Ref.update(ctx, (state) => {
+      let newRedeemers = state.redeemers
+      let newDeferredRedeemers = state.deferredRedeemers
+
+      // Track redeemer if script-controlled
+      if (params.redeemer && isScriptControlled) {
+        const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
+        const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
+
+        if (deferred._tag === "static") {
+          newRedeemers = new Map(state.redeemers)
+          newRedeemers.set(certKey, {
+            tag: "cert",
+            data: deferred.data,
+            exUnits: undefined,
+            label: params.label
+          })
+        } else {
+          newDeferredRedeemers = new Map(state.deferredRedeemers)
+          newDeferredRedeemers.set(certKey, {
+            tag: "cert",
+            deferred,
+            exUnits: undefined,
+            label: params.label
+          })
+        }
+      }
+
+      return {
+        ...state,
+        certificates: [...state.certificates, certificate],
+        redeemers: newRedeemers,
+        deferredRedeemers: newDeferredRedeemers
+      }
+    })
+
+    yield* Effect.logDebug(`[RegisterStakeLegacy] Added StakeRegistration certificate (no deposit)`)
   })
 
 /**
@@ -595,6 +665,74 @@ export const createDeregisterStakeProgram = (
     })
 
     yield* Effect.logDebug(`[DeregisterStake] Added UnregCert certificate with deposit refund ${keyDeposit}`)
+  })
+
+/**
+ * Creates a ProgramStep for legacy (pre-Conway) stake deregistration.
+ * Adds a StakeDeregistration (CDDL tag 1) certificate with no deposit refund.
+ *
+ * @since 2.0.0
+ * @category programs
+ */
+export const createDeregisterStakeLegacyProgram = (
+  params: DeregisterStakeLegacyParams
+): Effect.Effect<void, TransactionBuilderError, TxContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* TxContext
+
+    // Check if script-controlled
+    const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
+
+    if (isScriptControlled && !params.redeemer) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message: "Redeemer required for script-controlled stake credential deregistration"
+        })
+      )
+    }
+
+    // Create legacy StakeDeregistration certificate (no deposit refund)
+    const certificate = new Certificate.StakeDeregistration({
+      stakeCredential: params.stakeCredential
+    })
+
+    yield* Ref.update(ctx, (state) => {
+      let newRedeemers = state.redeemers
+      let newDeferredRedeemers = state.deferredRedeemers
+
+      // Track redeemer if script-controlled
+      if (params.redeemer && isScriptControlled) {
+        const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
+        const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
+
+        if (deferred._tag === "static") {
+          newRedeemers = new Map(state.redeemers)
+          newRedeemers.set(certKey, {
+            tag: "cert",
+            data: deferred.data,
+            exUnits: undefined,
+            label: params.label
+          })
+        } else {
+          newDeferredRedeemers = new Map(state.deferredRedeemers)
+          newDeferredRedeemers.set(certKey, {
+            tag: "cert",
+            deferred,
+            exUnits: undefined,
+            label: params.label
+          })
+        }
+      }
+
+      return {
+        ...state,
+        certificates: [...state.certificates, certificate],
+        redeemers: newRedeemers,
+        deferredRedeemers: newDeferredRedeemers
+      }
+    })
+
+    yield* Effect.logDebug(`[DeregisterStakeLegacy] Added StakeDeregistration certificate (no deposit refund)`)
   })
 
 /**

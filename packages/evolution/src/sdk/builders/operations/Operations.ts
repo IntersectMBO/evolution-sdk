@@ -114,6 +114,24 @@ export interface RegisterStakeParams {
 }
 
 /**
+ * Parameters for legacy (pre-Conway) stake credential registration.
+ *
+ * Creates a StakeRegistration certificate (CDDL tag 0) with no deposit.
+ * This is the pre-Conway registration format still accepted on mainnet.
+ *
+ * @since 2.0.0
+ * @category staking
+ */
+export interface RegisterStakeLegacyParams {
+  /** The stake credential to register (key hash or script hash) */
+  readonly stakeCredential: Credential.Credential
+  /** Redeemer for script-controlled stake credentials */
+  readonly redeemer?: RedeemerBuilder.RedeemerArg
+  /** Optional label for debugging script failures - identifies this operation in error messages */
+  readonly label?: string
+}
+
+/**
  * Parameters for deregistering a stake credential.
  *
  * Removes a stake credential from the chain and reclaims the deposit.
@@ -123,6 +141,24 @@ export interface RegisterStakeParams {
  * @category staking
  */
 export interface DeregisterStakeParams {
+  /** The stake credential to deregister */
+  readonly stakeCredential: Credential.Credential
+  /** Redeemer for script-controlled stake credentials */
+  readonly redeemer?: RedeemerBuilder.RedeemerArg
+  /** Optional label for debugging script failures - identifies this operation in error messages */
+  readonly label?: string
+}
+
+/**
+ * Parameters for legacy (pre-Conway) stake credential deregistration.
+ *
+ * Creates a StakeDeregistration certificate (CDDL tag 1) with no deposit refund.
+ * This is the pre-Conway deregistration format still accepted on mainnet.
+ *
+ * @since 2.0.0
+ * @category staking
+ */
+export interface DeregisterStakeLegacyParams {
   /** The stake credential to deregister */
   readonly stakeCredential: Credential.Credential
   /** Redeemer for script-controlled stake credentials */

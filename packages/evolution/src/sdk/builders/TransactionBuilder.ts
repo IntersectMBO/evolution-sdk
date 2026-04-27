@@ -65,6 +65,7 @@ import type {
   DelegateToPoolAndDRepParams,
   DelegateToPoolParams,
   DeregisterDRepParams,
+  DeregisterStakeLegacyParams,
   DeregisterStakeParams,
   MintTokensParams,
   PayToAddressParams,
@@ -73,6 +74,7 @@ import type {
   RegisterAndDelegateToParams,
   RegisterDRepParams,
   RegisterPoolParams,
+  RegisterStakeLegacyParams,
   RegisterStakeParams,
   ResignCommitteeColdParams,
   RetirePoolParams,
@@ -958,6 +960,21 @@ export interface TransactionBuilderBase {
   readonly registerStake: (params: RegisterStakeParams) => this
 
   /**
+   * Register a stake credential using the legacy (pre-Conway) certificate format.
+   *
+   * Creates a StakeRegistration certificate (CDDL tag 0) with no deposit.
+   * This is the pre-Conway registration format still accepted on mainnet and
+   * is what most wallets use today.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
+   *
+   * @since 2.0.0
+   * @category staking-methods
+   */
+  readonly registerStakeLegacy: (params: RegisterStakeLegacyParams) => this
+
+  /**
    * Deregister a stake credential from the chain.
    *
    * Removes the stake credential registration and reclaims the deposit.
@@ -974,6 +991,20 @@ export interface TransactionBuilderBase {
    * @category staking-methods
    */
   readonly deregisterStake: (params: DeregisterStakeParams) => this
+
+  /**
+   * Deregister a stake credential using the legacy (pre-Conway) certificate format.
+   *
+   * Creates a StakeDeregistration certificate (CDDL tag 1) with no deposit refund.
+   * This is the pre-Conway deregistration format still accepted on mainnet.
+   *
+   * Queues a deferred operation that will be executed when build() is called.
+   * Returns the same builder for method chaining.
+   *
+   * @since 2.0.0
+   * @category staking-methods
+   */
+  readonly deregisterStakeLegacy: (params: DeregisterStakeLegacyParams) => this
 
   /**
    * Delegate stake and/or voting power to a pool or DRep.

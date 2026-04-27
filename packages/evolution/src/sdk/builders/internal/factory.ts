@@ -65,8 +65,16 @@ export const makeTxBuilder = (
       programs.push(Stake.createRegisterStakeProgram(params))
       return txBuilder
     },
+    registerStakeLegacy: (params: Operations.RegisterStakeLegacyParams) => {
+      programs.push(Stake.createRegisterStakeLegacyProgram(params))
+      return txBuilder
+    },
     deregisterStake: (params: Operations.DeregisterStakeParams) => {
       programs.push(Stake.createDeregisterStakeProgram(params))
+      return txBuilder
+    },
+    deregisterStakeLegacy: (params: Operations.DeregisterStakeLegacyParams) => {
+      programs.push(Stake.createDeregisterStakeLegacyProgram(params))
       return txBuilder
     },
     delegateTo: (params: Operations.DelegateToParams) => {

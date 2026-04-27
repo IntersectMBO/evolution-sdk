@@ -243,7 +243,7 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * ```typescript
  * import * as Address from "@evolution-sdk/evolution/Address"
  *
- * const address = Address.fromSeed("your twenty-four word mnemonic ...", {
+ * const address = Address.fromSeed("test test test test test test test test test test test test test test test test test test test test test test test sauce", {
  *   accountIndex: 0,
  *   networkId: 0 // 0 = testnet, 1 = mainnet
  * })
