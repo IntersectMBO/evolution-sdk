@@ -19,7 +19,9 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
+// Get your stake credential from your wallet address
+const address = await client.address()
+const stakeCredential = address.stakingCredential!
 
 const tx = await client.newTx().deregisterStake({ stakeCredential }).build()
 
@@ -41,8 +43,11 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-declare const rewardBalance: bigint
+// Query rewards first, then withdraw + deregister in one transaction
+const address = await client.address()
+const stakeCredential = address.stakingCredential!
+const delegation = await client.getWalletDelegation()
+const rewardBalance = delegation.rewards // accumulated lovelace
 
 const tx = await client
   .newTx()
@@ -66,8 +71,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptStakeCredential: Credential.Credential
-declare const stakeScript: any
+declare const scriptStakeCredential: Credential.Credential // script-controlled stake credential
+declare const stakeScript: any // compiled Plutus staking script (from Aiken build or Blueprint codegen)
 
 const tx = await client
   .newTx()

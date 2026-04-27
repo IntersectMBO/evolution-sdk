@@ -84,7 +84,27 @@ const client = Client.make(mainnet)
   })
 ```
 
-### Setup Requirements
+### With Custom Headers (Demeter / Hosted)
+
+For hosted Kupmios services like [Demeter](https://demeter.run), pass API keys via custom headers:
+
+```typescript twoslash
+import { mainnet, Client } from "@evolution-sdk/evolution"
+
+const client = Client.make(mainnet)
+  .withKupmios({
+    ogmiosUrl: "https://ogmios.demeter.run",
+    kupoUrl: "https://kupo.demeter.run",
+    headers: {
+      ogmiosHeader: { "dmtr-api-key": process.env.DEMETER_API_KEY! },
+      kupoHeader: { "dmtr-api-key": process.env.DEMETER_API_KEY! },
+    }
+  })
+```
+
+Each service can have its own header — useful when Kupo and Ogmios use different authentication.
+
+### Setup Requirements (Self-Hosted)
 
 Requires running Cardano node, Ogmios, and Kupo services:
 

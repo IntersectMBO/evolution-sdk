@@ -11,11 +11,38 @@ This guide walks you through building your first transaction—from creating a c
 
 Perfect for developers new to the SDK or those migrating from other Cardano libraries looking for a working foundation to build upon.
 
+## Choose Your Setup
+
+This guide uses **Blockfrost** + **seed phrase** for the quickest path. If your setup is different, jump to the right guide:
+
+| Your Setup | Guide |
+| --- | --- |
+| **Backend / server-side** | This page (Blockfrost + seed phrase) |
+| **Frontend / dApp** | [API Wallets](/docs/wallets/api-wallet) (CIP-30 browser wallet) |
+| **Self-hosted infra** | [Kupmios Provider](/docs/providers/provider-types) (Ogmios + Kupo) |
+| **Local development** | [Devnet](/docs/devnet/getting-started) (Docker-based local chain) |
+| **Multiple providers** | [Provider Types](/docs/providers/provider-types) (compare all options) |
+
+## Key Concept: Provider + Wallet = Client
+
+Before diving in, understand the two halves of a client:
+
+- **Provider** — reads from the blockchain (query UTxOs, protocol parameters, submit transactions). Think of it as your connection to the network.
+- **Wallet** — signs transactions (holds keys or connects to a browser extension). Without a wallet, you can build but not sign.
+
+A **signing client** has both: it can build, sign, and submit. A **read-only client** has only a provider + address: it can build unsigned transactions but cannot sign. See [Client Architecture](/docs/clients/architecture) for full details.
+
+This guide creates a signing client. If you're building a frontend dApp where the user's browser wallet signs, see [API Wallets](/docs/wallets/api-wallet) instead.
+
 ## Prerequisites
 
 - Node.js 18+ or browser environment with ES modules support
 - Basic TypeScript knowledge
 - A Cardano testnet wallet with some tADA (get from [faucet](https://docs.cardano.org/cardano-testnet/tools/faucet/))
+
+<Callout type="info">
+This guide uses **preprod testnet**. Never use real mainnet funds while learning. Get free test ADA from the [Cardano faucet](https://docs.cardano.org/cardano-testnet/tools/faucet/).
+</Callout>
 
 ## Your First Transaction
 
@@ -127,6 +154,8 @@ console.log("Transaction submitted:", hash)
 
 ## What's Next?
 
+- **[Common Patterns](/docs/common-patterns)** - Quick recipes for frequent tasks
+- **[API Overview](/docs/api-overview)** - Find the right module by task
 - **[Clients](/docs/clients)** - Connect to different blockchains and providers
 - **[Wallets](/docs/wallets)** - Explore all wallet types and key management
 - **[Transactions](/docs/transactions)** - Build complex multi-output transactions

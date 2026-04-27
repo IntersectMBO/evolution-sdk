@@ -19,8 +19,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-declare const drepKeyHash: any
+declare const stakeCredential: Credential.Credential // from (await client.address()).stakingCredential!
+declare const drepKeyHash: any // DRep's key hash (28 bytes, from a governance explorer or DRep registry)
 
 const tx = await client
   .newTx()
@@ -53,7 +53,7 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
+declare const stakeCredential: Credential.Credential // from (await client.address()).stakingCredential!
 
 // Abstain from all governance votes
 const tx = await client
@@ -82,9 +82,9 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-declare const poolKeyHash: any
-declare const drepKeyHash: any
+declare const stakeCredential: Credential.Credential // from (await client.address()).stakingCredential!
+declare const poolKeyHash: any // pool key hash (from a stake pool explorer)
+declare const drepKeyHash: any // DRep's key hash (from a governance explorer)
 
 const tx = await client
   .newTx()
@@ -113,8 +113,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-declare const drepKeyHash: any
+declare const stakeCredential: Credential.Credential // from (await client.address()).stakingCredential!
+declare const drepKeyHash: any // DRep's key hash (28 bytes, from a governance explorer or DRep registry)
 
 const tx = await client
   .newTx()

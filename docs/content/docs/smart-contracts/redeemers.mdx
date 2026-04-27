@@ -33,7 +33,7 @@ const client = Client.make(preprod)
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 declare const scriptUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 // Static redeemer — the value is fixed
 const tx = await client
@@ -68,7 +68,7 @@ const client = Client.make(preprod)
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 declare const scriptUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 // Self redeemer — callback receives { index, utxo }
 const tx = await client
@@ -112,7 +112,7 @@ const client = Client.make(preprod)
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 declare const orderUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 // Batch redeemer — callback sees all specified inputs
 const tx = await client

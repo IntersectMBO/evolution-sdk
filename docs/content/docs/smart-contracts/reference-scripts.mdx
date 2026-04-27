@@ -27,7 +27,7 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const validatorScript: any
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 // Store script in a UTxO (send to your own address or a permanent holder)
 const myAddress = await client.address()
@@ -66,8 +66,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptUtxos: UTxO.UTxO[]
-declare const referenceScriptUtxo: UTxO.UTxO
+declare const scriptUtxos: UTxO.UTxO[] // from client.getUtxos(scriptAddress)
+declare const referenceScriptUtxo: UTxO.UTxO // the UTxO where you deployed the script in Step 1
 
 // Reference the UTxO containing the script instead of attaching it
 const tx = await client

@@ -57,7 +57,7 @@ const client = Client.make(preprod)
 
 // Compute datum hash from PlutusData
 const datum = Data.constr(0n, [5000000n])
-const datumHash = Data.hashData(datum)
+const datumHash = Data.toDatumHash(datum)
 
 const tx = await client
   .newTx()

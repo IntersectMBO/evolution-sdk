@@ -25,7 +25,9 @@ Eliminate derivation overhead, integrate with hardware security modules (HSMs) a
 
 ## How to Secure
 
-**Critical**: You manage raw cryptographic material with no backup mechanism.
+<Callout type="error">
+You manage raw cryptographic material with **no backup mechanism**. If you lose the key, the funds are gone.
+</Callout>
 
 Requirements for production:
 
@@ -123,6 +125,8 @@ Log all key access events without logging the keys themselves. Alert on unusual 
 
 ## AWS Secrets Manager Example
 
+Uses [`@aws-sdk/client-secrets-manager`](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/secrets-manager/) — see the [official quickstart](https://docs.aws.amazon.com/secretsmanager/latest/userguide/retrieving-secrets-javascript.html).
+
 ```typescript twoslash
 import { mainnet, Client } from "@evolution-sdk/evolution"
 
@@ -156,6 +160,8 @@ async function createProductionClient() {
 ```
 
 ## Azure Key Vault Example
+
+Uses [`@azure/keyvault-secrets`](https://learn.microsoft.com/en-us/javascript/api/@azure/keyvault-secrets/secretclient) + [`@azure/identity`](https://learn.microsoft.com/en-us/azure/key-vault/secrets/quick-create-node) — see the [official quickstart](https://learn.microsoft.com/en-us/azure/key-vault/secrets/quick-create-node).
 
 ```typescript twoslash
 import { mainnet, Client } from "@evolution-sdk/evolution"

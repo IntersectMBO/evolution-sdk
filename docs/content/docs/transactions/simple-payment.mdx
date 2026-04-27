@@ -75,7 +75,7 @@ const client = Client.make(preprod)
   })
 
 // Send 2 ADA plus 100 tokens
-const policyId = "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1b0c9d8e7f6"
+const policyId = "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1"
 const assetName = "" // empty for fungible tokens
 let assets = Assets.fromLovelace(2_000_000n)
 assets = Assets.addByHex(assets, policyId, assetName, 100n)
@@ -104,8 +104,8 @@ Make your code more readable with descriptive variable names:
 import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
 const client = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
-  .withSeed({ mnemonic: "", accountIndex: 0 })
+  .withBlockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 // ---cut---
 const recipientAddress = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63")
@@ -128,8 +128,8 @@ Adjust transaction values based on network or configuration:
 import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
 const client = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
-  .withSeed({ mnemonic: "", accountIndex: 0 })
+  .withBlockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 // ---cut---
 const isMainnet = process.env.NETWORK === "mainnet"

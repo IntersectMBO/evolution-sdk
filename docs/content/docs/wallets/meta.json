@@ -5,6 +5,7 @@
     "seed-phrase",
     "private-key",
     "api-wallet",
-    "security"
+    "security",
+    "message-signing"
   ]
 }

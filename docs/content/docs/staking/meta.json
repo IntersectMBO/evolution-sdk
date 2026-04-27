@@ -2,8 +2,11 @@
   "title": "Staking",
   "pages": [
     "index",
-    "certificates",
-    "pools",
-    "rewards"
+    "registration",
+    "legacy-registration",
+    "delegation",
+    "withdrawal",
+    "deregistration",
+    "pools"
   ]
 }

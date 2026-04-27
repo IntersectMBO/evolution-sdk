@@ -19,9 +19,9 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-
-// Query current rewards via wallet
+// Get your stake credential and query rewards
+const address = await client.address()
+const stakeCredential = address.stakingCredential!
 const delegation = await client.getWalletDelegation()
 console.log("Available rewards:", delegation.rewards, "lovelace")
 
@@ -52,8 +52,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptStakeCredential: Credential.Credential
-declare const stakeScript: any
+declare const scriptStakeCredential: Credential.Credential // script-controlled stake credential
+declare const stakeScript: any // compiled Plutus staking script (from Aiken build or Blueprint codegen)
 
 // Trigger the stake validator with zero withdrawal
 const tx = await client
@@ -85,9 +85,9 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptStakeCredential: Credential.Credential
-declare const stakeScript: any
-declare const rewardAmount: bigint
+declare const scriptStakeCredential: Credential.Credential // script-controlled stake credential
+declare const stakeScript: any // compiled Plutus staking script (from Aiken build or Blueprint codegen)
+declare const rewardAmount: bigint // from client.getWalletDelegation().rewards
 
 const tx = await client
   .newTx()

@@ -9,7 +9,7 @@ Integration tests run against a local devnet cluster, validating the full transa
 
 ## Test Setup Pattern
 
-```typescript
+```typescript title="test/integration.test.ts"
 import {
   describe,
   it,
@@ -23,13 +23,12 @@ import {
   Address,
   Assets,
   preprod,
-  type SigningClient,
   Client,
 } from "@evolution-sdk/evolution"
 
 describe("Transaction Tests", () => {
   let cluster: Cluster.Cluster
-  let client: SigningClient
+  let client: Client.SigningClient
   let genesisConfig: any
 
   beforeAll(async () => {

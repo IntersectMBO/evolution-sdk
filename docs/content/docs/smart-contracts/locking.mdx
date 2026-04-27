@@ -102,7 +102,7 @@ const scriptAddress = Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t
 
 // Create assets with ADA + tokens
 let assets = Assets.fromLovelace(5_000_000n)
-assets = Assets.addByHex(assets, "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1b0c9d8e7f6", "", 100n)
+assets = Assets.addByHex(assets, "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1", "", 100n)
 
 const tx = await client
   .newTx()
@@ -131,7 +131,7 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const validatorScript: any
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 const scriptAddress = Address.fromBech32("addr_test1wrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qnmqsyu")
 

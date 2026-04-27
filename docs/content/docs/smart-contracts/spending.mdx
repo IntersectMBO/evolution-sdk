@@ -28,8 +28,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const scriptUtxos: UTxO.UTxO[] // from client.getUtxos(scriptAddress)
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 // Spend script UTxOs with a "Claim" redeemer
 const tx = await client
@@ -67,8 +67,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const scriptUtxos: UTxO.UTxO[] // from client.getUtxos(scriptAddress)
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 declare const myKeyHash: KeyHash.KeyHash
 
 const tx = await client
@@ -104,8 +104,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const scriptUtxos: UTxO.UTxO[] // from client.getUtxos(scriptAddress)
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 const now = BigInt(Date.now())
 
@@ -147,8 +147,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const scriptUtxos: UTxO.UTxO[]
-declare const validatorScript: any
+declare const scriptUtxos: UTxO.UTxO[] // from client.getUtxos(scriptAddress)
+declare const validatorScript: any // compiled Plutus script (from Aiken build or Blueprint codegen)
 
 const beneficiary = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63")
 

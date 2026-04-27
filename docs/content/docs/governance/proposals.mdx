@@ -19,16 +19,19 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
+// Governance action — e.g. new GovernanceAction.InfoAction() for informational proposals.
+// Other types: ParameterChangeAction, HardForkInitiationAction,
+// TreasuryWithdrawalsAction, NoConfidenceAction, UpdateCommitteeAction, NewConstitutionAction
 declare const governanceAction: GovernanceAction.GovernanceAction
-declare const rewardAccount: RewardAccount.RewardAccount
-declare const anchor: Anchor.Anchor
+declare const rewardAccount: RewardAccount.RewardAccount // your stake reward account — deposit refunded here
+declare const anchor: Anchor.Anchor // metadata URL + content hash describing the proposal
 
 const tx = await client
   .newTx()
   .propose({
     governanceAction,
-    rewardAccount, // Deposit refunded here when finalized
-    anchor // Metadata URL + hash (or null)
+    rewardAccount,
+    anchor
   })
   .build()
 

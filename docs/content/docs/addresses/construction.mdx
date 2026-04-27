@@ -22,9 +22,10 @@ const address = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmlu
 ```typescript twoslash
 import { Address } from "@evolution-sdk/evolution"
 
-// Address hex strings are typically 29 or 57 bytes
-declare const addressHex: string
-const address = Address.fromHex(addressHex)
+// Address hex: 58 chars (29 bytes, enterprise) or 114 chars (57 bytes, base)
+const address = Address.fromHex(
+  "01abc123def456abc123def456abc123def456abc123def456abc123deabc123def456abc123def456abc123def456abc123def456abc123de"
+)
 ```
 
 ## Convert Between Formats

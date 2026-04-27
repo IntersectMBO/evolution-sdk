@@ -72,9 +72,13 @@ Chain operations to specify what the transaction should do. Call `.build()` when
 import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
 const client = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
-  .withSeed({ mnemonic: "", accountIndex: 0 })
+  .withBlockfrost({
+    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+    projectId: process.env.BLOCKFROST_API_KEY!
+  })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
+// ---cut---
 const tx = await client
   .newTx()
   .payToAddress({
@@ -94,8 +98,11 @@ Authorize the transaction with your wallet's private keys:
 import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
 const client = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
-  .withSeed({ mnemonic: "", accountIndex: 0 })
+  .withBlockfrost({
+    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+    projectId: process.env.BLOCKFROST_API_KEY!
+  })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 const tx = await client
   .newTx()
@@ -105,6 +112,7 @@ const tx = await client
   })
   .build()
 
+// ---cut---
 const signed = await tx.sign()
 ```
 
@@ -116,8 +124,11 @@ Broadcast the signed transaction to the blockchain and get the transaction hash:
 import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
 const client = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
-  .withSeed({ mnemonic: "", accountIndex: 0 })
+  .withBlockfrost({
+    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+    projectId: process.env.BLOCKFROST_API_KEY!
+  })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 const tx = await client
   .newTx()
@@ -129,6 +140,7 @@ const tx = await client
 
 const signed = await tx.sign()
 
+// ---cut---
 const txHash = await signed.submit()
 console.log("Transaction hash:", txHash)
 ```

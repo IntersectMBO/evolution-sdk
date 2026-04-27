@@ -85,7 +85,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const refs: any[]
+// TransactionInput identifies a specific UTxO by tx hash + output index
+declare const refs: any[] // Array of TransactionInput (from previous tx results or chain queries)
 
 const utxos = await client.getUtxosByOutRef(refs)
 ```

@@ -19,7 +19,10 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
+// Get your stake credential from your wallet address
+const address = await client.address()
+const stakeCredential = address.stakingCredential!
+// stakeCredential is a Credential (KeyHash for seed wallets, ScriptHash for script-controlled)
 
 const tx = await client.newTx().registerStake({ stakeCredential }).build()
 
@@ -27,7 +30,7 @@ const signed = await tx.sign()
 await signed.submit()
 ```
 
-The deposit amount is fetched automatically from protocol parameters.
+The deposit amount (currently 2 ADA) is fetched automatically from protocol parameters.
 
 ## Register and Delegate Together
 
@@ -44,8 +47,8 @@ const client = Client.make(preprod)
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 declare const stakeCredential: Credential.Credential
-declare const poolKeyHash: any
-declare const drep: any
+declare const poolKeyHash: any // pool key hash from a stake pool (e.g. from a pool explorer)
+declare const drep: any // DRep to delegate voting power to (e.g. DRep.fromKeyHash(...))
 
 // Register + delegate to pool in one certificate
 const tx = await client
@@ -73,8 +76,8 @@ const client = Client.make(preprod)
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 declare const stakeCredential: Credential.Credential
-declare const poolKeyHash: any
-declare const drep: any
+declare const poolKeyHash: any // pool key hash from a stake pool (e.g. from a pool explorer)
+declare const drep: any // DRep to delegate voting power to (e.g. DRep.fromKeyHash(...))
 
 // Register + delegate to both pool and DRep
 const tx = await client
@@ -105,7 +108,7 @@ const client = Client.make(preprod)
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 declare const scriptStakeCredential: Credential.Credential
-declare const stakeScript: any
+declare const stakeScript: any // compiled Plutus staking script (from Aiken build or Blueprint codegen)
 
 const tx = await client
   .newTx()

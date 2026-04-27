@@ -6,6 +6,7 @@
     "simple-payment",
     "multi-output",
     "chaining",
-    "retry-safe"
+    "retry-safe",
+    "airdrop"
   ]
 }

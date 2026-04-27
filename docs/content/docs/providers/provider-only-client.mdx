@@ -386,7 +386,7 @@ const client =
 | Feature                 | Provider-Only Client           | Read-Only Client                                                     |
 | ----------------------- | ------------------------------ | -------------------------------------------------------------------- |
 | **Configuration**       | Provider only                  | Provider + address                                                   |
-| **Creation**            | `client(chain).withBlockfrost(...)` | `client(chain).withBlockfrost(...).withAddress(address)` |
+| **Creation**            | `Client.make(chain).withBlockfrost(...)` | `Client.make(chain).withBlockfrost(...).withAddress(address)` |
 | **Query any address**   | `getUtxos(anyAddress)`         | `getUtxos(anyAddress)`                                               |
 | **Query own address**   | Not available                  | `getWalletUtxos()`                                                   |
 | **Build transactions**  | `newTx()` with manual context  | `newTx()` returns unsigned tx                                        |

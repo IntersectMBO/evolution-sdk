@@ -333,9 +333,10 @@ const witnessSet = await client.signTx(txCbor)
 ```typescript
 // WRONG - Read-only client has no private keys
 const client = Client.make(mainnet)
+  .withBlockfrost({ ...providerConfig })
   .withAddress(userAddress)
 
-await client.sign(data) // Error: Cannot sign with read-only wallet
+await client.signTx(txCbor) // Error: Cannot sign with read-only wallet
 ```
 
 **Fix**: Return unsigned transaction to frontend for signing.
@@ -343,8 +344,9 @@ await client.sign(data) // Error: Cannot sign with read-only wallet
 ### ✅ Correct Backend Pattern
 
 ```typescript
-// CORRECT - Read-only client builds only
+// CORRECT - Read-only client builds only (needs provider + address)
 const client = Client.make(mainnet)
+  .withBlockfrost({ ...providerConfig })
   .withAddress(userAddress)
 
 // Build unsigned transaction
@@ -379,11 +381,11 @@ Understanding what each client type can do:
 ## Next Steps
 
 <Cards>
-  <Card title="API Wallet Client" href="/docs/clients/api-wallet-client">
-    Learn about API wallet clients for frontend signing
+  <Card title="API Wallets" href="/docs/wallets/api-wallet">
+    CIP-30 browser wallet integration for frontend signing
   </Card>
-  <Card title="Read-Only Client" href="/docs/clients/read-only-client">
-    Learn about read-only clients for backend building
+  <Card title="Client Architecture" href="/docs/clients/architecture">
+    Read-only wallets and backend transaction building
   </Card>
   <Card title="Wallet Types" href="/docs/wallets">
     Understand different wallet types used in clients

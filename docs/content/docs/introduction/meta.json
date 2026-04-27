@@ -3,10 +3,13 @@
   "pages": [
     "index",
     "why-evolution",
-    "getting-started",
     "installation",
+    "getting-started",
+    "important-defaults",
     "imports",
     "platform-compatibility",
-    "migration-from-lucid"
+    "changelog",
+    "migration-from-lucid",
+    "community"
   ]
 }

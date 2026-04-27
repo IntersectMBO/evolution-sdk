@@ -30,7 +30,7 @@ import { Address,
 } from "@evolution-sdk/evolution"
 
 // Derive address from seed (synchronous, no network required)
-const address = Address.fromSeed("your twenty-four word mnemonic phrase here", {
+const address = Address.fromSeed("test test test test test test test test test test test test test test test test test test test test test test test sauce", {
   accountIndex: 0,
   networkId: 0 // testnet address format
 })
@@ -107,7 +107,9 @@ This pattern enables testing multi-party protocols, delegation scenarios, and wa
 
 After creating a genesis configuration, calculate the resulting UTxOs to verify addresses and amounts.
 
-**Important**: Genesis UTxOs do NOT appear in Kupo's index because Kupo reads chain events starting from block 1, while genesis UTxOs exist in block 0 (the genesis block itself). You must use `calculateUtxosFromConfig` to derive these UTxOs and provide them to your transaction builder via the `availableUtxos` parameter. After spending a genesis UTxO, the resulting outputs will be indexed normally by Kupo.
+<Callout type="warn">
+**Genesis UTxOs do NOT appear in Kupo's index** — Kupo reads from block 1, but genesis UTxOs are in block 0. Use `calculateUtxosFromConfig` to derive these UTxOs and pass them via `availableUtxos`. After spending a genesis UTxO, resulting outputs are indexed normally.
+</Callout>
 
 ```typescript twoslash
 import { Config, Genesis } from "@evolution-sdk/devnet"
@@ -224,7 +226,9 @@ Common protocol parameter customizations:
 - **collateralPercentage**: Collateral % for script transactions (default: 150)
 - **maxCollateralInputs**: Max collateral inputs (default: 3)
 
-**Important**: The devnet runs Conway era. At runtime, the node uses `coinsPerUtxoByte` (from Alonzo's `lovelacePerUTxOWord`), not Shelley's legacy `minUTxOValue`.
+<Callout type="info">
+The devnet runs Conway era. At runtime, the node uses `coinsPerUtxoByte` (from Alonzo's `lovelacePerUTxOWord`), not Shelley's legacy `minUTxOValue`.
+</Callout>
 
 See the exported types `Config.ShelleyGenesis`, `Config.AlonzoGenesis`, and `Config.ConwayGenesis` for complete definitions.
 

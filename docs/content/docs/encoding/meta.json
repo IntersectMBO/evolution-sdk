@@ -8,6 +8,7 @@
     "json",
     "data",
     "tschema",
-    "plutus"
+    "plutus",
+    "uplc"
   ]
 }

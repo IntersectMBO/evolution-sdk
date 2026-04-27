@@ -19,8 +19,10 @@ Added in v2.0.0
   - [createDelegateToPoolAndDRepProgram](#createdelegatetopoolanddrepprogram)
   - [createDelegateToPoolProgram](#createdelegatetopoolprogram)
   - [~~createDelegateToProgram~~](#createdelegatetoprogram)
+  - [createDeregisterStakeLegacyProgram](#createderegisterstakelegacyprogram)
   - [createDeregisterStakeProgram](#createderegisterstakeprogram)
   - [createRegisterAndDelegateToProgram](#createregisteranddelegatetoprogram)
+  - [createRegisterStakeLegacyProgram](#createregisterstakelegacyprogram)
   - [createRegisterStakeProgram](#createregisterstakeprogram)
   - [createWithdrawProgram](#createwithdrawprogram)
 
@@ -94,6 +96,21 @@ export declare const createDelegateToProgram: (
 
 Added in v2.0.0
 
+## createDeregisterStakeLegacyProgram
+
+Creates a ProgramStep for legacy (pre-Conway) stake deregistration.
+Adds a StakeDeregistration (CDDL tag 1) certificate with no deposit refund.
+
+**Signature**
+
+```ts
+export declare const createDeregisterStakeLegacyProgram: (
+  params: DeregisterStakeLegacyParams
+) => Effect.Effect<void, TransactionBuilderError, TxContext>
+```
+
+Added in v2.0.0
+
 ## createDeregisterStakeProgram
 
 Creates a ProgramStep for deregisterStake operation.
@@ -131,6 +148,21 @@ For script-controlled credentials, tracks redeemer for evaluation.
 export declare const createRegisterAndDelegateToProgram: (
   params: RegisterAndDelegateToParams
 ) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+```
+
+Added in v2.0.0
+
+## createRegisterStakeLegacyProgram
+
+Creates a ProgramStep for legacy (pre-Conway) stake registration.
+Adds a StakeRegistration (CDDL tag 0) certificate with no deposit.
+
+**Signature**
+
+```ts
+export declare const createRegisterStakeLegacyProgram: (
+  params: RegisterStakeLegacyParams
+) => Effect.Effect<void, TransactionBuilderError, TxContext>
 ```
 
 Added in v2.0.0

@@ -21,8 +21,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-declare const poolKeyHash: any
+declare const stakeCredential: Credential.Credential // from (await client.address()).stakingCredential!
+declare const poolKeyHash: any // pool key hash (from a stake pool explorer)
 
 const tx = await client.newTx().delegateToPool({ stakeCredential, poolKeyHash }).build()
 
@@ -109,8 +109,8 @@ const client = Client.make(preprod)
   })
   .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
-declare const stakeCredential: Credential.Credential
-declare const poolKeyHash: any
+declare const stakeCredential: Credential.Credential // from (await client.address()).stakingCredential!
+declare const poolKeyHash: any // pool key hash (from a stake pool explorer)
 declare const drepKeyHash: any
 
 const tx = await client

@@ -46,12 +46,12 @@ import { preprod, Client } from "@evolution-sdk/evolution"
 
 // Provider-only client (no wallet) — can query but not sign
 const queryClient = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
+  .withBlockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! })
 
 // Signing client (wallet + provider) — full capabilities
 const signingClient = Client.make(preprod)
-  .withBlockfrost({ baseUrl: "", projectId: "" })
-  .withSeed({ mnemonic: "", accountIndex: 0 })
+  .withBlockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 ```
 
 ## Effect Integration
