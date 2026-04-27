@@ -72,8 +72,8 @@ importers:
         specifier: ^12.1.1
         version: 12.1.1(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-sort-destructure-keys:
-        specifier: ^2.0.0
-        version: 2.0.0(eslint@9.39.4(jiti@2.6.1))
+        specifier: ^3.0.0
+        version: 3.0.0(eslint@9.39.4(jiti@2.6.1))
       madge:
         specifier: ^8.0.0
         version: 8.0.0(typescript@5.9.3)
@@ -3920,11 +3920,11 @@ packages:
     peerDependencies:
       eslint: '>=5.0.0'
 
-  eslint-plugin-sort-destructure-keys@2.0.0:
-    resolution: {integrity: sha512-4w1UQCa3o/YdfWaLr9jY8LfGowwjwjmwClyFLxIsToiyIdZMq3x9Ti44nDn34DtTPP7PWg96tUONKVmATKhYGQ==}
-    engines: {node: '>=12'}
+  eslint-plugin-sort-destructure-keys@3.0.0:
+    resolution: {integrity: sha512-ian2KEdGi8xZW50SVz9HIP9PDQN4XWeo3Hax3LsDk0ojL+wrwk40az8bKCnt3q2J7I3q5xF2ncZ0arj2q8Ou+A==}
+    engines: {node: '>=18'}
     peerDependencies:
-      eslint: 5 - 9
+      eslint: 5 - 10
 
   eslint-scope@8.4.0:
     resolution: {integrity: sha512-sNXOfKCn74rt8RICKMvJS7XKV/Xk9kA7DyJr8mJik3S7Cwgy3qlkkmyS2uQB3jiJg6VNdZd/pDBJu0nvG2NlTg==}
@@ -10934,7 +10934,7 @@ snapshots:
     dependencies:
       eslint: 9.39.4(jiti@2.6.1)
 
-  eslint-plugin-sort-destructure-keys@2.0.0(eslint@9.39.4(jiti@2.6.1)):
+  eslint-plugin-sort-destructure-keys@3.0.0(eslint@9.39.4(jiti@2.6.1)):
     dependencies:
       eslint: 9.39.4(jiti@2.6.1)
       natural-compare-lite: 1.4.0
