@@ -418,6 +418,7 @@ export interface TxBuilderConfig {
    * @since 2.0.0
    */
   readonly chain: Chain
+
 }
 
 /**
@@ -586,6 +587,17 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly debug?: boolean
+
+  /**
+   * When `true`, `payToAddress` outputs whose lovelace is below the protocol
+   * minimum are automatically bumped up to the required minimum.
+   * When `false` or omitted (the default), under-funded outputs are used as-is.
+   *
+   * Can be overridden per-call via `PayToAddressParams.autoMinUtxo`.
+   *
+   * @since 2.0.0
+   */
+  readonly autoMinUtxo?: boolean
 }
 
 // ============================================================================
@@ -1720,7 +1732,9 @@ export type TransactionBuilder = SigningTransactionBuilder | ReadOnlyTransaction
 export function makeTxBuilder(
   config: TxBuilderConfig & { wallet: Wallet.SigningWallet | Wallet.ApiWallet }
 ): SigningTransactionBuilder
-export function makeTxBuilder(config: TxBuilderConfig & { wallet: Wallet.ReadOnlyWallet }): ReadOnlyTransactionBuilder
+export function makeTxBuilder(
+  config: TxBuilderConfig & { wallet: Wallet.ReadOnlyWallet }
+): ReadOnlyTransactionBuilder
 export function makeTxBuilder(config: TxBuilderConfig & { wallet?: undefined }): ReadOnlyTransactionBuilder
 export function makeTxBuilder(config: TxBuilderConfig): SigningTransactionBuilder | ReadOnlyTransactionBuilder {
   return BuilderFactory.makeTxBuilder(config)
