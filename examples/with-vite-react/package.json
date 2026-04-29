@@ -1,6 +1,6 @@
 {
   "name": "evolution-vite-react-example",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": true,
   "type": "module",
   "scripts": {

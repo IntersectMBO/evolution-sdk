@@ -1,5 +1,13 @@
 # @evolution-sdk/evolution
 
+## 0.5.6
+
+### Patch Changes
+
+- [#310](https://github.com/IntersectMBO/evolution-sdk/pull/310) [`72160b7`](https://github.com/IntersectMBO/evolution-sdk/commit/72160b770c58e05b5b1bbad6ada166ebf7943e82) Thanks [@Mavis2103](https://github.com/Mavis2103)! - Add `fullProtocolParameters` to `BuildOptions` for providerless transaction builds
+
+- [#312](https://github.com/IntersectMBO/evolution-sdk/pull/312) [`a4404da`](https://github.com/IntersectMBO/evolution-sdk/commit/a4404daae38a354f019cdbc0805385c55e5c6aee) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add `registerStakeLegacy` and `deregisterStakeLegacy` builder methods for pre-Conway stake certificate support. These create `StakeRegistration` (CDDL tag 0) and `StakeDeregistration` (CDDL tag 1) certificates with no deposit, matching what most wallets use today. Both methods support script-controlled credentials with redeemers.
+
 ## 0.5.5
 
 ### Patch Changes
