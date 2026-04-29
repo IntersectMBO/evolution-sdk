@@ -10,7 +10,7 @@ import { Effect, Ref } from "effect"
 import * as CoreAssets from "../../../Assets.js"
 import { calculateMinimumUtxoLovelace, makeTxOutput } from "../internal/txBuilder.js"
 import type { TransactionBuilderError } from "../TransactionBuilder.js"
-import { ProtocolParametersTag, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
+import { BuildOptionsTag, ProtocolParametersTag, TxContext } from "../TransactionBuilder.js"
 import type { PayToAddressParams } from "./Operations.js"
 
 /**
@@ -35,8 +35,8 @@ import type { PayToAddressParams } from "./Operations.js"
 export const createPayToAddressProgram = (params: PayToAddressParams) =>
   Effect.gen(function* () {
     const ctx = yield* TxContext
-    const config = yield* TxBuilderConfigTag
-    const shouldBump = params.autoMinUtxo ?? config.autoMinUtxo ?? false
+    const buildOptions = yield* BuildOptionsTag
+    const shouldBump = params.autoMinUtxo ?? buildOptions.autoMinUtxo ?? false
 
     let effectiveAssets = params.assets
 
@@ -72,5 +72,5 @@ export const createPayToAddressProgram = (params: PayToAddressParams) =>
   }) satisfies Effect.Effect<
     void,
     TransactionBuilderError,
-    ProtocolParametersTag | TxContext | TxBuilderConfigTag
+    ProtocolParametersTag | TxContext | BuildOptionsTag
   >

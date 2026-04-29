@@ -419,17 +419,6 @@ export interface TxBuilderConfig {
    */
   readonly chain: Chain
 
-  /**
-   * When `true`, `payToAddress` outputs whose lovelace is below the protocol
-   * minimum are automatically bumped up to the required minimum.
-   * When `false` or omitted (the default), under-funded outputs are passed
-   * through as-is and the node will reject them.
-   *
-   * Can be overridden per-call via `PayToAddressParams.autoMinUtxo`.
-   *
-   * @since 2.0.0
-   */
-  readonly autoMinUtxo?: boolean
 }
 
 /**
@@ -598,6 +587,18 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly debug?: boolean
+
+  /**
+   * When `true`, `payToAddress` outputs whose lovelace is below the protocol
+   * minimum are automatically bumped up to the required minimum.
+   * When `false` or omitted (the default), under-funded outputs are passed
+   * through as-is and the node will reject them.
+   *
+   * Can be overridden per-call via `PayToAddressParams.autoMinUtxo`.
+   *
+   * @since 2.0.0
+   */
+  readonly autoMinUtxo?: boolean
 }
 
 // ============================================================================

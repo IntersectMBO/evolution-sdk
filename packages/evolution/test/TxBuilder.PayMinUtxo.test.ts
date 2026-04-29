@@ -39,9 +39,9 @@ const buildAndGetFirstOutput = async (
   }
 ) => {
   const walletLovelace = options?.walletLovelace ?? 10_000_000n
-  const builderAutoMinUtxo = options?.autoMinUtxo ?? true
+  const buildAutoMinUtxo = options?.autoMinUtxo ?? true
 
-  const signBuilder = await makeTxBuilder({ chain: mainnet, autoMinUtxo: builderAutoMinUtxo })
+  const signBuilder = await makeTxBuilder({ chain: mainnet })
     .payToAddress({
       address: Address.fromBech32(RECEIVER_ADDRESS),
       assets: receiverAssets,
@@ -58,7 +58,8 @@ const buildAndGetFirstOutput = async (
           nativeAssets: options?.walletNativeAssets
         })
       ],
-      protocolParameters: PROTOCOL_PARAMS
+      protocolParameters: PROTOCOL_PARAMS,
+      autoMinUtxo: buildAutoMinUtxo
     })
 
   const tx = await signBuilder.toTransaction()
