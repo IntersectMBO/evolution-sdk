@@ -31,13 +31,21 @@ const expectedMinLovelace = (assets: CoreAssets.Assets) =>
 
 const buildAndGetFirstOutput = async (
   receiverAssets: CoreAssets.Assets,
-  walletLovelace = 10_000_000n,
-  walletNativeAssets?: Record<string, bigint>
+  options?: {
+    walletLovelace?: bigint
+    walletNativeAssets?: Record<string, bigint>
+    autoMinUtxo?: boolean
+    perCallAutoMinUtxo?: boolean
+  }
 ) => {
-  const signBuilder = await makeTxBuilder({ chain: mainnet })
+  const walletLovelace = options?.walletLovelace ?? 10_000_000n
+  const builderAutoMinUtxo = options?.autoMinUtxo ?? true
+
+  const signBuilder = await makeTxBuilder({ chain: mainnet, autoMinUtxo: builderAutoMinUtxo })
     .payToAddress({
       address: Address.fromBech32(RECEIVER_ADDRESS),
-      assets: receiverAssets
+      assets: receiverAssets,
+      ...(options?.perCallAutoMinUtxo !== undefined && { autoMinUtxo: options.perCallAutoMinUtxo })
     })
     .build({
       changeAddress: Address.fromBech32(CHANGE_ADDRESS),
@@ -47,7 +55,7 @@ const buildAndGetFirstOutput = async (
           index: 0n,
           address: CHANGE_ADDRESS,
           lovelace: walletLovelace,
-          nativeAssets: walletNativeAssets
+          nativeAssets: options?.walletNativeAssets
         })
       ],
       protocolParameters: PROTOCOL_PARAMS
@@ -104,11 +112,41 @@ describe("TxBuilder – payToAddress auto min-ADA enforcement", () => {
     const minLovelace = await expectedMinLovelace(requestedAssets)
     const adaOnlyMin = await expectedMinLovelace(CoreAssets.fromLovelace(0n))
 
-    const output = await buildAndGetFirstOutput(requestedAssets, 10_000_000n, {
-      [TOKEN_UNIT]: 1_000n
+    const output = await buildAndGetFirstOutput(requestedAssets, {
+      walletNativeAssets: { [TOKEN_UNIT]: 1_000n }
     })
 
     expect(output.assets.lovelace).toBe(minLovelace)
     expect(minLovelace).toBeGreaterThan(adaOnlyMin)
+  })
+
+  it("does not bump when autoMinUtxo is off (default)", async () => {
+    const output = await buildAndGetFirstOutput(CoreAssets.fromLovelace(2_000_000n), {
+      autoMinUtxo: false
+    })
+
+    expect(output.assets.lovelace).toBe(2_000_000n)
+  })
+
+  it("per-call autoMinUtxo: false overrides builder-level true", async () => {
+    const output = await buildAndGetFirstOutput(CoreAssets.fromLovelace(2_000_000n), {
+      autoMinUtxo: true,
+      perCallAutoMinUtxo: false
+    })
+
+    expect(output.assets.lovelace).toBe(2_000_000n)
+  })
+
+  it("per-call autoMinUtxo: true bumps even when builder default is off", async () => {
+    const requested = CoreAssets.fromLovelace(0n)
+    const minLovelace = await expectedMinLovelace(requested)
+
+    const output = await buildAndGetFirstOutput(requested, {
+      autoMinUtxo: false,
+      perCallAutoMinUtxo: true
+    })
+
+    expect(output.assets.lovelace).toBe(minLovelace)
+    expect(minLovelace).toBeGreaterThan(0n)
   })
 })
