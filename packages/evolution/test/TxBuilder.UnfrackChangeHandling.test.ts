@@ -86,16 +86,15 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       expect(tx.body.inputs).toHaveLength(2) // Initial + reselected UTxO
       expect(tx.body.outputs).toHaveLength(5) // 1 payment + 4 change (3 token bundles + 1 ADA)
 
-      // Verify payment output is correct
       const paymentOutput = tx.body.outputs[0]
-      expect(paymentOutput.assets.lovelace).toBe(100_000n)
+      expect(paymentOutput.assets.lovelace).toBe(969_750n)
 
       // Verify all change outputs meet minUTxO (corrected Babbage/Conway formula)
       const changeOutputs = tx.body.outputs.slice(1)
       expect(changeOutputs[0].assets.lovelace).toBe(1_150_770n)
       expect(changeOutputs[1].assets.lovelace).toBe(1_150_770n)
       expect(changeOutputs[2].assets.lovelace).toBe(1_155_080n)
-      expect(changeOutputs[3].assets.lovelace).toBe(2_259_487n)
+      expect(changeOutputs[3].assets.lovelace).toBe(1_389_737n)
 
       // Verify token distribution: all 3 tokens should be preserved in change outputs
       let totalTokenTypes = 0
@@ -117,7 +116,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
 
   describe("Immediate fallback to single output when bundles unaffordable", () => {
     it("should fall back to single change output without reselection when bundles barely unaffordable", async () => {
-      let initialAssets = CoreAssets.fromLovelace(2_500_000n)
+      let initialAssets = CoreAssets.fromLovelace(3_000_000n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_A, toHex("TOKEN1"), 100n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_B, toHex("TOKEN2"), 200n)
       initialAssets = CoreAssets.addByHex(initialAssets, POLICY_C, toHex("TOKEN3"), 300n)
@@ -125,7 +124,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         transactionId: "c".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 2_500_000n
+        lovelace: 3_000_000n
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
@@ -139,7 +138,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
-          assets: CoreAssets.fromLovelace(100_000n)
+          assets: CoreAssets.fromLovelace(1_000_000n) // Above min-ADA so no bump occurs
         })
 
       const signBuilder = await builder.build({
@@ -162,19 +161,19 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
 
       // Verify payment output
       const paymentOutput = tx.body.outputs[0]
-      expect(paymentOutput.assets.lovelace).toBe(100_000n)
+      expect(paymentOutput.assets.lovelace).toBe(1_000_000n)
 
       // Verify change output has correct amount after fee convergence
-      // Input: 2,500,000, Payment: 100,000, Fee: exact
-      // Expected change: 2,500,000 - 100,000 - fee
+      // Input: 3,000,000, Payment: 1,000,000, Fee: 173,553
+      // Available change 1,826,447 < subdivideThreshold * 3 (1,500,000) → immediate single-output fallback
       const changeOutput = tx.body.outputs[1]
-      expect(changeOutput.assets.lovelace).toBe(2_226_447n)
+      expect(changeOutput.assets.lovelace).toBe(1_826_447n)
 
       // Verify fee is exact for single-output transaction
       expect(tx.body.fee).toBe(173_553n)
 
       // Balance equation must hold
-      expect(changeOutput.assets.lovelace + paymentOutput.assets.lovelace + tx.body.fee).toBe(2_500_000n)
+      expect(changeOutput.assets.lovelace + paymentOutput.assets.lovelace + tx.body.fee).toBe(3_000_000n)
 
       // Verify all 3 tokens are in the single change output
       let totalTokenTypes = 0
@@ -209,7 +208,8 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
           assets: CoreAssets.fromLovelace(200_000n)
         })
 
-      // Expect build to throw error
+      // With min-ADA enforcement, the 200_000n payment is bumped to ~969_750n,
+      // which exceeds the 500_000n input → coin selection fails before reaching change validation.
       await expect(async () => {
         await builder.build({
           changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
@@ -222,7 +222,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
             }
           }
         })
-      }).rejects.toThrow(/Native assets present/)
+      }).rejects.toThrow(/Coin selection failed/)
     })
   })
 
@@ -312,14 +312,14 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         transactionId: "6".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 350_000n
+        lovelace: 1_500_000n
       })
 
       const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
-          assets: CoreAssets.fromLovelace(100_000n)
+          assets: CoreAssets.fromLovelace(969_750n) // At min-ADA so no bump; leftover ~530k < minUTxO → drainTo fires
         })
 
       const signBuilder = await builder.build({
@@ -349,14 +349,14 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         transactionId: "7".repeat(64),
         index: 0,
         address: CHANGE_ADDRESS,
-        lovelace: 350_000n
+        lovelace: 1_500_000n
       })
 
       const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
-          assets: CoreAssets.fromLovelace(100_000n)
+          assets: CoreAssets.fromLovelace(969_750n) // At min-ADA so no bump; leftover ~530k < minUTxO → burn fires
         })
 
       const signBuilder = await builder.build({
@@ -376,7 +376,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
 
       expect(tx.body.inputs).toHaveLength(1)
       expect(tx.body.outputs).toHaveLength(1) // Only payment
-      expect(tx.body.outputs[0].assets.lovelace).toBe(100_000n) // Payment unchanged (leftover burned as fee)
+      expect(tx.body.outputs[0].assets.lovelace).toBe(969_750n) // Payment at min-ADA (leftover burned as fee)
     })
   })
 })

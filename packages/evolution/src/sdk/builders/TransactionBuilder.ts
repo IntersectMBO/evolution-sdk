@@ -708,7 +708,7 @@ export class BuildOptionsTag extends Context.Tag("BuildOptions")<BuildOptionsTag
 export type ProgramStep = Effect.Effect<
   void,
   TransactionBuilderError,
-  TxContext | TxBuilderConfigTag | BuildOptionsTag | FullProtocolParametersTag
+  TxContext | TxBuilderConfigTag | BuildOptionsTag | ProtocolParametersTag | FullProtocolParametersTag
 >
 
 // ============================================================================
@@ -1720,9 +1720,7 @@ export type TransactionBuilder = SigningTransactionBuilder | ReadOnlyTransaction
 export function makeTxBuilder(
   config: TxBuilderConfig & { wallet: Wallet.SigningWallet | Wallet.ApiWallet }
 ): SigningTransactionBuilder
-export function makeTxBuilder(
-  config: TxBuilderConfig & { wallet: Wallet.ReadOnlyWallet }
-): ReadOnlyTransactionBuilder
+export function makeTxBuilder(config: TxBuilderConfig & { wallet: Wallet.ReadOnlyWallet }): ReadOnlyTransactionBuilder
 export function makeTxBuilder(config: TxBuilderConfig & { wallet?: undefined }): ReadOnlyTransactionBuilder
 export function makeTxBuilder(config: TxBuilderConfig): SigningTransactionBuilder | ReadOnlyTransactionBuilder {
   return BuilderFactory.makeTxBuilder(config)
