@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.5.7
+
+### Patch Changes
+
+- [#320](https://github.com/IntersectMBO/evolution-sdk/pull/320) [`52dc09a`](https://github.com/IntersectMBO/evolution-sdk/commit/52dc09af57c7702bbab3e3aab18a71981d4ff856) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add opt-in `autoMinUtxo` to `BuildOptions` and `PayToAddressParams` for automatic minimum UTxO lovelace enforcement
+
 ## 0.5.6
 
 ### Patch Changes
