@@ -47,6 +47,8 @@ export interface PayToAddressParams {
   readonly datum?: CoreDatumOption.DatumOption
   /** Optional script to store as a reference script in the output */
   readonly script?: CoreScript.Script
+  /** Override the builder-level `autoMinUtxo` setting for this specific output. */
+  readonly autoMinUtxo?: boolean
 }
 
 /**
