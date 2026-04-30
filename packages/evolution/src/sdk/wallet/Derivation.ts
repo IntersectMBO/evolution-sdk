@@ -1,5 +1,5 @@
 import { mnemonicToEntropy } from "@scure/bip39"
-import { wordlist as English } from "@scure/bip39/wordlists/english"
+import { wordlist as English } from "@scure/bip39/wordlists/english.js"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
