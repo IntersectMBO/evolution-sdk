@@ -1,10 +1,11 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AssetName from "./AssetName.js"
 import * as Bytes from "./Bytes.js"
-import * as CBOR from "./CBOR.js"
 import * as _Codec from "./Codec.js"
 import * as PolicyId from "./PolicyId.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Helper function for content-based Map equality using Equal.equals.
@@ -383,68 +384,54 @@ export const arbitrary: FastCheck.Arbitrary<MultiAsset> = FastCheck.uniqueArray(
     }
   )
 })
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL schema for MultiAsset.
- *
- * ```
- * multiasset<positive_coin> = {+ policy_id => {+ asset_name => positive_coin}}
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(
-  Schema.MapFromSelf({
-    key: CBOR.ByteArray,
-    value: Schema.MapFromSelf({
-      key: CBOR.ByteArray,
-      value: CBOR.Integer
-    })
-  }),
-  Schema.typeSchema(MultiAsset),
-  {
-    strict: true,
-    encode: (toI, _, __, toA) =>
-      Eff.gen(function* () {
-        // Convert MultiAsset to raw Map data for CBOR encoding
-        const outerMap = new Map<Uint8Array, Map<Uint8Array, bigint>>()
-
-        for (const [policyId, assetMap] of toA.map.entries()) {
-          const policyIdBytes = yield* ParseResult.encode(PolicyId.FromBytes)(policyId)
-          const innerMap = new Map<Uint8Array, bigint>()
-
-          for (const [assetName, amount] of assetMap.entries()) {
-            const assetNameBytes = yield* ParseResult.encode(AssetName.FromBytes)(assetName)
-            innerMap.set(assetNameBytes, amount)
-          }
-
-          outerMap.set(policyIdBytes, innerMap)
-        }
-
-        return outerMap
-      }),
-
-    decode: (fromA) =>
-      Eff.gen(function* () {
-        const result = new Map<PolicyId.PolicyId, AssetMap>()
-
-        for (const [policyIdBytes, assetMapCddl] of fromA.entries()) {
-          const policyId = yield* ParseResult.decode(PolicyId.FromBytes)(policyIdBytes)
-
-          const assetMap = new Map<AssetName.AssetName, bigint>()
-          for (const [assetNameBytes, amount] of assetMapCddl.entries()) {
-            const assetName = yield* ParseResult.decode(AssetName.FromBytes)(assetNameBytes)
-            assetMap.set(assetName, amount)
-          }
-
-          result.set(policyId, assetMap)
-        }
-
-        return new MultiAsset({ map: result })
-      })
+export const write = (w: CborWriter, v: MultiAsset): void => {
+  w.writeMapHeader(v.map.size)
+  for (const [policyId, assetMap] of v.map.entries()) {
+    PolicyId.write(w, policyId)
+    w.writeMapHeader(assetMap.size)
+    for (const [assetName, quantity] of assetMap.entries()) {
+      AssetName.write(w, assetName)
+      if (quantity >= 0n) w.writeUint(quantity)
+      else w.writeNint(quantity)
+    }
+    w.writeMapBreak()
   }
-)
+  w.writeMapBreak()
+}
+
+export const read = (r: CborReader): MultiAsset => {
+  const outerCount = r.readMapHeader()
+  const result = new Map<PolicyId.PolicyId, AssetMap>()
+  const readOuter = () => {
+    const policyId = PolicyId.read(r)
+    const innerCount = r.readMapHeader()
+    const assetMap = new Map<AssetName.AssetName, bigint>()
+    if (innerCount === -1) {
+      while (!r.isBreak()) {
+        const assetName = AssetName.read(r)
+        const quantity = r.readInt()
+        assetMap.set(assetName, quantity)
+      }
+    } else {
+      for (let j = 0; j < innerCount; j++) {
+        const assetName = AssetName.read(r)
+        const quantity = r.readInt()
+        assetMap.set(assetName, quantity)
+      }
+    }
+    result.set(policyId, assetMap)
+  }
+  if (outerCount === -1) {
+    while (!r.isBreak()) readOuter()
+  } else {
+    for (let i = 0; i < outerCount; i++) readOuter()
+  }
+  return new MultiAsset({ map: result })
+}
 
 /**
  * CBOR bytes transformation schema for MultiAsset.
@@ -453,15 +440,18 @@ export const FromCDDL = Schema.transformOrFail(
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → MultiAsset
-  ).annotations({
-    identifier: "MultiAsset.FromCBORBytes",
-    title: "MultiAsset from CBOR Bytes",
-    description: "Transforms CBOR bytes to MultiAsset"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(MultiAsset),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "MultiAsset.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for MultiAsset.
@@ -470,15 +460,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → MultiAsset
-  ).annotations({
-    identifier: "MultiAsset.FromCBORHex",
-    title: "MultiAsset from CBOR Hex",
-    description: "Transforms CBOR hex string to MultiAsset"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "MultiAsset.FromCBORHex" })
 
 /**
  * Root Functions
@@ -491,8 +474,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse MultiAsset from CBOR hex string.
@@ -500,8 +482,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode MultiAsset to CBOR bytes.
@@ -509,8 +490,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: MultiAsset, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: MultiAsset, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Encode MultiAsset to CBOR hex string.
@@ -518,8 +502,8 @@ export const toCBORBytes = (data: MultiAsset, options: CBOR.CodecOptions = CBOR.
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: MultiAsset, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: MultiAsset, profile?: EncodingProfile) =>
+  Schema.encodeSync(Schema.Uint8ArrayFromHex)(toCBORBytes(data, profile))
 
 /**
  * Merge two MultiAsset instances, combining amounts for assets that exist in both.

@@ -1,9 +1,12 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AuxiliaryData from "./AuxiliaryData.js"
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as TransactionBody from "./TransactionBody.js"
 import * as TransactionWitnessSet from "./TransactionWitnessSet.js"
+import { CborReader } from "./v2/CborReader.js"
+import { capture, CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Transaction based on Conway CDDL specification
@@ -58,61 +61,59 @@ export class Transaction extends Schema.TaggedClass<Transaction>()("Transaction"
   }
 }
 
-/**
- * Conway CDDL schema for Transaction tuple structure.
- *
- * CDDL: transaction = [transaction_body, transaction_witness_set, bool, auxiliary_data / nil]
- */
-export const CDDLSchema = Schema.declare(
-  (input: unknown): input is readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR | null] =>
-    Array.isArray(input)
-).annotations({ identifier: "Transaction.CDDLSchema", description: "Transaction tuple structure" })
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * Transform between CDDL tuple and Transaction class.
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Transaction), {
-  strict: true,
-  encode: (tx) =>
-    Eff.gen(function* () {
-      const bodyReadonly = yield* ParseResult.encode(TransactionBody.FromCDDL)(tx.body)
-      const witnessReadonly = yield* ParseResult.encode(TransactionWitnessSet.FromCDDL)(tx.witnessSet)
-      // Ensure mutable Map instances for tuple A-type compatibility
-      const body = new Map<bigint, CBOR.CBOR>(bodyReadonly.entries())
-      const witnessSet = new Map<bigint, CBOR.CBOR>(witnessReadonly.entries())
-      const isValid = tx.isValid
-      const auxiliaryData =
-        tx.auxiliaryData === null ? null : yield* ParseResult.encode(AuxiliaryData.FromCDDL)(tx.auxiliaryData)
-      const result = [body, witnessSet, isValid, auxiliaryData] as const
-      return result
-    }),
-  decode: (tuple) =>
-    Eff.gen(function* () {
-      const [bodyCDDL, witnessSetCDDL, isValid, aux] = tuple
-      const body = yield* ParseResult.decode(TransactionBody.FromCDDL)(bodyCDDL)
-      const witnessSet = yield* ParseResult.decode(TransactionWitnessSet.FromCDDL)(witnessSetCDDL)
-      const auxiliaryData = aux === null ? null : yield* ParseResult.decodeUnknownEither(AuxiliaryData.FromCDDL)(aux)
-      return new Transaction({ body, witnessSet, isValid, auxiliaryData }, { disableValidation: true })
-    })
-})
+export const write = (w: CborWriter, v: Transaction): void => {
+  w.writeArrayHeader(4)
+  // Body: use raw bytes if preserved (critical for hash stability)
+  w.writePreserved(v.body, () => TransactionBody.write(w, v.body))
+  TransactionWitnessSet.write(w, v.witnessSet)
+  w.writeBool(v.isValid)
+  if (v.auxiliaryData === null) w.writeNull()
+  else AuxiliaryData.write(w, v.auxiliaryData)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): Transaction => {
+  const start = r.position()
+  const count = r.readArrayHeader()
+  const body = TransactionBody.read(r)
+  const witnessSet = TransactionWitnessSet.read(r)
+  const isValid = r.readBool()
+  let auxiliaryData: AuxiliaryData.AuxiliaryData | null = null
+  if (r.peekMajorType() === 7) { r.readNull() }
+  else { auxiliaryData = AuxiliaryData.read(r) }
+  if (count === -1) r.isBreak()
+
+  const tx = new Transaction({ body, witnessSet, isValid, auxiliaryData })
+  // Capture raw bytes for the full transaction
+  capture(tx, r.buffer().subarray(start, r.position()))
+  return tx
+}
 
 /**
  * CBOR bytes transformation schema for Transaction.
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
-    identifier: "Transaction.FromCBORBytes",
-    description: "Decode Transaction from CBOR bytes per Conway CDDL"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Transaction),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Transaction.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Transaction.
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCDDL).annotations({
-    identifier: "Transaction.FromCBORHex",
-    description: "Decode Transaction from CBOR hex per Conway CDDL"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Transaction.FromCBORHex" })
 
 // ============================================================================
 // Parsing / Encoding Functions
@@ -129,26 +130,19 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  */
 const formatCache = new WeakMap<Transaction, CBOR.CBORFormat>()
 
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Transaction => {
-  // When caller passes non-default codec options, honor them via the legacy
-  // decode path and skip format caching — custom options typically imply the
-  // caller wants re-canonicalization, which is incompatible with preserving
-  // the original encoding.
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
-    return Schema.decodeSync(FromCBORBytes(options))(bytes)
-  }
-  const { format, value } = fromCBORBytesWithFormat(bytes)
-  formatCache.set(value, format)
+export const fromCBORBytes = (bytes: Uint8Array): Transaction => {
+  const value = read(new CborReader(bytes))
+  // Attempt format capture for round-trip preservation (non-fatal if CBOR parser rejects)
+  try {
+    const decoded = CBOR.fromCBORBytesWithFormat(bytes)
+    formatCache.set(value, decoded.format)
+  } catch { /* format preservation is best-effort */ }
   return value
 }
 
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Transaction => {
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
-    return Schema.decodeSync(FromCBORHex(options))(hex)
-  }
-  const { format, value } = fromCBORHexWithFormat(hex)
-  formatCache.set(value, format)
-  return value
+export const fromCBORHex = (hex: string): Transaction => {
+  const bytes = Bytes.fromHex(hex)
+  return fromCBORBytes(bytes)
 }
 
 /**
@@ -161,9 +155,7 @@ export const fromCBORBytesWithFormat = (
   bytes: Uint8Array
 ): CBOR.DecodedWithFormat<Transaction> => {
   const decoded = CBOR.fromCBORBytesWithFormat(bytes)
-  const value = Schema.decodeSync(FromCDDL)(
-    decoded.value as readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR | null]
-  )
+  const value = read(new CborReader(bytes))
   return { value, format: decoded.format }
 }
 
@@ -176,32 +168,23 @@ export const fromCBORBytesWithFormat = (
 export const fromCBORHexWithFormat = (
   hex: string
 ): CBOR.DecodedWithFormat<Transaction> => {
-  const decoded = CBOR.fromCBORHexWithFormat(hex)
-  const value = Schema.decodeSync(FromCDDL)(
-    decoded.value as readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR | null]
-  )
-  return { value, format: decoded.format }
+  return fromCBORBytesWithFormat(Bytes.fromHex(hex))
 }
 
-export const toCBORBytes = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array => {
-  // Non-default options signal an explicit re-encode request — bypass the
-  // cached format so the caller's options actually take effect.
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
-    return Schema.encodeSync(FromCBORBytes(options))(data)
-  }
+const toCBORBytesPlain = (data: Transaction, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(1024, profile)
+  write(w, data)
+  return w.finishView()
+}
+
+export const toCBORBytes = (data: Transaction, profile?: EncodingProfile): Uint8Array => {
   const cached = formatCache.get(data)
   if (cached) return toCBORBytesWithFormat(data, cached)
-  return Schema.encodeSync(FromCBORBytes(options))(data)
+  return toCBORBytesPlain(data, profile)
 }
 
-export const toCBORHex = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string => {
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
-    return Schema.encodeSync(FromCBORHex(options))(data)
-  }
-  const cached = formatCache.get(data)
-  if (cached) return toCBORHexWithFormat(data, cached)
-  return Schema.encodeSync(FromCBORHex(options))(data)
-}
+export const toCBORHex = (data: Transaction, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
 /**
  * Convert a Transaction to CBOR bytes using an explicit root format tree.
@@ -211,10 +194,11 @@ export const toCBORHex = (data: Transaction, options: CBOR.CodecOptions = CBOR.C
  */
 export const toCBORBytesWithFormat = (
   data: Transaction,
-  format: CBOR.CBORFormat
+  format: CBOR.CBORFormat,
+  profile?: EncodingProfile
 ): Uint8Array => {
-  const cborTuple = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORBytesWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+  const plain = toCBORBytesPlain(data, profile)
+  return CBOR.toCBORBytesWithFormat(CBOR.fromCBORBytes(plain) as unknown as CBOR.CBOR, format)
 }
 
 /**
@@ -225,10 +209,10 @@ export const toCBORBytesWithFormat = (
  */
 export const toCBORHexWithFormat = (
   data: Transaction,
-  format: CBOR.CBORFormat
+  format: CBOR.CBORFormat,
+  profile?: EncodingProfile
 ): string => {
-  const cborTuple = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORHexWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+  return Bytes.toHex(toCBORBytesWithFormat(data, format, profile))
 }
 
 // ============================================================================
@@ -263,10 +247,10 @@ export const toCBORHexWithFormat = (
 export const addVKeyWitnessesBytes = (
   txBytes: Uint8Array,
   walletWitnessSetBytes: Uint8Array,
-  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+  _options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
 ): Uint8Array => {
   // Decode wallet witness set to extract vkey witnesses
-  const walletWs = TransactionWitnessSet.fromCBORBytes(walletWitnessSetBytes, options)
+  const walletWs = TransactionWitnessSet.fromCBORBytes(walletWitnessSetBytes)
   const walletVkeys = walletWs.vkeyWitnesses ?? []
   if (walletVkeys.length === 0) return txBytes
 
@@ -348,17 +332,16 @@ export const addVKeyWitnesses = (
 ): Transaction => {
   if (witnesses.length === 0) return tx
   const oldWs = tx.witnessSet
-  const newWs = new TransactionWitnessSet.TransactionWitnessSet(
-    {
-      ...oldWs,
-      vkeyWitnesses: [...(oldWs.vkeyWitnesses ?? []), ...witnesses]
-    },
-    { disableValidation: true }
-  )
-  const result = new Transaction(
-    { body: tx.body, witnessSet: newWs, isValid: tx.isValid, auxiliaryData: tx.auxiliaryData },
-    { disableValidation: true }
-  )
+  const newWs = new TransactionWitnessSet.TransactionWitnessSet({
+    ...oldWs,
+    vkeyWitnesses: [...(oldWs.vkeyWitnesses ?? []), ...witnesses]
+  })
+  const result = new Transaction({
+    body: tx.body,
+    witnessSet: newWs,
+    isValid: tx.isValid,
+    auxiliaryData: tx.auxiliaryData
+  })
   // Transfer cached format so toCBORHex/toCBORBytes preserves encoding
   const fmt = formatCache.get(tx)
   if (fmt) formatCache.set(result, fmt)

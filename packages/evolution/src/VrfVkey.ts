@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for VrfVkey representing a VRF verification key.
@@ -35,17 +37,33 @@ export class VrfVkey extends Schema.TaggedClass<VrfVkey>()("VrfVkey", {
   }
 }
 
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(VrfVkey), {
-  strict: true,
-  decode: (bytes) => new VrfVkey({ bytes }),
-  encode: (vrfVkey) => vrfVkey.bytes
-}).annotations({
-  identifier: "VrfVkey.FromBytes"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: VrfVkey): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): VrfVkey => new VrfVkey({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(VrfVkey),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new VrfVkey({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.bytes)
+  }
+).annotations({ identifier: "VrfVkey.FromBytes" })
 
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> VrfVkey
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "VrfVkey.FromHex"
 })
@@ -95,7 +113,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: VrfVkey): Uint8Array => v.bytes
 
 /**
  * Encode VrfVkey to hex string.
@@ -103,4 +121,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: VrfVkey): string => Bytes.toHex(v.bytes)

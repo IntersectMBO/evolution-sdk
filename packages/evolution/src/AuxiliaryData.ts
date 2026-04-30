@@ -1,14 +1,16 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AuxiliaryDataHash from "./AuxiliaryDataHash.js"
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Metadata from "./Metadata.js"
 import * as NativeScripts from "./NativeScripts.js"
 import * as PlutusV1 from "./PlutusV1.js"
 import * as PlutusV2 from "./PlutusV2.js"
 import * as PlutusV3 from "./PlutusV3.js"
 import * as TransactionMetadatum from "./TransactionMetadatum.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 // ============================================================================
 // Helper functions for Equal/Hash implementations
@@ -301,180 +303,273 @@ export const AuxiliaryData = Schema.Union(ConwayAuxiliaryData, ShelleyMAAuxiliar
  */
 export type AuxiliaryData = Schema.Schema.Type<typeof AuxiliaryData>
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+// Inline metadata write/read: { * uint => transaction_metadatum }
+const writeMetadatum = (w: CborWriter, v: TransactionMetadatum.TransactionMetadatum): void => {
+  TransactionMetadatum.write(w, v)
+}
+
+const readMetadatum = (r: CborReader): TransactionMetadatum.TransactionMetadatum => {
+  const mt = r.peekMajorType()
+  switch (mt) {
+    case 0: return r.readUint()
+    case 1: return r.readNint()
+    case 2: return r.readBytes()
+    case 3: return r.readText()
+    case 4: {
+      const count = r.readArrayHeader()
+      const arr: Array<TransactionMetadatum.TransactionMetadatum> = []
+      if (count === -1) {
+        while (!r.isBreak()) arr.push(readMetadatum(r))
+      } else {
+        for (let i = 0; i < count; i++) arr.push(readMetadatum(r))
+      }
+      return arr
+    }
+    case 5: {
+      const count = r.readMapHeader()
+      const map = new Map<TransactionMetadatum.TransactionMetadatum, TransactionMetadatum.TransactionMetadatum>()
+      if (count === -1) {
+        while (!r.isBreak()) {
+          const k = readMetadatum(r)
+          const v2 = readMetadatum(r)
+          map.set(k, v2)
+        }
+      } else {
+        for (let i = 0; i < count; i++) {
+          const k = readMetadatum(r)
+          const v2 = readMetadatum(r)
+          map.set(k, v2)
+        }
+      }
+      return map
+    }
+    default: throw new Error(`readMetadatum: unexpected major type ${mt}`)
+  }
+}
+
+const writeMetadata = (w: CborWriter, m: Metadata.Metadata): void => {
+  w.writeMapHeader(m.size)
+  for (const [label, value] of m) {
+    w.writeUint(label)
+    writeMetadatum(w, value)
+  }
+  w.writeMapBreak()
+}
+
+const readMetadata = (r: CborReader): Metadata.Metadata => {
+  const count = r.readMapHeader()
+  const map = new Map<Metadata.MetadataLabel, TransactionMetadatum.TransactionMetadatum>()
+  const readEntry = () => {
+    const label = r.readUint() as Metadata.MetadataLabel
+    const value = readMetadatum(r)
+    map.set(label, value)
+  }
+  if (count === -1) {
+    while (!r.isBreak()) readEntry()
+  } else {
+    for (let i = 0; i < count; i++) readEntry()
+  }
+  return map as Metadata.Metadata
+}
+
+export const write = (w: CborWriter, v: AuxiliaryData): void => {
+  switch (v._tag) {
+    case "ConwayAuxiliaryData": {
+      w.writeTagHeader(259)
+      let count = 0
+      if (v.metadata !== undefined) count++
+      if (v.nativeScripts !== undefined) count++
+      if (v.plutusV1Scripts !== undefined) count++
+      if (v.plutusV2Scripts !== undefined) count++
+      if (v.plutusV3Scripts !== undefined) count++
+      w.writeMapHeader(count)
+      if (v.metadata !== undefined) {
+        w.writeSmallUint(0)
+        writeMetadata(w, v.metadata)
+      }
+      if (v.nativeScripts !== undefined) {
+        w.writeSmallUint(1)
+        w.writeArrayHeader(v.nativeScripts.length)
+        for (const s of v.nativeScripts) NativeScripts.write(w, s)
+        w.writeArrayBreak()
+      }
+      if (v.plutusV1Scripts !== undefined) {
+        w.writeSmallUint(2)
+        w.writeArrayHeader(v.plutusV1Scripts.length)
+        for (const s of v.plutusV1Scripts) PlutusV1.write(w, s)
+        w.writeArrayBreak()
+      }
+      if (v.plutusV2Scripts !== undefined) {
+        w.writeSmallUint(3)
+        w.writeArrayHeader(v.plutusV2Scripts.length)
+        for (const s of v.plutusV2Scripts) PlutusV2.write(w, s)
+        w.writeArrayBreak()
+      }
+      if (v.plutusV3Scripts !== undefined) {
+        w.writeSmallUint(4)
+        w.writeArrayHeader(v.plutusV3Scripts.length)
+        for (const s of v.plutusV3Scripts) PlutusV3.write(w, s)
+        w.writeArrayBreak()
+      }
+      w.writeMapBreak()
+      break
+    }
+    case "ShelleyMAAuxiliaryData": {
+      w.writeArrayHeader(2)
+      if (v.metadata !== undefined) {
+        writeMetadata(w, v.metadata)
+      } else {
+        w.writeMapHeader(0)
+        w.writeMapBreak()
+      }
+      if (v.nativeScripts !== undefined && v.nativeScripts.length > 0) {
+        w.writeArrayHeader(v.nativeScripts.length)
+        for (const s of v.nativeScripts) NativeScripts.write(w, s)
+        w.writeArrayBreak()
+      } else {
+        w.writeArrayHeader(0)
+        w.writeArrayBreak()
+      }
+      w.writeArrayBreak()
+      break
+    }
+    case "ShelleyAuxiliaryData": {
+      writeMetadata(w, v.metadata)
+      break
+    }
+  }
+}
+
+export const read = (r: CborReader): AuxiliaryData => {
+  const mt = r.peekMajorType()
+
+  // Conway: tag(259, map)
+  if (mt === 6) {
+    const tag = r.readTagHeader()
+    if (tag !== 259) throw new Error(`AuxiliaryData: expected tag 259, got ${tag}`)
+    const mapCount = r.readMapHeader()
+    let metadata: Metadata.Metadata | undefined
+    let nativeScripts: Array<NativeScripts.NativeScript> | undefined
+    let plutusV1Scripts: Array<PlutusV1.PlutusV1> | undefined
+    let plutusV2Scripts: Array<PlutusV2.PlutusV2> | undefined
+    let plutusV3Scripts: Array<PlutusV3.PlutusV3> | undefined
+    const readEntry = () => {
+      const key = Number(r.readUint())
+      switch (key) {
+        case 0: metadata = readMetadata(r); break
+        case 1: {
+          const count = r.readArrayHeader()
+          nativeScripts = []
+          if (count === -1) {
+            while (!r.isBreak()) nativeScripts.push(NativeScripts.read(r))
+          } else {
+            for (let i = 0; i < count; i++) nativeScripts.push(NativeScripts.read(r))
+          }
+          break
+        }
+        case 2: {
+          const count = r.readArrayHeader()
+          plutusV1Scripts = []
+          if (count === -1) {
+            while (!r.isBreak()) plutusV1Scripts.push(PlutusV1.read(r))
+          } else {
+            for (let i = 0; i < count; i++) plutusV1Scripts.push(PlutusV1.read(r))
+          }
+          break
+        }
+        case 3: {
+          const count = r.readArrayHeader()
+          plutusV2Scripts = []
+          if (count === -1) {
+            while (!r.isBreak()) plutusV2Scripts.push(PlutusV2.read(r))
+          } else {
+            for (let i = 0; i < count; i++) plutusV2Scripts.push(PlutusV2.read(r))
+          }
+          break
+        }
+        case 4: {
+          const count = r.readArrayHeader()
+          plutusV3Scripts = []
+          if (count === -1) {
+            while (!r.isBreak()) plutusV3Scripts.push(PlutusV3.read(r))
+          } else {
+            for (let i = 0; i < count; i++) plutusV3Scripts.push(PlutusV3.read(r))
+          }
+          break
+        }
+        default: r.skip(); break
+      }
+    }
+    if (mapCount === -1) {
+      while (!r.isBreak()) readEntry()
+    } else {
+      for (let i = 0; i < mapCount; i++) readEntry()
+    }
+    return new ConwayAuxiliaryData({ metadata, nativeScripts, plutusV1Scripts, plutusV2Scripts, plutusV3Scripts })
+  }
+
+  // ShelleyMA: array [metadata, [native_scripts]]
+  if (mt === 4) {
+    const count = r.readArrayHeader()
+    let metadata: Metadata.Metadata | undefined
+    if (count === -1 || count >= 1) {
+      const innerMt = r.peekMajorType()
+      if (innerMt === 5) {
+        const m = readMetadata(r)
+        metadata = m.size > 0 ? m : undefined
+      } else {
+        r.skip()
+      }
+    }
+    let nativeScripts: Array<NativeScripts.NativeScript> | undefined
+    if (count === -1) {
+      if (!r.isBreak()) {
+        const nsCount = r.readArrayHeader()
+        if (nsCount !== 0) {
+          nativeScripts = []
+          if (nsCount === -1) {
+            while (!r.isBreak()) nativeScripts.push(NativeScripts.read(r))
+          } else {
+            for (let i = 0; i < nsCount; i++) nativeScripts.push(NativeScripts.read(r))
+          }
+        } else {
+          // empty array
+        }
+        r.isBreak() // consume outer break
+      }
+    } else if (count >= 2) {
+      const nsCount = r.readArrayHeader()
+      if (nsCount !== 0) {
+        nativeScripts = []
+        if (nsCount === -1) {
+          while (!r.isBreak()) nativeScripts.push(NativeScripts.read(r))
+        } else {
+          for (let i = 0; i < nsCount; i++) nativeScripts.push(NativeScripts.read(r))
+        }
+      }
+    }
+    return new ShelleyMAAuxiliaryData({ metadata, nativeScripts })
+  }
+
+  // Shelley: metadata map directly
+  if (mt === 5) {
+    const metadata = readMetadata(r)
+    return new ShelleyAuxiliaryData({ metadata })
+  }
+
+  throw new Error(`AuxiliaryData: expected tag (6), array (4), or map (5), got major type ${mt}`)
+}
+
 /**
  * Tagged CDDL schema for AuxiliaryData (#6.259 wrapping the struct).
  *
  * @since 2.0.0
  * @category schemas
  */
-// Conway (current) CDDL form: tagged map with numeric keys
-export const CDDLSchema = CBOR.tag(
-  259,
-  Schema.MapFromSelf({
-    key: CBOR.Integer,
-    value: CBOR.CBORSchema
-  })
-)
-
-/**
- * Transform between tagged CDDL (tag 259) and AuxiliaryData class.
- *
- * @since 2.0.0
- * @category schemas
- */
-// Union across eras:
-// - Conway: tag(259, {0: metadata, 1: [native], 2: [v1], 3: [v2], 4: [v3]})
-// - ShelleyMA: [ metadata?, [native_script]? ]
-// - Shelley: metadata (map)
-const AnyEraCDDL = Schema.Union(
-  CDDLSchema,
-  // ShelleyMA array form; we accept arbitrary CBOR array and validate within decode
-  CBOR.ArraySchema,
-  // Shelley map form (metadata only) - use Metadata CDDL schema
-  Metadata.CDDLSchema
-)
-
-export const FromCDDL = Schema.transformOrFail(AnyEraCDDL, Schema.typeSchema(AuxiliaryData), {
-  strict: true,
-  encode: (auxData) =>
-    E.gen(function* () {
-      // Always encode as Conway format (tag 259) for compatibility
-      switch (auxData._tag) {
-        case "ConwayAuxiliaryData": {
-          // const struct: Record<number, any> = {}
-          const map = new globalThis.Map<bigint, CBOR.CBOR>()
-          if (auxData.metadata !== undefined) {
-            // Encode metadata through the schema which handles the transformation
-            const encoded = yield* ParseResult.encodeEither(Metadata.FromCDDL)(auxData.metadata)
-            map.set(0n, encoded as any)
-          }
-          if (auxData.nativeScripts !== undefined) {
-            const scripts = []
-            for (const s of auxData.nativeScripts) {
-              scripts.push(yield* ParseResult.encodeEither(NativeScripts.FromCDDL)(s))
-            }
-            map.set(1n, scripts)
-          }
-          if (auxData.plutusV1Scripts !== undefined) {
-            const scripts = []
-            for (const s of auxData.plutusV1Scripts) {
-              scripts.push(yield* ParseResult.encodeEither(PlutusV1.FromCDDL)(s))
-            }
-            map.set(2n, scripts)
-          }
-          if (auxData.plutusV2Scripts !== undefined) {
-            const scripts = []
-            for (const s of auxData.plutusV2Scripts) {
-              scripts.push(yield* ParseResult.encodeEither(PlutusV2.FromCDDL)(s))
-            }
-            map.set(3n, scripts)
-          }
-          if (auxData.plutusV3Scripts !== undefined) {
-            const scripts = []
-            for (const s of auxData.plutusV3Scripts) {
-              scripts.push(yield* ParseResult.encodeEither(PlutusV3.FromCDDL)(s))
-            }
-            map.set(4n, scripts)
-          }
-          return { value: map, tag: 259 as const, _tag: "Tag" as const }
-        }
-        case "ShelleyMAAuxiliaryData": {
-          // Encode ShelleyMA strictly as a 2-element array [metadataMap, nativeScriptList]
-          // Use empty map/array when values are absent to avoid CBOR specials and match CML decoding.
-          const encodedMetadata: Map<bigint, CBOR.CBOR> =
-            auxData.metadata !== undefined
-              ? (new Map(yield* ParseResult.encodeEither(Metadata.FromCDDL)(auxData.metadata)) as any)
-              : new Map()
-          const encodedScripts: Array<CBOR.CBOR> = (() => {
-            const list = auxData.nativeScripts ?? []
-            const scripts: Array<CBOR.CBOR> = []
-            for (const s of list) {
-              scripts.push(ParseResult.encodeEither(NativeScripts.FromCDDL)(s).pipe(E.getOrThrow))
-            }
-            return scripts
-          })()
-          return [encodedMetadata, encodedScripts]
-        }
-        case "ShelleyAuxiliaryData": {
-          // Encode Shelley era as plain metadata map (no tag)
-          {
-            const m = yield* ParseResult.encodeEither(Metadata.FromCDDL)(auxData.metadata)
-            return new Map(m) as any
-          }
-        }
-      }
-    }),
-  decode: (input) =>
-    E.gen(function* () {
-      // Conway tag(259)
-      if (CBOR.isTag(input) && input.tag === 259) {
-        const struct = input.value
-        const meta = struct.get(0n)
-        const metadata = meta ? yield* ParseResult.decodeEither(Metadata.FromCDDL)(meta as any) : undefined
-
-        const nScripts = struct.get(1n)
-        const nativeScripts = nScripts
-          ? yield* ParseResult.decodeUnknownEither(Schema.Array(NativeScripts.FromCDDL))(nScripts)
-          : undefined
-        const rawPlutusV1 = struct.get(2n)
-        const plutusV1Scripts = rawPlutusV1
-          ? yield* ParseResult.decodeUnknownEither(Schema.Array(PlutusV1.FromCDDL))(rawPlutusV1)
-          : undefined
-        const rawPlutusV2 = struct.get(3n)
-        const plutusV2Scripts = rawPlutusV2
-          ? yield* ParseResult.decodeUnknownEither(Schema.Array(PlutusV2.FromCDDL))(rawPlutusV2)
-          : undefined
-        const rawPlutusV3 = struct.get(4n)
-        const plutusV3Scripts = rawPlutusV3
-          ? yield* ParseResult.decodeUnknownEither(Schema.Array(PlutusV3.FromCDDL))(rawPlutusV3)
-          : undefined
-        return new ConwayAuxiliaryData({
-          metadata,
-          nativeScripts,
-          plutusV1Scripts,
-          plutusV2Scripts,
-          plutusV3Scripts
-        })
-      }
-
-      // ShelleyMA array form: [ metadata?, native_scripts? ]
-      if (Array.isArray(input)) {
-        const arr = input
-        let metadata: Metadata.Metadata | undefined
-        let nativeScripts: Array<NativeScripts.NativeScript> | undefined
-
-        if (arr.length >= 1 && arr[0] !== undefined) {
-          const m = yield* ParseResult.decodeEither(Metadata.FromCDDL)(arr[0] as any)
-          metadata = m.size === 0 ? undefined : m
-        }
-        if (arr.length >= 2 && arr[1] !== undefined) {
-          const raw = arr[1] as ReadonlyArray<any>
-          if (Array.isArray(raw) && raw.length === 0) {
-            nativeScripts = undefined
-          } else {
-            nativeScripts = []
-            for (const s of raw) {
-              nativeScripts.push(yield* ParseResult.decodeEither(NativeScripts.FromCDDL)(s))
-            }
-          }
-        }
-        return new ShelleyMAAuxiliaryData({ metadata, nativeScripts })
-      }
-
-      // Shelley map form: metadata only
-      if (input instanceof Map) {
-        const metadata = yield* ParseResult.decodeEither(Metadata.FromCDDL)(input as any)
-        return new ShelleyAuxiliaryData({ metadata })
-      }
-
-      // Fallback (should not happen due to Union) – treat as empty Conway
-      return new ConwayAuxiliaryData({})
-    })
-}).annotations({
-  identifier: "AuxiliaryData.FromCDDL",
-  title: "AuxiliaryData from tagged CDDL",
-  description: "Transforms CBOR tag 259 CDDL structure to AuxiliaryData"
-})
 
 /**
  * CBOR bytes transformation schema for AuxiliaryData.
@@ -483,12 +578,18 @@ export const FromCDDL = Schema.transformOrFail(AnyEraCDDL, Schema.typeSchema(Aux
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
-    identifier: "AuxiliaryData.FromCBORBytes",
-    title: "AuxiliaryData from CBOR bytes",
-    description: "Decode AuxiliaryData from CBOR-encoded bytes (tag 259)"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(AuxiliaryData),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "AuxiliaryData.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for AuxiliaryData.
@@ -497,12 +598,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
-    identifier: "AuxiliaryData.FromCBORHex",
-    title: "AuxiliaryData from CBOR hex",
-    description: "Decode AuxiliaryData from CBOR-encoded hex (tag 259)"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "AuxiliaryData.FromCBORHex" })
 
 /**
  * Create an empty Conway AuxiliaryData instance.
@@ -611,8 +708,7 @@ export const arbitrary: FastCheck.Arbitrary<AuxiliaryData> = FastCheck.oneof(
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Decode AuxiliaryData from CBOR hex string.
@@ -620,8 +716,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode AuxiliaryData to CBOR bytes.
@@ -629,8 +724,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: AuxiliaryData, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: AuxiliaryData, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Encode AuxiliaryData to CBOR hex string.
@@ -638,8 +736,8 @@ export const toCBORBytes = (data: AuxiliaryData, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: AuxiliaryData, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: AuxiliaryData, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
 /**
  * Compute hash of auxiliary data (tag 259) per ledger rules.
@@ -650,5 +748,5 @@ export const toCBORHex = (data: AuxiliaryData, options: CBOR.CodecOptions = CBOR
 export const toHash = (aux: AuxiliaryData): AuxiliaryDataHash.AuxiliaryDataHash => {
   const bytes = toCBORBytes(aux)
   const digest = blake2b(bytes, { dkLen: 32 })
-  return new AuxiliaryDataHash.AuxiliaryDataHash({ bytes: digest })
+  return new AuxiliaryDataHash.AuxiliaryDataHash({ hash: digest })
 }

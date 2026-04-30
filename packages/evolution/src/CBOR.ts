@@ -158,6 +158,7 @@ export type DecodedWithFormat<A> = {
   format: CBORFormat
 }
 
+
 /**
  * CBOR codec configuration options
  *

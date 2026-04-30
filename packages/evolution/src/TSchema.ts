@@ -1,5 +1,5 @@
 import type { SchemaAST } from "effect"
-import { Effect, ParseResult, Schema } from "effect"
+import { ParseResult, Schema } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
 
 import * as Data from "./Data.js"
@@ -640,48 +640,50 @@ export const Union = <Members extends ReadonlyArray<Schema.Schema.Any>>(...membe
 
   return Schema.transformOrFail(Schema.typeSchema(Data.Constr), Schema.typeSchema(Schema.Union(...members)), {
     strict: false,
-    encode: (value) =>
-      Effect.gen(function* () {
-        // Find which member matches this value (WITH tag field - schemas expect it)
-        const matchedIndex = members.findIndex((schema) => Schema.is(schema)(value))
+    encode: (value) => {
+      // Find which member matches this value (WITH tag field - schemas expect it)
+      const matchedIndex = members.findIndex((schema) => Schema.is(schema)(value))
 
-        if (matchedIndex === -1) {
-          const memberNames = getMemberNames()
-          const actualType = getTypeName(value)
+      if (matchedIndex === -1) {
+        const memberNames = getMemberNames()
+        const actualType = getTypeName(value)
 
-          return yield* Effect.fail(
-            new ParseResult.Type(
-              Schema.Union(...members).ast,
-              value,
-              `Invalid value for Union: received ${actualType} (${String(value)}), expected ${memberNames.join(" or ")}`
-            )
+        return ParseResult.fail(
+          new ParseResult.Type(
+            Schema.Union(...members).ast,
+            value,
+            `Invalid value for Union: received ${actualType} (${String(value)}), expected ${memberNames.join(" or ")}`
           )
-        }
+        )
+      }
 
-        const memberInfo = memberInfos[matchedIndex]
+      const memberInfo = memberInfos[matchedIndex]
 
-        // Encode the full value - if members are Structs with tag fields,
-        // they will handle filtering out the tag field themselves
-        const encodedValue = yield* ParseResult.encode(memberInfo.schema as Schema.Schema<any, any, never>)(value)
+      // Encode the full value - if members are Structs with tag fields,
+      // they will handle filtering out the tag field themselves
+      return ParseResult.map(
+        ParseResult.encode(memberInfo.schema as Schema.Schema<any, any, never>)(value),
+        (encodedValue) => {
+          // If the member is flat, use its encoded value directly (unwrap the Constr)
+          if (memberInfo.isFlat && encodedValue instanceof Data.Constr) {
+            // If the member has a custom index, use it; otherwise use position
+            const customIdx = memberInfo.customIndex
+            const finalIndex = customIdx !== undefined ? BigInt(customIdx) : BigInt(memberInfo.position)
 
-        // If the member is flat, use its encoded value directly (unwrap the Constr)
-        if (memberInfo.isFlat && encodedValue instanceof Data.Constr) {
-          // If the member has a custom index, use it; otherwise use position
-          const customIdx = memberInfo.customIndex
-          const finalIndex = customIdx !== undefined ? BigInt(customIdx) : BigInt(memberInfo.position)
+            return new Data.Constr({
+              index: finalIndex,
+              fields: encodedValue.fields
+            })
+          }
 
+          // Otherwise, wrap in Union's Constr with auto index (position)
           return new Data.Constr({
-            index: finalIndex,
-            fields: encodedValue.fields
+            index: BigInt(memberInfo.position),
+            fields: [encodedValue]
           })
         }
-
-        // Otherwise, wrap in Union's Constr with auto index (position)
-        return new Data.Constr({
-          index: BigInt(memberInfo.position),
-          fields: [encodedValue]
-        })
-      }),
+      )
+    },
     decode: (value, _, ast) => {
       // Try to find a flat member with matching index first
       const flatMemberIndex = Number(value.index)
@@ -693,22 +695,23 @@ export const Union = <Members extends ReadonlyArray<Schema.Schema.Any>>(...membe
       if (flatMember) {
         // This is a flat member, decode it directly (no unwrapping needed)
         // Use Schema.decode to decode from the encoded form (Constr) to the decoded type
-        return Effect.gen(function* () {
-          const decoded = yield* ParseResult.decode(flatMember.schema)(value)
-
-          // Inject tag field if detected
-          if (detectedTagField && typeof decoded === "object" && decoded !== null) {
-            const tagValue = getLiteralFieldValue(flatMember.schema, detectedTagField)
-            if (tagValue !== undefined) {
-              return {
-                ...decoded,
-                [detectedTagField]: tagValue
+        return ParseResult.map(
+          ParseResult.decode(flatMember.schema)(value),
+          (decoded) => {
+            // Inject tag field if detected
+            if (detectedTagField && typeof decoded === "object" && decoded !== null) {
+              const tagValue = getLiteralFieldValue(flatMember.schema, detectedTagField)
+              if (tagValue !== undefined) {
+                return {
+                  ...decoded,
+                  [detectedTagField]: tagValue
+                }
               }
             }
-          }
 
-          return decoded
-        })
+            return decoded
+          }
+        )
       }
 
       // Otherwise, use standard Union decoding with auto index
@@ -730,23 +733,24 @@ export const Union = <Members extends ReadonlyArray<Schema.Schema.Any>>(...membe
 
       // Non-flat members are wrapped: Constr(index, [encodedValue])
       // We need to decode the wrapped value
-      return Effect.gen(function* () {
-        const wrappedValue = value.fields[0]
-        const decoded = yield* ParseResult.decode(member)(wrappedValue)
-
-        // Inject tag field if detected
-        if (detectedTagField && typeof decoded === "object" && decoded !== null) {
-          const tagValue = getLiteralFieldValue(member, detectedTagField)
-          if (tagValue !== undefined) {
-            return {
-              ...decoded,
-              [detectedTagField]: tagValue
+      const wrappedValue = value.fields[0]
+      return ParseResult.map(
+        ParseResult.decode(member)(wrappedValue),
+        (decoded) => {
+          // Inject tag field if detected
+          if (detectedTagField && typeof decoded === "object" && decoded !== null) {
+            const tagValue = getLiteralFieldValue(member, detectedTagField)
+            if (tagValue !== undefined) {
+              return {
+                ...decoded,
+                [detectedTagField]: tagValue
+              }
             }
           }
-        }
 
-        return decoded
-      })
+          return decoded
+        }
+      )
     }
   }).annotations({
     identifier: "TSchema.Union",

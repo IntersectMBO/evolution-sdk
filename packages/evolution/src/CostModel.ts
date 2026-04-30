@@ -1,6 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 // Helper for array equality - Equal.equals compares arrays by instance, not content
 const arrayEquals = <A>(a: ReadonlyArray<A>, b: ReadonlyArray<A>): boolean => {
@@ -160,38 +163,54 @@ export class CostModels extends Schema.Class<CostModels>("CostModels")({
   }
 }
 
-export const CDDLSchema = Schema.MapFromSelf({
-  key: CBOR.Integer,
-  value: Schema.Array(Schema.BigIntFromSelf)
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CBOR encoding/decoding for CostModels using language tags as keys.
- * Only includes languages with non-empty cost arrays to match CML behavior.
- */
-export const FromCDDL = Schema.transform(CDDLSchema, Schema.typeSchema(CostModels), {
-  strict: true,
-  encode: (costModels) => {
-    // Always emit as Map: include only languages with non-empty arrays
-    const out = new Map<bigint, ReadonlyArray<bigint>>()
-    if (costModels.PlutusV1.costs.length > 0) out.set(0n, costModels.PlutusV1.costs)
-    if (costModels.PlutusV2.costs.length > 0) out.set(1n, costModels.PlutusV2.costs)
-    if (costModels.PlutusV3.costs.length > 0) out.set(2n, costModels.PlutusV3.costs)
-    return out
-  },
-  decode: (encoded) => {
-    const v1 = encoded.get(0n) as ReadonlyArray<bigint> | undefined
-    const v2 = encoded.get(1n) as ReadonlyArray<bigint> | undefined
-    const v3 = encoded.get(2n) as ReadonlyArray<bigint> | undefined
-    const result = {
-      PlutusV1: new CostModel({ costs: v1 ?? [] }),
-      PlutusV2: new CostModel({ costs: v2 ?? [] }),
-      PlutusV3: new CostModel({ costs: v3 ?? [] })
+export const writeCostModels = (w: CborWriter, v: CostModels): void => {
+  // Only include non-empty cost models
+  const entries: Array<[number, ReadonlyArray<bigint>]> = []
+  if (v.PlutusV1.costs.length > 0) entries.push([0, v.PlutusV1.costs])
+  if (v.PlutusV2.costs.length > 0) entries.push([1, v.PlutusV2.costs])
+  if (v.PlutusV3.costs.length > 0) entries.push([2, v.PlutusV3.costs])
+
+  w.writeMapHeader(entries.length)
+  for (const [lang, costs] of entries) {
+    w.writeSmallUint(lang)
+    w.writeArrayHeader(costs.length)
+    for (const val of costs) {
+      if (val >= 0n) w.writeUint(val)
+      else w.writeNint(val)
     }
-    return new CostModels(result)
+    w.writeArrayBreak()
   }
-})
+  w.writeMapBreak()
+}
 
+export const readCostModels = (r: CborReader): CostModels => {
+  const mapCount = r.readMapHeader()
+  const models = new Map<number, ReadonlyArray<bigint>>()
+
+  const n = mapCount === -1 ? Infinity : mapCount
+  for (let i = 0; i < n; i++) {
+    if (mapCount === -1 && r.isBreak()) break
+    const lang = r.readSmallUint()
+    const arrCount = r.readArrayHeader()
+    const costs: Array<bigint> = []
+    if (arrCount === -1) {
+      while (!r.isBreak()) costs.push(r.readInt())
+    } else {
+      for (let j = 0; j < arrCount; j++) costs.push(r.readInt())
+    }
+    models.set(lang, costs)
+  }
+
+  return new CostModels({
+    PlutusV1: new CostModel({ costs: models.get(0) ?? [] }),
+    PlutusV2: new CostModel({ costs: models.get(1) ?? [] }),
+    PlutusV3: new CostModel({ costs: models.get(2) ?? [] })
+  })
+}
 /**
  * CBOR bytes transformation schema for CostModels.
  * Transforms between Uint8Array and CostModels using CBOR encoding.
@@ -199,15 +218,18 @@ export const FromCDDL = Schema.transform(CDDLSchema, Schema.typeSchema(CostModel
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → CostModels
-  ).annotations({
-    identifier: "CostModels.FromCBORBytes",
-    title: "CostModels from CBOR Bytes",
-    description: "Transforms CBOR bytes to CostModels"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(CostModels),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => readCostModels(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBOR instead"))
+  }
+).annotations({ identifier: "CostModels.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for CostModels.
@@ -216,15 +238,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → CostModels
-  ).annotations({
-    identifier: "CostModels.FromCBORHex",
-    title: "CostModels from CBOR Hex",
-    description: "Transforms CBOR hex string to CostModels"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "CostModels.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for CostModel instances.
@@ -239,26 +254,27 @@ export const arbitrary: FastCheck.Arbitrary<CostModel> = FastCheck.array(
 /**
  * CBOR encoding for CostModels.
  */
-export const toCBOR = (costModels: CostModels, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(costModels)
+export const toCBOR = (costModels: CostModels, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  writeCostModels(w, costModels)
+  return w.finish()
+}
 
 /**
  * CBOR decoding for CostModels.
  */
-export const fromCBOR = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): CostModels =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBOR = Schema.decodeSync(FromCBORBytes)
 
 /**
  * CBOR hex encoding for CostModels.
  */
-export const toCBORHex = (costModels: CostModels, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string =>
-  Schema.encodeSync(FromCBORHex(options))(costModels)
+export const toCBORHex = (costModels: CostModels): string =>
+  Bytes.toHex(toCBOR(costModels))
 
 /**
  * CBOR hex decoding for CostModels.
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): CostModels =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode cost models as language_views for script data hash.

@@ -1,7 +1,9 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as DnsName from "./DnsName.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for MultiHostName representing a multiple host name record.
@@ -63,36 +65,24 @@ export class MultiHostName extends Schema.TaggedClass<MultiHostName>()("MultiHos
   }
 }
 
-/**
- * CDDL schema for MultiHostName.
- * multi_host_name = (2, dns_name)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(
-  Schema.Tuple(
-    Schema.Literal(2n), // tag (literal 2)
-    Schema.String // dns_name (string)
-  ),
-  Schema.typeSchema(MultiHostName),
-  {
-    strict: true,
-    encode: (toA) =>
-      Eff.gen(function* () {
-        const dnsName = yield* ParseResult.encode(DnsName.DnsName)(toA.dnsName)
-        return yield* Eff.succeed([2n, dnsName] as const)
-      }),
-    decode: ([, dnsNameValue]) =>
-      Eff.gen(function* () {
-        const dnsName = yield* ParseResult.decode(DnsName.DnsName)(dnsNameValue)
-        return yield* Eff.succeed(new MultiHostName({ dnsName }))
-      })
-  }
-).annotations({
-  identifier: "MultiHostName.FromCDDL",
-  description: "Transforms CBOR structure to MultiHostName"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: MultiHostName): void => {
+  w.writeArrayHeader(2)
+  w.writeUint(2n)
+  w.writeText(v.dnsName)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): MultiHostName => {
+  const count = r.readArrayHeader()
+  r.readUint() // tag = 2
+  const dnsName = r.readText() as DnsName.DnsName
+  if (count === -1) r.isBreak()
+  return new MultiHostName({ dnsName })
+}
 
 /**
  * CBOR bytes transformation schema for MultiHostName.
@@ -100,14 +90,18 @@ export const FromCDDL = Schema.transformOrFail(
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → MultiHostName
-  ).annotations({
-    identifier: "MultiHostName.FromCBORBytes",
-    description: "Transforms CBOR bytes to MultiHostName"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(MultiHostName),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "MultiHostName.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for MultiHostName.
@@ -115,14 +109,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → MultiHostName
-  ).annotations({
-    identifier: "MultiHostName.FromCBORHex",
-    description: "Transforms CBOR hex string to MultiHostName"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "MultiHostName.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for MultiHostName instances.
@@ -140,8 +128,7 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse MultiHostName from CBOR hex string.
@@ -149,7 +136,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode MultiHostName to CBOR bytes.
@@ -157,8 +144,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: MultiHostName, options?: CBOR.CodecOptions) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: MultiHostName, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Encode MultiHostName to CBOR hex string.
@@ -166,5 +156,5 @@ export const toCBORBytes = (data: MultiHostName, options?: CBOR.CodecOptions) =>
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: MultiHostName, options?: CBOR.CodecOptions) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: MultiHostName, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))

@@ -1,10 +1,12 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as Bytes29 from "./Bytes29.js"
+import * as Bytes from "./Bytes.js"
 import * as Credential from "./Credential.js"
 import * as KeyHash from "./KeyHash.js"
 import * as NetworkId from "./NetworkId.js"
 import * as ScriptHash from "./ScriptHash.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Enterprise address with only payment credential
@@ -46,25 +48,24 @@ export class EnterpriseAddress extends Schema.TaggedClass<EnterpriseAddress>("En
 }
 
 export const FromBytes = Schema.transformOrFail(
-  Schema.typeSchema(Bytes29.BytesFromHex),
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(EnterpriseAddress),
   {
     strict: true,
-    encode: (_, __, ___, toA) =>
-      Eff.gen(function* () {
-        const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
-        const header = (0b01 << 6) | (0b1 << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
+    encode: (_, __, ___, toA) => {
+      const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
+      const header = (0b01 << 6) | (0b1 << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
 
-        const result = new Uint8Array(29)
-        result[0] = header
+      const result = new Uint8Array(29)
+      result[0] = header
 
-        const paymentCredentialBytes = toA.paymentCredential.hash
-        result.set(paymentCredentialBytes, 1)
+      const paymentCredentialBytes = toA.paymentCredential.hash
+      result.set(paymentCredentialBytes, 1)
 
-        return yield* ParseResult.succeed(result)
-      }),
-    decode: (_, __, ___, fromA) =>
-      Eff.gen(function* () {
+      return ParseResult.succeed(result)
+    },
+    decode: (fromA, _, ast) => ParseResult.try({
+      try: () => {
         const header = fromA[0]
         // Extract network ID from the lower 4 bits
         const networkId = header & 0b00001111
@@ -84,7 +85,9 @@ export const FromBytes = Schema.transformOrFail(
           networkId,
           paymentCredential
         })
-      })
+      },
+      catch: (e) => new ParseResult.Type(ast, fromA, e instanceof Error ? e.message : String(e))
+    })
   }
 ).annotations({
   identifier: "EnterpriseAddress.FromBytes",
@@ -139,7 +142,14 @@ export const fromHex = (hex: string) => Schema.decodeSync(FromHex)(hex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (data: EnterpriseAddress) => Schema.encodeSync(FromBytes)(data)
+export const toBytes = (data: EnterpriseAddress): Uint8Array => {
+  const paymentBit = data.paymentCredential._tag === "KeyHash" ? 0 : 1
+  const header = (0b01 << 6) | (0b1 << 5) | (paymentBit << 4) | (data.networkId & 0b00001111)
+  const result = new Uint8Array(29)
+  result[0] = header
+  result.set(data.paymentCredential.hash, 1)
+  return result
+}
 
 /**
  * Convert a EnterpriseAddress to hex string.
@@ -147,4 +157,22 @@ export const toBytes = (data: EnterpriseAddress) => Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (data: EnterpriseAddress) => Schema.encodeSync(FromHex)(data)
+export const toHex = (data: EnterpriseAddress): string => Bytes.toHex(toBytes(data))
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: EnterpriseAddress): void => w.writeBytes(toBytes(v))
+
+export const read = (r: CborReader): EnterpriseAddress => {
+  const bytes = r.readBytesView()
+  const header = bytes[0]
+  const networkId = header & 0b00001111
+  const addressType = header >> 4
+  const isPaymentKey = (addressType & 0b0001) === 0
+  const paymentCredential: Credential.Credential = isPaymentKey
+    ? new KeyHash.KeyHash({ hash: bytes.slice(1, 29) })
+    : new ScriptHash.ScriptHash({ hash: bytes.slice(1, 29) })
+  return new EnterpriseAddress({ networkId, paymentCredential })
+}

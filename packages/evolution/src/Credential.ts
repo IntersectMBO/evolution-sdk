@@ -1,8 +1,10 @@
-import { Effect as Eff, FastCheck, ParseResult, Schema } from "effect"
+import { FastCheck, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as KeyHash from "./KeyHash.js"
 import * as ScriptHash from "./ScriptHash.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Credential schema representing either a key hash or script hash
@@ -35,61 +37,53 @@ export const makeScriptHash = (hash: Uint8Array): Credential => new ScriptHash.S
  */
 export const is = Schema.is(Credential)
 
-export const CDDLSchema = Schema.Tuple(
-  Schema.Literal(0n, 1n),
-  Schema.Uint8ArrayFromSelf // hash bytes
-)
+// ============================================================================
+// Write / Read
+// ============================================================================
 
-/**
- * CDDL schema for Credential as defined in the specification:
- * credential = [0, addr_keyhash // 1, script_hash]
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Credential), {
-  strict: true,
-  encode: (toI) =>
-    Eff.gen(function* () {
-      switch (toI._tag) {
-        case "KeyHash": {
-          return [0n, toI.hash] as const
-        }
-        case "ScriptHash": {
-          return [1n, toI.hash] as const
-        }
-      }
+export const write = (w: CborWriter, v: Credential): void => {
+  w.writeArrayHeader(2)
+  switch (v._tag) {
+    case "KeyHash": w.writeSmallUint(0); w.writeBytes(v.hash); break
+    case "ScriptHash": w.writeSmallUint(1); w.writeBytes(v.hash); break
+  }
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): Credential => {
+  const count = r.readArrayHeader()
+  const tag = r.readSmallUint()
+  let result: Credential
+  switch (tag) {
+    case 0: result = new KeyHash.KeyHash({ hash: r.readBytesView() }); break
+    case 1: result = new ScriptHash.ScriptHash({ hash: r.readBytesView() }); break
+    default: throw new Error(`Credential: unknown tag ${tag}`)
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
+
+// ============================================================================
+// Schemas (legacy-compatible)
+// ============================================================================
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Credential),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
     }),
-  decode: ([tag, hashBytes]) =>
-    Eff.gen(function* () {
-      switch (tag) {
-        case 0n: {
-          const keyHash = yield* ParseResult.decode(KeyHash.FromBytes)(hashBytes)
-          return keyHash
-        }
-        case 1n: {
-          const scriptHash = yield* ParseResult.decode(ScriptHash.FromBytes)(hashBytes)
-          return scriptHash
-        }
-      }
-    })
-})
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Credential.FromCBORBytes" })
 
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Credential
-  )
-
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Credential
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Credential.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for generating random Credential instances.
- * Randomly selects between generating a KeyHash or ScriptHash credential.
  *
  * @since 2.0.0
  * @category testing
@@ -106,8 +100,7 @@ export const arbitrary = FastCheck.oneof(KeyHash.arbitrary, ScriptHash.arbitrary
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): Credential =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse a Credential from CBOR hex string.
@@ -115,8 +108,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): C
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Credential =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -128,8 +120,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Credentia
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (credential: Credential, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(credential)
+export const toCBORBytes = (credential: Credential, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, credential)
+  return w.finishView()
+}
 
 /**
  * Convert a Credential to CBOR hex string.
@@ -137,5 +132,5 @@ export const toCBORBytes = (credential: Credential, options?: CBOR.CodecOptions)
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (credential: Credential, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(credential)
+export const toCBORHex = (credential: Credential, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(credential, profile))

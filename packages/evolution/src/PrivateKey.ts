@@ -14,6 +14,8 @@ import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
 import * as Bytes64 from "./Bytes64.js"
 import * as Ed25519Signature from "./Ed25519Signature.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 import * as VKey from "./VKey.js"
 
 /**
@@ -62,21 +64,35 @@ export class PrivateKey extends Schema.TaggedClass<PrivateKey>()("PrivateKey", {
   }
 }
 
-export const FromBytes = Schema.transform(
-  Schema.typeSchema(Schema.Union(Bytes64.BytesFromHex, Bytes32.BytesFromHex)),
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: PrivateKey): void => w.writeBytes(v.key)
+export const read = (r: CborReader): PrivateKey => new PrivateKey({ key: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(PrivateKey),
   {
     strict: true,
-    decode: (bytes) => new PrivateKey({ key: bytes }),
-    encode: (privateKey) => privateKey.key
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new PrivateKey({ key: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.key)
   }
 ).annotations({
   identifier: "PrivateKey.FromBytes"
 })
 
 export const FromHex = Schema.compose(
-  Schema.Uint8ArrayFromHex, // string -> Uint8Array (any length)
-  FromBytes // Uint8Array -> PrivateKey (validates 32 or 64)
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "PrivateKey.FromHex"
 })
@@ -84,28 +100,32 @@ export const FromHex = Schema.compose(
 export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(PrivateKey), {
   strict: true,
   encode: (_, __, ___, toA) =>
-    E.gen(function* () {
-      const privateKeyBytes = yield* ParseResult.encodeEither(FromBytes)(toA)
-      const words = bech32.toWords(privateKeyBytes)
-      // Auto-select prefix based on key length (32 bytes = normal, 64 bytes = extended)
-      const prefix = privateKeyBytes.length === 32 ? "ed25519_sk" : "ed25519e_sk"
-      return bech32.encode(prefix, words, 1023)
-    }),
+    ParseResult.map(
+      ParseResult.encode(FromBytes)(toA),
+      (privateKeyBytes) => {
+        const words = bech32.toWords(privateKeyBytes)
+        // Auto-select prefix based on key length (32 bytes = normal, 64 bytes = extended)
+        const prefix = privateKeyBytes.length === 32 ? "ed25519_sk" : "ed25519e_sk"
+        return bech32.encode(prefix, words, 1023)
+      }
+    ),
   decode: (fromA, _, ast) =>
-    E.gen(function* () {
-      const { prefix, words } = yield* ParseResult.try({
+    ParseResult.flatMap(
+      ParseResult.try({
         // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
         // but Schema provides plain string. Consider using decodeToBytes which accepts string.
         try: () => bech32.decode(fromA as any, 1023),
         catch: (error) =>
           new ParseResult.Type(ast, fromA, `Failed to decode bech32 string: ${(error as Error).message}`)
-      })
-      if (prefix !== "ed25519e_sk" && prefix !== "ed25519_sk") {
-        throw new ParseResult.Type(ast, fromA, `Expected ed25519e_sk or ed25519_sk prefix, got ${prefix}`)
+      }),
+      ({ prefix, words }) => {
+        if (prefix !== "ed25519e_sk" && prefix !== "ed25519_sk") {
+          return ParseResult.fail(new ParseResult.Type(ast, fromA, `Expected ed25519e_sk or ed25519_sk prefix, got ${prefix}`))
+        }
+        const decoded = bech32.fromWords(words)
+        return ParseResult.decode(FromBytes)(decoded)
       }
-      const decoded = bech32.fromWords(words)
-      return yield* ParseResult.decodeEither(FromBytes)(decoded)
-    })
+    )
 }).annotations({
   identifier: "PrivateKey.FromBech32",
   description: "Transforms Bech32 string (ed25519e_sk1... or ed25519_sk1...) to PrivateKey"
@@ -119,7 +139,7 @@ export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchem
  * @category arbitrary
  */
 export const arbitrary = FastCheck.uint8Array({ minLength: 32, maxLength: 32 }).map(
-  (bytes) => new PrivateKey({ key: bytes }, { disableValidation: true })
+  (bytes) => new PrivateKey({ key: bytes })
 )
 
 // ============================================================================
@@ -164,7 +184,7 @@ export const fromBech32 = Schema.decodeSync(FromBech32)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: PrivateKey): Uint8Array => v.key
 
 /**
  * Convert a PrivateKey to a hex string.
@@ -172,7 +192,7 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: PrivateKey): string => Bytes.toHex(v.key)
 
 /**
  * Convert a PrivateKey to a Bech32 string.

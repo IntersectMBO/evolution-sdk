@@ -5,8 +5,11 @@ import * as Assets from "./Assets.js"
 import * as DatumOption from "./DatumOption.js"
 import * as Numeric from "./Numeric.js"
 import * as Script from "./Script.js"
+import * as ScriptRef from "./ScriptRef.js"
 import * as TransactionHash from "./TransactionHash.js"
 import * as TransactionInput from "./TransactionInput.js"
+import * as TxOut from "./TxOut.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * UTxO (Unspent Transaction Output) - A transaction output with its on-chain reference.
@@ -219,6 +222,35 @@ export const totalAssets = (utxos: ReadonlyArray<UTxO> | Set<UTxO>): Assets.Asse
  * @since 2.0.0
  * @category conversions
  */
+/**
+ * Encode UTxOs as a CBOR map of TransactionInput → TransactionOutput.
+ *
+ * Produces the binary format expected by script evaluators (Scalus, Aiken WASM).
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toMapCBORBytes = (utxos: ReadonlyArray<UTxO>, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  w.writeMapHeader(utxos.length)
+  for (const utxo of utxos) {
+    TransactionInput.write(w, new TransactionInput.TransactionInput({
+      transactionId: utxo.transactionId,
+      index: utxo.index
+    }))
+    TxOut.write(w, new TxOut.TransactionOutput({
+      address: utxo.address,
+      assets: utxo.assets,
+      datumOption: utxo.datumOption,
+      scriptRef: utxo.scriptRef
+        ? new ScriptRef.ScriptRef({ bytes: Script.toCBOR(utxo.scriptRef) })
+        : undefined
+    }))
+  }
+  w.writeMapBreak()
+  return w.finishView()
+}
+
 export const toInputs = (
   utxos: ReadonlyArray<UTxO>
 ): ReadonlyArray<TransactionInput.TransactionInput> => {

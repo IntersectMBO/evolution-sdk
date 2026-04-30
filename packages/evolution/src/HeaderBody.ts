@@ -1,13 +1,13 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as BlockBodyHash from "./BlockBodyHash.js"
 import * as BlockHeaderHash from "./BlockHeaderHash.js"
-import * as CBOR from "./CBOR.js"
-import * as Ed25519Signature from "./Ed25519Signature.js"
-import * as KESVkey from "./KESVkey.js"
+import * as Bytes from "./Bytes.js"
 import * as Numeric from "./Numeric.js"
 import * as OperationalCert from "./OperationalCert.js"
 import * as ProtocolVersion from "./ProtocolVersion.js"
+import { CborReader } from "./v2/CborReader.js"
+import { capture, CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 import * as VKey from "./VKey.js"
 import * as VrfCert from "./VrfCert.js"
 import * as VrfVkey from "./VrfVkey.js"
@@ -130,26 +130,21 @@ export const arbitrary = FastCheck.record({
   protocolVersion: ProtocolVersion.arbitrary
 }).map(
   (props) =>
-    new HeaderBody(
-      {
-        blockNumber: props.blockNumber,
-        slot: props.slot,
-        prevHash: props.prevHash,
-        issuerVkey: props.issuerVkey,
-        vrfVkey: props.vrfVkey,
-        vrfResult: new VrfCert.VrfCert({
-          output: new VrfCert.VRFOutput({ bytes: props.vrfResult.output }),
-          proof: new VrfCert.VRFProof({ bytes: props.vrfResult.proof })
-        }),
-        blockBodySize: props.blockBodySize,
-        blockBodyHash: props.blockBodyHash,
-        operationalCert: props.operationalCert,
-        protocolVersion: props.protocolVersion
-      },
-      {
-        disableValidation: true
-      }
-    )
+    new HeaderBody({
+      blockNumber: props.blockNumber,
+      slot: props.slot,
+      prevHash: props.prevHash,
+      issuerVkey: props.issuerVkey,
+      vrfVkey: props.vrfVkey,
+      vrfResult: new VrfCert.VrfCert({
+        output: new VrfCert.VRFOutput({ bytes: props.vrfResult.output }),
+        proof: new VrfCert.VRFProof({ bytes: props.vrfResult.proof })
+      }),
+      blockBodySize: props.blockBodySize,
+      blockBodyHash: props.blockBodyHash,
+      operationalCert: props.operationalCert,
+      protocolVersion: props.protocolVersion
+    })
 )
 
 /**
@@ -170,103 +165,63 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category schemas
  */
-export const FromCDDL = Schema.transformOrFail(
-  Schema.Tuple(
-    CBOR.Integer, // block_number as bigint
-    CBOR.Integer, // slot as bigint
-    Schema.NullOr(CBOR.ByteArray), // prev_hash as bytes or null
-    CBOR.ByteArray, // issuer_vkey as bytes (32 bytes)
-    CBOR.ByteArray, // vrf_vkey as bytes (32 bytes)
-    VrfCert.CDDLSchema, // vrf_result as VrfCert
-    CBOR.Integer, // block_body_size as bigint
-    CBOR.ByteArray, // block_body_hash as bytes
-    OperationalCert.CDDLSchema, // operational_cert as OperationalCert
-    ProtocolVersion.CDDLSchema // protocol_version as ProtocolVersion
-  ),
-  Schema.typeSchema(HeaderBody),
-  {
-    strict: true,
-    encode: (toA) =>
-      Eff.gen(function* () {
-        const prevHashBytes = toA.prevHash ? yield* ParseResult.encode(BlockHeaderHash.FromBytes)(toA.prevHash) : null
-        const issuerVkeyBytes = yield* ParseResult.encode(VKey.FromBytes)(toA.issuerVkey)
-        const vrfVkeyBytes = yield* ParseResult.encode(VrfVkey.FromBytes)(toA.vrfVkey)
-        const vrfOutputBytes = yield* ParseResult.encode(VrfCert.VRFOutputFromBytes)(toA.vrfResult.output)
-        const vrfProofBytes = yield* ParseResult.encode(VrfCert.VRFProofFromBytes)(toA.vrfResult.proof)
-        const blockBodyHashBytes = yield* ParseResult.encode(BlockBodyHash.FromBytes)(toA.blockBodyHash)
-        const hotVkeyBytes = yield* ParseResult.encode(KESVkey.FromBytes)(toA.operationalCert.hotVkey)
-        const sigmaBytes = yield* ParseResult.encode(Ed25519Signature.FromBytes)(toA.operationalCert.sigma)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-        return [
-          BigInt(toA.blockNumber),
-          BigInt(toA.slot),
-          prevHashBytes,
-          issuerVkeyBytes,
-          vrfVkeyBytes,
-          [vrfOutputBytes, vrfProofBytes] as const,
-          BigInt(toA.blockBodySize),
-          blockBodyHashBytes,
-          [
-            hotVkeyBytes,
-            BigInt(toA.operationalCert.sequenceNumber),
-            BigInt(toA.operationalCert.kesPeriod),
-            sigmaBytes
-          ] as const,
-          [BigInt(toA.protocolVersion.major), BigInt(toA.protocolVersion.minor)] as const
-        ] as const
-      }),
-    decode: ([
-      rawBlockNumber,
-      rawSlotNumber,
-      prevHashBytes,
-      issuerVkeyBytes,
-      vrfVkeyBytes,
-      [vrfOutputBytes, vrfProofBytes],
-      rawBlockBodySize,
-      blockBodyHashBytes,
-      [hotVkeyBytes, sequenceNumber, kesPeriod, sigmaBytes],
-      [protocolMajor, protocolMinor]
-    ]) =>
-      Eff.gen(function* () {
-        const blockNumber = yield* ParseResult.decode(Schema.typeSchema(Numeric.Uint64Schema))(rawBlockNumber)
-        const slot = yield* ParseResult.decode(Schema.typeSchema(Numeric.Uint64Schema))(rawSlotNumber)
-        const prevHash = prevHashBytes ? yield* ParseResult.decode(BlockHeaderHash.FromBytes)(prevHashBytes) : null
-        const issuerVkey = yield* ParseResult.decode(VKey.FromBytes)(issuerVkeyBytes)
-        const vrfVkey = yield* ParseResult.decode(VrfVkey.FromBytes)(vrfVkeyBytes)
-        const blockBodySize = yield* ParseResult.decode(Schema.typeSchema(Numeric.Uint64Schema))(rawBlockBodySize)
-        const blockBodyHash = yield* ParseResult.decode(BlockBodyHash.FromBytes)(blockBodyHashBytes)
-        const vrfResult = yield* ParseResult.decode(VrfCert.FromCDDL)([vrfOutputBytes, vrfProofBytes])
-        const operationalCert = yield* ParseResult.decode(OperationalCert.FromCDDL)([
-          hotVkeyBytes,
-          sequenceNumber,
-          kesPeriod,
-          sigmaBytes
-        ])
-        const protocolVersion = yield* ParseResult.decode(ProtocolVersion.FromCDDL)([protocolMajor, protocolMinor])
+export const write = (w: CborWriter, v: HeaderBody): void => {
+  w.writeArrayHeader(10)
+  w.writeUint(v.blockNumber)
+  w.writeUint(v.slot)
+  if (v.prevHash === null) { w.writeNull() } else { BlockHeaderHash.write(w, v.prevHash) }
+  VKey.write(w, v.issuerVkey)
+  VrfVkey.write(w, v.vrfVkey)
+  // vrf_result = [vrf_output, vrf_proof]
+  w.writeArrayHeader(2)
+  VrfCert.writeVRFOutput(w, v.vrfResult.output)
+  VrfCert.writeVRFProof(w, v.vrfResult.proof)
+  w.writeArrayBreak()
+  w.writeUint(v.blockBodySize)
+  BlockBodyHash.write(w, v.blockBodyHash)
+  OperationalCert.write(w, v.operationalCert)
+  ProtocolVersion.write(w, v.protocolVersion)
+  w.writeArrayBreak()
+}
 
-        return new HeaderBody(
-          {
-            blockNumber,
-            slot,
-            prevHash,
-            issuerVkey,
-            vrfVkey,
-            vrfResult,
-            blockBodySize,
-            blockBodyHash,
-            operationalCert,
-            protocolVersion
-          },
-          {
-            disableValidation: true
-          }
-        )
-      })
-  }
-).annotations({
-  identifier: "HeaderBody.FromCDDL",
-  description: "Transforms CBOR structure to HeaderBody"
-})
+export const read = (r: CborReader): HeaderBody => {
+  const start = r.position()
+  const count = r.readArrayHeader()
+  const blockNumber = r.readUint()
+  const slot = r.readUint()
+  const prevHash = r.peekMajorType() === 7 ? (r.readNull(), null) : BlockHeaderHash.read(r)
+  const issuerVkey = VKey.read(r)
+  const vrfVkey = VrfVkey.read(r)
+  // vrf_result = [vrf_output, vrf_proof]
+  const vrfCount = r.readArrayHeader()
+  const vrfOutput = VrfCert.readVRFOutput(r)
+  const vrfProof = VrfCert.readVRFProof(r)
+  if (vrfCount === -1) r.isBreak()
+  const vrfResult = new VrfCert.VrfCert({ output: vrfOutput, proof: vrfProof })
+  const blockBodySize = r.readUint()
+  const blockBodyHash = BlockBodyHash.read(r)
+  const operationalCert = OperationalCert.read(r)
+  const protocolVersion = ProtocolVersion.read(r)
+  if (count === -1) r.isBreak()
+  const hb = new HeaderBody({
+    blockNumber,
+    slot,
+    prevHash,
+    issuerVkey,
+    vrfVkey,
+    vrfResult,
+    blockBodySize,
+    blockBodyHash,
+    operationalCert,
+    protocolVersion
+  })
+  capture(hb, r.buffer().subarray(start, r.position()))
+  return hb
+}
 
 /**
  * Check if the given value is a valid HeaderBody.
@@ -282,14 +237,18 @@ export const isHeaderBody = Schema.is(HeaderBody)
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → HeaderBody
-  ).annotations({
-    identifier: "HeaderBody.FromCBORBytes",
-    description: "Transforms CBOR bytes to HeaderBody"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(HeaderBody),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "HeaderBody.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for HeaderBody.
@@ -297,14 +256,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → HeaderBody
-  ).annotations({
-    identifier: "HeaderBody.FromCBORHex",
-    description: "Transforms CBOR hex string to HeaderBody"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "HeaderBody.FromCBORHex" })
 
 /**
  * Convert CBOR bytes to HeaderBody
@@ -312,8 +265,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): HeaderBody =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Convert CBOR hex string to HeaderBody
@@ -321,8 +273,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): H
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): HeaderBody =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert HeaderBody to CBOR bytes
@@ -330,8 +281,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): HeaderBod
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORBytes = (headerBody: HeaderBody, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(headerBody)
+export const toCBORBytes = (headerBody: HeaderBody, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(512, profile)
+  write(w, headerBody)
+  return w.finishView()
+}
 
 /**
  * Convert HeaderBody to CBOR hex string
@@ -339,5 +293,5 @@ export const toCBORBytes = (headerBody: HeaderBody, options?: CBOR.CodecOptions)
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORHex = (headerBody: HeaderBody, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(headerBody)
+export const toCBORHex = (headerBody: HeaderBody, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(headerBody, profile))

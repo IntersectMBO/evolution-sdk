@@ -1,6 +1,8 @@
 import { Equal, Hash, Inspectable, Schema } from "effect"
 
 import * as PlutusData from "./Data.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for InlineDatum representing inline plutus data embedded directly in the transaction output.
@@ -50,6 +52,19 @@ export class InlineDatum extends Schema.TaggedClass<InlineDatum>()("InlineDatum"
   [Hash.symbol](): number {
     return Hash.cached(this, PlutusData.hash(this.data))
   }
+}
+
+// ============================================================================
+// Write / Read
+// ============================================================================
+
+export const write = (w: CborWriter, v: InlineDatum): void => {
+  PlutusData.write(w, v.data)
+}
+
+export const read = (r: CborReader): InlineDatum => {
+  const data = PlutusData.read(r)
+  return new InlineDatum({ data })
 }
 
 /**

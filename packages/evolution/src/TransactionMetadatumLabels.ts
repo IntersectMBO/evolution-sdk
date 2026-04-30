@@ -1,5 +1,8 @@
 import { Equal, Hash, Inspectable, Schema } from "effect"
 
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
+
 /**
  * CDDL spec:
  * ```
@@ -152,6 +155,33 @@ export class TransactionMetadatumLabels extends Schema.TaggedClass<TransactionMe
   has(label: TransactionMetadatumLabel) {
     return this.fromLabels.includes(label)
   }
+}
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: TransactionMetadatumLabels): void => {
+  w.writeArrayHeader(v.fromLabels.length)
+  for (const label of v.fromLabels) {
+    w.writeSmallUint(label)
+  }
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): TransactionMetadatumLabels => {
+  const count = r.readArrayHeader()
+  const fromLabels: Array<TransactionMetadatumLabel> = []
+  if (count === -1) {
+    while (!r.isBreak()) {
+      fromLabels.push(r.readSmallUint() as TransactionMetadatumLabel)
+    }
+  } else {
+    for (let i = 0; i < count; i++) {
+      fromLabels.push(r.readSmallUint() as TransactionMetadatumLabel)
+    }
+  }
+  return new TransactionMetadatumLabels({ fromLabels })
 }
 
 const _LABEL_DESCRIPTIONS = new Map<number, string>([

@@ -1,9 +1,10 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
-import * as CBOR from "./CBOR.js"
 import * as Url from "./Url.js"
+import { CborReader } from "./v2/CborReader.js"
+import { capture, CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for Anchor representing an anchor with URL and data hash.
@@ -52,37 +53,46 @@ export class Anchor extends Schema.TaggedClass<Anchor>()("Anchor", {
   }
 }
 
-export const CDDLSchema = Schema.Tuple(
-  CBOR.Text, // anchor_url: url
-  CBOR.ByteArray // anchor_data_hash: Bytes32
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL schema for Anchor as tuple structure.
- * ```
- * anchor = [anchor_url: url, anchor_data_hash: Bytes32]
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transform(CDDLSchema, Schema.typeSchema(Anchor), {
-  strict: true,
-  encode: (toA) => [toA.anchorUrl.href, toA.anchorDataHash] as const,
-  decode: ([anchorUrl, anchorDataHash]) => new Anchor({ anchorUrl: new Url.Url({ href: anchorUrl }), anchorDataHash })
-})
+export const write = (w: CborWriter, v: Anchor): void => {
+  w.writeArrayHeader(2)
+  Url.write(w, v.anchorUrl)
+  w.writeBytes(v.anchorDataHash)
+  w.writeArrayBreak()
+}
 
+export const read = (r: CborReader): Anchor => {
+  const start = r.position()
+  const count = r.readArrayHeader()
+  const anchor = new Anchor({
+    anchorUrl: Url.read(r),
+    anchorDataHash: r.readBytesView()
+  })
+  if (count === -1) r.isBreak()
+  capture(anchor, r.buffer().subarray(start, r.position()))
+  return anchor
+}
 /**
  * CBOR bytes transformation schema for Anchor.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Anchor
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Anchor),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Anchor.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Anchor.
@@ -90,11 +100,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Anchor
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Anchor.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for Anchor instances.
@@ -105,7 +112,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
 export const arbitrary = FastCheck.record({
   anchorUrl: Url.arbitrary,
   anchorDataHash: FastCheck.uint8Array({ minLength: 32, maxLength: 32 })
-}).map(({ anchorDataHash, anchorUrl }) => new Anchor({ anchorUrl, anchorDataHash }, { disableValidation: true })) // Disable validation since we already check length in FastCheck
+}).map(({ anchorDataHash, anchorUrl }) => new Anchor({ anchorUrl, anchorDataHash }))
 
 // ============================================================================
 // Parsing Functions
@@ -117,8 +124,7 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): Anchor =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse an Anchor from CBOR hex string.
@@ -126,8 +132,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): A
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Anchor =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -139,8 +144,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Anchor =>
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (anchor: Anchor, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(anchor)
+export const toCBORBytes = (anchor: Anchor, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, anchor)
+  return w.finishView()
+}
 
 /**
  * Convert an Anchor to CBOR hex string.
@@ -148,5 +156,5 @@ export const toCBORBytes = (anchor: Anchor, options?: CBOR.CodecOptions): Uint8A
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (anchor: Anchor, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(anchor)
+export const toCBORHex = (anchor: Anchor, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(anchor, profile))

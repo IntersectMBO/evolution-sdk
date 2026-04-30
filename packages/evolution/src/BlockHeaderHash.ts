@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for BlockHeaderHash representing a block header hash.
@@ -12,12 +14,12 @@ import * as Bytes32 from "./Bytes32.js"
  * @category model
  */
 export class BlockHeaderHash extends Schema.TaggedClass<BlockHeaderHash>()("BlockHeaderHash", {
-  bytes: Bytes32.BytesFromHex
+  hash: Bytes32.BytesFromHex
 }) {
   toJSON() {
     return {
       _tag: "BlockHeaderHash" as const,
-      bytes: Bytes.toHex(this.bytes)
+      hash: Bytes.toHex(this.hash)
     }
   }
 
@@ -30,13 +32,24 @@ export class BlockHeaderHash extends Schema.TaggedClass<BlockHeaderHash>()("Bloc
   }
 
   [Equal.symbol](that: unknown): boolean {
-    return that instanceof BlockHeaderHash && Bytes.equals(this.bytes, that.bytes)
+    return that instanceof BlockHeaderHash && Bytes.equals(this.hash, that.hash)
   }
 
   [Hash.symbol](): number {
-    return Hash.array(Array.from(this.bytes))
+    return Hash.cached(this, Hash.array(Array.from(this.hash)))
   }
 }
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: BlockHeaderHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): BlockHeaderHash => new BlockHeaderHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
 
 /**
  * Schema for transforming between Uint8Array and BlockHeaderHash.
@@ -44,11 +57,18 @@ export class BlockHeaderHash extends Schema.TaggedClass<BlockHeaderHash>()("Bloc
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(BlockHeaderHash), {
-  strict: true,
-  decode: (bytes) => new BlockHeaderHash({ bytes }, { disableValidation: true }),
-  encode: (bhh) => bhh.bytes
-}).annotations({
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(BlockHeaderHash),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new BlockHeaderHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (bhh) => ParseResult.succeed(bhh.hash)
+  }
+).annotations({
   identifier: "BlockHeaderHash.FromBytes"
 })
 
@@ -59,8 +79,8 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> BlockHeaderHash
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "BlockHeaderHash.FromHex"
 })
@@ -80,7 +100,7 @@ export const isBlockHeaderHash = Schema.is(BlockHeaderHash)
  * @category arbitrary
  */
 export const arbitrary = FastCheck.uint8Array({ minLength: 32, maxLength: 32 }).map(
-  (bytes) => new BlockHeaderHash({ bytes }, { disableValidation: true })
+  (hash) => new BlockHeaderHash({ hash }, { disableValidation: true })
 )
 
 // ============================================================================
@@ -109,7 +129,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: BlockHeaderHash): Uint8Array => v.hash
 
 /**
  * Encode BlockHeaderHash to hex string.
@@ -117,4 +137,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: BlockHeaderHash): string => Bytes.toHex(v.hash)

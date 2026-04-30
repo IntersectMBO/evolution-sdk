@@ -1,8 +1,11 @@
-import { Effect, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as PlutusData from "./Data.js"
 import * as Numeric from "./Numeric.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Redeemer tag enum for different script execution contexts.
@@ -198,67 +201,44 @@ export const integerToTag = (value: bigint): RedeemerTag => {
   }
 }
 
-/**
- * CDDL schema for Redeemer as tuple structure.
- *
- * CDDL: redeemer = [ tag, index, data, ex_units ]
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = Schema.Tuple(
-  CBOR.Integer.annotations({
-    identifier: "Redeemer.CDDL.Tag",
-    title: "Redeemer Tag (CBOR)",
-    description: "Redeemer tag as CBOR integer (0=spend, 1=mint, 2=cert, 3=reward)"
-  }),
-  CBOR.Integer.annotations({
-    identifier: "Redeemer.CDDL.Index",
-    title: "Redeemer Index (CBOR)",
-    description: "Index into transaction array as CBOR integer"
-  }),
-  PlutusData.CDDLSchema.annotations({
-    identifier: "Redeemer.CDDL.Data",
-    title: "Redeemer Data (CBOR)",
-    description: "PlutusData as CBOR value"
-  }),
-  Schema.Tuple(CBOR.Integer, CBOR.Integer).annotations({
-    identifier: "Redeemer.CDDL.ExUnits",
-    title: "Execution Units (CBOR)",
-    description: "Memory and CPU limits as CBOR integers"
-  })
-).annotations({
-  identifier: "Redeemer.CDDLSchema",
-  title: "Redeemer CDDL Schema",
-  description: "CDDL representation of Redeemer as tuple"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL transformation schema for Redeemer.
- *
- * Transforms between CBOR tuple representation and Redeemer class instance.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Redeemer), {
-  strict: true,
-  encode: (redeemer) =>
-    Effect.gen(function* () {
-      const tagInteger = tagToInteger(redeemer.tag)
-      const dataCBOR = yield* ParseResult.encode(PlutusData.FromCDDL)(redeemer.data)
-      return [tagInteger, redeemer.index, dataCBOR, [redeemer.exUnits.mem, redeemer.exUnits.steps]] as const
-    }),
-  decode: ([tagInteger, index, dataCBOR, [mem, steps]]) =>
-    Effect.gen(function* () {
-      const tag = yield* Effect.try({
-        try: () => integerToTag(tagInteger),
-        catch: (error) => new ParseResult.Type(RedeemerTag.ast, tagInteger, String(error))
-      })
-      const data = yield* ParseResult.decode(PlutusData.FromCDDL)(dataCBOR)
-      return new Redeemer({ tag, index, data, exUnits: new ExUnits({ mem, steps }) })
-    })
-})
+export const writeExUnits = (w: CborWriter, v: ExUnits): void => {
+  w.writeArrayHeader(2)
+  w.writeUint(v.mem)
+  w.writeUint(v.steps)
+  w.writeArrayBreak()
+}
+
+export const readExUnits = (r: CborReader): ExUnits => {
+  const count = r.readArrayHeader()
+  const mem = r.readUint()
+  const steps = r.readUint()
+  if (count === -1) r.isBreak()
+  return new ExUnits({ mem, steps })
+}
+
+export const write = (w: CborWriter, v: Redeemer): void => {
+  w.writeArrayHeader(4)
+  w.writeSmallUint(Number(tagToInteger(v.tag)))
+  w.writeUint(v.index)
+  PlutusData.write(w, v.data, CBOR.CML_DEFAULT_OPTIONS)
+  writeExUnits(w, v.exUnits)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): Redeemer => {
+  const count = r.readArrayHeader()
+  const tagInt = BigInt(r.readSmallUint())
+  const tag = integerToTag(tagInt)
+  const index = r.readUint()
+  const data = PlutusData.read(r)
+  const exUnits = readExUnits(r)
+  if (count === -1) r.isBreak()
+  return new Redeemer({ tag, index, data, exUnits })
+}
 
 /**
  * CBOR bytes transformation schema for Redeemer using CDDL.
@@ -267,15 +247,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Red
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Redeemer
-  ).annotations({
-    identifier: "Redeemer.FromCBORBytes",
-    title: "Redeemer from CBOR Bytes using CDDL",
-    description: "Transforms CBOR bytes to Redeemer using CDDL encoding"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Redeemer),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Redeemer.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Redeemer using CDDL.
@@ -284,15 +267,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Redeemer
-  ).annotations({
-    identifier: "Redeemer.FromCBORHex",
-    title: "Redeemer from CBOR Hex using CDDL",
-    description: "Transforms CBOR hex string to Redeemer using CDDL encoding"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Redeemer.FromCBORHex" })
 
 // ============================================================================
 // Constructors
@@ -380,8 +356,11 @@ export const isReward = (redeemer: Redeemer): boolean => redeemer.tag === "rewar
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORBytes = (redeemer: Redeemer, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(redeemer)
+export const toCBORBytes = (redeemer: Redeemer, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, redeemer)
+  return w.finishView()
+}
 
 /**
  * Encode Redeemer to CBOR hex string.
@@ -389,8 +368,8 @@ export const toCBORBytes = (redeemer: Redeemer, options: CBOR.CodecOptions = CBO
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORHex = (redeemer: Redeemer, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string =>
-  Schema.encodeSync(FromCBORHex(options))(redeemer)
+export const toCBORHex = (redeemer: Redeemer, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(redeemer, profile))
 
 /**
  * Decode Redeemer from CBOR bytes.
@@ -398,8 +377,7 @@ export const toCBORHex = (redeemer: Redeemer, options: CBOR.CodecOptions = CBOR.
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Redeemer =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Decode Redeemer from CBOR hex string.
@@ -407,8 +385,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Redeemer =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Generators

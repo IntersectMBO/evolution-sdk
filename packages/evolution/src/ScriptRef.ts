@@ -1,8 +1,9 @@
-import { Effect, Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
-import * as CBOR from "./CBOR.js"
 import * as Script from "./Script.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for ScriptRef representing a reference to a script in a transaction output.
@@ -52,7 +53,7 @@ export class ScriptRef extends Schema.TaggedClass<ScriptRef>()("ScriptRef", {
  */
 export const FromBytes = Schema.transform(Schema.Uint8ArrayFromSelf, Schema.typeSchema(ScriptRef), {
   strict: true,
-  decode: (bytes) => new ScriptRef({ bytes }, { disableValidation: true }),
+  decode: (bytes) => new ScriptRef({ bytes }),
   encode: (s) => s.bytes
 }).annotations({
   identifier: "ScriptRef.FromBytes"
@@ -70,60 +71,27 @@ export const FromHex = Schema.compose(
 ).annotations({
   identifier: "ScriptRef.FromHex"
 })
-
-export const CDDLSchema = CBOR.tag(24, Schema.Uint8ArrayFromSelf)
-
-/**
- * CDDL schema for ScriptRef following the Conway specification.
- *
- * ```
- * script_ref = #6.24(bytes .cbor script)
- * ```
- *
- * This transforms between CBOR tag 24 structure and ScriptRef model.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(ScriptRef), {
-  strict: true,
-  encode: (_, __, ___, toA) =>
-    Effect.succeed({
-      _tag: "Tag" as const,
-      tag: 24 as const,
-      value: toA.bytes // Use the bytes directly
-    }),
-  decode: (taggedValue) => Effect.succeed(new ScriptRef({ bytes: taggedValue.value }, { disableValidation: true }))
-})
-
-/**
 /**
  * CBOR bytes transformation schema for ScriptRef.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → ScriptRef
-  ).annotations({
-    identifier: "ScriptRef.FromCBORBytes"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(ScriptRef),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "ScriptRef.FromCBORBytes" })
 
-/**
- * CBOR hex transformation schema for ScriptRef.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → ScriptRef
-  ).annotations({
-    identifier: "ScriptRef.FromCBORHex"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "ScriptRef.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for generating random ScriptRef instances.
@@ -139,9 +107,25 @@ export const arbitrary = FastCheck.uint8Array({
   Script.arbitrary.map((script) => {
     // Encode CDDL (CBOR value) -> bytes using canonical options compatible with CML
     const bytes = Script.toCBOR(script)
-    return new ScriptRef({ bytes }, { disableValidation: true })
+    return new ScriptRef({ bytes })
   })
 )
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: ScriptRef): void => {
+  w.writeTagHeader(24)
+  w.writeBytes(v.bytes)
+}
+
+export const read = (r: CborReader): ScriptRef => {
+  const tag = r.readTagHeader()
+  if (tag !== 24) throw new Error(`ScriptRef: expected tag 24, got ${tag}`)
+  const bytes = r.readBytesView()
+  return new ScriptRef({ bytes })
+}
 
 // ============================================================================
 // Root Functions
@@ -169,8 +153,7 @@ export const fromHex = (hex: string) => Schema.decodeSync(FromHex)(hex)
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse ScriptRef from CBOR hex string.
@@ -178,8 +161,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode ScriptRef to bytes.
@@ -187,7 +169,7 @@ export const fromCBORHex = (hex: string, options = CBOR.CML_DEFAULT_OPTIONS) =>
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (data: ScriptRef) => Schema.encodeSync(FromBytes)(data)
+export const toBytes = (data: ScriptRef): Uint8Array => data.bytes
 
 /**
  * Encode ScriptRef to hex string.
@@ -195,7 +177,7 @@ export const toBytes = (data: ScriptRef) => Schema.encodeSync(FromBytes)(data)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (data: ScriptRef) => Schema.encodeSync(FromHex)(data)
+export const toHex = (data: ScriptRef): string => Bytes.toHex(data.bytes)
 
 /**
  * Encode ScriptRef to CBOR bytes.
@@ -203,8 +185,11 @@ export const toHex = (data: ScriptRef) => Schema.encodeSync(FromHex)(data)
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: ScriptRef, options = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: ScriptRef, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Encode ScriptRef to CBOR hex string.
@@ -212,5 +197,5 @@ export const toCBORBytes = (data: ScriptRef, options = CBOR.CML_DEFAULT_OPTIONS)
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: ScriptRef, options = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: ScriptRef, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))

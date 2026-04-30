@@ -1,8 +1,11 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
 import * as CBOR from "./CBOR.js"
 import * as Ed25519Signature from "./Ed25519Signature.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 import * as VKey from "./VKey.js"
 
 /**
@@ -99,33 +102,30 @@ export class BootstrapWitness extends Schema.Class<BootstrapWitness>("BootstrapW
   }
 }
 
-// Tuple schema as per CDDL
-export const CDDLSchema = Schema.Tuple(
-  CBOR.ByteArray, // public_key
-  CBOR.ByteArray, // signature
-  CBOR.ByteArray, // chain_code
-  CBOR.ByteArray // attributes
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * Transform between tuple CDDL shape and class.
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(BootstrapWitness), {
-  strict: true,
-  encode: (bw) =>
-    Eff.gen(function* () {
-      const publicKeyBytes = yield* ParseResult.encode(VKey.FromBytes)(bw.publicKey)
-      const signatureBytes = yield* ParseResult.encode(Ed25519Signature.FromBytes)(bw.signature)
-      const attributesBytes = bw.attributes.length === 0 ? new Uint8Array([0xa0]) : bw.attributes
-      return [publicKeyBytes, signatureBytes, bw.chainCode, attributesBytes] as const
-    }),
-  decode: ([publicKeyBytes, signatureBytes, chainCode, attributes]) =>
-    Eff.gen(function* () {
-      const publicKey = yield* ParseResult.decode(VKey.FromBytes)(publicKeyBytes)
-      const signature = yield* ParseResult.decode(Ed25519Signature.FromBytes)(signatureBytes)
-      return new BootstrapWitness({ publicKey, signature, chainCode, attributes })
-    })
-}).annotations({ identifier: "BootstrapWitness.FromCDDL" })
+export const write = (w: CborWriter, v: BootstrapWitness): void => {
+  w.writeArrayHeader(4)
+  VKey.write(w, v.publicKey)
+  Ed25519Signature.write(w, v.signature)
+  w.writeBytes(v.chainCode)
+  const attrs = v.attributes.length === 0 ? new Uint8Array([0xa0]) : v.attributes
+  w.writeBytes(attrs)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): BootstrapWitness => {
+  const count = r.readArrayHeader()
+  const publicKey = VKey.read(r)
+  const signature = Ed25519Signature.read(r)
+  const chainCode = r.readBytes()
+  const attributes = r.readBytes()
+  if (count === -1) r.isBreak()
+  return new BootstrapWitness({ publicKey, signature, chainCode, attributes })
+}
+
 
 /**
  * CBOR bytes transformation schema for BootstrapWitness.
@@ -134,15 +134,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Boo
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → BootstrapWitness
-  ).annotations({
-    identifier: "BootstrapWitness.FromCBORBytes",
-    title: "BootstrapWitness from CBOR Bytes",
-    description: "Transforms CBOR bytes to BootstrapWitness"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(BootstrapWitness),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "BootstrapWitness.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for BootstrapWitness.
@@ -151,15 +154,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → BootstrapWitness
-  ).annotations({
-    identifier: "BootstrapWitness.FromCBORHex",
-    title: "BootstrapWitness from CBOR Hex",
-    description: "Transforms CBOR hex string to BootstrapWitness"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "BootstrapWitness.FromCBORHex" })
 
 /**
  * Parse BootstrapWitness from CBOR bytes.
@@ -167,10 +163,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (
-  bytes: Uint8Array,
-  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
-): BootstrapWitness => Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse BootstrapWitness from CBOR hex string.
@@ -178,8 +171,7 @@ export const fromCBORBytes = (
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): BootstrapWitness =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode BootstrapWitness to CBOR bytes.
@@ -187,10 +179,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (
-  witness: BootstrapWitness,
-  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
-): Uint8Array => Schema.encodeSync(FromCBORBytes(options))(witness)
+export const toCBORBytes = (witness: BootstrapWitness, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, witness)
+  return w.finishView()
+}
 
 /**
  * Encode BootstrapWitness to CBOR hex string.
@@ -198,8 +191,8 @@ export const toCBORBytes = (
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (witness: BootstrapWitness, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string =>
-  Schema.encodeSync(FromCBORHex(options))(witness)
+export const toCBORHex = (witness: BootstrapWitness, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(witness, profile))
 
 /**
  * Arbitrary generator for BootstrapWitness instances.

@@ -1,5 +1,5 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 import type { NonEmptyArray } from "effect/Array"
 
 import * as Anchor from "./Anchor.js"
@@ -20,6 +20,16 @@ import * as ScriptDataHash from "./ScriptDataHash.js"
 import * as TransactionHash from "./TransactionHash.js"
 import * as TransactionInput from "./TransactionInput.js"
 import * as TxOut from "./TxOut.js"
+import { CborReader } from "./v2/CborReader.js"
+import {
+  capture,
+  CborWriter,
+  type EncodingProfile,
+  type FieldFormat,
+  type FormatHint,
+  getFieldFormat,
+  getFormat,
+} from "./v2/CborWriter.js"
 import * as VotingProcedures from "./VotingProcedures.js"
 import * as Withdrawals from "./Withdrawals.js"
 
@@ -174,332 +184,307 @@ export class TransactionBody extends Schema.TaggedClass<TransactionBody>()("Tran
   }
 }
 
-// Pre-bind hot ParseResult helpers
-const encodeTxInput = ParseResult.encodeEither(TransactionInput.FromCDDL)
-const decodeTxInput = ParseResult.decodeEither(TransactionInput.FromCDDL)
-const encodeTxOutput = ParseResult.encodeEither(TxOut.FromCDDL)
-const decodeTxOutput = ParseResult.decodeEither(TxOut.FromCDDL)
-const encodeCertificate = ParseResult.encodeEither(Certificate.FromCDDL)
-const decodeCertificate = ParseResult.decodeEither(Certificate.FromCDDL)
-const encodeMint = ParseResult.encodeEither(Mint.FromCDDL)
-const decodeMint = ParseResult.decodeEither(Mint.FromCDDL)
-const encodeVotingProcedures = ParseResult.encodeEither(VotingProcedures.FromCDDL)
-const decodeVotingProcedures = ParseResult.decodeEither(VotingProcedures.FromCDDL)
-const encodeProposalProcedure = ParseResult.encodeEither(ProposalProcedure.FromCDDL)
-const decodeProposalProcedure = ParseResult.decodeEither(ProposalProcedure.FromCDDL)
-const encodeRewardAccountBytes = ParseResult.encodeEither(RewardAccount.FromBytes)
-const decodeRewardAccountBytes = ParseResult.decodeEither(RewardAccount.FromBytes)
-const decodeAuxiliaryDataHash = ParseResult.decodeEither(AuxiliaryDataHash.FromBytes)
-const decodeScriptDataHash = ParseResult.decodeEither(ScriptDataHash.FromBytes)
-const decodeKeyHash = ParseResult.decodeEither(KeyHash.FromBytes)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-const decodeTaggedInputs = ParseResult.decodeUnknownEither(CBOR.tag(258, Schema.Array(TransactionInput.FromCDDL)))
-const decodeUntaggedInputs = ParseResult.decodeUnknownEither(Schema.Array(TransactionInput.FromCDDL))
+export const write = (w: CborWriter, v: TransactionBody): void => {
+  const hint = getFormat(v)
 
-const decodeTaggedCertificates = ParseResult.decodeUnknownEither(CBOR.tag(258, Schema.Array(Certificate.CDDLSchema)))
-const decodeUntaggedCertificates = ParseResult.decodeUnknownEither(Schema.Array(Certificate.CDDLSchema))
+  // Count non-empty optional fields
+  let count = 3 // inputs, outputs, fee
+  if (v.ttl !== undefined) count++
+  if (v.certificates && v.certificates.length > 0) count++
+  if (v.withdrawals) count++
+  if (v.auxiliaryDataHash) count++
+  if (v.validityIntervalStart !== undefined) count++
+  if (v.mint) count++
+  if (v.scriptDataHash) count++
+  if (v.collateralInputs && v.collateralInputs.length > 0) count++
+  if (v.requiredSigners && v.requiredSigners.length > 0) count++
+  if (v.networkId !== undefined) count++
+  if (v.collateralReturn) count++
+  if (v.totalCollateral !== undefined) count++
+  if (v.referenceInputs && v.referenceInputs.length > 0) count++
+  if (v.votingProcedures) count++
+  if (v.proposalProcedures && v.proposalProcedures.procedures.length > 0) count++
+  if (v.currentTreasuryValue !== undefined) count++
+  if (v.donation !== undefined) count++
 
-/**
- * CDDL schema for TransactionBody struct structure.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = Schema.declare(
-  (input: unknown): input is Map<bigint, CBOR.CBOR> => input instanceof Map
-).annotations({ identifier: "TransactionBody.CDDLSchema" })
+  // Write map header with format preservation
+  if (hint?.indefinite) { w.writeIndefiniteMapHeader() }
+  else { w.writeHeaderPreserving(5, count, hint?.headerWidth) }
 
-type CDDLSchema = typeof CDDLSchema.Type
+  // Helper for writing key with format preservation
+  const writeKey = (key: bigint) => {
+    const ff = getFieldFormat(v, key)
+    w.writeUintPreserving(key, ff?.byteSize)
+  }
 
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(TransactionBody), {
-  strict: true,
-  encode: (toA) =>
-    E.gen(function* () {
-      const record = new Map<bigint, CBOR.CBOR>()
+  // Use keyOrder from hint if available, else insertion order
+  const keyOrder: ReadonlyArray<unknown> = hint?.keyOrder ?? [
+    0n, 1n, 2n, 3n, 4n, 5n, 7n, 8n, 9n, 11n, 13n, 14n, 15n, 16n, 17n, 18n, 19n, 20n, 21n, 22n
+  ]
 
-      // Required fields
-      // 0: inputs - always tagged as set
-      const inputsLen = toA.inputs.length
-      const inputsArr = new Array(inputsLen)
-      for (let i = 0; i < inputsLen; i++) {
-        inputsArr[i] = yield* encodeTxInput(toA.inputs[i])
+  for (const rawKey of keyOrder) {
+    const key = rawKey as bigint
+    switch (key) {
+      case 0n: {
+        // inputs — tag 258 set
+        writeKey(0n)
+        w.writeTagHeader(258)
+        w.writeArrayHeader(v.inputs.length)
+        for (const inp of v.inputs) TransactionInput.write(w, inp)
+        w.writeArrayBreak()
+        break
       }
-      record.set(0n, CBOR.Tag.make({ tag: 258, value: inputsArr }, { disableValidation: true }))
-
-      // 1: outputs
-      const outputsLen = toA.outputs.length
-      const outputsArr = new Array(outputsLen)
-      for (let i = 0; i < outputsLen; i++) {
-        outputsArr[i] = yield* encodeTxOutput(toA.outputs[i])
+      case 1n: {
+        // outputs
+        writeKey(1n)
+        w.writeArrayHeader(v.outputs.length)
+        for (const out of v.outputs) TxOut.write(w, out)
+        w.writeArrayBreak()
+        break
       }
-      record.set(1n, outputsArr)
-
-      // 2: fee
-      record.set(2n, toA.fee)
-
-      // Optional fields (assign directly when present)
-      if (toA.ttl !== undefined) record.set(3n, toA.ttl)
-
-      if (toA.certificates && toA.certificates.length > 0) {
-        const len = toA.certificates.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeCertificate(toA.certificates[i])
-        }
-        record.set(4n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
+      case 2n: {
+        // fee
+        writeKey(2n)
+        const ff = getFieldFormat(v, "fee" as unknown as bigint)
+        w.writeUintPreserving(v.fee, ff?.byteSize)
+        break
       }
-
-      if (toA.withdrawals) {
-        const map = new Map<Uint8Array, bigint>()
-        for (const [rewardAccount, coin] of toA.withdrawals.withdrawals.entries()) {
-          const accountBytes = yield* encodeRewardAccountBytes(rewardAccount)
-          map.set(accountBytes, coin)
-        }
-        record.set(5n, map)
+      case 3n: {
+        if (v.ttl === undefined) continue
+        writeKey(3n)
+        const ff = getFieldFormat(v, "ttl" as unknown as bigint)
+        w.writeUintPreserving(v.ttl, ff?.byteSize)
+        break
       }
-
-      if (toA.auxiliaryDataHash) record.set(7n, toA.auxiliaryDataHash.bytes)
-
-      if (toA.validityIntervalStart !== undefined) record.set(8n, toA.validityIntervalStart)
-
-      if (toA.mint) record.set(9n, yield* encodeMint(toA.mint))
-
-      if (toA.scriptDataHash) record.set(11n, toA.scriptDataHash.hash)
-
-      if (toA.collateralInputs) {
-        const len = toA.collateralInputs.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeTxInput(toA.collateralInputs[i])
-        }
-        record.set(13n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
+      case 4n: {
+        if (!v.certificates || v.certificates.length === 0) continue
+        writeKey(4n)
+        w.writeTagHeader(258)
+        w.writeArrayHeader(v.certificates.length)
+        for (const cert of v.certificates) Certificate.write(w, cert)
+        w.writeArrayBreak()
+        break
       }
-
-      if (toA.requiredSigners) {
-        const len = toA.requiredSigners.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = toA.requiredSigners[i].hash
-        }
-        record.set(14n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
+      case 5n: {
+        if (!v.withdrawals) continue
+        writeKey(5n)
+        Withdrawals.write(w, v.withdrawals)
+        break
       }
-
-      if (toA.networkId !== undefined) record.set(15n, BigInt(toA.networkId))
-
-      if (toA.collateralReturn) {
-        record.set(16n, yield* encodeTxOutput(toA.collateralReturn))
+      case 7n: {
+        if (!v.auxiliaryDataHash) continue
+        writeKey(7n)
+        AuxiliaryDataHash.write(w, v.auxiliaryDataHash)
+        break
       }
-
-      if (toA.totalCollateral !== undefined) record.set(17n, toA.totalCollateral)
-
-      if (toA.referenceInputs) {
-        const len = toA.referenceInputs.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeTxInput(toA.referenceInputs[i])
-        }
-        record.set(18n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
+      case 8n: {
+        if (v.validityIntervalStart === undefined) continue
+        writeKey(8n)
+        const ff = getFieldFormat(v, "validityIntervalStart" as unknown as bigint)
+        w.writeUintPreserving(v.validityIntervalStart, ff?.byteSize)
+        break
       }
-
-      if (toA.votingProcedures) record.set(19n, yield* encodeVotingProcedures(toA.votingProcedures))
-
-      if (toA.proposalProcedures && toA.proposalProcedures.procedures.length > 0) {
-        const len = toA.proposalProcedures.procedures.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeProposalProcedure(toA.proposalProcedures.procedures[i])
-        }
-        record.set(20n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
+      case 9n: {
+        if (!v.mint) continue
+        writeKey(9n)
+        Mint.write(w, v.mint)
+        break
       }
-
-      if (toA.currentTreasuryValue !== undefined) record.set(21n, toA.currentTreasuryValue)
-
-      if (toA.donation !== undefined) record.set(22n, toA.donation)
-
-      return record as CDDLSchema
-    }),
-  decode: (fromA) =>
-    E.gen(function* () {
-      // Required fields - accept both tag-258 (Conway) and plain array (Babbage)
-      const inputsRaw = fromA.get(0n)
-      const taggedResult = decodeTaggedInputs(inputsRaw)
-      const inputs = E.isRight(taggedResult)
-        ? taggedResult.right.value
-        : yield* decodeUntaggedInputs(inputsRaw)
-
-      // const inputsArray = inputsTag.value
-      // const inputsLen = inputsArray.length
-      // const inputs = new Array(inputsLen)
-      // for (let i = 0; i < inputsLen; i++) {
-      //   inputs[i] = yield* decodeTxInput(inputsArray[i])
-      // }
-
-      const outputsArray = fromA.get(1n) as Array<typeof TxOut.CDDLSchema.Type>
-      const outputsLen = outputsArray.length
-      const outputs = new Array(outputsLen)
-      for (let i = 0; i < outputsLen; i++) {
-        outputs[i] = yield* decodeTxOutput(outputsArray[i])
+      case 11n: {
+        if (!v.scriptDataHash) continue
+        writeKey(11n)
+        ScriptDataHash.write(w, v.scriptDataHash)
+        break
       }
-      const fee = fromA.get(2n) as bigint
-
-      // Optional fields - access as record properties
-      const ttl = fromA.get(3n) as bigint | undefined
-
-      // Accept both tag-258 (Conway) and plain array (Babbage) for certificates.
-      // Mirrors the `inputs` pattern above: try tagged first, fall back to
-      // untagged, and fail decoding if neither matches.
-      const certificatesRaw = fromA.get(4n)
-      let certificatesArray: ReadonlyArray<typeof Certificate.CDDLSchema.Type> | undefined
-      if (certificatesRaw !== undefined) {
-        const taggedCertsResult = decodeTaggedCertificates(certificatesRaw)
-        certificatesArray = E.isRight(taggedCertsResult)
-          ? taggedCertsResult.right.value
-          : yield* decodeUntaggedCertificates(certificatesRaw)
+      case 13n: {
+        if (!v.collateralInputs || v.collateralInputs.length === 0) continue
+        writeKey(13n)
+        w.writeTagHeader(258)
+        w.writeArrayHeader(v.collateralInputs.length)
+        for (const inp of v.collateralInputs) TransactionInput.write(w, inp)
+        w.writeArrayBreak()
+        break
       }
-      let certificates: NonEmptyArray<Certificate.Certificate> | undefined
-      if (certificatesArray) {
-        const len = certificatesArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeCertificate(certificatesArray[i])
-        }
-        certificates = arr as NonEmptyArray<Certificate.Certificate>
+      case 14n: {
+        if (!v.requiredSigners || v.requiredSigners.length === 0) continue
+        writeKey(14n)
+        w.writeTagHeader(258)
+        w.writeArrayHeader(v.requiredSigners.length)
+        for (const signer of v.requiredSigners) KeyHash.write(w, signer)
+        w.writeArrayBreak()
+        break
       }
-
-      let withdrawals: Withdrawals.Withdrawals | undefined
-      const withdrawalsMap = fromA.get(5n) as typeof Withdrawals.CDDLSchema.Type | undefined
-      if (withdrawalsMap) {
-        const decodedWithdrawals = new Map<RewardAccount.RewardAccount, Coin.Coin>()
-        const entriesIter = (withdrawalsMap as ReadonlyMap<Uint8Array, bigint>).entries()
-        for (const [accountBytes, coinAmount] of entriesIter) {
-          const rewardAccount = yield* decodeRewardAccountBytes(accountBytes)
-          decodedWithdrawals.set(rewardAccount, coinAmount)
-        }
-        withdrawals = new Withdrawals.Withdrawals({ withdrawals: decodedWithdrawals })
+      case 15n: {
+        if (v.networkId === undefined) continue
+        writeKey(15n)
+        w.writeSmallUint(v.networkId)
+        break
       }
-
-      const auxiliaryDataHashBytes = fromA.get(7n) as Uint8Array | undefined
-      const auxiliaryDataHash = auxiliaryDataHashBytes
-        ? yield* decodeAuxiliaryDataHash(auxiliaryDataHashBytes)
-        : undefined
-      const validityIntervalStart = fromA.get(8n) as bigint | undefined
-      const mintData = fromA.get(9n) as typeof Mint.CDDLSchema.Type | undefined
-      const mint = mintData ? yield* decodeMint(mintData) : undefined
-      const scriptDataHashBytes = fromA.get(11n) as Uint8Array | undefined
-      const scriptDataHash = scriptDataHashBytes ? yield* decodeScriptDataHash(scriptDataHashBytes) : undefined
-
-      // Accept both tag-258 (Conway) and plain array (Babbage) for collateral inputs
-      const collateralInputsRaw = fromA.get(13n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
-        | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
-        | undefined
-      const collateralInputsArray = collateralInputsRaw
-        ? (collateralInputsRaw as any)._tag === "Tag"
-          ? (collateralInputsRaw as any).value
-          : collateralInputsRaw
-        : undefined
-      let collateralInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
-      if (collateralInputsArray) {
-        const len = collateralInputsArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeTxInput(collateralInputsArray[i])
-        }
-        collateralInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
+      case 16n: {
+        if (!v.collateralReturn) continue
+        writeKey(16n)
+        TxOut.write(w, v.collateralReturn)
+        break
       }
-
-      // Accept both tag-258 (Conway) and plain array (Babbage) for required signers
-      const requiredSignersRaw = fromA.get(14n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<Uint8Array> }
-        | ReadonlyArray<Uint8Array>
-        | undefined
-      const requiredSignersArray = requiredSignersRaw
-        ? (requiredSignersRaw as any)._tag === "Tag"
-          ? (requiredSignersRaw as any).value
-          : requiredSignersRaw
-        : undefined
-      let requiredSigners: NonEmptyArray<KeyHash.KeyHash> | undefined
-      if (requiredSignersArray) {
-        const len = requiredSignersArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeKeyHash(requiredSignersArray[i])
-        }
-        requiredSigners = arr as NonEmptyArray<KeyHash.KeyHash>
+      case 17n: {
+        if (v.totalCollateral === undefined) continue
+        writeKey(17n)
+        w.writeUint(v.totalCollateral)
+        break
       }
-      const networkIdBigInt = fromA.get(15n) as bigint | undefined
-      const networkId = networkIdBigInt !== undefined ? (Number(networkIdBigInt) as NetworkId.NetworkId) : undefined
-      const collateralReturnData = fromA.get(16n) as typeof TxOut.CDDLSchema.Type | undefined
-      const collateralReturn = collateralReturnData ? yield* decodeTxOutput(collateralReturnData) : undefined
-      const totalCollateral = fromA.get(17n) as Coin.Coin | undefined
-
-      // Accept both tag-258 (Conway) and plain array (Babbage) for reference inputs
-      const referenceInputsRaw = fromA.get(18n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
-        | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
-        | undefined
-      const referenceInputsArray: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> | undefined = referenceInputsRaw
-        ? (referenceInputsRaw as any)._tag === "Tag"
-          ? (referenceInputsRaw as any).value
-          : referenceInputsRaw
-        : undefined
-      let referenceInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
-      if (referenceInputsArray) {
-        const len = referenceInputsArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeTxInput(referenceInputsArray[i])
-        }
-        referenceInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
+      case 18n: {
+        if (!v.referenceInputs || v.referenceInputs.length === 0) continue
+        writeKey(18n)
+        w.writeTagHeader(258)
+        w.writeArrayHeader(v.referenceInputs.length)
+        for (const inp of v.referenceInputs) TransactionInput.write(w, inp)
+        w.writeArrayBreak()
+        break
       }
-      const votingProceduresData = fromA.get(19n) as typeof VotingProcedures.CDDLSchema.Type | undefined
-      const votingProcedures = votingProceduresData ? yield* decodeVotingProcedures(votingProceduresData) : undefined
-      // Accept both tag-258 (Conway) and plain array (Babbage) for proposal procedures
-      const proposalProceduresRaw = fromA.get(20n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> }
-        | ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>
-        | undefined
-      const proposalProceduresArray: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> | undefined = proposalProceduresRaw
-        ? (proposalProceduresRaw as any)._tag === "Tag"
-          ? (proposalProceduresRaw as any).value
-          : proposalProceduresRaw
-        : undefined
-      const proposalProcedures = proposalProceduresArray
-        ? new ProposalProcedures.ProposalProcedures({
-            procedures: yield* E.all(proposalProceduresArray.map((pp) => decodeProposalProcedure(pp)))
-          })
-        : undefined
-      const currentTreasuryValue = fromA.get(21n) as Coin.Coin | undefined
-      const donation = fromA.get(22n) as Coin.Coin | undefined
+      case 19n: {
+        if (!v.votingProcedures) continue
+        writeKey(19n)
+        VotingProcedures.write(w, v.votingProcedures)
+        break
+      }
+      case 20n: {
+        if (!v.proposalProcedures || v.proposalProcedures.procedures.length === 0) continue
+        writeKey(20n)
+        w.writeTagHeader(258)
+        w.writeArrayHeader(v.proposalProcedures.procedures.length)
+        for (const pp of v.proposalProcedures.procedures) ProposalProcedure.write(w, pp)
+        w.writeArrayBreak()
+        break
+      }
+      case 21n: {
+        if (v.currentTreasuryValue === undefined) continue
+        writeKey(21n)
+        w.writeUint(v.currentTreasuryValue)
+        break
+      }
+      case 22n: {
+        if (v.donation === undefined) continue
+        writeKey(22n)
+        w.writeUint(v.donation)
+        break
+      }
+    }
+  }
 
-      const result = new TransactionBody(
-        {
-          inputs,
-          outputs,
-          fee,
-          ttl,
-          certificates,
-          withdrawals,
-          auxiliaryDataHash,
-          validityIntervalStart,
-          mint,
-          scriptDataHash,
-          collateralInputs,
-          requiredSigners,
-          networkId,
-          collateralReturn,
-          totalCollateral,
-          referenceInputs,
-          votingProcedures,
-          proposalProcedures,
-          currentTreasuryValue,
-          donation
-        },
-        { disableValidation: true }
-      )
-      return result
-    })
-})
+  if (hint?.indefinite) w.writeBreak()
+}
+
+export const read = (r: CborReader): TransactionBody => {
+  const start = r.position()
+  const [mapCount, mapFmt] = r.readMapHeaderAnnotated()
+  const keyOrder: Array<bigint> = []
+  const fields = new Map<string | number | bigint, FieldFormat>()
+
+  let inputs: Array<TransactionInput.TransactionInput> = []
+  let outputs: Array<TxOut.TransactionOutput> = []
+  let fee: Coin.Coin = 0n as Coin.Coin
+  let ttl: bigint | undefined
+  let certificates: NonEmptyArray<Certificate.Certificate> | undefined
+  let withdrawals: Withdrawals.Withdrawals | undefined
+  let auxiliaryDataHash: AuxiliaryDataHash.AuxiliaryDataHash | undefined
+  let validityIntervalStart: bigint | undefined
+  let mint: Mint.Mint | undefined
+  let scriptDataHash: ScriptDataHash.ScriptDataHash | undefined
+  let collateralInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
+  let requiredSigners: NonEmptyArray<KeyHash.KeyHash> | undefined
+  let networkId: NetworkId.NetworkId | undefined
+  let collateralReturn: TxOut.TransactionOutput | undefined
+  let totalCollateral: Coin.Coin | undefined
+  let referenceInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
+  let votingProcedures: VotingProcedures.VotingProcedures | undefined
+  let proposalProcedures: ProposalProcedures.ProposalProcedures | undefined
+  let currentTreasuryValue: Coin.Coin | undefined
+  let donation: Coin.Coin | undefined
+
+  const readTaggedArray = <T>(readEl: (r: CborReader) => T): Array<T> => {
+    // Accept tag 258 or plain array
+    if (r.peekMajorType() === 6) {
+      const tag = r.readTagHeader()
+      if (tag !== 258) throw new Error(`Expected tag 258, got ${tag}`)
+    }
+    const count = r.readArrayHeader()
+    const arr: Array<T> = []
+    if (count === -1) { while (!r.isBreak()) arr.push(readEl(r)) }
+    else { for (let i = 0; i < count; i++) arr.push(readEl(r)) }
+    return arr
+  }
+
+  const readEntry = () => {
+    const [key, keyWidth] = r.readUintAnnotated()
+    keyOrder.push(key)
+    fields.set(key, { byteSize: keyWidth })
+
+    switch (key) {
+      case 0n: inputs = readTaggedArray(TransactionInput.read); break
+      case 1n: {
+        const count = r.readArrayHeader()
+        outputs = []
+        if (count === -1) { while (!r.isBreak()) outputs.push(TxOut.read(r)) }
+        else { for (let i = 0; i < count; i++) outputs.push(TxOut.read(r)) }
+        break
+      }
+      case 2n: { const [v, w] = r.readUintAnnotated(); fee = v as Coin.Coin; fields.set("fee" as unknown as bigint, { byteSize: w }); break }
+      case 3n: { const [v, w] = r.readUintAnnotated(); ttl = v; fields.set("ttl" as unknown as bigint, { byteSize: w }); break }
+      case 4n: certificates = readTaggedArray(Certificate.read) as NonEmptyArray<Certificate.Certificate>; break
+      case 5n: withdrawals = Withdrawals.read(r); break
+      case 7n: auxiliaryDataHash = AuxiliaryDataHash.read(r); break
+      case 8n: { const [v, w] = r.readUintAnnotated(); validityIntervalStart = v; fields.set("validityIntervalStart" as unknown as bigint, { byteSize: w }); break }
+      case 9n: mint = Mint.read(r); break
+      case 11n: scriptDataHash = ScriptDataHash.read(r); break
+      case 13n: collateralInputs = readTaggedArray(TransactionInput.read) as NonEmptyArray<TransactionInput.TransactionInput>; break
+      case 14n: requiredSigners = readTaggedArray(KeyHash.read) as NonEmptyArray<KeyHash.KeyHash>; break
+      case 15n: networkId = Number(r.readUint()) as NetworkId.NetworkId; break
+      case 16n: collateralReturn = TxOut.read(r); break
+      case 17n: totalCollateral = r.readUint() as Coin.Coin; break
+      case 18n: referenceInputs = readTaggedArray(TransactionInput.read) as NonEmptyArray<TransactionInput.TransactionInput>; break
+      case 19n: votingProcedures = VotingProcedures.read(r); break
+      case 20n: {
+        const arr = readTaggedArray(ProposalProcedure.read)
+        proposalProcedures = new ProposalProcedures.ProposalProcedures({ procedures: arr })
+        break
+      }
+      case 21n: currentTreasuryValue = r.readUint() as Coin.Coin; break
+      case 22n: donation = r.readUint() as Coin.Coin; break
+      default: r.skip(); break
+    }
+  }
+
+  if (mapCount === -1) { while (!r.isBreak()) readEntry() }
+  else { for (let i = 0; i < mapCount; i++) readEntry() }
+
+  const body = new TransactionBody({
+    inputs, outputs, fee, ttl, certificates, withdrawals,
+    auxiliaryDataHash, validityIntervalStart, mint, scriptDataHash,
+    collateralInputs, requiredSigners, networkId, collateralReturn,
+    totalCollateral, referenceInputs, votingProcedures, proposalProcedures,
+    currentTreasuryValue, donation
+  })
+
+  // Capture raw bytes + format hint for hash-preserving re-encoding
+  const rawBytes = r.buffer().subarray(start, r.position())
+  const hint: FormatHint = {
+    indefinite: mapFmt.indefinite,
+    headerWidth: mapFmt.headerWidth,
+    keyOrder,
+    fields
+  }
+  capture(body, rawBytes, hint)
+
+  return body
+}
+
+// Pre-bind hot ParseResult helpers (sync)
+
+
 
 /**
  * CBOR bytes transformation schema for TransactionBody.
@@ -508,12 +493,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
-    identifier: "TransactionBody.FromCBORBytes",
-    title: "TransactionBody from CBOR bytes",
-    description: "Decode TransactionBody from CBOR-encoded bytes using Conway CDDL specification"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(TransactionBody),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "TransactionBody.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for TransactionBody.
@@ -522,12 +513,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCDDL).annotations({
-    identifier: "TransactionBody.FromCBORHex",
-    title: "TransactionBody from CBOR hex",
-    description: "Decode TransactionBody from CBOR-encoded hex string using Conway CDDL specification"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "TransactionBody.FromCBORHex" })
 
 export const isTransactionBody = Schema.is(TransactionBody)
 
@@ -537,8 +524,7 @@ export const isTransactionBody = Schema.is(TransactionBody)
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Convert CBOR hex string to TransactionBody.
@@ -546,8 +532,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert TransactionBody to CBOR bytes.
@@ -555,8 +540,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORBytes = (data: TransactionBody, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: TransactionBody, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(512, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert TransactionBody to CBOR hex string.
@@ -564,8 +552,8 @@ export const toCBORBytes = (data: TransactionBody, options: CBOR.CodecOptions = 
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORHex = (data: TransactionBody, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: TransactionBody, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
 /**
  * Parse a TransactionBody from CBOR bytes and return the root format tree.
@@ -577,7 +565,7 @@ export const fromCBORBytesWithFormat = (
   bytes: Uint8Array
 ): CBOR.DecodedWithFormat<TransactionBody> => {
   const decoded = CBOR.fromCBORBytesWithFormat(bytes)
-  const value = Schema.decodeSync(FromCDDL)(decoded.value as Map<bigint, CBOR.CBOR>)
+  const value = read(new CborReader(bytes))
   return { value, format: decoded.format }
 }
 
@@ -590,8 +578,9 @@ export const fromCBORBytesWithFormat = (
 export const fromCBORHexWithFormat = (
   hex: string
 ): CBOR.DecodedWithFormat<TransactionBody> => {
-  const decoded = CBOR.fromCBORHexWithFormat(hex)
-  const value = Schema.decodeSync(FromCDDL)(decoded.value as Map<bigint, CBOR.CBOR>)
+  const bytes = Bytes.fromHex(hex)
+  const decoded = CBOR.fromCBORBytesWithFormat(bytes)
+  const value = read(new CborReader(bytes))
   return { value, format: decoded.format }
 }
 
@@ -605,8 +594,8 @@ export const toCBORBytesWithFormat = (
   data: TransactionBody,
   format: CBOR.CBORFormat
 ): Uint8Array => {
-  const cborMap = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORBytesWithFormat(cborMap, format)
+  const plain = toCBORBytes(data)
+  return CBOR.toCBORBytesWithFormat(CBOR.fromCBORBytes(plain) as unknown as CBOR.CBOR, format)
 }
 
 /**
@@ -619,8 +608,7 @@ export const toCBORHexWithFormat = (
   data: TransactionBody,
   format: CBOR.CBORFormat
 ): string => {
-  const cborMap = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORHexWithFormat(cborMap, format)
+  return Bytes.toHex(toCBORBytesWithFormat(data, format))
 }
 
 // ============================================================================

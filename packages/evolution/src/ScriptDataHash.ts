@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * ScriptDataHash based on Conway CDDL specification
@@ -42,17 +44,35 @@ export class ScriptDataHash extends Schema.TaggedClass<ScriptDataHash>()("Script
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: ScriptDataHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): ScriptDataHash => new ScriptDataHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema for transforming between Uint8Array and ScriptDataHash.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(ScriptDataHash), {
-  strict: true,
-  decode: (bytes) => new ScriptDataHash({ hash: bytes }, { disableValidation: true }),
-  encode: (s) => s.hash
-}).annotations({
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(ScriptDataHash),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new ScriptDataHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (s) => ParseResult.succeed(s.hash)
+  }
+).annotations({
   identifier: "ScriptDataHash.FromBytes"
 })
 
@@ -63,8 +83,8 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> ScriptDataHash
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "ScriptDataHash.FromHex"
 })
@@ -84,7 +104,7 @@ export const isScriptDataHash = Schema.is(ScriptDataHash)
  * @category arbitrary
  */
 export const arbitrary = FastCheck.uint8Array({ minLength: 32, maxLength: 32 }).map(
-  (bytes) => new ScriptDataHash({ hash: bytes }, { disableValidation: true })
+  (bytes) => new ScriptDataHash({ hash: bytes })
 )
 
 // ============================================================================
@@ -113,7 +133,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: ScriptDataHash): Uint8Array => v.hash
 
 /**
  * Encode ScriptDataHash to hex string.
@@ -121,4 +141,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: ScriptDataHash): string => Bytes.toHex(v.hash)

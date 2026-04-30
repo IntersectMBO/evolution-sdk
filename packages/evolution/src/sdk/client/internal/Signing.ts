@@ -221,7 +221,7 @@ export const signTxsWithAutoFetch = (
     for (const txOrHex of txs) {
       const tx =
         typeof txOrHex === "string"
-          ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex())(txOrHex).pipe(
+          ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex)(txOrHex).pipe(
               Effect.mapError(
                 (cause) => new Wallet.WalletError({ message: `Failed to decode transaction: ${cause}`, cause })
               )
@@ -271,7 +271,7 @@ export const signWithAutoFetch = (
 
     const tx =
       typeof txOrHex === "string"
-        ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex())(txOrHex).pipe(
+        ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex)(txOrHex).pipe(
             Effect.mapError(
               (cause) => new Wallet.WalletError({ message: `Failed to decode transaction: ${cause}`, cause })
             )
@@ -306,7 +306,7 @@ export const makeSigningWalletEffect = (
         const derivation = yield* derivationEffect
         const tx =
           typeof txOrHex === "string"
-            ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex())(txOrHex).pipe(
+            ? yield* ParseResult.decodeUnknownEither(Transaction.FromCBORHex)(txOrHex).pipe(
                 Effect.mapError(
                   (cause) => new Wallet.WalletError({ message: `Failed to decode transaction: ${cause}`, cause })
                 )

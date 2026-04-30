@@ -1,7 +1,9 @@
-import { Effect, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Numeric from "./Numeric.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for NonnegativeInterval representing a fractional value >= 0.
@@ -90,38 +92,79 @@ export class NonnegativeInterval extends Schema.Class<NonnegativeInterval>("Nonn
   }
 }
 
-export const CDDLSchema = CBOR.tag(30, Schema.Tuple(CBOR.Integer, CBOR.Integer))
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: NonnegativeInterval): void => {
+  w.writeTagHeader(30)
+  w.writeArrayHeader(2)
+  w.writeUint(v.numerator)
+  w.writeUint(v.denominator)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): NonnegativeInterval => {
+  r.readTagHeader()
+  const count = r.readArrayHeader()
+  const numerator = r.readUint()
+  const denominator = r.readUint()
+  if (count === -1) r.isBreak()
+  return new NonnegativeInterval({ numerator, denominator })
+}
+
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(NonnegativeInterval),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "NonnegativeInterval.FromCBORBytes" })
+
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "NonnegativeInterval.FromCBORHex" })
 
 /**
- * Transform between tag(30) tuple and NonnegativeInterval model.
+ * Convert NonnegativeInterval to CBOR bytes.
+ *
+ * @since 2.0.0
+ * @category encoding
  */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(NonnegativeInterval), {
-  strict: true,
-  encode: (_, __, ___, interval) =>
-    Effect.succeed({
-      _tag: "Tag" as const,
-      tag: 30 as const,
-      value: [interval.numerator, interval.denominator] as const
-    }),
-  decode: (_, __, ___, taggedValue) =>
-    Effect.gen(function* () {
-      if (taggedValue.tag !== 30) {
-        return yield* Effect.fail(
-          new ParseResult.Type(NonnegativeInterval.ast, taggedValue, `Expected tag 30, got ${taggedValue.tag}`)
-        )
-      }
-      const [numerator, denominator] = yield* ParseResult.decodeUnknown(Schema.Tuple(CBOR.Integer, CBOR.Integer))(
-        taggedValue.value
-      )
-      return new NonnegativeInterval({ numerator, denominator })
-    })
-}).annotations({ identifier: "NonnegativeInterval.CDDL" })
+export const toCBORBytes = (interval: NonnegativeInterval, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, interval)
+  return w.finish()
+}
 
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL)
+/**
+ * Convert NonnegativeInterval to CBOR hex.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORHex = (interval: NonnegativeInterval, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(interval, profile))
 
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options))
+/**
+ * Convert CBOR bytes to NonnegativeInterval.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
+
+/**
+ * Convert CBOR hex string to NonnegativeInterval.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 export const arbitrary: FastCheck.Arbitrary<NonnegativeInterval> = FastCheck.bigInt({ min: 1n, max: 1000000n })
   .chain((denominator) =>

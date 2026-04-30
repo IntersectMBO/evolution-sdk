@@ -5,6 +5,9 @@ import * as TransactionBody from "./TransactionBody.js"
 // import * as TransactionWitnessSet from "./TransactionWitnessSet.js";
 // import * as AuxiliaryData from "./AuxiliaryData.js";
 import * as TransactionIndex from "./TransactionIndex.js"
+// CborReader/CborWriter deferred — TransactionBody and TransactionWitnessSet lack write/read
+// import { CborReader } from "./v2/CborReader.js"
+// import { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Block based on Conway CDDL specification

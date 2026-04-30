@@ -1,10 +1,12 @@
-import { Effect as Eff, FastCheck, ParseResult, Schema } from "effect"
+import { FastCheck, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as NativeScripts from "./NativeScripts.js"
 import * as PlutusV1 from "./PlutusV1.js"
 import * as PlutusV2 from "./PlutusV2.js"
 import * as PlutusV3 from "./PlutusV3.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Script union type following Conway CDDL specification.
@@ -33,89 +35,78 @@ export const Script = Schema.Union(
 
 export type Script = typeof Script.Type
 
-/**
- * CDDL schema for Script as tagged tuples.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const ScriptCDDL = Schema.Union(
-  Schema.Tuple(Schema.Literal(0n), NativeScripts.CDDLSchema),
-  Schema.Tuple(Schema.Literal(1n), CBOR.ByteArray), // plutus_v1_script
-  Schema.Tuple(Schema.Literal(2n), CBOR.ByteArray), // plutus_v2_script
-  Schema.Tuple(Schema.Literal(3n), CBOR.ByteArray) // plutus_v3_script
-).annotations({
-  identifier: "Script.CDDL",
-  description: "CDDL representation of Script as tagged tuples"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-export type ScriptCDDL = typeof ScriptCDDL.Type
+export const write = (w: CborWriter, v: Script): void => {
+  switch (v._tag) {
+    case "NativeScript":
+      w.writeArrayHeader(2)
+      w.writeSmallUint(0)
+      NativeScripts.write(w, v)
+      w.writeArrayBreak()
+      break
+    case "PlutusV1":
+      w.writeArrayHeader(2)
+      w.writeSmallUint(1)
+      w.writeBytes(v.bytes)
+      w.writeArrayBreak()
+      break
+    case "PlutusV2":
+      w.writeArrayHeader(2)
+      w.writeSmallUint(2)
+      w.writeBytes(v.bytes)
+      w.writeArrayBreak()
+      break
+    case "PlutusV3":
+      w.writeArrayHeader(2)
+      w.writeSmallUint(3)
+      w.writeBytes(v.bytes)
+      w.writeArrayBreak()
+      break
+  }
+}
 
-/**
- * Transformation between CDDL representation and Script union.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(ScriptCDDL, Schema.typeSchema(Script), {
-  strict: true,
-  encode: (script) =>
-    Eff.gen(function* () {
-      switch (script._tag) {
-        // Plutus script cases
-        case "PlutusV1":
-          return [1n, script.bytes] as const
+export const read = (r: CborReader): Script => {
+  const count = r.readArrayHeader()
+  const tag = r.readSmallUint()
+  let result: Script
+  switch (tag) {
+    case 0:
+      result = NativeScripts.read(r)
+      break
+    case 1:
+      result = new PlutusV1.PlutusV1({ bytes: r.readBytes() })
+      break
+    case 2:
+      result = new PlutusV2.PlutusV2({ bytes: r.readBytes() })
+      break
+    case 3:
+      result = new PlutusV3.PlutusV3({ bytes: r.readBytes() })
+      break
+    default:
+      throw new Error(`Unknown script tag: ${tag}`)
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
 
-        case "PlutusV2":
-          return [2n, script.bytes] as const
-
-        case "PlutusV3":
-          return [3n, script.bytes] as const
-
-        // Native script case (TaggedClass)
-        case "NativeScript": {
-          const nativeCDDL = yield* ParseResult.encode(NativeScripts.FromCDDL)(script)
-          return [0n, nativeCDDL] as const
-        }
-
-        default:
-          return yield* Eff.fail(
-            new ParseResult.Type(Schema.typeSchema(Script).ast, script, `Unknown script type: ${(script as any)._tag}`)
-          )
-      }
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Script),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
     }),
-  decode: (tuple) =>
-    Eff.gen(function* () {
-      const [tag, data] = tuple
-      switch (tag) {
-        case 0n:
-          // Native script
-          return yield* ParseResult.decode(NativeScripts.FromCDDL)(data)
-        case 1n:
-          // PlutusV1
-          return new PlutusV1.PlutusV1({ bytes: data })
-        case 2n:
-          // PlutusV2
-          return new PlutusV2.PlutusV2({ bytes: data })
-        case 3n:
-          // PlutusV3
-          return new PlutusV3.PlutusV3({ bytes: data })
-      }
-    })
-}).annotations({
-  identifier: "Script.FromCDDL",
-  title: "Script from CDDL",
-  description: "Transforms between CDDL tagged tuple and Script union"
-})
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBOR instead"))
+  }
+).annotations({ identifier: "Script.FromCBORBytes" })
 
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CDDL
-    FromCDDL // CDDL → Script
-  )
-
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options))
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Script.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for Script.
@@ -131,14 +122,15 @@ export const arbitrary: FastCheck.Arbitrary<Script> = FastCheck.oneof(
   PlutusV3.arbitrary
 )
 
-export const fromCBOR = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBOR = Schema.decodeSync(FromCBORBytes)
 
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
-export const toCBOR = (data: Script, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBOR = (data: Script, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, data)
+  return w.finish()
+}
 
-export const toCBORHex = (data: Script, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: Script, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBOR(data, profile))

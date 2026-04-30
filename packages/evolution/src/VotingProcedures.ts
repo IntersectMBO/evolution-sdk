@@ -1,6 +1,7 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Anchor from "./Anchor.js"
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as Credential from "./Credential.js"
 import * as DRep from "./DRep.js"
@@ -10,6 +11,8 @@ import * as PoolKeyHash from "./PoolKeyHash.js"
 import * as ScriptHash from "./ScriptHash.js"
 import * as TransactionHash from "./TransactionHash.js"
 import * as TransactionIndex from "./TransactionIndex.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Helper function for content-based Map equality using Equal.equals.
@@ -191,64 +194,6 @@ export const VoterCDDL = Schema.Union(
  * @since 2.0.0
  * @category schemas
  */
-export const VoterFromCDDL = Schema.transformOrFail(VoterCDDL, Schema.typeSchema(Voter), {
-  strict: true,
-  encode: (voter) =>
-    Eff.gen(function* () {
-      switch (voter._tag) {
-        case "ConstitutionalCommitteeVoter": {
-          if (voter.credential._tag === "KeyHash") {
-            return [0n, voter.credential.hash] as const
-          } else {
-            return [1n, voter.credential.hash] as const
-          }
-        }
-        case "DRepVoter": {
-          if (voter.drep._tag === "KeyHashDRep") {
-            return [2n, voter.drep.keyHash.hash] as const
-          } else if (voter.drep._tag === "ScriptHashDRep") {
-            return [3n, voter.drep.scriptHash.hash] as const
-          } else {
-            return yield* ParseResult.fail(
-              new ParseResult.Type(VoterCDDL.ast, voter, "Always* DRep variants are not valid Voter identifiers")
-            )
-          }
-        }
-        case "StakePoolVoter": {
-          return [4n, voter.poolKeyHash.hash] as const
-        }
-      }
-    }),
-  decode: (cddl) =>
-    Eff.gen(function* () {
-      const [voterType, voterData] = cddl
-      switch (voterType) {
-        case 0n: {
-          const keyHash = yield* ParseResult.decode(KeyHash.FromBytes)(voterData)
-          return new ConstitutionalCommitteeVoter({ credential: keyHash })
-        }
-        case 1n: {
-          const scriptHash = yield* ParseResult.decode(ScriptHash.FromBytes)(voterData)
-          return new ConstitutionalCommitteeVoter({ credential: scriptHash })
-        }
-        case 2n: {
-          const keyHash = yield* ParseResult.decode(KeyHash.FromBytes)(voterData)
-          return new DRepVoter({ drep: new DRep.KeyHashDRep({ keyHash }) })
-        }
-        case 3n: {
-          const scriptHash = yield* ParseResult.decode(ScriptHash.FromBytes)(voterData)
-          return new DRepVoter({ drep: new DRep.ScriptHashDRep({ scriptHash }) })
-        }
-        case 4n: {
-          const poolKeyHash = yield* ParseResult.decode(PoolKeyHash.FromBytes)(voterData)
-          return new StakePoolVoter({ poolKeyHash })
-        }
-        default:
-          return yield* ParseResult.fail(new ParseResult.Type(VoterCDDL.ast, cddl))
-      }
-    })
-})
-
 /**
  * Vote types based on Conway CDDL specification.
  *
@@ -335,51 +280,6 @@ export const Vote = Schema.Union(NoVote, YesVote, AbstainVote)
 
 export type Vote = typeof Vote.Type
 
-/**
- * CDDL schema for Vote.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const VoteCDDL = Schema.Union(
-  Schema.Literal(0n), // No
-  Schema.Literal(1n), // Yes
-  Schema.Literal(2n) // Abstain
-)
-
-/**
- * CDDL transformation schema for Vote.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const VoteFromCDDL = Schema.transformOrFail(VoteCDDL, Schema.typeSchema(Vote), {
-  strict: true,
-  encode: (vote) =>
-    Eff.gen(function* () {
-      switch (vote._tag) {
-        case "NoVote":
-          return 0n as const
-        case "YesVote":
-          return 1n as const
-        case "AbstainVote":
-          return 2n as const
-      }
-    }),
-  decode: (cddl) =>
-    Eff.gen(function* () {
-      switch (cddl) {
-        case 0n:
-          return new NoVote()
-        case 1n:
-          return new YesVote()
-        case 2n:
-          return new AbstainVote()
-        default:
-          return yield* ParseResult.fail(new ParseResult.Type(VoteCDDL.ast, cddl))
-      }
-    })
-})
 
 /**
  * Voting procedure based on Conway CDDL specification.
@@ -421,38 +321,6 @@ export class VotingProcedure extends Schema.Class<VotingProcedure>("VotingProced
   }
 }
 
-/**
- * CDDL schema for VotingProcedure tuple structure.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const VotingProcedureCDDL = Schema.Tuple(
-  VoteCDDL, // vote
-  Schema.NullOr(Anchor.CDDLSchema) // anchor / null
-)
-
-/**
- * CDDL transformation schema for VotingProcedure.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const VotingProcedureFromCDDL = Schema.transformOrFail(VotingProcedureCDDL, Schema.typeSchema(VotingProcedure), {
-  strict: true,
-  encode: (procedure) =>
-    Eff.gen(function* () {
-      const voteCDDL = yield* ParseResult.encode(VoteFromCDDL)(procedure.vote)
-      const anchorCDDL = procedure.anchor ? yield* ParseResult.encode(Anchor.FromCDDL)(procedure.anchor) : null
-      return [voteCDDL, anchorCDDL] as const
-    }),
-  decode: ([voteCDDL, anchorCDDL]) =>
-    Eff.gen(function* () {
-      const vote = yield* ParseResult.decode(VoteFromCDDL)(voteCDDL)
-      const anchor = anchorCDDL ? yield* ParseResult.decode(Anchor.FromCDDL)(anchorCDDL) : null
-      return new VotingProcedure({ vote, anchor })
-    })
-})
 
 /**
  * VotingProcedures based on Conway CDDL specification.
@@ -518,99 +386,171 @@ export class VotingProcedures extends Schema.Class<VotingProcedures>("VotingProc
   }
 }
 
-/**
- * CDDL schema for VotingProcedures map structure.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = Schema.MapFromSelf({
-  key: VoterCDDL, // voter
-  value: Schema.MapFromSelf({
-    key: GovernanceAction.GovActionIdCDDL, // gov_action_id
-    value: VotingProcedureCDDL // voting_procedure
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+// Inline voter write/read
+const writeVoter = (w: CborWriter, v: Voter): void => {
+  w.writeArrayHeader(2)
+  switch (v._tag) {
+    case "ConstitutionalCommitteeVoter":
+      if (v.credential._tag === "KeyHash") {
+        w.writeSmallUint(0); w.writeBytes(v.credential.hash)
+      } else {
+        w.writeSmallUint(1); w.writeBytes(v.credential.hash)
+      }
+      break
+    case "DRepVoter":
+      if (v.drep._tag === "KeyHashDRep") {
+        w.writeSmallUint(2); w.writeBytes(v.drep.keyHash.hash)
+      } else if (v.drep._tag === "ScriptHashDRep") {
+        w.writeSmallUint(3); w.writeBytes(v.drep.scriptHash.hash)
+      }
+      break
+    case "StakePoolVoter":
+      w.writeSmallUint(4); PoolKeyHash.write(w, v.poolKeyHash)
+      break
+  }
+  w.writeArrayBreak()
+}
+
+const readVoter = (r: CborReader): Voter => {
+  const count = r.readArrayHeader()
+  const tag = r.readSmallUint()
+  let result: Voter
+  switch (tag) {
+    case 0: result = new ConstitutionalCommitteeVoter({ credential: new KeyHash.KeyHash({ hash: r.readBytesView() }) }); break
+    case 1: result = new ConstitutionalCommitteeVoter({ credential: new ScriptHash.ScriptHash({ hash: r.readBytesView() }) }); break
+    case 2: result = new DRepVoter({ drep: new DRep.KeyHashDRep({ keyHash: new KeyHash.KeyHash({ hash: r.readBytesView() }) }) }); break
+    case 3: result = new DRepVoter({ drep: new DRep.ScriptHashDRep({ scriptHash: new ScriptHash.ScriptHash({ hash: r.readBytesView() }) }) }); break
+    case 4: result = new StakePoolVoter({ poolKeyHash: PoolKeyHash.read(r) }); break
+    default: throw new Error(`Voter: unknown tag ${tag}`)
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
+
+// Inline GovActionId write/read: [bytes32, uint]
+const writeGovActionId = (w: CborWriter, v: GovernanceAction.GovActionId): void => {
+  w.writeArrayHeader(2)
+  TransactionHash.write(w, v.transactionId)
+  w.writeUint(v.govActionIndex)
+  w.writeArrayBreak()
+}
+
+const readGovActionId = (r: CborReader): GovernanceAction.GovActionId => {
+  const count = r.readArrayHeader()
+  const transactionId = TransactionHash.read(r)
+  const govActionIndex = r.readUint()
+  if (count === -1) r.isBreak()
+  return new GovernanceAction.GovActionId({
+    transactionId,
+    govActionIndex: govActionIndex as TransactionIndex.TransactionIndex
   })
-})
+}
 
-/**
- * CDDL transformation schema for VotingProcedures.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(VotingProcedures), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      const mapEntries = new Map()
+// Inline VotingProcedure write/read: [vote, anchor / null]
+const writeVotingProcedure = (w: CborWriter, v: VotingProcedure): void => {
+  w.writeArrayHeader(2)
+  // Write vote
+  switch (v.vote._tag) {
+    case "NoVote": w.writeSmallUint(0); break
+    case "YesVote": w.writeSmallUint(1); break
+    case "AbstainVote": w.writeSmallUint(2); break
+  }
+  // Write anchor or null
+  if (v.anchor) {
+    Anchor.write(w, v.anchor)
+  } else {
+    w.writeNull()
+  }
+  w.writeArrayBreak()
+}
 
-      for (const [voter, govActionMap] of toA.procedures) {
-        const voterCDDL = yield* ParseResult.encode(VoterFromCDDL)(voter)
-        const innerMapEntries = new Map()
+const readVotingProcedure = (r: CborReader): VotingProcedure => {
+  const count = r.readArrayHeader()
+  const voteTag = r.readSmallUint()
+  let vote: Vote
+  switch (voteTag) {
+    case 0: vote = new NoVote(); break
+    case 1: vote = new YesVote(); break
+    case 2: vote = new AbstainVote(); break
+    default: throw new Error(`Vote: unknown tag ${voteTag}`)
+  }
+  // Read anchor or null
+  let anchor: Anchor.Anchor | null
+  if (r.peekByte() === 0xf6) {
+    r.readNull()
+    anchor = null
+  } else {
+    anchor = Anchor.read(r)
+  }
+  if (count === -1) r.isBreak()
+  return new VotingProcedure({ vote, anchor })
+}
 
-        for (const [govActionId, votingProcedure] of govActionMap) {
-          const govActionIdCDDL = yield* ParseResult.encode(GovernanceAction.GovActionIdFromCDDL)(govActionId)
-          const procedureCDDL = yield* ParseResult.encode(VotingProcedureFromCDDL)(votingProcedure)
-          innerMapEntries.set(govActionIdCDDL, procedureCDDL)
-        }
+export const write = (w: CborWriter, v: VotingProcedures): void => {
+  w.writeMapHeader(v.procedures.size)
+  for (const [voter, govActionMap] of v.procedures) {
+    writeVoter(w, voter)
+    w.writeMapHeader(govActionMap.size)
+    for (const [govActionId, procedure] of govActionMap) {
+      writeGovActionId(w, govActionId)
+      writeVotingProcedure(w, procedure)
+    }
+    w.writeMapBreak()
+  }
+  w.writeMapBreak()
+}
 
-        mapEntries.set(voterCDDL, innerMapEntries)
-      }
-
-      return mapEntries
-    }),
-  decode: (fromA) =>
-    Eff.gen(function* () {
-      const proceduresMap = new Map<Voter, Map<GovernanceAction.GovActionId, VotingProcedure>>()
-
-      for (const [voterCDDL, innerMapCDDL] of fromA) {
-        const voter = yield* ParseResult.decode(VoterFromCDDL)(voterCDDL)
-        const govActionMap = new Map<GovernanceAction.GovActionId, VotingProcedure>()
-
-        for (const [govActionIdCDDL, procedureCDDL] of innerMapCDDL) {
-          const govActionId = yield* ParseResult.decode(GovernanceAction.GovActionIdFromCDDL)(govActionIdCDDL)
-          const procedure = yield* ParseResult.decode(VotingProcedureFromCDDL)(procedureCDDL)
-          govActionMap.set(govActionId, procedure)
-        }
-
-        proceduresMap.set(voter, govActionMap)
-      }
-
-      return new VotingProcedures({ procedures: proceduresMap })
-    })
-})
-
+export const read = (r: CborReader): VotingProcedures => {
+  const outerCount = r.readMapHeader()
+  const procedures = new Map<Voter, Map<GovernanceAction.GovActionId, VotingProcedure>>()
+  const readOuter = () => {
+    const voter = readVoter(r)
+    const innerCount = r.readMapHeader()
+    const govActionMap = new Map<GovernanceAction.GovActionId, VotingProcedure>()
+    const readInner = () => {
+      const govActionId = readGovActionId(r)
+      const procedure = readVotingProcedure(r)
+      govActionMap.set(govActionId, procedure)
+    }
+    if (innerCount === -1) {
+      while (!r.isBreak()) readInner()
+    } else {
+      for (let i = 0; i < innerCount; i++) readInner()
+    }
+    procedures.set(voter, govActionMap)
+  }
+  if (outerCount === -1) {
+    while (!r.isBreak()) readOuter()
+  } else {
+    for (let i = 0; i < outerCount; i++) readOuter()
+  }
+  return new VotingProcedures({ procedures })
+}
 /**
  * CBOR bytes transformation schema for VotingProcedures.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → VotingProcedures
-  ).annotations({
-    identifier: "VotingProcedures.FromCBORBytes",
-    title: "VotingProcedures from CBOR Bytes",
-    description: "Transforms CBOR bytes to VotingProcedures"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(VotingProcedures),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "VotingProcedures.FromCBORBytes" })
 
-/**
- * CBOR hex transformation schema for VotingProcedures.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → VotingProcedures
-  ).annotations({
-    identifier: "VotingProcedures.FromCBORHex",
-    title: "VotingProcedures from CBOR Hex",
-    description: "Transforms CBOR hex string to VotingProcedures"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "VotingProcedures.FromCBORHex" })
 
 // ============================================================================
 // Constructors
@@ -801,8 +741,7 @@ export const arbitrary = FastCheck.array(
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse VotingProcedures from CBOR hex string.
@@ -810,8 +749,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode VotingProcedures to CBOR bytes.
@@ -819,8 +757,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: VotingProcedures, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: VotingProcedures, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Encode VotingProcedures to CBOR hex string.
@@ -828,8 +769,8 @@ export const toCBORBytes = (data: VotingProcedures, options: CBOR.CodecOptions =
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: VotingProcedures, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: VotingProcedures, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
 // ============================================================================
 // Helper Functions

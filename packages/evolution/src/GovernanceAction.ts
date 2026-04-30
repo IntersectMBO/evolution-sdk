@@ -1,4 +1,4 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
@@ -14,6 +14,8 @@ import * as ScriptHash from "./ScriptHash.js"
 import * as TransactionHash from "./TransactionHash.js"
 import * as TransactionIndex from "./TransactionIndex.js"
 import * as UnitInterval from "./UnitInterval.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Helper for array equality using element-by-element comparison.
@@ -124,51 +126,6 @@ export class GovActionId extends Schema.TaggedClass<GovActionId>()("GovActionId"
 }
 
 /**
- * CDDL schema for GovActionId tuple structure.
- * ```
- * For CBOR encoding: [transaction_id: bytes, gov_action_index: uint]
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const GovActionIdCDDL = Schema.Tuple(
-  CBOR.ByteArray, // transaction_id as bytes
-  CBOR.Integer // gov_action_index as uint
-)
-
-/**
- * CDDL transformation schema for GovActionId.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const GovActionIdFromCDDL = Schema.transformOrFail(GovActionIdCDDL, Schema.typeSchema(GovActionId), {
-  strict: true,
-  encode: (_, __, ___, toA) =>
-    Eff.gen(function* () {
-      // Convert domain types to CBOR types
-      const transactionIdBytes = toA.transactionId.hash
-      const indexNumber = yield* ParseResult.encode(TransactionIndex.TransactionIndex)(toA.govActionIndex)
-      return [transactionIdBytes, BigInt(indexNumber)] as const
-    }),
-  decode: (fromA) =>
-    Eff.gen(function* () {
-      const [transactionIdBytes, govActionIndex] = fromA
-      // Convert CBOR types to domain types
-      const transactionId = new TransactionHash.TransactionHash({ hash: transactionIdBytes })
-      const govActionIndexParsed = yield* ParseResult.decode(Schema.typeSchema(TransactionIndex.TransactionIndex))(
-        govActionIndex
-      )
-      const govActionId = new GovActionId({
-        transactionId,
-        govActionIndex: govActionIndexParsed
-      })
-      return govActionId
-    })
-})
-
-/**
  * Parameter change governance action schema.
  * ```
  * According to Conway CDDL: parameter_change_action =
@@ -220,62 +177,6 @@ export class ParameterChangeAction extends Schema.TaggedClass<ParameterChangeAct
 }
 
 /**
- * CDDL schema for ParameterChangeAction tuple structure.
- * Maps to: (0, gov_action_id/ nil, protocol_param_update, policy_hash/ nil)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const ParameterChangeActionCDDL = Schema.Tuple(
-  Schema.Literal(0n), // action type
-  Schema.NullOr(GovActionIdCDDL), // gov_action_id / nil
-  ProtocolParamUpdate.CDDLSchema, // protocol_param_update
-  Schema.NullOr(CBOR.ByteArray) // policy_hash / nil
-)
-
-/**
- * CDDL transformation schema for ParameterChangeAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const ParameterChangeActionFromCDDL = Schema.transformOrFail(
-  ParameterChangeActionCDDL,
-  Schema.typeSchema(ParameterChangeAction),
-  {
-    strict: true,
-    encode: (action) =>
-      Eff.gen(function* () {
-        const govActionId = action.govActionId
-          ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
-          : null
-        const protocolParamUpdateRO = yield* ParseResult.encode(ProtocolParamUpdate.FromCDDL)(
-          action.protocolParamUpdate
-        )
-        const protocolParamUpdate = new Map<bigint, CBOR.CBOR>()
-        for (const [k, v] of protocolParamUpdateRO) protocolParamUpdate.set(k, v)
-        const policyHash = action.policyHash ? yield* ParseResult.encode(ScriptHash.FromBytes)(action.policyHash) : null
-
-        // Return as CBOR tuple
-        return [0n, govActionId, protocolParamUpdate, policyHash] as const
-      }),
-    decode: (cddl) =>
-      Eff.gen(function* () {
-        const [, govActionIdCDDL, protocolParamUpdateCDDL, policyHash] = cddl
-        const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
-        const protocolParamUpdate = yield* ParseResult.decode(ProtocolParamUpdate.FromCDDL)(protocolParamUpdateCDDL)
-        const policyHashValue = policyHash ? yield* ParseResult.decode(ScriptHash.FromBytes)(policyHash) : null
-
-        return new ParameterChangeAction({
-          govActionId,
-          protocolParamUpdate,
-          policyHash: policyHashValue
-        })
-      })
-  }
-)
-
-/**
  * Hard fork initiation governance action schema.
  * ```
  * According to Conway CDDL: hard_fork_initiation_action =
@@ -320,56 +221,6 @@ export class HardForkInitiationAction extends Schema.TaggedClass<HardForkInitiat
     return Hash.cached(this, Hash.combine(Hash.hash(this.govActionId))(Hash.hash(this.protocolVersion)))
   }
 }
-
-/**
- * CDDL schema for HardForkInitiationAction tuple structure.
- * ```
- * Maps to: (1, gov_action_id/ nil, protocol_version, policy_hash/ nil)
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const HardForkInitiationActionCDDL = Schema.Tuple(
-  Schema.Literal(1n), // action type
-  Schema.NullOr(GovActionIdCDDL), // gov_action_id / nil
-  ProtocolVersion.CDDLSchema // protocol_version = [major, minor]
-)
-
-/**
- * CDDL transformation schema for HardForkInitiationAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const HardForkInitiationActionFromCDDL = Schema.transformOrFail(
-  HardForkInitiationActionCDDL,
-  Schema.typeSchema(HardForkInitiationAction),
-  {
-    strict: true,
-    encode: (action) =>
-      Eff.gen(function* () {
-        const govActionId = action.govActionId
-          ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
-          : null
-        const protocolVersion = yield* ParseResult.encode(ProtocolVersion.FromCDDL)(action.protocolVersion)
-
-        // Return as CBOR tuple
-        return [1n, govActionId, protocolVersion] as const
-      }),
-    decode: (cddl) =>
-      Eff.gen(function* () {
-        const [, govActionIdCDDL, protocolVersion] = cddl
-        const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
-        const protocolVersionValue = yield* ParseResult.decode(ProtocolVersion.FromCDDL)(protocolVersion)
-
-        return new HardForkInitiationAction({
-          govActionId,
-          protocolVersion: protocolVersionValue
-        })
-      })
-  }
-)
 
 /**
  * Treasury withdrawals governance action schema.
@@ -421,65 +272,6 @@ export class TreasuryWithdrawalsAction extends Schema.TaggedClass<TreasuryWithdr
 }
 
 /**
- * CDDL schema for TreasuryWithdrawalsAction tuple structure.
- * ```
- * Maps to: (2, { * reward_account => coin }, policy_hash/ nil)
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const TreasuryWithdrawalsActionCDDL = Schema.Tuple(
-  Schema.Literal(2n), // action type
-  Schema.MapFromSelf({
-    key: CBOR.ByteArray, // reward_account as bytes
-    value: CBOR.Integer // coin as bigint
-  }),
-  Schema.NullOr(CBOR.ByteArray) // policy_hash / nil
-)
-
-/**
- * CDDL transformation schema for TreasuryWithdrawalsAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const TreasuryWithdrawalsActionFromCDDL = Schema.transformOrFail(
-  TreasuryWithdrawalsActionCDDL,
-  Schema.typeSchema(TreasuryWithdrawalsAction),
-  {
-    strict: true,
-    encode: (action) =>
-      Eff.gen(function* () {
-        const withdrawals = new Map<Uint8Array, bigint>()
-        for (const [rewardAccount, coin] of action.withdrawals) {
-          const rewardAccountBytes = yield* ParseResult.encode(RewardAccount.FromBytes)(rewardAccount)
-          withdrawals.set(rewardAccountBytes, coin)
-        }
-        const policyHash = action.policyHash ? yield* ParseResult.encode(ScriptHash.FromBytes)(action.policyHash) : null
-
-        // Return as CBOR tuple
-        return [2n, withdrawals, policyHash] as const
-      }),
-    decode: (cddl) =>
-      Eff.gen(function* () {
-        const [, withdrawals, policyHash] = cddl
-        const policyHashValue = policyHash ? yield* ParseResult.decode(ScriptHash.FromBytes)(policyHash) : null
-        const withdrawalsMap = new Map<RewardAccount.RewardAccount, Coin.Coin>()
-        for (const [rewardAccountBytes, coin] of withdrawals) {
-          const rewardAccount = yield* ParseResult.decode(RewardAccount.FromBytes)(rewardAccountBytes)
-          withdrawalsMap.set(rewardAccount, coin)
-        }
-
-        return new TreasuryWithdrawalsAction({
-          withdrawals: withdrawalsMap,
-          policyHash: policyHashValue
-        })
-      })
-  }
-)
-
-/**
  * No confidence governance action schema.
  * ```
  * According to Conway CDDL: no_confidence =
@@ -515,50 +307,6 @@ export class NoConfidenceAction extends Schema.TaggedClass<NoConfidenceAction>()
     return Hash.cached(this, Hash.hash(this.govActionId))
   }
 }
-
-/**
- * CDDL schema for NoConfidenceAction tuple structure.
- * Maps to: (3, gov_action_id/ nil)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const NoConfidenceActionCDDL = Schema.Tuple(
-  Schema.Literal(3n), // action type
-  Schema.NullOr(GovActionIdCDDL) // gov_action_id / nil
-)
-
-/**
- * CDDL transformation schema for NoConfidenceAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const NoConfidenceActionFromCDDL = Schema.transformOrFail(
-  NoConfidenceActionCDDL,
-  Schema.typeSchema(NoConfidenceAction),
-  {
-    strict: true,
-    encode: (action) =>
-      Eff.gen(function* () {
-        const govActionId = action.govActionId
-          ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
-          : null
-
-        // Return as CBOR tuple
-        return [3n, govActionId] as const
-      }),
-    decode: (cddl) =>
-      Eff.gen(function* () {
-        const [, govActionIdCDDL] = cddl
-        const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
-
-        return new NoConfidenceAction({
-          govActionId
-        })
-      })
-  }
-)
 
 /**
  * Update committee governance action schema.
@@ -620,113 +368,6 @@ export class UpdateCommitteeAction extends Schema.TaggedClass<UpdateCommitteeAct
 }
 
 /**
- * CDDL schema for UpdateCommitteeAction tuple structure.
- * ```
- * Maps to: (4, gov_action_id/ nil, set<committee_cold_credential>, { * committee_cold_credential => committee_hot_credential }, unit_interval)
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const UpdateCommitteeActionCDDL = Schema.Tuple(
-  Schema.Literal(4n), // action type
-  Schema.NullOr(GovActionIdCDDL), // gov_action_id / nil
-  // set<committee_cold_credential> = #6.258([* a0]) / [* a0]
-  Schema.Union(
-    CBOR.tag(258, Schema.Array(CommitteeColdCredential.CommitteeColdCredential.CDDLSchema)),
-    Schema.Array(CommitteeColdCredential.CommitteeColdCredential.CDDLSchema)
-  ),
-  // { * committee_cold_credential => epoch_no }
-  Schema.MapFromSelf({
-    key: CommitteeColdCredential.CommitteeColdCredential.CDDLSchema,
-    value: EpochNo.CDDLSchema
-  }),
-  UnitInterval.CDDLSchema // unit_interval
-)
-
-/**
- * CDDL transformation schema for UpdateCommitteeAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const UpdateCommitteeActionFromCDDL = Schema.transformOrFail(
-  UpdateCommitteeActionCDDL,
-  Schema.typeSchema(UpdateCommitteeAction),
-  {
-    strict: true,
-    encode: (action) =>
-      Eff.gen(function* () {
-        const govActionId = action.govActionId
-          ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
-          : null
-        // Encode membersToRemove as tagged set (tag 258) per CDDL
-        const removeArr: Array<typeof CommitteeColdCredential.CommitteeColdCredential.CDDLSchema.Type> = []
-        for (const cred of action.membersToRemove) {
-          const coldCred = yield* ParseResult.encode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(cred)
-          removeArr.push(coldCred)
-        }
-        const membersToRemove = CBOR.Tag.make({ tag: 258, value: removeArr }, { disableValidation: true }) as any
-
-        // Encode membersToAdd as map<committee_cold_credential => epoch_no>
-        const membersToAdd = new Map<
-          typeof CommitteeColdCredential.CommitteeColdCredential.CDDLSchema.Type,
-          typeof EpochNo.CDDLSchema.Type
-        >()
-        for (const [coldCred, epoch] of action.membersToAdd) {
-          const coldCredBytes = yield* ParseResult.encode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(
-            coldCred
-          )
-          const epochNo = yield* ParseResult.encode(EpochNo.FromCDDL)(epoch)
-          membersToAdd.set(coldCredBytes, epochNo)
-        }
-        // Encode threshold as UnitInterval
-        const threshold = yield* ParseResult.encode(UnitInterval.FromCDDL)(action.threshold)
-
-        // Return as CBOR tuple
-        return [4n, govActionId, membersToRemove, membersToAdd, threshold] as const
-      }),
-    decode: (cddl) =>
-      Eff.gen(function* () {
-        const [, govActionIdCDDL, membersToRemoveCDDL, membersToAddCDDL, thresholdCDDL] = cddl
-        const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
-        const threshold = yield* ParseResult.decode(UnitInterval.FromCDDL)(thresholdCDDL)
-        // Decode set into an array of credentials (accept tag 258 or plain array)
-        const membersToRemove: Array<typeof CommitteeColdCredential.CommitteeColdCredential.Credential.Type> = []
-        const removeArr = CBOR.isTag(membersToRemoveCDDL)
-          ? membersToRemoveCDDL.tag === 258
-            ? (membersToRemoveCDDL.value as ReadonlyArray<any>)
-            : []
-          : (membersToRemoveCDDL as ReadonlyArray<any>)
-        for (const coldCredCDDL of removeArr) {
-          const coldCred = yield* ParseResult.decode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(
-            coldCredCDDL
-          )
-          membersToRemove.push(coldCred)
-        }
-        const membersToAdd = new Map<
-          typeof CommitteeColdCredential.CommitteeColdCredential.Credential.Type,
-          EpochNo.EpochNo
-        >()
-        for (const [coldCredCDDL, epochNoCDDL] of membersToAddCDDL) {
-          const coldCred = yield* ParseResult.decode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(
-            coldCredCDDL
-          )
-          const epoch = yield* ParseResult.decode(EpochNo.FromCDDL)(epochNoCDDL)
-          membersToAdd.set(coldCred, epoch)
-        }
-
-        return new UpdateCommitteeAction({
-          govActionId,
-          membersToRemove,
-          membersToAdd,
-          threshold
-        })
-      })
-  }
-)
-
-/**
  * New constitution governance action schema.
  * According to Conway CDDL: new_constitution =
  *   (5, gov_action_id/ nil, constitution)
@@ -768,56 +409,6 @@ export class NewConstitutionAction extends Schema.TaggedClass<NewConstitutionAct
 }
 
 /**
- * CDDL schema for NewConstitutionAction tuple structure.
- * ```
- * Maps to: (5, gov_action_id/ nil, constitution)
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const NewConstitutionActionCDDL = Schema.Tuple(
-  Schema.Literal(5n), // action type
-  Schema.NullOr(GovActionIdCDDL), // gov_action_id / nil
-  Constitution.CDDLSchema // constitution as CBOR
-)
-
-/**
- * CDDL transformation schema for NewConstitutionAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const NewConstitutionActionFromCDDL = Schema.transformOrFail(
-  NewConstitutionActionCDDL,
-  Schema.typeSchema(NewConstitutionAction),
-  {
-    strict: true,
-    encode: (action) =>
-      Eff.gen(function* () {
-        const govActionId = action.govActionId
-          ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
-          : null
-        const constitution = yield* ParseResult.encode(Constitution.FromCDDL)(action.constitution)
-
-        // Return as CBOR tuple
-        return [5n, govActionId, constitution] as const
-      }),
-    decode: (cddl) =>
-      Eff.gen(function* () {
-        const [, govActionIdCDDL, constitutionCDDL] = cddl
-        const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
-        const constitution = yield* ParseResult.decode(Constitution.FromCDDL)(constitutionCDDL)
-
-        return new NewConstitutionAction({
-          govActionId,
-          constitution
-        })
-      })
-  }
-)
-
-/**
  * Info governance action schema.
  * ```
  * According to Conway CDDL: info_action = (6)
@@ -852,35 +443,194 @@ export class InfoAction extends Schema.TaggedClass<InfoAction>()("InfoAction", {
   }
 }
 
-/**
- * CDDL schema for InfoAction tuple structure.
- * Maps to: (6)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const InfoActionCDDL = Schema.Tuple(
-  Schema.Literal(6n) // action type
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL transformation schema for InfoAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const InfoActionFromCDDL = Schema.transformOrFail(InfoActionCDDL, Schema.typeSchema(InfoAction), {
-  strict: true,
-  encode: (_action) =>
-    Eff.gen(function* () {
-      // Return as CBOR tuple
-      return [6n] as const
-    }),
-  decode: (_cddl) =>
-    Eff.gen(function* () {
-      return new InfoAction({})
-    })
-})
+export const writeGovActionId = (w: CborWriter, v: GovActionId): void => {
+  w.writeArrayHeader(2)
+  TransactionHash.write(w, v.transactionId)
+  w.writeUint(BigInt(v.govActionIndex))
+  w.writeArrayBreak()
+}
+
+export const readGovActionId = (r: CborReader): GovActionId => {
+  const count = r.readArrayHeader()
+  const transactionId = TransactionHash.read(r)
+  const govActionIndex = r.readUint() as TransactionIndex.TransactionIndex
+  if (count === -1) r.isBreak()
+  return new GovActionId({ transactionId, govActionIndex })
+}
+
+const writeGovActionIdOrNull = (w: CborWriter, v: GovActionId | null): void => {
+  if (v === null) w.writeNull()
+  else writeGovActionId(w, v)
+}
+
+const readGovActionIdOrNull = (r: CborReader): GovActionId | null => {
+  if (r.peekMajorType() === 7) { r.readNull(); return null }
+  return readGovActionId(r)
+}
+
+const writeScriptHashOrNull = (w: CborWriter, v: ScriptHash.ScriptHash | null): void => {
+  if (v === null) w.writeNull()
+  else ScriptHash.write(w, v)
+}
+
+const readScriptHashOrNull = (r: CborReader): ScriptHash.ScriptHash | null => {
+  if (r.peekMajorType() === 7) { r.readNull(); return null }
+  return ScriptHash.read(r)
+}
+
+const writeUnitInterval = (w: CborWriter, v: UnitInterval.UnitInterval): void => {
+  w.writeTagHeader(30)
+  w.writeArrayHeader(2)
+  w.writeUint(v.numerator)
+  w.writeUint(v.denominator)
+  w.writeArrayBreak()
+}
+
+const readUnitInterval = (r: CborReader): UnitInterval.UnitInterval => {
+  const tag = r.readTagHeader()
+  if (tag !== 30) throw new Error(`UnitInterval: expected tag 30, got ${tag}`)
+  const count = r.readArrayHeader()
+  const numerator = r.readUint()
+  const denominator = r.readUint()
+  if (count === -1) r.isBreak()
+  return new UnitInterval.UnitInterval({ numerator, denominator })
+}
+
+export const write = (w: CborWriter, v: GovernanceAction): void => {
+  switch (v._tag) {
+    case "ParameterChangeAction":
+      w.writeArrayHeader(4); w.writeSmallUint(0)
+      writeGovActionIdOrNull(w, v.govActionId)
+      ProtocolParamUpdate.write(w, v.protocolParamUpdate)
+      writeScriptHashOrNull(w, v.policyHash)
+      w.writeArrayBreak(); break
+    case "HardForkInitiationAction":
+      w.writeArrayHeader(3); w.writeSmallUint(1)
+      writeGovActionIdOrNull(w, v.govActionId)
+      ProtocolVersion.write(w, v.protocolVersion)
+      w.writeArrayBreak(); break
+    case "TreasuryWithdrawalsAction":
+      w.writeArrayHeader(3); w.writeSmallUint(2)
+      w.writeMapHeader(v.withdrawals.size)
+      for (const [rewardAccount, coin] of v.withdrawals) {
+        RewardAccount.write(w, rewardAccount)
+        w.writeUint(coin)
+      }
+      w.writeMapBreak()
+      writeScriptHashOrNull(w, v.policyHash)
+      w.writeArrayBreak(); break
+    case "NoConfidenceAction":
+      w.writeArrayHeader(2); w.writeSmallUint(3)
+      writeGovActionIdOrNull(w, v.govActionId)
+      w.writeArrayBreak(); break
+    case "UpdateCommitteeAction":
+      w.writeArrayHeader(5); w.writeSmallUint(4)
+      writeGovActionIdOrNull(w, v.govActionId)
+      // set<committee_cold_credential> — tag 258
+      w.writeTagHeader(258)
+      w.writeArrayHeader(v.membersToRemove.length)
+      for (const cred of v.membersToRemove) Credential.write(w, cred)
+      w.writeArrayBreak()
+      // map<committee_cold_credential => epoch_no>
+      w.writeMapHeader(v.membersToAdd.size)
+      for (const [cred, epoch] of v.membersToAdd) {
+        Credential.write(w, cred)
+        w.writeUint(epoch)
+      }
+      w.writeMapBreak()
+      writeUnitInterval(w, v.threshold)
+      w.writeArrayBreak(); break
+    case "NewConstitutionAction":
+      w.writeArrayHeader(3); w.writeSmallUint(5)
+      writeGovActionIdOrNull(w, v.govActionId)
+      Constitution.write(w, v.constitution)
+      w.writeArrayBreak(); break
+    case "InfoAction":
+      w.writeArrayHeader(1); w.writeSmallUint(6)
+      w.writeArrayBreak(); break
+  }
+}
+
+export const read = (r: CborReader): GovernanceAction => {
+  const count = r.readArrayHeader()
+  const tag = r.readSmallUint()
+  let result: GovernanceAction
+  switch (tag) {
+    case 0: {
+      const govActionId = readGovActionIdOrNull(r)
+      const protocolParamUpdate = ProtocolParamUpdate.read(r)
+      const policyHash = readScriptHashOrNull(r)
+      result = new ParameterChangeAction({ govActionId, protocolParamUpdate, policyHash })
+      break
+    }
+    case 1: {
+      const govActionId = readGovActionIdOrNull(r)
+      const protocolVersion = ProtocolVersion.read(r)
+      result = new HardForkInitiationAction({ govActionId, protocolVersion })
+      break
+    }
+    case 2: {
+      const mapCount = r.readMapHeader()
+      const withdrawals = new Map<RewardAccount.RewardAccount, Coin.Coin>()
+      if (mapCount === -1) {
+        while (!r.isBreak()) { withdrawals.set(RewardAccount.read(r), r.readUint() as Coin.Coin) }
+      } else {
+        for (let i = 0; i < mapCount; i++) { withdrawals.set(RewardAccount.read(r), r.readUint() as Coin.Coin) }
+      }
+      const policyHash = readScriptHashOrNull(r)
+      result = new TreasuryWithdrawalsAction({ withdrawals, policyHash })
+      break
+    }
+    case 3: {
+      const govActionId = readGovActionIdOrNull(r)
+      result = new NoConfidenceAction({ govActionId })
+      break
+    }
+    case 4: {
+      const govActionId = readGovActionIdOrNull(r)
+      // set<committee_cold_credential> — may be tag 258 or plain array
+      let removeCount: number
+      if (r.peekMajorType() === 6) {
+        const setTag = r.readTagHeader()
+        if (setTag !== 258) throw new Error(`UpdateCommitteeAction: expected tag 258, got ${setTag}`)
+        removeCount = r.readArrayHeader()
+      } else {
+        removeCount = r.readArrayHeader()
+      }
+      const membersToRemove: Array<Credential.Credential> = []
+      if (removeCount === -1) { while (!r.isBreak()) membersToRemove.push(Credential.read(r)) }
+      else { for (let i = 0; i < removeCount; i++) membersToRemove.push(Credential.read(r)) }
+      // map<committee_cold_credential => epoch_no>
+      const addCount = r.readMapHeader()
+      const membersToAdd = new Map<Credential.Credential, EpochNo.EpochNo>()
+      if (addCount === -1) {
+        while (!r.isBreak()) { membersToAdd.set(Credential.read(r), r.readUint() as EpochNo.EpochNo) }
+      } else {
+        for (let i = 0; i < addCount; i++) { membersToAdd.set(Credential.read(r), r.readUint() as EpochNo.EpochNo) }
+      }
+      const threshold = readUnitInterval(r)
+      result = new UpdateCommitteeAction({ govActionId, membersToRemove, membersToAdd, threshold })
+      break
+    }
+    case 5: {
+      const govActionId = readGovActionIdOrNull(r)
+      const constitution = Constitution.read(r)
+      result = new NewConstitutionAction({ govActionId, constitution })
+      break
+    }
+    case 6:
+      result = new InfoAction({})
+      break
+    default:
+      throw new Error(`GovernanceAction: unknown tag ${tag}`)
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
 
 /**
  * GovernanceAction union schema based on Conway CDDL specification.
@@ -916,40 +666,6 @@ export const GovernanceAction = Schema.Union(
  * @category model
  */
 export type GovernanceAction = Schema.Schema.Type<typeof GovernanceAction>
-
-/**
- * CDDL schema for GovernanceAction tuple structure.
- * Maps action types to their data according to Conway specification.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = Schema.Union(
-  ParameterChangeActionCDDL,
-  HardForkInitiationActionCDDL,
-  TreasuryWithdrawalsActionCDDL,
-  NoConfidenceActionCDDL,
-  UpdateCommitteeActionCDDL,
-  NewConstitutionActionCDDL,
-  InfoActionCDDL
-)
-
-/**
- * CDDL transformation schema for GovernanceAction.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.Union(
-  ParameterChangeActionFromCDDL,
-  HardForkInitiationActionFromCDDL,
-  TreasuryWithdrawalsActionFromCDDL,
-  NoConfidenceActionFromCDDL,
-  UpdateCommitteeActionFromCDDL,
-  NewConstitutionActionFromCDDL,
-  InfoActionFromCDDL
-)
-
 /**
  * FastCheck arbitrary for GovernanceAction.
  *
@@ -1150,6 +866,27 @@ export const toCBORHex = (data: GovernanceAction, options: CBOR.CodecOptions = C
 }
 
 /**
+ * Encode GovernanceAction to CBOR bytes using direct CborWriter.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORBytesDirect = (data: GovernanceAction, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, data)
+  return w.finishView()
+}
+
+/**
+ * Encode GovernanceAction to CBOR hex using direct CborWriter.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORHexDirect = (data: GovernanceAction, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytesDirect(data, profile))
+
+/**
  * Parse GovernanceAction from CBOR bytes.
  *
  * @since 2.0.0
@@ -1157,10 +894,9 @@ export const toCBORHex = (data: GovernanceAction, options: CBOR.CodecOptions = C
  */
 export const fromCBOR = (
   bytes: Uint8Array,
-  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+  _options?: CBOR.CodecOptions
 ): GovernanceAction => {
-  const cddl = CBOR.fromCBORBytes(bytes, options)
-  return Schema.decodeSync(FromCDDL)(cddl as any)
+  return read(new CborReader(bytes))
 }
 
 /**
@@ -1169,7 +905,8 @@ export const fromCBOR = (
  * @since 2.0.0
  * @category encoding
  */
-export const toCBOR = (data: GovernanceAction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array => {
-  const cddl = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORBytes(cddl, options)
+export const toCBOR = (data: GovernanceAction, _options?: CBOR.CodecOptions): Uint8Array => {
+  const w = new CborWriter(256)
+  write(w, data)
+  return w.finishView()
 }

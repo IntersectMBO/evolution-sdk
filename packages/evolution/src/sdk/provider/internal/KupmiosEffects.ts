@@ -475,5 +475,5 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
       Effect.flatMap(Effect.fromNullable),
       Effect.catchAll(wrapError("getDatum"))
     )
-    return Schema.decodeSync(PlutusData.FromCBORHex())(result.datum)
+    return Schema.decodeSync(PlutusData.FromCBORHex)(result.datum)
   })

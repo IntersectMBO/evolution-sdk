@@ -1,49 +1,12 @@
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
-import * as CBOR from "@evolution-sdk/evolution/CBOR"
 import type * as CostModel from "@evolution-sdk/evolution/CostModel"
 import * as Redeemer from "@evolution-sdk/evolution/Redeemer"
-import * as Script from "@evolution-sdk/evolution/Script"
-import * as ScriptRef from "@evolution-sdk/evolution/ScriptRef"
 import * as TransactionBuilder from "@evolution-sdk/evolution/sdk/builders/TransactionBuilder"
 import type * as EvalRedeemer from "@evolution-sdk/evolution/sdk/EvalRedeemer"
 import * as Transaction from "@evolution-sdk/evolution/Transaction"
-import * as TransactionInput from "@evolution-sdk/evolution/TransactionInput"
-import * as TxOut from "@evolution-sdk/evolution/TxOut"
-import type * as UTxO from "@evolution-sdk/evolution/UTxO"
-import { Effect, Schema } from "effect"
+import * as UTxO from "@evolution-sdk/evolution/UTxO"
+import { Effect } from "effect"
 import ScalusLib from "scalus"
-
-/**
- * Build CBOR-encoded map of TransactionInput → TransactionOutput from UTxOs.
- *
- * Uses FromCDDL schemas to get CBOR values directly, avoiding wasteful
- * bytes → CBOR → bytes roundtrip encoding.
- */
-function buildUtxoMapCBOR(utxos: ReadonlyArray<UTxO.UTxO>): Uint8Array {
-  const utxoMap = new Map<CBOR.CBOR, CBOR.CBOR>()
-
-  for (const utxo of utxos) {
-    // Use FromCDDL to get CBOR values directly (no double encoding)
-    const txInput = new TransactionInput.TransactionInput({
-      transactionId: utxo.transactionId,
-      index: utxo.index
-    })
-    const inputCBOR = Schema.encodeSync(TransactionInput.FromCDDL)(txInput)
-
-    const scriptRef = utxo.scriptRef ? new ScriptRef.ScriptRef({ bytes: Script.toCBOR(utxo.scriptRef) }) : undefined
-    const txOut = new TxOut.TransactionOutput({
-      address: utxo.address,
-      assets: utxo.assets,
-      datumOption: utxo.datumOption,
-      scriptRef
-    })
-    const outputCBOR = Schema.encodeSync(TxOut.FromCDDL)(txOut)
-
-    utxoMap.set(inputCBOR, outputCBOR)
-  }
-
-  return CBOR.toCBORBytes(utxoMap, CBOR.CML_DEFAULT_OPTIONS)
-}
 
 function decodeCostModels(costModels: CostModel.CostModels): Array<Array<number>> {
   // Scalus expects a flattened representation of the cost models as number arrays
@@ -72,7 +35,7 @@ export function makeEvaluator(): TransactionBuilder.Evaluator {
         yield* Effect.logDebug(`[Scalus UPLC] Additional UTxOs: ${utxos.length}`)
 
         // Build UTxO map CBOR
-        const utxosBytes = buildUtxoMapCBOR(utxos)
+        const utxosBytes = UTxO.toMapCBORBytes(utxos)
         yield* Effect.logDebug(`[Scalus UPLC] UTxO map CBOR bytes: ${utxosBytes.length}`)
         yield* Effect.logDebug(`[Scalus UPLC] UTxO map CBOR hex: ${Bytes.toHex(utxosBytes)}`)
 

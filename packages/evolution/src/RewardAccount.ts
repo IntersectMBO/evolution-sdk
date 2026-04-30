@@ -1,11 +1,13 @@
 import { bech32 } from "@scure/base"
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as Bytes29 from "./Bytes29.js"
+import * as Bytes from "./Bytes.js"
 import * as Credential from "./Credential.js"
 import * as KeyHash from "./KeyHash.js"
 import * as NetworkId from "./NetworkId.js"
 import * as ScriptHash from "./ScriptHash.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Reward/stake address with only staking credential
@@ -63,22 +65,21 @@ export class RewardAccount extends Schema.TaggedClass<RewardAccount>("RewardAcco
 }
 
 export const FromBytes = Schema.transformOrFail(
-  Schema.typeSchema(Bytes29.BytesFromHex),
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(RewardAccount),
   {
     strict: true,
-    encode: (_, __, ___, toA) =>
-      Eff.gen(function* () {
-        const stakingBit = toA.stakeCredential._tag === "KeyHash" ? 0 : 1
-        const header = (0b111 << 5) | (stakingBit << 4) | (toA.networkId & 0b00001111)
-        const result = new Uint8Array(29)
-        result[0] = header
-        const stakeCredentialBytes = toA.stakeCredential.hash
-        result.set(stakeCredentialBytes, 1)
-        return yield* ParseResult.succeed(result)
-      }),
-    decode: (_, __, ___, fromA) =>
-      Eff.gen(function* () {
+    encode: (_, __, ___, toA) => {
+      const stakingBit = toA.stakeCredential._tag === "KeyHash" ? 0 : 1
+      const header = (0b111 << 5) | (stakingBit << 4) | (toA.networkId & 0b00001111)
+      const result = new Uint8Array(29)
+      result[0] = header
+      const stakeCredentialBytes = toA.stakeCredential.hash
+      result.set(stakeCredentialBytes, 1)
+      return ParseResult.succeed(result)
+    },
+    decode: (fromA, _, ast) => ParseResult.try({
+      try: () => {
         const header = fromA[0]
         // Extract network ID from the lower 4 bits
         const networkId = header & 0b00001111
@@ -97,7 +98,9 @@ export const FromBytes = Schema.transformOrFail(
           networkId,
           stakeCredential
         })
-      })
+      },
+      catch: (e) => new ParseResult.Type(ast, fromA, e instanceof Error ? e.message : String(e))
+    })
   }
 ).annotations({
   identifier: "RewardAccount.FromBytes",
@@ -114,26 +117,20 @@ export const FromHex = Schema.compose(
 
 export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(RewardAccount), {
   strict: true,
-  encode: (_, __, ___, toA) =>
-    Eff.gen(function* () {
-      const prefix = toA.networkId === 0 ? "stake_test" : "stake"
-      const bytes = yield* ParseResult.encode(FromBytes)(toA)
-      const words = bech32.toWords(bytes)
-      return bech32.encode(prefix, words, false)
-    }),
+  encode: (_, __, ___, toA) => {
+    const prefix = toA.networkId === 0 ? "stake_test" : "stake"
+    const bytes = toBytes(toA)
+    const words = bech32.toWords(bytes)
+    return ParseResult.succeed(bech32.encode(prefix, words, false))
+  },
   decode: (fromA, _, ast) =>
-    Eff.gen(function* () {
-      const result = yield* Eff.try({
-        try: () => {
-          // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
-          // but Schema provides plain string. Consider using decodeToBytes which accepts string.
-          const decoded = bech32.decode(fromA as any, false)
-          const bytes = bech32.fromWords(decoded.words)
-          return new Uint8Array(bytes)
-        },
-        catch: () => new ParseResult.Type(ast, fromA, `Failed to decode Bech32: ${fromA}`)
-      })
-      return yield* ParseResult.decode(FromBytes)(result)
+    ParseResult.try({
+      try: () => {
+        const decoded = bech32.decode(fromA as `${string}1${string}`, false)
+        const bytes = bech32.fromWords(decoded.words)
+        return fromBytes(new Uint8Array(bytes))
+      },
+      catch: (e) => new ParseResult.Type(ast, fromA, e instanceof Error ? e.message : `Failed to decode Bech32: ${fromA}`)
     })
 }).annotations({
   identifier: "RewardAccount.FromBech32",
@@ -192,7 +189,14 @@ export const fromBech32 = (str: string) => Schema.decodeSync(FromBech32)(str)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (data: RewardAccount) => Schema.encodeSync(FromBytes)(data)
+export const toBytes = (data: RewardAccount): Uint8Array => {
+  const stakingBit = data.stakeCredential._tag === "KeyHash" ? 0 : 1
+  const header = (0b111 << 5) | (stakingBit << 4) | (data.networkId & 0b00001111)
+  const result = new Uint8Array(29)
+  result[0] = header
+  result.set(data.stakeCredential.hash, 1)
+  return result
+}
 
 /**
  * Convert a RewardAccount to hex string.
@@ -200,7 +204,7 @@ export const toBytes = (data: RewardAccount) => Schema.encodeSync(FromBytes)(dat
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (data: RewardAccount) => Schema.encodeSync(FromHex)(data)
+export const toHex = (data: RewardAccount): string => Bytes.toHex(toBytes(data))
 
 /**
  * Convert a RewardAccount to Bech32 string.
@@ -209,3 +213,21 @@ export const toHex = (data: RewardAccount) => Schema.encodeSync(FromHex)(data)
  * @category encoding
  */
 export const toBech32 = (data: RewardAccount) => Schema.encodeSync(FromBech32)(data)
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: RewardAccount): void => w.writeBytes(toBytes(v))
+
+export const read = (r: CborReader): RewardAccount => {
+  const bytes = r.readBytesView()
+  const header = bytes[0]
+  const networkId = header & 0b00001111
+  const addressType = header >> 4
+  const isStakeKey = (addressType & 0b0001) === 0
+  const stakeCredential: Credential.Credential = isStakeKey
+    ? new KeyHash.KeyHash({ hash: bytes.slice(1, 29) })
+    : new ScriptHash.ScriptHash({ hash: bytes.slice(1, 29) })
+  return new RewardAccount({ networkId, stakeCredential })
+}

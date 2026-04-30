@@ -1,10 +1,12 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Hash28 from "./Hash28.js"
 import * as NativeScripts from "./NativeScripts.js"
 import type * as Script from "./Script.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for ScriptHash representing a script hash credential.
@@ -45,19 +47,35 @@ export class ScriptHash extends Schema.TaggedClass<ScriptHash>()("ScriptHash", {
   }
 }
 
+// ============================================================================
+// Write / Read
+// ============================================================================
+
+export const write = (w: CborWriter, v: ScriptHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): ScriptHash => new ScriptHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema for transforming between Uint8Array and ScriptHash.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Hash28.BytesFromHex), Schema.typeSchema(ScriptHash), {
-  strict: true,
-  decode: (bytes) => new ScriptHash({ hash: bytes }, { disableValidation: true }), // Disable validation since we already check length in Hash28
-  encode: (scriptHash) => scriptHash.hash
-}).annotations({
-  identifier: "ScriptHash.FromBytes"
-})
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(ScriptHash),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new ScriptHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.hash)
+  }
+).annotations({ identifier: "ScriptHash.FromBytes" })
 
 /**
  * Schema for transforming between hex string and ScriptHash.
@@ -65,13 +83,12 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Hash28.BytesFromHex)
  * @since 2.0.0
  * @category schemas
  */
-export const FromHex = Schema.compose(Hash28.BytesFromHex, FromBytes).annotations({
+export const FromHex = Schema.compose(Schema.Uint8ArrayFromHex, FromBytes).annotations({
   identifier: "ScriptHash.FromHex"
 })
 
 /**
  * Parse a ScriptHash from raw bytes.
- * Expects exactly 28 bytes.
  *
  * @since 2.0.0
  * @category parsing
@@ -80,7 +97,6 @@ export const fromBytes = Schema.decodeSync(FromBytes)
 
 /**
  * Parse a ScriptHash from a hex string.
- * Expects exactly 56 hex characters (28 bytes).
  *
  * @since 2.0.0
  * @category parsing
@@ -93,7 +109,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: ScriptHash): Uint8Array => v.hash
 
 /**
  * Convert a ScriptHash to a hex string.
@@ -101,27 +117,20 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: ScriptHash): string => Bytes.toHex(v.hash)
 
 /**
  * FastCheck arbitrary for generating random ScriptHash instances.
- * Used for property-based testing to generate valid test data.
  *
  * @since 2.0.0
  * @category arbitrary
  */
 export const arbitrary: FastCheck.Arbitrary<ScriptHash> = FastCheck.uint8Array({ minLength: 28, maxLength: 28 }).map(
-  (bytes) => new ScriptHash({ hash: bytes }, { disableValidation: true })
+  (bytes) => new ScriptHash({ hash: bytes })
 )
 
 /**
  * Compute a script hash (policy id) from any Script variant.
- *
- * Conway-era rule: prepend a 1-byte language tag to the script bytes, then hash with blake2b-224.
- * - 0x00: native/multisig (hash over CBOR of native_script)
- * - 0x01: Plutus V1 (hash over raw script bytes)
- * - 0x02: Plutus V2 (hash over raw script bytes)
- * - 0x03: Plutus V3 (hash over raw script bytes)
  *
  * @since 2.0.0
  * @category computation
@@ -131,7 +140,6 @@ export const fromScript = (script: Script.Script): ScriptHash => {
   let body: Uint8Array
 
   switch (script._tag) {
-    // Plutus script cases
     case "PlutusV1":
       tag = 0x01
       body = script.bytes
@@ -147,7 +155,6 @@ export const fromScript = (script: Script.Script): ScriptHash => {
       body = script.bytes
       break
 
-    // Native script case (TaggedClass)
     case "NativeScript":
       tag = 0x00
       body = NativeScripts.toCBORBytes(script)

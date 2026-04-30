@@ -1,6 +1,8 @@
-import { Equal, Hash, Inspectable, Schema } from "effect"
+import { Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Text128 from "./Text128.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for Url representing URLs as branded text.
@@ -66,14 +68,35 @@ export class Url extends Schema.TaggedClass<Url>("Url")("Url", {
   }
 }
 
-export const FromBytes = Schema.transform(Text128.FromBytes, Url, {
-  strict: true,
-  decode: (bytes) => new Url({ href: bytes }, { disableValidation: true }), // Disable validation since we already check length in Text128
-  encode: (url) => url.href
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: Url): void => w.writeText(v.href)
+export const read = (r: CborReader): Url => new Url({ href: r.readText() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Url),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => {
+        const text = new TextDecoder().decode(bytes)
+        return new Url({ href: text })
+      },
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(new TextEncoder().encode(v.href))
+  }
+).annotations({ identifier: "Url.FromBytes" })
 
 export const FromHex = Schema.compose(
-  Schema.Uint8ArrayFromHex, // string -> hex string
+  Schema.Uint8ArrayFromHex,
   FromBytes
 ).annotations({
   identifier: "Url.Hex"
@@ -121,7 +144,7 @@ export const fromHex = (hex: string) => Schema.decodeSync(FromHex)(hex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (url: Url) => Schema.encodeSync(FromBytes)(url)
+export const toBytes = (url: Url): Uint8Array => new TextEncoder().encode(url.href)
 
 /**
  * Encode Url to hex string.
@@ -129,4 +152,4 @@ export const toBytes = (url: Url) => Schema.encodeSync(FromBytes)(url)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (url: Url) => Schema.encodeSync(FromHex)(url)
+export const toHex = (url: Url): string => Schema.encodeSync(Schema.Uint8ArrayFromHex)(toBytes(url))

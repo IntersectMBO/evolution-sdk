@@ -1,11 +1,12 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AssetName from "./AssetName.js"
 import * as Bytes from "./Bytes.js"
-import * as CBOR from "./CBOR.js"
 import * as _Codec from "./Codec.js"
 import * as NonZeroInt64 from "./NonZeroInt64.js"
 import * as PolicyId from "./PolicyId.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Helper function for content-based Map equality using Equal.equals.
@@ -431,72 +432,45 @@ export const isEmpty = (mint: Mint): boolean => mint.map.size === 0
  */
 export const policyCount = (mint: Mint): number => mint.map.size
 
-export const CDDLSchema = Schema.MapFromSelf({
-  key: CBOR.ByteArray, // Policy ID as 28-byte Uint8Array
-  value: Schema.MapFromSelf({
-    key: CBOR.ByteArray, // Asset name as Uint8Array (variable length)
-    value: CBOR.Integer // Amount as nonZeroInt64
-  })
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL schema for Mint as map structure.
- * ```
- * mint = {* policy_id => {* asset_name => nonZeroInt64}}
- * ```
- *
- * Where:
- * - policy_id: 28-byte Uint8Array (from CBOR byte string)
- * - asset_name: variable-length Uint8Array (from CBOR byte string, can be empty)
- * - nonZeroInt64: signed 64-bit integer (positive = mint, negative = burn, cannot be zero)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(Schema.encodedSchema(CDDLSchema), Schema.typeSchema(Mint), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      // Convert Mint to raw Map data for CBOR encoding
-      const outerMap = new Map() as Map<Uint8Array, Map<Uint8Array, bigint>>
+export const write = (w: CborWriter, v: Mint): void => {
+  w.writeMapHeader(v.map.size)
+  for (const [policyId, assetMap] of v.map) {
+    PolicyId.write(w, policyId)
+    w.writeMapHeader(assetMap.size)
+    for (const [assetName, amount] of assetMap) {
+      AssetName.write(w, assetName)
+      if (amount >= 0n) w.writeUint(amount)
+      else w.writeNint(amount)
+    }
+    w.writeMapBreak()
+  }
+  w.writeMapBreak()
+}
 
-      for (const [policyId, assetMap] of toA.map.entries()) {
-        const policyIdBytes = yield* ParseResult.encode(PolicyId.FromBytes)(policyId)
-        const innerMap = new Map() as Map<Uint8Array, bigint>
-
-        for (const [assetName, amount] of assetMap.entries()) {
-          const assetNameBytes = yield* ParseResult.encode(AssetName.FromBytes)(assetName)
-          innerMap.set(assetNameBytes, amount)
-        }
-
-        outerMap.set(policyIdBytes, innerMap)
-      }
-
-      return outerMap
-    }),
-
-  decode: (fromA) =>
-    Eff.gen(function* () {
-      const innerMap = new Map<PolicyId.PolicyId, AssetMap>()
-
-      for (const [policyIdBytes, assetMapCddl] of fromA.entries()) {
-        const policyId = yield* ParseResult.decode(PolicyId.FromBytes)(policyIdBytes)
-
-        const assetMap = new Map<AssetName.AssetName, NonZeroInt64.NonZeroInt64>()
-        for (const [assetNameBytes, amount] of assetMapCddl.entries()) {
-          const assetName = yield* ParseResult.decode(AssetName.FromBytes)(assetNameBytes)
-          const nonZeroAmount = yield* ParseResult.decode(Schema.typeSchema(NonZeroInt64.NonZeroInt64))(amount)
-
-          assetMap.set(assetName, nonZeroAmount)
-        }
-
-        innerMap.set(policyId, assetMap)
-      }
-
-      return new Mint({ map: innerMap })
-    })
-})
-
+export const read = (r: CborReader): Mint => {
+  const outerCount = r.readMapHeader()
+  const map = new Map<PolicyId.PolicyId, AssetMap>()
+  const readPolicy = () => {
+    const policyId = PolicyId.read(r)
+    const innerCount = r.readMapHeader()
+    const assetMap = new Map<AssetName.AssetName, NonZeroInt64.NonZeroInt64>()
+    const readAsset = () => {
+      const assetName = AssetName.read(r)
+      const amount = r.readInt() as NonZeroInt64.NonZeroInt64
+      assetMap.set(assetName, amount)
+    }
+    if (innerCount === -1) { while (!r.isBreak()) readAsset() }
+    else { for (let i = 0; i < innerCount; i++) readAsset() }
+    map.set(policyId, assetMap)
+  }
+  if (outerCount === -1) { while (!r.isBreak()) readPolicy() }
+  else { for (let i = 0; i < outerCount; i++) readPolicy() }
+  return new Mint({ map })
+}
 /**
  * CBOR bytes transformation schema for Mint.
  * Transforms between CBOR bytes and Mint using CBOR encoding.
@@ -504,15 +478,18 @@ export const FromCDDL = Schema.transformOrFail(Schema.encodedSchema(CDDLSchema),
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Mint
-  ).annotations({
-    identifier: "Mint.FromCBORBytes",
-    title: "Mint from CBOR Bytes",
-    description: "Transforms CBOR bytes to Mint"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Mint),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Mint.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Mint.
@@ -521,15 +498,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Mint
-  ).annotations({
-    identifier: "Mint.FromCBORHex",
-    title: "Mint from CBOR Hex",
-    description: "Transforms CBOR hex string to Mint"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Mint.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for generating random Mint instances.
@@ -580,8 +550,7 @@ export const arbitrary: FastCheck.Arbitrary<Mint> = FastCheck.oneof(
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Mint =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse Mint from CBOR hex string.
@@ -589,8 +558,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Mint =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode Mint to CBOR bytes.
@@ -598,8 +566,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (mint: Mint, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(mint)
+export const toCBORBytes = (mint: Mint, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, mint)
+  return w.finishView()
+}
 
 /**
  * Encode Mint to CBOR hex string.
@@ -607,5 +578,5 @@ export const toCBORBytes = (mint: Mint, options: CBOR.CodecOptions = CBOR.CML_DE
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (mint: Mint, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string =>
-  Schema.encodeSync(FromCBORHex(options))(mint)
+export const toCBORHex = (mint: Mint, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(mint, profile))

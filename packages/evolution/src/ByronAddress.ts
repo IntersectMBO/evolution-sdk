@@ -1,6 +1,8 @@
-import { Effect as Eff, Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as NetworkId from "./NetworkId.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Byron legacy address format
@@ -37,6 +39,22 @@ export class ByronAddress extends Schema.TaggedClass<ByronAddress>("ByronAddress
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: ByronAddress): void => {
+  w.writeBytes(v.bytes)
+}
+
+export const read = (r: CborReader): ByronAddress => {
+  const bytes = r.readBytes()
+  return new ByronAddress({
+    networkId: NetworkId.NetworkId.make(0),
+    bytes
+  })
+}
+
 /**
  * Schema for encoding/decoding Byron addresses as bytes.
  *
@@ -47,11 +65,13 @@ export const BytesSchema = Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Byr
   strict: true,
   encode: (_, __, ___, toA) => ParseResult.succeed(toA.bytes),
   decode: (_, __, ast, fromA) =>
-    Eff.gen(function* () {
-      return new ByronAddress({
-        networkId: NetworkId.NetworkId.make(0),
-        bytes: fromA
-      })
+    ParseResult.try({
+      try: () =>
+        new ByronAddress({
+          networkId: NetworkId.NetworkId.make(0),
+          bytes: fromA
+        }),
+      catch: (e) => new ParseResult.Type(ast, fromA, e instanceof Error ? e.message : String(e))
     })
 })
 

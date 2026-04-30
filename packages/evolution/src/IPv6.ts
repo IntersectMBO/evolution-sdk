@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes16 from "./Bytes16.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * IPv6 model stored as 16 raw bytes (network byte order).
@@ -33,18 +35,33 @@ export class IPv6 extends Schema.TaggedClass<IPv6>()("IPv6", {
   }
 }
 
-// Transform between raw bytes (Uint8Array length 16) and IPv6
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes16.BytesFromHex), Schema.typeSchema(IPv6), {
-  strict: true,
-  decode: (bytes) => new IPv6({ bytes }, { disableValidation: true }),
-  encode: (ipv6) => ipv6.bytes
-}).annotations({
-  identifier: "IPv6.FromBytes"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: IPv6): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): IPv6 => new IPv6({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(IPv6),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new IPv6({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.bytes)
+  }
+).annotations({ identifier: "IPv6.FromBytes" })
 
 export const FromHex = Schema.compose(
-  Bytes16.BytesFromHex, // string -> Uint8Array(16)
-  FromBytes // bytes -> IPv6
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "IPv6.FromHex"
 })
@@ -93,7 +110,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: IPv6): Uint8Array => v.bytes
 
 /**
  * Encode IPv6 to hex string.
@@ -101,4 +118,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: IPv6): string => Bytes.toHex(v.bytes)

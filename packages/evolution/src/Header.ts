@@ -5,11 +5,12 @@
  *
  * @since 2.0.0
  */
-import { Effect, Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
 import * as HeaderBody from "./HeaderBody.js"
 import * as KesSignature from "./KesSignature.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Header implementation using HeaderBody and KesSignature
@@ -60,38 +61,24 @@ export class Header extends Schema.TaggedClass<Header>()("Header", {
  */
 export const isHeader = (value: unknown): value is Header => value instanceof Header
 
-/**
- * CDDL schema for Header.
- * header = [header_body, body_signature : kes_signature]
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(
-  Schema.Tuple(
-    Schema.encodedSchema(HeaderBody.FromCDDL), // header_body using HeaderBody CDDL schema
-    CBOR.ByteArray // body_signature as bytes
-  ),
-  Schema.typeSchema(Header),
-  {
-    strict: true,
-    encode: (toA) =>
-      Effect.gen(function* () {
-        const headerBodyCddl = yield* ParseResult.encode(HeaderBody.FromCDDL)(toA.headerBody)
-        const bodySignatureBytes = yield* ParseResult.encode(KesSignature.FromBytes)(toA.bodySignature)
-        return [headerBodyCddl, bodySignatureBytes] as const
-      }),
-    decode: ([headerBodyCddl, bodySignatureBytes]) =>
-      Effect.gen(function* () {
-        const headerBody = yield* ParseResult.decode(HeaderBody.FromCDDL)(headerBodyCddl)
-        const bodySignature = yield* ParseResult.decode(KesSignature.FromBytes)(bodySignatureBytes)
-        return new Header({
-          headerBody,
-          bodySignature
-        })
-      })
-  }
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: Header): void => {
+  w.writeArrayHeader(2)
+  HeaderBody.write(w, v.headerBody)
+  KesSignature.write(w, v.bodySignature)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): Header => {
+  const count = r.readArrayHeader()
+  const headerBody = HeaderBody.read(r)
+  const bodySignature = KesSignature.read(r)
+  if (count === -1) r.isBreak()
+  return new Header({ headerBody, bodySignature })
+}
 
 /**
  * CBOR bytes transformation schema for Header.
@@ -99,11 +86,18 @@ export const FromCDDL = Schema.transformOrFail(
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Header
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Header),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Header.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Header.
@@ -111,11 +105,8 @@ export const FromBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS)
  * @since 2.0.0
  * @category schemas
  */
-export const FromHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromBytes(options) // Uint8Array → Header
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Header.FromCBORHex" })
 
 // ============================================================================
 // Root Functions
@@ -127,8 +118,7 @@ export const FromHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): Header =>
-  Schema.decodeSync(FromBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse a Header from CBOR hex string.
@@ -136,8 +126,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): H
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Header =>
-  Schema.decodeSync(FromHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -149,8 +138,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Header =>
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (header: Header, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromBytes(options))(header)
+export const toCBORBytes = (header: Header, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, header)
+  return w.finish()
+}
 
 /**
  * Convert a Header to CBOR hex string.
@@ -158,5 +150,7 @@ export const toCBORBytes = (header: Header, options?: CBOR.CodecOptions): Uint8A
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (header: Header, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromHex(options))(header)
+export const toCBORHex = (header: Header, profile?: EncodingProfile): string => {
+  const bytes = toCBORBytes(header, profile)
+  return Schema.encodeSync(Schema.Uint8ArrayFromHex)(bytes)
+}

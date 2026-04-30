@@ -7,10 +7,12 @@
  * @since 2.0.0
  */
 
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for AuxiliaryDataHash representing auxiliary data hashes.
@@ -20,10 +22,10 @@ import * as Bytes32 from "./Bytes32.js"
  * @category model
  */
 export class AuxiliaryDataHash extends Schema.TaggedClass<AuxiliaryDataHash>()("AuxiliaryDataHash", {
-  bytes: Bytes32.BytesFromHex
+  hash: Bytes32.BytesFromHex
 }) {
   toJSON() {
-    return { _tag: "AuxiliaryDataHash" as const, bytes: Bytes.toHex(this.bytes) }
+    return { _tag: "AuxiliaryDataHash" as const, hash: Bytes.toHex(this.hash) }
   }
 
   toString(): string {
@@ -35,29 +37,49 @@ export class AuxiliaryDataHash extends Schema.TaggedClass<AuxiliaryDataHash>()("
   }
 
   [Equal.symbol](that: unknown): boolean {
-    return that instanceof AuxiliaryDataHash && Bytes.equals(this.bytes, that.bytes)
+    return that instanceof AuxiliaryDataHash && Bytes.equals(this.hash, that.hash)
   }
 
   [Hash.symbol](): number {
-    return Hash.array(Array.from(this.bytes))
+    return Hash.cached(this, Hash.array(Array.from(this.hash)))
   }
 }
 
-export const FromBytes = Schema.transform(
-  Schema.typeSchema(Bytes32.BytesFromHex),
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: AuxiliaryDataHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): AuxiliaryDataHash => new AuxiliaryDataHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+/**
+ * Schema for transforming between Uint8Array and AuxiliaryDataHash.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(AuxiliaryDataHash),
   {
     strict: true,
-    decode: (bytes) => new AuxiliaryDataHash({ bytes }, { disableValidation: true }),
-    encode: (a) => a.bytes
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new AuxiliaryDataHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (a) => ParseResult.succeed(a.hash)
   }
 ).annotations({
   identifier: "AuxiliaryDataHash.FromBytes"
 })
 
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> AuxiliaryDataHash
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "AuxiliaryDataHash.FromHex"
 })
@@ -81,7 +103,7 @@ export const isAuxiliaryDataHash = Schema.is(AuxiliaryDataHash)
  * @category arbitrary
  */
 export const arbitrary = FastCheck.uint8Array({ minLength: 32, maxLength: 32 }).map(
-  (bytes) => new AuxiliaryDataHash({ bytes }, { disableValidation: true })
+  (hash) => new AuxiliaryDataHash({ hash })
 )
 
 // ============================================================================
@@ -110,7 +132,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: AuxiliaryDataHash): Uint8Array => v.hash
 
 /**
  * Encode AuxiliaryDataHash to hex string.
@@ -118,4 +140,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: AuxiliaryDataHash): string => Bytes.toHex(v.hash)

@@ -3,10 +3,8 @@
  */
 
 import { bech32 } from "@scure/base"
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as Bytes29 from "./Bytes29.js"
-import * as Bytes57 from "./Bytes57.js"
 import * as Credential from "./Credential.js"
 import * as KeyHash from "./KeyHash.js"
 import * as NetworkId from "./NetworkId.js"
@@ -68,37 +66,36 @@ export class Address extends Schema.Class<Address>("AddressStructure")({
  * @category Transformations
  */
 export const FromBytes = Schema.transformOrFail(
-  Schema.Union(Schema.typeSchema(Bytes57.BytesFromHex), Schema.typeSchema(Bytes29.BytesFromHex)),
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(Address),
   {
     strict: true,
-    encode: (_, __, ___, toA) =>
-      Eff.gen(function* () {
-        if (toA.stakingCredential) {
-          // BaseAddress encoding (57 bytes)
-          const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
-          const stakeBit = toA.stakingCredential._tag === "KeyHash" ? 0 : 1
-          const header = (0b00 << 6) | (stakeBit << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
-          const result = new Uint8Array(57)
-          result[0] = header
-          const paymentCredentialBytes = toA.paymentCredential.hash
-          result.set(paymentCredentialBytes, 1)
-          const stakeCredentialBytes = toA.stakingCredential.hash
-          result.set(stakeCredentialBytes, 29)
-          return yield* ParseResult.succeed(result)
-        } else {
-          // EnterpriseAddress encoding (29 bytes)
-          const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
-          const header = (0b01 << 6) | (0b1 << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
-          const result = new Uint8Array(29)
-          result[0] = header
-          const paymentCredentialBytes = toA.paymentCredential.hash
-          result.set(paymentCredentialBytes, 1)
-          return yield* ParseResult.succeed(result)
-        }
-      }),
-    decode: (fromI, options, ast, fromA) =>
-      Eff.gen(function* () {
+    encode: (_, __, ___, toA) => {
+      if (toA.stakingCredential) {
+        // BaseAddress encoding (57 bytes)
+        const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
+        const stakeBit = toA.stakingCredential._tag === "KeyHash" ? 0 : 1
+        const header = (0b00 << 6) | (stakeBit << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
+        const result = new Uint8Array(57)
+        result[0] = header
+        const paymentCredentialBytes = toA.paymentCredential.hash
+        result.set(paymentCredentialBytes, 1)
+        const stakeCredentialBytes = toA.stakingCredential.hash
+        result.set(stakeCredentialBytes, 29)
+        return ParseResult.succeed(result)
+      } else {
+        // EnterpriseAddress encoding (29 bytes)
+        const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
+        const header = (0b01 << 6) | (0b1 << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
+        const result = new Uint8Array(29)
+        result[0] = header
+        const paymentCredentialBytes = toA.paymentCredential.hash
+        result.set(paymentCredentialBytes, 1)
+        return ParseResult.succeed(result)
+      }
+    },
+    decode: (fromA, _, ast) => ParseResult.try({
+      try: () => {
         const header = fromA[0]
         const networkId = header & 0b00001111
         const addressTypeBits = (header >> 4) & 0b1111
@@ -133,9 +130,11 @@ export const FromBytes = Schema.transformOrFail(
             stakingCredential: undefined
           })
         } else {
-          return yield* ParseResult.fail(new ParseResult.Type(ast, fromA, "Invalid address length"))
+          throw new Error("Invalid address length")
         }
-      })
+      },
+      catch: (e) => new ParseResult.Type(ast, fromA, e instanceof Error ? e.message : String(e))
+    })
   }
 ).annotations({
   identifier: "AddressStructure.FromBytes"
@@ -160,26 +159,28 @@ export const FromHex = Schema.compose(Schema.Uint8ArrayFromHex, FromBytes).annot
 export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(Address), {
   strict: true,
   encode: (_, __, ___, toA) =>
-    Eff.gen(function* () {
-      const prefix = toA.networkId === 0 ? "addr_test" : "addr"
-      const bytes = yield* ParseResult.encode(FromBytes)(toA)
-      const words = bech32.toWords(bytes)
-      return bech32.encode(prefix, words, false)
-    }),
+    ParseResult.flatMap(
+      ParseResult.encode(FromBytes)(toA),
+      (bytes) => {
+        const prefix = toA.networkId === 0 ? "addr_test" : "addr"
+        const words = bech32.toWords(bytes)
+        return ParseResult.succeed(bech32.encode(prefix, words, false))
+      }
+    ),
   decode: (fromA, _, ast) =>
-    Eff.gen(function* () {
-      const result = yield* Eff.try({
+    ParseResult.flatMap(
+      ParseResult.try({
+        // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
+        // but Schema provides plain string. Consider using decodeToBytes which accepts string.
         try: () => {
-          // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
-          // but Schema provides plain string. Consider using decodeToBytes which accepts string.
           const decoded = bech32.decode(fromA as any, false)
           const bytes = bech32.fromWords(decoded.words)
           return new Uint8Array(bytes)
         },
         catch: () => new ParseResult.Type(ast, fromA, `Failed to decode Bech32: ${fromA}`)
-      })
-      return yield* ParseResult.decode(FromBytes)(result)
-    })
+      }),
+      (result) => ParseResult.decode(FromBytes)(result)
+    )
 }).annotations({
   identifier: "AddressStructure.FromBech32",
   description: "Transforms Bech32 string to AddressStructure"

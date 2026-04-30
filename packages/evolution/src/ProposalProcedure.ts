@@ -1,10 +1,12 @@
-import { Effect as Eff, Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Anchor from "./Anchor.js"
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Coin from "./Coin.js"
 import * as GovernanceAction from "./GovernanceAction.js"
 import * as RewardAccount from "./RewardAccount.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for a single proposal procedure based on Conway CDDL specification.
@@ -99,67 +101,46 @@ export class ProposalProcedure extends Schema.Class<ProposalProcedure>("Proposal
   }
 }
 
-/**
- * CDDL schema for ProposalProcedure tuple structure.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = Schema.Tuple(
-  CBOR.Integer, // deposit: coin
-  CBOR.ByteArray, // reward_account (raw bytes)
-  Schema.encodedSchema(GovernanceAction.CDDLSchema), // governance_action using proper CDDL schema
-  Schema.NullOr(Anchor.CDDLSchema) // anchor / null
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL transformation schema for individual ProposalProcedure.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(ProposalProcedure), {
-  strict: true,
-  encode: (procedure) =>
-    Eff.gen(function* () {
-      const depositBigInt = BigInt(procedure.deposit)
-      const rewardAccountBytes = yield* ParseResult.encode(RewardAccount.FromBytes)(procedure.rewardAccount)
-      const governanceActionCDDL = yield* ParseResult.encode(GovernanceAction.FromCDDL)(procedure.governanceAction)
-      const anchorCDDL = procedure.anchor ? yield* ParseResult.encode(Anchor.FromCDDL)(procedure.anchor) : null
-      return [depositBigInt, rewardAccountBytes, governanceActionCDDL, anchorCDDL] as const
-    }),
-  decode: (procedureTuple) =>
-    Eff.gen(function* () {
-      const [depositBigInt, rewardAccountBytes, governanceActionCDDL, anchorCDDL] = procedureTuple as any
-      const deposit = yield* ParseResult.decode(Schema.typeSchema(Coin.Coin))(depositBigInt)
-      const rewardAccount = yield* ParseResult.decode(RewardAccount.FromBytes)(rewardAccountBytes)
-      const governanceAction = yield* ParseResult.decode(GovernanceAction.FromCDDL)(governanceActionCDDL)
-      const anchor = anchorCDDL ? yield* ParseResult.decode(Anchor.FromCDDL)(anchorCDDL) : null
+export const write = (w: CborWriter, v: ProposalProcedure): void => {
+  w.writeArrayHeader(4)
+  w.writeUint(v.deposit)
+  RewardAccount.write(w, v.rewardAccount)
+  GovernanceAction.write(w, v.governanceAction)
+  if (v.anchor) Anchor.write(w, v.anchor); else w.writeNull()
+  w.writeArrayBreak()
+}
 
-      return new ProposalProcedure({
-        deposit,
-        rewardAccount,
-        governanceAction,
-        anchor
-      })
-    })
-})
-
+export const read = (r: CborReader): ProposalProcedure => {
+  const count = r.readArrayHeader()
+  const deposit = r.readUint() as Coin.Coin
+  const rewardAccount = RewardAccount.read(r)
+  const governanceAction = GovernanceAction.read(r)
+  const anchor = r.peekMajorType() === 7 ? (r.readNull(), null) : Anchor.read(r)
+  if (count === -1) r.isBreak()
+  return new ProposalProcedure({ deposit, rewardAccount, governanceAction, anchor })
+}
 /**
  * CBOR bytes transformation schema for individual ProposalProcedure.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → ProposalProcedure
-  ).annotations({
-    identifier: "ProposalProcedure.FromCBORBytes",
-    title: "ProposalProcedure from CBOR Bytes",
-    description: "Transforms CBOR bytes to ProposalProcedure"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(ProposalProcedure),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "ProposalProcedure.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for individual ProposalProcedure.
@@ -167,15 +148,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → ProposalProcedure
-  ).annotations({
-    identifier: "ProposalProcedure.FromCBORHex",
-    title: "ProposalProcedure from CBOR Hex",
-    description: "Transforms CBOR hex string to ProposalProcedure"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "ProposalProcedure.FromCBORHex" })
 
 // ============================================================================
 // Root Functions
@@ -187,8 +161,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse individual ProposalProcedure from CBOR hex string.
@@ -196,8 +169,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode individual ProposalProcedure to CBOR bytes.
@@ -205,8 +177,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (procedure: ProposalProcedure, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(procedure)
+export const toCBORBytes = (procedure: ProposalProcedure, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, procedure)
+  return w.finishView()
+}
 
 /**
  * Encode individual ProposalProcedure to CBOR hex string.
@@ -214,5 +189,5 @@ export const toCBORBytes = (procedure: ProposalProcedure, options: CBOR.CodecOpt
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (procedure: ProposalProcedure, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(procedure)
+export const toCBORHex = (procedure: ProposalProcedure, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(procedure, profile))

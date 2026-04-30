@@ -10,7 +10,6 @@
  */
 
 import { bech32 } from "@scure/base"
-import * as Effect from "effect/Effect"
 import * as ParseResult from "effect/ParseResult"
 import * as Schema from "effect/Schema"
 
@@ -36,65 +35,62 @@ export const CommitteeHotCredential = Credential
  */
 export const FromBytes = Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(Credential.Credential), {
   strict: true,
-  encode: (toI, _, ast) =>
-    Effect.gen(function* () {
-      // Encode: Credential → 29 bytes with cc_hot header
-      const credBytes = toI.hash
+  encode: (toI, _, ast) => {
+    const credBytes = toI.hash
+    if (credBytes.length !== 28) {
+      return ParseResult.fail(
+        new ParseResult.Type(ast, toI, `Invalid credential hash length: expected 28 bytes, got ${credBytes.length}`)
+      )
+    }
+    const header = toI._tag === "KeyHash" ? 0x1e : 0x1f
+    const result = new Uint8Array(29)
+    result[0] = header
+    result.set(credBytes, 1)
+    return ParseResult.succeed(result)
+  },
+  decode: (fromA, _, ast) => {
+    if (fromA.length !== 29) {
+      return ParseResult.fail(
+        new ParseResult.Type(ast, fromA, `Invalid cc_hot credential length: expected 29 bytes, got ${fromA.length}`)
+      )
+    }
 
-      if (credBytes.length !== 28) {
-        return yield* ParseResult.fail(
-          new ParseResult.Type(ast, toI, `Invalid credential hash length: expected 28 bytes, got ${credBytes.length}`)
-        )
-      }
+    const header = fromA[0]
+    const credBytes = fromA.slice(1)
 
-      const header = toI._tag === "KeyHash" ? 0x1e : 0x1f
-      const result = new Uint8Array(29)
-      result[0] = header
-      result.set(credBytes, 1)
-      return result
-    }),
-  decode: (fromA, _, ast) =>
-    Effect.gen(function* () {
-      // Decode: 29 bytes → Credential
-      if (fromA.length !== 29) {
-        return yield* ParseResult.fail(
-          new ParseResult.Type(ast, fromA, `Invalid cc_hot credential length: expected 29 bytes, got ${fromA.length}`)
-        )
-      }
+    const keyType = (header >> 4) & 0x0f
+    const credType = header & 0x0f
 
-      const header = fromA[0]
-      const credBytes = fromA.slice(1)
-
-      // Validate header byte
-      const keyType = (header >> 4) & 0x0f
-      const credType = header & 0x0f
-
-      if (keyType !== 0x01) {
-        return yield* ParseResult.fail(
-          new ParseResult.Type(
-            ast,
-            fromA,
-            `Invalid key type in header: expected 0x01 (CC Hot), got 0x0${keyType.toString(16)}`
-          )
-        )
-      }
-
-      if (credType === 0x0e) {
-        const keyHash = yield* ParseResult.decode(KeyHash.FromBytes)(credBytes)
-        return new KeyHash.KeyHash({ hash: keyHash.hash })
-      } else if (credType === 0x0f) {
-        const scriptHash = yield* ParseResult.decode(ScriptHash.FromBytes)(credBytes)
-        return new ScriptHash.ScriptHash({ hash: scriptHash.hash })
-      }
-
-      return yield* ParseResult.fail(
+    if (keyType !== 0x01) {
+      return ParseResult.fail(
         new ParseResult.Type(
           ast,
           fromA,
-          `Invalid credential type in header: expected 0x0E or 0x0F, got 0x0${credType.toString(16)}`
+          `Invalid key type in header: expected 0x01 (CC Hot), got 0x0${keyType.toString(16)}`
         )
       )
-    })
+    }
+
+    if (credType === 0x0e) {
+      return ParseResult.map(
+        ParseResult.decode(KeyHash.FromBytes)(credBytes),
+        (keyHash) => new KeyHash.KeyHash({ hash: keyHash.hash })
+      )
+    } else if (credType === 0x0f) {
+      return ParseResult.map(
+        ParseResult.decode(ScriptHash.FromBytes)(credBytes),
+        (scriptHash) => new ScriptHash.ScriptHash({ hash: scriptHash.hash })
+      )
+    }
+
+    return ParseResult.fail(
+      new ParseResult.Type(
+        ast,
+        fromA,
+        `Invalid credential type in header: expected 0x0E or 0x0F, got 0x0${credType.toString(16)}`
+      )
+    )
+  }
 }).annotations({
   identifier: "CommitteeHotCredential.FromBytes",
   description: "Transforms CIP-129 bytes to Committee Hot Credential"
@@ -121,17 +117,17 @@ export const FromHex = Schema.compose(Schema.Uint8ArrayFromHex, FromBytes).annot
 export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(Credential.Credential), {
   strict: true,
   encode: (_, __, ___, toA) =>
-    Effect.gen(function* () {
-      const bytes = yield* ParseResult.encode(FromBytes)(toA)
-      const words = bech32.toWords(bytes)
-      return bech32.encode("cc_hot", words, false)
-    }),
+    ParseResult.map(
+      ParseResult.encode(FromBytes)(toA),
+      (bytes) => {
+        const words = bech32.toWords(bytes)
+        return bech32.encode("cc_hot", words, false)
+      }
+    ),
   decode: (fromA, _, ast) =>
-    Effect.gen(function* () {
-      const result = yield* Effect.try({
+    ParseResult.flatMap(
+      ParseResult.try({
         try: () => {
-          // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
-          // but Schema provides plain string. Consider using decodeToBytes which accepts string.
           const decoded = bech32.decode(fromA as any, false)
           if (decoded.prefix !== "cc_hot") {
             throw new Error(`Invalid prefix: expected "cc_hot", got "${decoded.prefix}"`)
@@ -140,9 +136,9 @@ export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchem
           return new Uint8Array(bytes)
         },
         catch: (error) => new ParseResult.Type(ast, fromA, `Failed to decode bech32: ${error}`)
-      })
-      return yield* ParseResult.decode(FromBytes)(result)
-    })
+      }),
+      (result) => ParseResult.decode(FromBytes)(result)
+    )
 }).annotations({
   identifier: "CommitteeHotCredential.FromBech32",
   description: "Transforms Bech32 string to Committee Hot Credential (CIP-129)"

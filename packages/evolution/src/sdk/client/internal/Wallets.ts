@@ -201,7 +201,7 @@ export const cip30Wallet =
               cause
             })
         })
-        return yield* ParseResult.decodeUnknownEither(TransactionWitnessSet.FromCBORHex())(witnessHex).pipe(
+        return yield* ParseResult.decodeUnknownEither(TransactionWitnessSet.FromCBORHex)(witnessHex).pipe(
           Effect.mapError((cause) => new Wallet.WalletError({ message: `Failed to decode witness set: ${cause}`, cause }))
         )
       }),
@@ -257,7 +257,7 @@ export const cip30Wallet =
 
         return yield* Effect.all(
           witnessHexes.map((hex) =>
-            ParseResult.decodeUnknownEither(TransactionWitnessSet.FromCBORHex())(hex).pipe(
+            ParseResult.decodeUnknownEither(TransactionWitnessSet.FromCBORHex)(hex).pipe(
               Effect.mapError((cause) => new Wallet.WalletError({ message: `Failed to decode witness set: ${cause}`, cause }))
             )
           )

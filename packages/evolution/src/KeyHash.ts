@@ -1,9 +1,11 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Hash28 from "./Hash28.js"
 import type { PrivateKey } from "./PrivateKey.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 import * as VKey from "./VKey.js"
 
 /**
@@ -44,19 +46,35 @@ export class KeyHash extends Schema.TaggedClass<KeyHash>()("KeyHash", {
   }
 }
 
+// ============================================================================
+// Write / Read
+// ============================================================================
+
+export const write = (w: CborWriter, v: KeyHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): KeyHash => new KeyHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema transformer from bytes to KeyHash.
  *
  * @since 2.0.0
  * @category transformer
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Hash28.BytesFromHex), Schema.typeSchema(KeyHash), {
-  strict: true,
-  decode: (bytes) => new KeyHash({ hash: bytes }, { disableValidation: true }), // Disable validation since we already check length in Hash28
-  encode: (keyHash) => keyHash.hash
-}).annotations({
-  identifier: "KeyHash.FromBytes"
-})
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(KeyHash),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new KeyHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.hash)
+  }
+).annotations({ identifier: "KeyHash.FromBytes" })
 
 /**
  * Schema transformer from hex string to KeyHash.
@@ -64,7 +82,7 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Hash28.BytesFromHex)
  * @since 2.0.0
  * @category transformer
  */
-export const FromHex = Schema.compose(Hash28.BytesFromHex, FromBytes).annotations({
+export const FromHex = Schema.compose(Schema.Uint8ArrayFromHex, FromBytes).annotations({
   identifier: "KeyHash.FromHex"
 })
 
@@ -90,7 +108,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding/decoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: KeyHash): Uint8Array => v.hash
 
 /**
  * Convert a KeyHash to a hex string.
@@ -98,7 +116,7 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding/decoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: KeyHash): string => Bytes.toHex(v.hash)
 
 /**
  * FastCheck arbitrary for generating random KeyHash instances.
@@ -107,7 +125,7 @@ export const toHex = Schema.encodeSync(FromHex)
  * @category arbitrary
  */
 export const arbitrary: FastCheck.Arbitrary<KeyHash> = FastCheck.uint8Array({ minLength: 28, maxLength: 28 }).map(
-  (bytes) => new KeyHash({ hash: bytes }, { disableValidation: true })
+  (bytes) => new KeyHash({ hash: bytes })
 )
 
 /**

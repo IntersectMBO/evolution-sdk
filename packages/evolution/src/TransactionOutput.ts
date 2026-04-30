@@ -1,24 +1,19 @@
-import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AddressEras from "./AddressEras.js"
 import * as BaseAddress from "./BaseAddress.js"
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
+import * as PlutusData from "./Data.js"
 import * as DatumHash from "./DatumHash.js"
 import * as DatumOption from "./DatumOption.js"
 import * as EnterpriseAddress from "./EnterpriseAddress.js"
+import * as InlineDatum from "./InlineDatum.js"
 import * as ScriptRef from "./ScriptRef.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 import * as Value from "./Value.js"
 
 // Pre-bind frequently used ParseResult helpers for hot paths
-const encAddress = ParseResult.encodeEither(AddressEras.FromBytes)
-const decAddress = ParseResult.decodeUnknownEither(Schema.Union(BaseAddress.FromBytes, EnterpriseAddress.FromBytes))
-const encValue = ParseResult.encodeEither(Value.FromCDDL)
-const decValue = ParseResult.decodeUnknownEither(Value.FromCDDL)
-const encDatumOption = ParseResult.encodeEither(DatumOption.FromCDDL)
-const decDatumOption = ParseResult.decodeUnknownEither(DatumOption.FromCDDL)
-const decDatumHash = ParseResult.decodeEither(DatumHash.FromBytes)
-const encScriptRef = ParseResult.encodeEither(ScriptRef.FromCDDL)
-const decScriptRef = ParseResult.decodeUnknownEither(ScriptRef.FromCDDL)
 
 /**
  * Shelley-era transaction output format
@@ -128,6 +123,145 @@ export class BabbageTransactionOutput extends Schema.TaggedClass<BabbageTransact
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+// Inline address write: dispatch on _tag to BaseAddress or EnterpriseAddress
+const writeAddress = (w: CborWriter, v: AddressEras.AddressEras): void => {
+  switch (v._tag) {
+    case "BaseAddress": BaseAddress.write(w, v); break
+    case "EnterpriseAddress": EnterpriseAddress.write(w, v); break
+    default: {
+      // Fallback for other address types — encode via Schema
+      const bytes = Schema.encodeSync(AddressEras.FromBytes)(v)
+      w.writeBytes(bytes)
+    }
+  }
+}
+
+const readAddress = (r: CborReader): AddressEras.AddressEras => {
+  const bytes = r.readBytesView()
+  const header = bytes[0]
+  const addressType = header >> 4
+  switch (addressType) {
+    case 0b0000: case 0b0001: case 0b0010: case 0b0011:
+      return Schema.decodeSync(BaseAddress.FromBytes)(bytes)
+    case 0b0110: case 0b0111:
+      return Schema.decodeSync(EnterpriseAddress.FromBytes)(bytes)
+    default:
+      return Schema.decodeSync(AddressEras.FromBytes)(bytes)
+  }
+}
+
+// Inline DatumOption write/read: [0, Bytes32] / [1, #6.24(bytes)]
+const writeDatumOption = (w: CborWriter, v: DatumOption.DatumOption): void => {
+  w.writeArrayHeader(2)
+  if (v._tag === "DatumHash") {
+    w.writeSmallUint(0)
+    w.writeBytes(v.hash)
+  } else {
+    w.writeSmallUint(1)
+    w.writeTagHeader(24)
+    w.writeBytes(PlutusData.toCBORBytes(v.data))
+  }
+  w.writeArrayBreak()
+}
+
+const readDatumOption = (r: CborReader): DatumOption.DatumOption => {
+  const count = r.readArrayHeader()
+  const tag = r.readSmallUint()
+  let result: DatumOption.DatumOption
+  if (tag === 0) {
+    result = new DatumHash.DatumHash({ hash: r.readBytesView() })
+  } else {
+    const cborTag = r.readTagHeader()
+    if (cborTag !== 24) throw new Error(`DatumOption: expected tag 24, got ${cborTag}`)
+    const dataBytes = r.readBytes()
+    result = new InlineDatum.InlineDatum({ data: PlutusData.fromCBORBytes(dataBytes) })
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
+
+export const writeShelley = (w: CborWriter, v: ShelleyTransactionOutput): void => {
+  w.writeArrayHeader(v.datumHash !== undefined ? 3 : 2)
+  writeAddress(w, v.address)
+  Value.write(w, v.amount)
+  if (v.datumHash !== undefined) DatumHash.write(w, v.datumHash)
+  w.writeArrayBreak()
+}
+
+export const readShelley = (r: CborReader): ShelleyTransactionOutput => {
+  const count = r.readArrayHeader()
+  const address = readAddress(r)
+  const amount = Value.read(r)
+  let datumHash: DatumHash.DatumHash | undefined
+  // Check if there's a third element (datum hash)
+  if (count === -1) {
+    if (!r.isBreak()) {
+      datumHash = DatumHash.read(r)
+      r.isBreak() // consume break
+    }
+  } else if (count >= 3) {
+    datumHash = DatumHash.read(r)
+  }
+  return new ShelleyTransactionOutput({ address, amount, datumHash })
+}
+
+export const writeBabbage = (w: CborWriter, v: BabbageTransactionOutput): void => {
+  let count = 2
+  if (v.datumOption !== undefined) count++
+  if (v.scriptRef !== undefined) count++
+  w.writeMapHeader(count)
+  w.writeSmallUint(0); writeAddress(w, v.address)
+  w.writeSmallUint(1); Value.write(w, v.amount)
+  if (v.datumOption !== undefined) { w.writeSmallUint(2); writeDatumOption(w, v.datumOption) }
+  if (v.scriptRef !== undefined) { w.writeSmallUint(3); ScriptRef.write(w, v.scriptRef) }
+  w.writeMapBreak()
+}
+
+export const readBabbage = (r: CborReader): BabbageTransactionOutput => {
+  const mapCount = r.readMapHeader()
+  let address: AddressEras.AddressEras | undefined
+  let amount: Value.Value | undefined
+  let datumOption: DatumOption.DatumOption | undefined
+  let scriptRef: ScriptRef.ScriptRef | undefined
+  const readEntry = () => {
+    const key = r.readSmallUint()
+    switch (key) {
+      case 0: address = readAddress(r); break
+      case 1: amount = Value.read(r); break
+      case 2: datumOption = readDatumOption(r); break
+      case 3: scriptRef = ScriptRef.read(r); break
+      default: r.skip(); break
+    }
+  }
+  if (mapCount === -1) {
+    while (!r.isBreak()) readEntry()
+  } else {
+    for (let i = 0; i < mapCount; i++) readEntry()
+  }
+  return new BabbageTransactionOutput({
+    address: address!,
+    amount: amount!,
+    datumOption,
+    scriptRef
+  })
+}
+
+export const write = (w: CborWriter, v: ShelleyTransactionOutput | BabbageTransactionOutput): void => {
+  if (v._tag === "ShelleyTransactionOutput") writeShelley(w, v)
+  else writeBabbage(w, v)
+}
+
+export const read = (r: CborReader): ShelleyTransactionOutput | BabbageTransactionOutput => {
+  const mt = r.peekMajorType()
+  if (mt === 4) return readShelley(r)
+  if (mt === 5) return readBabbage(r)
+  throw new Error(`TransactionOutput: expected array (4) or map (5), got major type ${mt}`)
+}
+
 /**
  * Union type for transaction outputs
  *
@@ -143,161 +277,27 @@ export const TransactionOutput = Schema.Union(ShelleyTransactionOutput, BabbageT
 
 export type TransactionOutput = typeof TransactionOutput.Type
 
-export const ShelleyTransactionOutputCDDL = Schema.Tuple(
-  Schema.Uint8ArrayFromSelf, // address as bytes
-  Value.CDDLSchema, // value
-  Schema.optionalElement(Schema.Uint8ArrayFromSelf) // optional datum_hash as bytes
-)
-
-/**
- * CDDL schema for Shelley transaction outputs
- *
- * @since 2.0.0
- * @category transformation
- */
-export const FromShelleyTransactionOutputCDDLSchema = Schema.transformOrFail(
-  ShelleyTransactionOutputCDDL,
-  Schema.typeSchema(ShelleyTransactionOutput),
-  {
-    strict: true,
-    encode: (toI) =>
-      E.gen(function* () {
-        const addressBytes = yield* encAddress(toI.address)
-        const valueBytes = yield* encValue(toI.amount)
-
-        if (toI.datumHash !== undefined) {
-          return [addressBytes, valueBytes, toI.datumHash.hash] as const
-        }
-
-        return [addressBytes, valueBytes] as const
-      }),
-    decode: (fromI) =>
-      E.gen(function* () {
-        const [addressBytes, valueBytes, datumHashBytes] = fromI
-        const address = yield* decAddress(addressBytes)
-        const amount = yield* decValue(valueBytes)
-        let datumHash: DatumHash.DatumHash | undefined
-        if (datumHashBytes !== undefined) {
-          datumHash = yield* decDatumHash(datumHashBytes)
-        }
-
-        return new ShelleyTransactionOutput(
-          {
-            address,
-            amount,
-            datumHash
-          },
-          { disableValidation: true }
-        )
-      })
-  }
-)
-
-const BabbageTransactionOutputCDDL = Schema.MapFromSelf({
-  key: CBOR.Integer,
-  value: CBOR.CBORSchema
-})
-
-/**
- * CDDL schema for Babbage transaction outputs
- *
- * @since 2.0.0
- * @category transformation
- */
-export const FromBabbageTransactionOutputCDDLSchema = Schema.transformOrFail(
-  BabbageTransactionOutputCDDL,
-  Schema.typeSchema(BabbageTransactionOutput),
-  {
-    strict: true,
-    encode: (toI) =>
-      E.gen(function* () {
-        const outputMap = new Map<bigint, CBOR.CBOR>()
-        const addressBytes = yield* encAddress(toI.address)
-        const valueBytes = yield* encValue(toI.amount)
-        // Prepare optional fields
-        const datumOptionBytes = toI.datumOption !== undefined ? yield* encDatumOption(toI.datumOption) : undefined
-        const scriptRefBytes = toI.scriptRef !== undefined ? yield* encScriptRef(toI.scriptRef) : undefined
-
-        // Build result object with conditional properties
-        outputMap.set(0n, addressBytes)
-        outputMap.set(1n, valueBytes)
-        if (datumOptionBytes !== undefined) {
-          outputMap.set(2n, datumOptionBytes)
-        }
-        if (scriptRefBytes !== undefined) {
-          outputMap.set(3n, scriptRefBytes)
-        }
-        return outputMap
-      }),
-    decode: (fromI) =>
-      E.gen(function* () {
-        // Assume `fromI` is a CBOR Map and read keys directly.
-        const addressBytes = fromI.get(0n)
-        const valueBytes = fromI.get(1n)
-        const datumOptionBytes = fromI.get(2n)
-        const scriptRefBytes = fromI.get(3n)
-
-        const address = yield* decAddress(addressBytes)
-        const amount = yield* decValue(valueBytes)
-
-        const datumOption = datumOptionBytes !== undefined ? yield* decDatumOption(datumOptionBytes) : undefined
-
-        const scriptRef = scriptRefBytes !== undefined ? yield* decScriptRef(scriptRefBytes) : undefined
-
-        return new BabbageTransactionOutput(
-          {
-            address,
-            amount,
-            datumOption,
-            scriptRef
-          },
-          { disableValidation: true }
-        )
-      })
-  }
-)
-
-export const CDDLSchema = Schema.Union(ShelleyTransactionOutputCDDL, BabbageTransactionOutputCDDL)
-
-/**
- * CDDL schema for transaction outputs
- *
- * @since 2.0.0
- * @category transformer
- */
-export const FromCDDL = Schema.Union(FromShelleyTransactionOutputCDDLSchema, FromBabbageTransactionOutputCDDLSchema)
-
 /**
  * CBOR bytes transformation schema for TransactionOutput.
  *
  * @since 2.0.0
  * @category transformer
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → TransactionOutput
-  ).annotations({
-    identifier: "TransactionOutput.FromCBORBytes",
-    title: "TransactionOutput from CBOR Bytes",
-    description: "Transforms CBOR bytes (Uint8Array) to TransactionOutput"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(TransactionOutput),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "TransactionOutput.FromCBORBytes" })
 
-/**
- * CBOR hex transformation schema for TransactionOutput.
- *
- * @since 2.0.0
- * @category transformer
- */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → TransactionOutput
-  ).annotations({
-    identifier: "TransactionOutput.FromCBORHex",
-    title: "TransactionOutput from CBOR Hex",
-    description: "Transforms CBOR hex string to TransactionOutput"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "TransactionOutput.FromCBORHex" })
 
 /**
  * @since 2.0.0
@@ -326,8 +326,11 @@ export const arbitrary = FastCheck.oneof(
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: TransactionOutput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: TransactionOutput, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert TransactionOutput to CBOR hex.
@@ -335,8 +338,8 @@ export const toCBORBytes = (data: TransactionOutput, options: CBOR.CodecOptions 
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: TransactionOutput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: TransactionOutput, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
 /**
  * Parse TransactionOutput from CBOR bytes.
@@ -344,8 +347,7 @@ export const toCBORHex = (data: TransactionOutput, options: CBOR.CodecOptions = 
  * @since 2.0.0
  * @category decoding
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse TransactionOutput from CBOR hex.
@@ -353,5 +355,4 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category decoding
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)

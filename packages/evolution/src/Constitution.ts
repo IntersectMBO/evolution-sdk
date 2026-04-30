@@ -1,8 +1,10 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Anchor from "./Anchor.js"
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as ScriptHash from "./ScriptHash.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Constitution per CDDL:
@@ -47,38 +49,40 @@ export class Constitution extends Schema.TaggedClass<Constitution>()("Constituti
   }
 }
 
-/**
- * CDDL tuple schema for Constitution
- */
-export const CDDLSchema = Schema.Tuple(
-  Anchor.CDDLSchema, // anchor
-  Schema.NullOr(CBOR.ByteArray) // script_hash / nil
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * Transform between CDDL tuple and typed Constitution
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Constitution), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      const anchor = yield* ParseResult.encode(Anchor.FromCDDL)(toA.anchor)
-      const scriptHash = toA.scriptHash ? yield* ParseResult.encode(ScriptHash.FromBytes)(toA.scriptHash) : null
-      return [anchor, scriptHash] as const
+export const write = (w: CborWriter, v: Constitution): void => {
+  w.writeArrayHeader(2)
+  Anchor.write(w, v.anchor)
+  if (v.scriptHash) ScriptHash.write(w, v.scriptHash)
+  else w.writeNull()
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): Constitution => {
+  const count = r.readArrayHeader()
+  const anchor = Anchor.read(r)
+  const scriptHash = r.peekByte() === 0xf6 ? (r.readNull(), null) : ScriptHash.read(r)
+  if (count === -1) r.isBreak()
+  return new Constitution({ anchor, scriptHash })
+}
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Constitution),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
     }),
-  decode: ([anchorTuple, scriptHashBytes]) =>
-    Eff.gen(function* () {
-      const anchor = yield* ParseResult.decode(Anchor.FromCDDL)(anchorTuple)
-      const scriptHash = scriptHashBytes ? yield* ParseResult.decode(ScriptHash.FromBytes)(scriptHashBytes) : null
-      return new Constitution({ anchor, scriptHash })
-    })
-})
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Constitution.FromCBORBytes" })
 
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL)
-
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCBORBytes(options))
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Constitution.FromCBORHex" })
 
 /**
  * Arbitrary for Constitution
@@ -98,8 +102,7 @@ export const arbitrary: FastCheck.Arbitrary<Constitution> = FastCheck.tuple(
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): Constitution =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse Constitution from CBOR hex string.
@@ -107,8 +110,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): C
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Constitution =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -120,8 +122,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Constitut
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (constitution: Constitution, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(constitution)
+export const toCBORBytes = (constitution: Constitution, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, constitution)
+  return w.finishView()
+}
 
 /**
  * Convert Constitution to CBOR hex string.
@@ -129,5 +134,5 @@ export const toCBORBytes = (constitution: Constitution, options?: CBOR.CodecOpti
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (constitution: Constitution, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(constitution)
+export const toCBORHex = (constitution: Constitution, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(constitution, profile))

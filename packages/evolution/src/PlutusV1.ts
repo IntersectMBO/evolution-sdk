@@ -1,6 +1,7 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Plutus V1 script wrapper (raw bytes).
@@ -76,25 +77,16 @@ export class PlutusV1 extends Schema.TaggedClass<PlutusV1>("PlutusV1")("PlutusV1
   }
 }
 
-/**
- * CDDL schema for PlutusV1 scripts as raw bytes.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = CBOR.ByteArray
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL transformation schema for PlutusV1.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transform(CDDLSchema, Schema.typeSchema(PlutusV1), {
-  strict: true,
-  encode: (toI) => toI.bytes,
-  decode: (fromA) => new PlutusV1({ bytes: fromA })
-})
+export const write = (w: CborWriter, v: PlutusV1): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): PlutusV1 => new PlutusV1({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
 
 /**
  * FastCheck arbitrary for PlutusV1.
@@ -105,3 +97,25 @@ export const FromCDDL = Schema.transform(CDDLSchema, Schema.typeSchema(PlutusV1)
 export const arbitrary: FastCheck.Arbitrary<PlutusV1> = FastCheck.uint8Array({ minLength: 1, maxLength: 512 }).map(
   (script) => new PlutusV1({ bytes: script })
 )
+
+/**
+ * CBOR bytes transformation schema for PlutusV1.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(PlutusV1),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "PlutusV1.FromCBORBytes" })
+
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "PlutusV1.FromCBORHex" })

@@ -1,8 +1,10 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Coin from "./Coin.js"
 import * as RewardAccount from "./RewardAccount.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Helper function for content-based Map equality using Equal.equals.
@@ -98,11 +100,37 @@ export class Withdrawals extends Schema.TaggedClass<Withdrawals>()("Withdrawals"
  */
 export const isWithdrawals = Schema.is(Withdrawals)
 
-export const CDDLSchema = Schema.MapFromSelf({
-  key: Schema.Uint8ArrayFromSelf, // RewardAccount as Uint8Array (29 bytes)
-  value: CBOR.Integer // Coin as bigint
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
+export const write = (w: CborWriter, v: Withdrawals): void => {
+  w.writeMapHeader(v.withdrawals.size)
+  for (const [rewardAccount, coin] of v.withdrawals.entries()) {
+    RewardAccount.write(w, rewardAccount)
+    w.writeUint(coin)
+  }
+  w.writeMapBreak()
+}
+
+export const read = (r: CborReader): Withdrawals => {
+  const count = r.readMapHeader()
+  const map = new Map<RewardAccount.RewardAccount, Coin.Coin>()
+  if (count === -1) {
+    while (!r.isBreak()) {
+      const rewardAccount = RewardAccount.read(r)
+      const coin = r.readUint()
+      map.set(rewardAccount, coin)
+    }
+  } else {
+    for (let i = 0; i < count; i++) {
+      const rewardAccount = RewardAccount.read(r)
+      const coin = r.readUint()
+      map.set(rewardAccount, coin)
+    }
+  }
+  return new Withdrawals({ withdrawals: map })
+}
 /**
  * CDDL schema for Withdrawals.
  *
@@ -113,40 +141,24 @@ export const CDDLSchema = Schema.MapFromSelf({
  * @since 2.0.0
  * @category schemas
  */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Withdrawals), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      const withdrawalsMap = new Map<Uint8Array, bigint>()
-      for (const [rewardAccount, coin] of toA.withdrawals.entries()) {
-        const accountBytes = yield* ParseResult.encode(RewardAccount.FromBytes)(rewardAccount)
-        withdrawalsMap.set(accountBytes, coin)
-      }
-      return withdrawalsMap
-    }),
-  decode: (fromA) =>
-    Eff.gen(function* () {
-      const decodedWithdrawals = new Map<RewardAccount.RewardAccount, Coin.Coin>()
-      for (const [accountBytes, coinAmount] of fromA.entries()) {
-        const rewardAccount = yield* ParseResult.decode(RewardAccount.FromBytes)(accountBytes)
-        const coin = yield* ParseResult.decode(Schema.typeSchema(Coin.Coin))(coinAmount)
-        decodedWithdrawals.set(rewardAccount, coin)
-      }
-      return new Withdrawals({ withdrawals: decodedWithdrawals })
-    })
-})
-
 /**
  * CBOR bytes transformation schema for Withdrawals.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Withdrawals
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Withdrawals),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Withdrawals.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Withdrawals.
@@ -154,11 +166,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Withdrawals
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Withdrawals.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for Withdrawals instances.
@@ -278,8 +287,7 @@ export const entries = (withdrawals: Withdrawals): Array<[RewardAccount.RewardAc
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse a Withdrawals from CBOR hex string.
@@ -287,8 +295,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -300,8 +307,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: Withdrawals, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: Withdrawals, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert a Withdrawals to CBOR hex string.
@@ -309,5 +319,5 @@ export const toCBORBytes = (data: Withdrawals, options: CBOR.CodecOptions = CBOR
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: Withdrawals, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: Withdrawals, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))

@@ -307,7 +307,7 @@ export const getDatum = (baseUrl: string, apiKey: string) => (datumHash: DatumHa
       }
     ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("get datum")))
 
-    return Schema.decodeSync(PlutusData.FromCBORHex())(response.data.bytes)
+    return Schema.decodeSync(PlutusData.FromCBORHex)(response.data.bytes)
   })
 
 /**

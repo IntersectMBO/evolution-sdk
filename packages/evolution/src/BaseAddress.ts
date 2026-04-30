@@ -1,10 +1,12 @@
-import { Effect as Eff, Equal, FastCheck, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Inspectable, ParseResult, Schema } from "effect"
 
-import * as Bytes57 from "./Bytes57.js"
+import * as Bytes from "./Bytes.js"
 import * as Credential from "./Credential.js"
 import * as KeyHash from "./KeyHash.js"
 import * as NetworkId from "./NetworkId.js"
 import * as ScriptHash from "./ScriptHash.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Base address with both payment and staking credentials
@@ -45,25 +47,24 @@ export class BaseAddress extends Schema.TaggedClass<BaseAddress>("BaseAddress")(
 }
 
 export const FromBytes = Schema.transformOrFail(
-  Schema.typeSchema(Bytes57.BytesFromHex),
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(BaseAddress),
   {
     strict: true,
-    encode: (_, __, ___, toA) =>
-      Eff.gen(function* () {
-        const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
-        const stakeBit = toA.stakeCredential._tag === "KeyHash" ? 0 : 1
-        const header = (0b00 << 6) | (stakeBit << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
-        const result = new Uint8Array(57)
-        result[0] = header
-        const paymentCredentialBytes = toA.paymentCredential.hash
-        result.set(paymentCredentialBytes, 1)
-        const stakeCredentialBytes = toA.stakeCredential.hash
-        result.set(stakeCredentialBytes, 29)
-        return yield* ParseResult.succeed(result)
-      }),
-    decode: (fromI, options, ast, fromA) =>
-      Eff.gen(function* () {
+    encode: (_, __, ___, toA) => {
+      const paymentBit = toA.paymentCredential._tag === "KeyHash" ? 0 : 1
+      const stakeBit = toA.stakeCredential._tag === "KeyHash" ? 0 : 1
+      const header = (0b00 << 6) | (stakeBit << 5) | (paymentBit << 4) | (toA.networkId & 0b00001111)
+      const result = new Uint8Array(57)
+      result[0] = header
+      const paymentCredentialBytes = toA.paymentCredential.hash
+      result.set(paymentCredentialBytes, 1)
+      const stakeCredentialBytes = toA.stakeCredential.hash
+      result.set(stakeCredentialBytes, 29)
+      return ParseResult.succeed(result)
+    },
+    decode: (fromA, _, ast) => ParseResult.try({
+      try: () => {
         const header = fromA[0]
         // Extract network ID from the lower 4 bits
         const networkId = header & 0b00001111
@@ -91,7 +92,9 @@ export const FromBytes = Schema.transformOrFail(
           paymentCredential,
           stakeCredential
         })
-      })
+      },
+      catch: (e) => new ParseResult.Type(ast, fromA, e instanceof Error ? e.message : String(e))
+    })
   }
 ).annotations({
   identifier: "BaseAddress.FromBytes"
@@ -146,7 +149,16 @@ export const fromHex = (hex: string) => Schema.decodeSync(FromHex)(hex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (data: BaseAddress) => Schema.encodeSync(FromBytes)(data)
+export const toBytes = (data: BaseAddress): Uint8Array => {
+  const paymentBit = data.paymentCredential._tag === "KeyHash" ? 0 : 1
+  const stakeBit = data.stakeCredential._tag === "KeyHash" ? 0 : 1
+  const header = (0b00 << 6) | (stakeBit << 5) | (paymentBit << 4) | (data.networkId & 0b00001111)
+  const result = new Uint8Array(57)
+  result[0] = header
+  result.set(data.paymentCredential.hash, 1)
+  result.set(data.stakeCredential.hash, 29)
+  return result
+}
 
 /**
  * Convert a BaseAddress to hex string.
@@ -154,4 +166,26 @@ export const toBytes = (data: BaseAddress) => Schema.encodeSync(FromBytes)(data)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (data: BaseAddress) => Schema.encodeSync(FromHex)(data)
+export const toHex = (data: BaseAddress): string => Bytes.toHex(toBytes(data))
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: BaseAddress): void => w.writeBytes(toBytes(v))
+
+export const read = (r: CborReader): BaseAddress => {
+  const bytes = r.readBytesView()
+  const header = bytes[0]
+  const networkId = header & 0b00001111
+  const addressType = header >> 4
+  const isPaymentKey = (addressType & 0b0001) === 0
+  const paymentCredential: Credential.Credential = isPaymentKey
+    ? new KeyHash.KeyHash({ hash: bytes.slice(1, 29) })
+    : new ScriptHash.ScriptHash({ hash: bytes.slice(1, 29) })
+  const isStakeKey = (addressType & 0b0010) === 0
+  const stakeCredential: Credential.Credential = isStakeKey
+    ? new KeyHash.KeyHash({ hash: bytes.slice(29, 57) })
+    : new ScriptHash.ScriptHash({ hash: bytes.slice(29, 57) })
+  return new BaseAddress({ networkId, paymentCredential, stakeCredential })
+}

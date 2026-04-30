@@ -1,13 +1,18 @@
-import { BigDecimal, Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { BigDecimal, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Coin from "./Coin.js"
 import * as KeyHash from "./KeyHash.js"
+import * as MultiHostName from "./MultiHostName.js"
 import * as PoolKeyHash from "./PoolKeyHash.js"
 import * as PoolMetadata from "./PoolMetadata.js"
 import * as Relay from "./Relay.js"
 import * as RewardAccount from "./RewardAccount.js"
+import * as SingleHostAddr from "./SingleHostAddr.js"
+import * as SingleHostName from "./SingleHostName.js"
 import * as UnitInterval from "./UnitInterval.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 import * as VrfKeyHash from "./VrfKeyHash.js"
 
 /**
@@ -139,126 +144,121 @@ export class PoolParams extends Schema.TaggedClass<PoolParams>()("PoolParams", {
   }
 }
 
-export const CDDLSchema = Schema.Tuple(
-  CBOR.ByteArray, // operator (pool_keyhash as bytes)
-  CBOR.ByteArray, // vrf_keyhash (as bytes)
-  CBOR.Integer, // pledge (coin)
-  CBOR.Integer, // cost (coin)
-  UnitInterval.CDDLSchema, // margin using UnitInterval CDDL schema
-  CBOR.ByteArray, // reward_account (bytes)
-  Schema.Array(CBOR.ByteArray), // pool_owners (set<addr_keyhash> as bytes array)
-  Schema.Array(Schema.encodedSchema(Relay.FromCDDL)), // relays using Relay CDDL schema
-  Schema.NullOr(Schema.encodedSchema(PoolMetadata.FromCDDL)) // pool_metadata using PoolMetadata CDDL schema
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL schema for PoolParams.
- *
- * ```
- * pool_params = [
- *   operator       : pool_keyhash,
- *   vrf_keyhash    : vrf_keyhash,
- *   pledge         : coin,
- *   cost           : coin,
- *   margin         : unit_interval,
- *   reward_account : reward_account,
- *   pool_owners    : set<addr_keyhash>,
- *   relays         : [* relay],
- *   pool_metadata  : pool_metadata / nil
- * ]
- * ```
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(PoolParams), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      const operatorBytes = yield* ParseResult.encode(PoolKeyHash.FromBytes)(toA.operator)
-      const vrfKeyhashBytes = yield* ParseResult.encode(VrfKeyHash.FromBytes)(toA.vrfKeyhash)
+const writeRelay = (w: CborWriter, v: Relay.Relay): void => {
+  switch (v._tag) {
+    case "SingleHostAddr": return SingleHostAddr.write(w, v)
+    case "SingleHostName": return SingleHostName.write(w, v)
+    case "MultiHostName": return MultiHostName.write(w, v)
+  }
+}
 
-      const marginEncoded = yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.margin)
-      const rewardAccountBytes = yield* ParseResult.encode(RewardAccount.FromBytes)(toA.rewardAccount)
+const readRelay = (r: CborReader): Relay.Relay => {
+  // Each relay type's read() handles its own array header + tag.
+  // Peek at the tag byte (first integer after array header) to dispatch.
+  const buf = r.buffer()
+  const pos = r.position()
+  const firstByte = buf[pos]
+  // Array header: 0x80-0x97 = definite 0-23 elements, 0x9f = indefinite
+  // The tag integer immediately follows the array header (1 byte for small arrays)
+  const tagOffset = (firstByte & 0x1f) < 24 ? pos + 1 : firstByte === 0x9f ? pos + 1 : pos + 2
+  const tagByte = buf[tagOffset]
+  switch (tagByte) {
+    case 0: return SingleHostAddr.read(r)
+    case 1: return SingleHostName.read(r)
+    case 2: return MultiHostName.read(r)
+    default: throw new Error(`Unknown relay tag: ${tagByte}`)
+  }
+}
 
-      const poolOwnersBytes = yield* Eff.all(
-        toA.poolOwners.map((owner) => ParseResult.encode(KeyHash.FromBytes)(owner))
-      )
+export const write = (w: CborWriter, v: PoolParams): void => {
+  // pool_params is NOT wrapped in an array header — it's inline fields
+  PoolKeyHash.write(w, v.operator)
+  VrfKeyHash.write(w, v.vrfKeyhash)
+  w.writeUint(v.pledge)
+  w.writeUint(v.cost)
+  // margin = #6.30([uint, uint])
+  w.writeTagHeader(30)
+  w.writeArrayHeader(2)
+  w.writeUint(v.margin.numerator)
+  w.writeUint(v.margin.denominator)
+  w.writeArrayBreak()
+  RewardAccount.write(w, v.rewardAccount)
+  // pool_owners = set<addr_keyhash>
+  w.writeArrayHeader(v.poolOwners.length)
+  for (const owner of v.poolOwners) KeyHash.write(w, owner)
+  w.writeArrayBreak()
+  // relays = [* relay]
+  w.writeArrayHeader(v.relays.length)
+  for (const relay of v.relays) writeRelay(w, relay)
+  w.writeArrayBreak()
+  // pool_metadata = pool_metadata / nil
+  if (v.poolMetadata === undefined || v.poolMetadata === null) { w.writeNull() }
+  else { PoolMetadata.write(w, v.poolMetadata) }
+}
 
-      const relaysEncoded = yield* Eff.all(toA.relays.map((relay) => ParseResult.encode(Relay.FromCDDL)(relay)))
-
-      const poolMetadataEncoded = toA.poolMetadata
-        ? yield* ParseResult.encode(PoolMetadata.FromCDDL)(toA.poolMetadata)
-        : null
-
-      return [
-        operatorBytes,
-        vrfKeyhashBytes,
-        toA.pledge,
-        toA.cost,
-        marginEncoded,
-        rewardAccountBytes,
-        poolOwnersBytes,
-        relaysEncoded,
-        poolMetadataEncoded
-      ] as const
-    }),
-  decode: ([
-    operatorBytes,
-    vrfKeyhashBytes,
+export const read = (r: CborReader): PoolParams => {
+  // pool_params fields are inline (no array header — parent provides it)
+  const operator = PoolKeyHash.read(r)
+  const vrfKeyhash = VrfKeyHash.read(r)
+  const pledge = r.readUint() as Coin.Coin
+  const cost = r.readUint() as Coin.Coin
+  // margin = #6.30([uint, uint])
+  const marginTag = r.readTagHeader()
+  if (marginTag !== 30) throw new Error(`PoolParams: expected tag 30 for margin, got ${marginTag}`)
+  const marginCount = r.readArrayHeader()
+  const numerator = r.readUint()
+  const denominator = r.readUint()
+  if (marginCount === -1) r.isBreak()
+  const margin = new UnitInterval.UnitInterval({ numerator, denominator })
+  const rewardAccount = RewardAccount.read(r)
+  // pool_owners
+  const ownersCount = r.readArrayHeader()
+  const poolOwners: Array<KeyHash.KeyHash> = []
+  if (ownersCount === -1) { while (!r.isBreak()) poolOwners.push(KeyHash.read(r)) }
+  else { for (let i = 0; i < ownersCount; i++) poolOwners.push(KeyHash.read(r)) }
+  // relays
+  const relaysCount = r.readArrayHeader()
+  const relays: Array<Relay.Relay> = []
+  if (relaysCount === -1) { while (!r.isBreak()) relays.push(readRelay(r)) }
+  else { for (let i = 0; i < relaysCount; i++) relays.push(readRelay(r)) }
+  // pool_metadata
+  let poolMetadata: PoolMetadata.PoolMetadata | undefined
+  if (r.peekMajorType() === 7) { r.readNull() }
+  else { poolMetadata = PoolMetadata.read(r) }
+  return new PoolParams({
+    operator,
+    vrfKeyhash,
     pledge,
     cost,
-    marginEncoded,
-    rewardAccountBytes,
-    poolOwnersBytes,
-    relaysEncoded,
-    poolMetadataEncoded
-  ]) =>
-    Eff.gen(function* () {
-      const operator = yield* ParseResult.decode(PoolKeyHash.FromBytes)(operatorBytes)
-      const vrfKeyhash = yield* ParseResult.decode(VrfKeyHash.FromBytes)(vrfKeyhashBytes)
-      const margin = yield* ParseResult.decode(UnitInterval.FromCDDL)(marginEncoded)
-      const rewardAccount = yield* ParseResult.decode(RewardAccount.FromBytes)(rewardAccountBytes)
-
-      const poolOwners = yield* Eff.all(
-        poolOwnersBytes.map((ownerBytes) => ParseResult.decode(KeyHash.FromBytes)(ownerBytes))
-      )
-
-      const relays = yield* Eff.all(
-        relaysEncoded.map((relayEncoded) => ParseResult.decode(Relay.FromCDDL)(relayEncoded))
-      )
-
-      const poolMetadata = poolMetadataEncoded
-        ? yield* ParseResult.decode(PoolMetadata.FromCDDL)(poolMetadataEncoded)
-        : undefined
-
-      return yield* Eff.succeed(
-        new PoolParams({
-          operator,
-          vrfKeyhash,
-          pledge,
-          cost,
-          margin,
-          rewardAccount,
-          poolOwners,
-          relays,
-          poolMetadata
-        })
-      )
-    })
-})
-
+    margin,
+    rewardAccount,
+    poolOwners,
+    relays,
+    poolMetadata
+  })
+}
 /**
  * CBOR bytes transformation schema for PoolParams.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → PoolParams
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(PoolParams),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "PoolParams.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for PoolParams.
@@ -266,11 +266,8 @@ export const FromBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS)
  * @since 2.0.0
  * @category schemas
  */
-export const FromHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromBytes(options) // Uint8Array → PoolParams
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "PoolParams.FromCBORHex" })
 
 /**
  * Get total effective stake for pool rewards calculation.
@@ -363,8 +360,7 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category parsing
  */
-export const fromBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): PoolParams =>
-  Schema.decodeSync(FromBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse PoolParams from CBOR hex string.
@@ -372,8 +368,7 @@ export const fromBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): PoolP
  * @since 2.0.0
  * @category parsing
  */
-export const fromHex = (hex: string, options?: CBOR.CodecOptions): PoolParams =>
-  Schema.decodeSync(FromHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode PoolParams to CBOR bytes.
@@ -381,8 +376,11 @@ export const fromHex = (hex: string, options?: CBOR.CodecOptions): PoolParams =>
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (params: PoolParams, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromBytes(options))(params)
+export const toBytes = (params: PoolParams, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(512, profile)
+  write(w, params)
+  return w.finishView()
+}
 
 /**
  * Encode PoolParams to CBOR hex string.
@@ -390,5 +388,5 @@ export const toBytes = (params: PoolParams, options?: CBOR.CodecOptions): Uint8A
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (params: PoolParams, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromHex(options))(params)
+export const toHex = (params: PoolParams, profile?: EncodingProfile): string =>
+  Bytes.toHex(toBytes(params, profile))

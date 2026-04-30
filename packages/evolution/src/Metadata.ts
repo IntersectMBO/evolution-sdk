@@ -1,8 +1,9 @@
 import { FastCheck, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
 import * as Numeric from "./Numeric.js"
 import * as TransactionMetadatum from "./TransactionMetadatum.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Type representing a transaction metadatum label (uint).
@@ -43,35 +44,37 @@ export const Metadata = Schema.Map({
 
 export type Metadata = typeof Metadata.Type
 
-/**
- * CDDL schema for Metadata (CBOR-compatible representation).
- * Maps bigint labels to transaction metadatum values.
- *
- * Uses Schema.typeSchema(TransactionMetadatumSchema) because CBOR decoding
- * returns runtime types (bigint, Uint8Array, Map) directly.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const CDDLSchema = Schema.MapFromSelf({
-  key: CBOR.Integer, // MetadataLabel as bigint
-  value: Schema.suspend(() => Schema.typeSchema(TransactionMetadatum.TransactionMetadatumSchema))
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * Transform schema from CDDL to Metadata.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Metadata), {
-  strict: true,
-  encode: (metadata) => ParseResult.succeed(new Map(metadata)),
-  decode: (cddl) => ParseResult.succeed(new Map(cddl) as Metadata)
-}).annotations({
-  identifier: "Metadata.FromCDDL",
-  description: "Transforms CBOR structure to Metadata"
-})
+export const write = (w: CborWriter, v: Metadata): void => {
+  w.writeMapHeader(v.size)
+  for (const [label, metadatum] of v.entries()) {
+    w.writeUint(label)
+    TransactionMetadatum.write(w, metadatum)
+  }
+  w.writeMapBreak()
+}
+
+export const read = (r: CborReader): Metadata => {
+  const count = r.readMapHeader()
+  const map = new Map<bigint, TransactionMetadatum.TransactionMetadatum>()
+  if (count === -1) {
+    while (!r.isBreak()) {
+      const label = r.readUint()
+      const metadatum = TransactionMetadatum.read(r)
+      map.set(label, metadatum)
+    }
+  } else {
+    for (let i = 0; i < count; i++) {
+      const label = r.readUint()
+      const metadatum = TransactionMetadatum.read(r)
+      map.set(label, metadatum)
+    }
+  }
+  return map as Metadata
+}
 
 /**
  * Schema transformer for Metadata from CBOR bytes.
@@ -79,14 +82,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Met
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Metadata
-  ).annotations({
-    identifier: "Metadata.FromCBORBytes",
-    description: "Transforms CBOR bytes to Metadata"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Metadata),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Metadata.FromCBORBytes" })
 
 /**
  * Schema transformer for Metadata from CBOR hex string.
@@ -94,14 +101,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Metadata
-  ).annotations({
-    identifier: "Metadata.FromCBORHex",
-    description: "Transforms CBOR hex string to Metadata"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Metadata.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for generating random Metadata instances.
@@ -127,8 +128,7 @@ export const arbitrary: FastCheck.Arbitrary<Metadata> = FastCheck.array(
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(Schema.compose(CBOR.FromBytes(options), FromCDDL))
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse Metadata from CBOR hex string.
@@ -136,8 +136,7 @@ export const fromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(Schema.compose(CBOR.FromHex(options), FromCBORBytes(options)))
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -149,8 +148,11 @@ export const fromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))
+export const toCBORBytes = (data: Metadata, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert Metadata to CBOR hex string.
@@ -158,8 +160,8 @@ export const toCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))
+export const toCBORHex = (data: Metadata, profile?: EncodingProfile) =>
+  Schema.encodeSync(Schema.Uint8ArrayFromHex)(toCBORBytes(data, profile))
 
 // ============================================================================
 // Factory Functions

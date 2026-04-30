@@ -4,19 +4,18 @@
  * @module Certificate
  * @since 2.0.0
  */
-import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Anchor from "./Anchor.js"
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Coin from "./Coin.js"
 import * as Credential from "./Credential.js"
 import * as DRep from "./DRep.js"
 import * as EpochNo from "./EpochNo.js"
 import * as PoolKeyHash from "./PoolKeyHash.js"
-import * as PoolMetadata from "./PoolMetadata.js"
 import * as PoolParams from "./PoolParams.js"
-import * as Relay from "./Relay.js"
-import * as UnitInterval from "./UnitInterval.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Register a stake credential (CDDL: stake_registration = 0).
@@ -838,55 +837,99 @@ export const Certificate = Schema.Union(
   UpdateDrepCert
 )
 
-export const CDDLSchema = Schema.Union(
-  // 0: stake_registration = (0, stake_credential)
-  Schema.Tuple(Schema.Literal(0n), Credential.CDDLSchema),
-  // 1: stake_deregistration = (1, stake_credential)
-  Schema.Tuple(Schema.Literal(1n), Credential.CDDLSchema),
-  // 2: stake_delegation = (2, stake_credential, pool_keyhash)
-  Schema.Tuple(Schema.Literal(2n), Credential.CDDLSchema, CBOR.ByteArray),
-  // 3: pool_registration = (3, pool_params)
-  Schema.Tuple(
-    Schema.Literal(3n),
-    // Flattened PoolParams.CDDLSchema
-    CBOR.ByteArray, // operator (pool_keyhash as bytes)
-    CBOR.ByteArray, // vrf_keyhash (as bytes)
-    CBOR.Integer, // pledge (coin)
-    CBOR.Integer, // cost (coin)
-    UnitInterval.CDDLSchema, // margin
-    CBOR.ByteArray, // reward_account (bytes)
-    Schema.Array(CBOR.ByteArray), // pool_owners (array of addr_keyhash bytes)
-    Schema.Array(Schema.encodedSchema(Relay.FromCDDL)), // relays
-    Schema.NullOr(Schema.encodedSchema(PoolMetadata.FromCDDL)) // pool_metadata
-  ),
-  // 4: pool_retirement = (4, pool_keyhash, epoch_no)
-  Schema.Tuple(Schema.Literal(4n), CBOR.ByteArray, CBOR.Integer),
-  // 7: reg_cert = (7, stake_credential , coin)
-  Schema.Tuple(Schema.Literal(7n), Credential.CDDLSchema, CBOR.Integer),
-  // 8: unreg_cert = (8, stake_credential, coin)
-  Schema.Tuple(Schema.Literal(8n), Credential.CDDLSchema, CBOR.Integer),
-  // 9: vote_deleg_cert = (9, stake_credential, drep)
-  Schema.Tuple(Schema.Literal(9n), Credential.CDDLSchema, DRep.CDDLSchema),
-  // 10: stake_vote_deleg_cert = (10, stake_credential, pool_keyhash, drep)
-  Schema.Tuple(Schema.Literal(10n), Credential.CDDLSchema, CBOR.ByteArray, DRep.CDDLSchema),
-  // 11: stake_reg_deleg_cert = (11, stake_credential, pool_keyhash, coin)
-  Schema.Tuple(Schema.Literal(11n), Credential.CDDLSchema, CBOR.ByteArray, CBOR.Integer),
-  // 12: vote_reg_deleg_cert = (12, stake_credential, drep, coin)
-  Schema.Tuple(Schema.Literal(12n), Credential.CDDLSchema, DRep.CDDLSchema, CBOR.Integer),
-  // 13: stake_vote_reg_deleg_cert = (13, stake_credential, pool_keyhash, drep, coin)
-  Schema.Tuple(Schema.Literal(13n), Credential.CDDLSchema, CBOR.ByteArray, DRep.CDDLSchema, CBOR.Integer),
-  // 14: auth_committee_hot_cert = (14, committee_cold_credential, committee_hot_credential)
-  Schema.Tuple(Schema.Literal(14n), Credential.CDDLSchema, Credential.CDDLSchema),
-  // 15: resign_committee_cold_cert = (15, committee_cold_credential, anchor/ nil)
-  Schema.Tuple(Schema.Literal(15n), Credential.CDDLSchema, Schema.NullishOr(Anchor.CDDLSchema)),
-  // 16: reg_drep_cert = (16, drep_credential, coin, anchor/ nil)
-  Schema.Tuple(Schema.Literal(16n), Credential.CDDLSchema, CBOR.Integer, Schema.NullishOr(Anchor.CDDLSchema)),
-  // 17: unreg_drep_cert = (17, drep_credential, coin)
-  Schema.Tuple(Schema.Literal(17n), Credential.CDDLSchema, CBOR.Integer),
-  // 18: update_drep_cert = (18, drep_credential, anchor/ nil)
-  Schema.Tuple(Schema.Literal(18n), Credential.CDDLSchema, Schema.NullishOr(Anchor.CDDLSchema))
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
+export const write = (w: CborWriter, v: Certificate): void => {
+  switch (v._tag) {
+    case "StakeRegistration":
+      w.writeArrayHeader(2); w.writeSmallUint(0); Credential.write(w, v.stakeCredential); w.writeArrayBreak(); break
+    case "StakeDeregistration":
+      w.writeArrayHeader(2); w.writeSmallUint(1); Credential.write(w, v.stakeCredential); w.writeArrayBreak(); break
+    case "StakeDelegation":
+      w.writeArrayHeader(3); w.writeSmallUint(2); Credential.write(w, v.stakeCredential); PoolKeyHash.write(w, v.poolKeyHash); w.writeArrayBreak(); break
+    case "PoolRegistration":
+      // pool_registration = (3, pool_params) — pool_params fields are inline
+      w.writeArrayHeader(10); w.writeSmallUint(3); PoolParams.write(w, v.poolParams); w.writeArrayBreak(); break
+    case "PoolRetirement":
+      w.writeArrayHeader(3); w.writeSmallUint(4); PoolKeyHash.write(w, v.poolKeyHash); w.writeUint(v.epoch); w.writeArrayBreak(); break
+    case "RegCert":
+      w.writeArrayHeader(3); w.writeSmallUint(7); Credential.write(w, v.stakeCredential); w.writeUint(v.coin); w.writeArrayBreak(); break
+    case "UnregCert":
+      w.writeArrayHeader(3); w.writeSmallUint(8); Credential.write(w, v.stakeCredential); w.writeUint(v.coin); w.writeArrayBreak(); break
+    case "VoteDelegCert":
+      w.writeArrayHeader(3); w.writeSmallUint(9); Credential.write(w, v.stakeCredential); DRep.write(w, v.drep); w.writeArrayBreak(); break
+    case "StakeVoteDelegCert":
+      w.writeArrayHeader(4); w.writeSmallUint(10); Credential.write(w, v.stakeCredential); PoolKeyHash.write(w, v.poolKeyHash); DRep.write(w, v.drep); w.writeArrayBreak(); break
+    case "StakeRegDelegCert":
+      w.writeArrayHeader(4); w.writeSmallUint(11); Credential.write(w, v.stakeCredential); PoolKeyHash.write(w, v.poolKeyHash); w.writeUint(v.coin); w.writeArrayBreak(); break
+    case "VoteRegDelegCert":
+      w.writeArrayHeader(4); w.writeSmallUint(12); Credential.write(w, v.stakeCredential); DRep.write(w, v.drep); w.writeUint(v.coin); w.writeArrayBreak(); break
+    case "StakeVoteRegDelegCert":
+      w.writeArrayHeader(5); w.writeSmallUint(13); Credential.write(w, v.stakeCredential); PoolKeyHash.write(w, v.poolKeyHash); DRep.write(w, v.drep); w.writeUint(v.coin); w.writeArrayBreak(); break
+    case "AuthCommitteeHotCert":
+      w.writeArrayHeader(3); w.writeSmallUint(14); Credential.write(w, v.committeeColdCredential); Credential.write(w, v.committeeHotCredential); w.writeArrayBreak(); break
+    case "ResignCommitteeColdCert":
+      w.writeArrayHeader(3); w.writeSmallUint(15); Credential.write(w, v.committeeColdCredential)
+      if (v.anchor) Anchor.write(w, v.anchor); else w.writeNull()
+      w.writeArrayBreak(); break
+    case "RegDrepCert":
+      w.writeArrayHeader(4); w.writeSmallUint(16); Credential.write(w, v.drepCredential); w.writeUint(v.coin)
+      if (v.anchor) Anchor.write(w, v.anchor); else w.writeNull()
+      w.writeArrayBreak(); break
+    case "UnregDrepCert":
+      w.writeArrayHeader(3); w.writeSmallUint(17); Credential.write(w, v.drepCredential); w.writeUint(v.coin); w.writeArrayBreak(); break
+    case "UpdateDrepCert":
+      w.writeArrayHeader(3); w.writeSmallUint(18); Credential.write(w, v.drepCredential)
+      if (v.anchor) Anchor.write(w, v.anchor); else w.writeNull()
+      w.writeArrayBreak(); break
+  }
+}
+
+export const read = (r: CborReader): Certificate => {
+  const count = r.readArrayHeader()
+  const tag = r.readSmallUint()
+  let result: Certificate
+  switch (tag) {
+    case 0: result = new StakeRegistration({ stakeCredential: Credential.read(r) }); break
+    case 1: result = new StakeDeregistration({ stakeCredential: Credential.read(r) }); break
+    case 2: result = new StakeDelegation({ stakeCredential: Credential.read(r), poolKeyHash: PoolKeyHash.read(r) }); break
+    case 3: result = new PoolRegistration({ poolParams: PoolParams.read(r) }); break
+    case 4: result = new PoolRetirement({ poolKeyHash: PoolKeyHash.read(r), epoch: r.readUint() as EpochNo.EpochNo }); break
+    case 7: result = new RegCert({ stakeCredential: Credential.read(r), coin: r.readUint() as Coin.Coin }); break
+    case 8: result = new UnregCert({ stakeCredential: Credential.read(r), coin: r.readUint() as Coin.Coin }); break
+    case 9: result = new VoteDelegCert({ stakeCredential: Credential.read(r), drep: DRep.read(r) }); break
+    case 10: result = new StakeVoteDelegCert({ stakeCredential: Credential.read(r), poolKeyHash: PoolKeyHash.read(r), drep: DRep.read(r) }); break
+    case 11: result = new StakeRegDelegCert({ stakeCredential: Credential.read(r), poolKeyHash: PoolKeyHash.read(r), coin: r.readUint() as Coin.Coin }); break
+    case 12: result = new VoteRegDelegCert({ stakeCredential: Credential.read(r), drep: DRep.read(r), coin: r.readUint() as Coin.Coin }); break
+    case 13: result = new StakeVoteRegDelegCert({ stakeCredential: Credential.read(r), poolKeyHash: PoolKeyHash.read(r), drep: DRep.read(r), coin: r.readUint() as Coin.Coin }); break
+    case 14: result = new AuthCommitteeHotCert({ committeeColdCredential: Credential.read(r), committeeHotCredential: Credential.read(r) }); break
+    case 15: {
+      const committeeColdCredential = Credential.read(r)
+      const anchor = r.peekMajorType() === 7 ? (r.readNull(), undefined) : Anchor.read(r)
+      result = new ResignCommitteeColdCert({ committeeColdCredential, anchor })
+      break
+    }
+    case 16: {
+      const drepCredential = Credential.read(r)
+      const coin = r.readUint() as Coin.Coin
+      const anchor = r.peekMajorType() === 7 ? (r.readNull(), undefined) : Anchor.read(r)
+      result = new RegDrepCert({ drepCredential, coin, anchor })
+      break
+    }
+    case 17: result = new UnregDrepCert({ drepCredential: Credential.read(r), coin: r.readUint() as Coin.Coin }); break
+    case 18: {
+      const drepCredential = Credential.read(r)
+      const anchor = r.peekMajorType() === 7 ? (r.readNull(), undefined) : Anchor.read(r)
+      result = new UpdateDrepCert({ drepCredential, anchor })
+      break
+    }
+    default: throw new Error(`Certificate: unknown tag ${tag}`)
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
 /**
  * CDDL schema for Certificate based on Conway specification.
  *
@@ -896,311 +939,24 @@ export const CDDLSchema = Schema.Union(
  * @since 2.0.0
  * @category schemas
  */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Certificate), {
-  strict: true,
-  encode: (toA) =>
-    E.gen(function* () {
-      switch (toA._tag) {
-        case "StakeRegistration": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          return [0n, credentialCDDL] as const
-        }
-        case "StakeDeregistration": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          return [1n, credentialCDDL] as const
-        }
-        case "StakeDelegation": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          const poolKeyHashBytes = yield* ParseResult.encodeEither(PoolKeyHash.FromBytes)(toA.poolKeyHash)
-          return [2n, credentialCDDL, poolKeyHashBytes] as const
-        }
-        case "PoolRegistration": {
-          const poolParamsCDDL = yield* ParseResult.encodeEither(PoolParams.FromCDDL)(toA.poolParams)
-          // Spread encoded PoolParams fields directly into the certificate tuple (flattening)
-          return [3n, ...poolParamsCDDL] as const
-        }
-        case "PoolRetirement": {
-          const poolKeyHashBytes = yield* ParseResult.encodeEither(PoolKeyHash.FromBytes)(toA.poolKeyHash)
-          return [4n, poolKeyHashBytes, BigInt(toA.epoch)] as const
-        }
-        case "RegCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          return [7n, credentialCDDL, toA.coin] as const
-        }
-        case "UnregCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          return [8n, credentialCDDL, toA.coin] as const
-        }
-        case "VoteDelegCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          const drepCDDL = yield* ParseResult.encodeEither(DRep.FromCDDL)(toA.drep)
-          return [9n, credentialCDDL, drepCDDL] as const
-        }
-        case "StakeVoteDelegCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          const poolKeyHashBytes = yield* ParseResult.encodeEither(PoolKeyHash.FromBytes)(toA.poolKeyHash)
-          const drepCDDL = yield* ParseResult.encodeEither(DRep.FromCDDL)(toA.drep)
-          return [10n, credentialCDDL, poolKeyHashBytes, drepCDDL] as const
-        }
-        case "StakeRegDelegCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          const poolKeyHashBytes = yield* ParseResult.encodeEither(PoolKeyHash.FromBytes)(toA.poolKeyHash)
-          return [11n, credentialCDDL, poolKeyHashBytes, toA.coin] as const
-        }
-        case "VoteRegDelegCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          const drepCDDL = yield* ParseResult.encodeEither(DRep.FromCDDL)(toA.drep)
-          return [12n, credentialCDDL, drepCDDL, toA.coin] as const
-        }
-        case "StakeVoteRegDelegCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.stakeCredential)
-          const poolKeyHashBytes = yield* ParseResult.encodeEither(PoolKeyHash.FromBytes)(toA.poolKeyHash)
-          const drepCDDL = yield* ParseResult.encodeEither(DRep.FromCDDL)(toA.drep)
-          return [13n, credentialCDDL, poolKeyHashBytes, drepCDDL, toA.coin] as const
-        }
-        case "AuthCommitteeHotCert": {
-          const coldCredentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.committeeColdCredential)
-          const hotCredentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.committeeHotCredential)
-          return [14n, coldCredentialCDDL, hotCredentialCDDL] as const
-        }
-        case "ResignCommitteeColdCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.committeeColdCredential)
-          const anchorCDDL = toA.anchor ? yield* ParseResult.encodeEither(Anchor.FromCDDL)(toA.anchor) : null
-          return [15n, credentialCDDL, anchorCDDL] as const
-        }
-        case "RegDrepCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.drepCredential)
-          const anchorCDDL = toA.anchor ? yield* ParseResult.encodeEither(Anchor.FromCDDL)(toA.anchor) : null
-          return [16n, credentialCDDL, toA.coin, anchorCDDL] as const
-        }
-        case "UnregDrepCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.drepCredential)
-          return [17n, credentialCDDL, toA.coin] as const
-        }
-        case "UpdateDrepCert": {
-          const credentialCDDL = yield* ParseResult.encodeEither(Credential.FromCDDL)(toA.drepCredential)
-          const anchorCDDL = toA.anchor ? yield* ParseResult.encodeEither(Anchor.FromCDDL)(toA.anchor) : null
-          return [18n, credentialCDDL, anchorCDDL] as const
-        }
-        // default:
-        //   return yield* ParseResult.fail(
-        //     new ParseResult.Type(CDDLSchema.ast, toA, `Unsupported certificate type: ${(toA as any)._tag}`)
-        //   )
-      }
-    }),
-  decode: (fromA) =>
-    E.gen(function* () {
-      // const [typeId, ...fields] = fromA
-
-      switch (fromA[0]) {
-        case 0n: {
-          // stake_registration = (0, stake_credential)
-          // const [credentialCDDL] = fields
-          const [, credentialCDDL] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          return new StakeRegistration({ stakeCredential }, { disableValidation: true })
-        }
-        case 1n: {
-          // stake_deregistration = (1, stake_credential)
-          const [, credentialCDDL] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          return new StakeDeregistration({ stakeCredential }, { disableValidation: true })
-        }
-        case 2n: {
-          // stake_delegation = (2, stake_credential, pool_keyhash)
-          const [, credentialCDDL, poolKeyHashBytes] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const poolKeyHash = yield* ParseResult.decodeEither(PoolKeyHash.FromBytes)(poolKeyHashBytes)
-          return new StakeDelegation({ stakeCredential, poolKeyHash }, { disableValidation: true })
-        }
-        case 3n: {
-          // pool_registration = (3, ...pool_params fields flattened)
-          const [
-            ,
-            operatorBytes,
-            vrfKeyhashBytes,
-            pledge,
-            cost,
-            marginEncoded,
-            rewardAccountBytes,
-            poolOwnersBytes,
-            relaysEncoded,
-            poolMetadataEncoded
-          ] = fromA as unknown as readonly [
-            3n,
-            Uint8Array,
-            Uint8Array,
-            bigint,
-            bigint,
-            unknown,
-            Uint8Array,
-            ReadonlyArray<Uint8Array>,
-            ReadonlyArray<unknown>,
-            unknown | null
-          ]
-          const poolParams = yield* ParseResult.decodeEither(PoolParams.FromCDDL)([
-            operatorBytes,
-            vrfKeyhashBytes,
-            pledge,
-            cost,
-            marginEncoded as any,
-            rewardAccountBytes,
-            poolOwnersBytes as any,
-            relaysEncoded as any,
-            poolMetadataEncoded as any
-          ] as any)
-          return new PoolRegistration({ poolParams }, { disableValidation: true })
-        }
-        case 4n: {
-          // pool_retirement = (4, pool_keyhash, epoch_no)
-          const [, poolKeyHashBytes, epochBigInt] = fromA
-          const poolKeyHash = yield* ParseResult.decodeEither(PoolKeyHash.FromBytes)(poolKeyHashBytes)
-          const epoch = epochBigInt as EpochNo.EpochNo
-          return new PoolRetirement({ poolKeyHash, epoch }, { disableValidation: true })
-        }
-        case 7n: {
-          // reg_cert = (7, stake_credential, coin)
-          const [, credentialCDDL, coinBigInt] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          return new RegCert({ stakeCredential, coin }, { disableValidation: true })
-        }
-        case 8n: {
-          // unreg_cert = (8, stake_credential, coin)
-          const [, credentialCDDL, coinBigInt] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          return new UnregCert({ stakeCredential, coin }, { disableValidation: true })
-        }
-        case 9n: {
-          // vote_deleg_cert = (9, stake_credential, drep)
-          const [, credentialCDDL, drepCDDL] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const drep = yield* ParseResult.decodeEither(DRep.FromCDDL)(drepCDDL)
-          return new VoteDelegCert({ stakeCredential, drep }, { disableValidation: true })
-        }
-        case 10n: {
-          // stake_vote_deleg_cert = (10, stake_credential, pool_keyhash, drep)
-          const [, credentialCDDL, poolKeyHashBytes, drepCDDL] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const poolKeyHash = yield* ParseResult.decodeEither(PoolKeyHash.FromBytes)(poolKeyHashBytes)
-          const drep = yield* ParseResult.decodeEither(DRep.FromCDDL)(drepCDDL)
-          return new StakeVoteDelegCert(
-            {
-              stakeCredential,
-              poolKeyHash,
-              drep
-            },
-            { disableValidation: true }
-          )
-        }
-        case 11n: {
-          // stake_reg_deleg_cert = (11, stake_credential, pool_keyhash, coin)
-          const [, credentialCDDL, poolKeyHashBytes, coinBigInt] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const poolKeyHash = yield* ParseResult.decodeEither(PoolKeyHash.FromBytes)(poolKeyHashBytes)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          return new StakeRegDelegCert(
-            {
-              stakeCredential,
-              poolKeyHash,
-              coin
-            },
-            { disableValidation: true }
-          )
-        }
-        case 12n: {
-          // vote_reg_deleg_cert = (12, stake_credential, drep, coin)
-          const [, credentialCDDL, drepCDDL, coinBigInt] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const drep = yield* ParseResult.decodeEither(DRep.FromCDDL)(drepCDDL)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          return new VoteRegDelegCert({ stakeCredential, drep, coin }, { disableValidation: true })
-        }
-        case 13n: {
-          // stake_vote_reg_deleg_cert = (13, stake_credential, pool_keyhash, drep, coin)
-          const [, credentialCDDL, poolKeyHashBytes, drepCDDL, coinBigInt] = fromA
-          const stakeCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const poolKeyHash = yield* ParseResult.decodeEither(PoolKeyHash.FromBytes)(poolKeyHashBytes)
-          const drep = yield* ParseResult.decodeEither(DRep.FromCDDL)(drepCDDL)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          return new StakeVoteRegDelegCert(
-            {
-              stakeCredential,
-              poolKeyHash,
-              drep,
-              coin
-            },
-            { disableValidation: true }
-          )
-        }
-        case 14n: {
-          // auth_committee_hot_cert = (14, committee_cold_credential, committee_hot_credential)
-          const [, coldCredentialCDDL, hotCredentialCDDL] = fromA
-          const committeeColdCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(coldCredentialCDDL)
-          const committeeHotCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(hotCredentialCDDL)
-          return new AuthCommitteeHotCert(
-            {
-              committeeColdCredential,
-              committeeHotCredential
-            },
-            { disableValidation: true }
-          )
-        }
-        case 15n: {
-          // resign_committee_cold_cert = (15, committee_cold_credential, anchor/ nil)
-          const [, credentialCDDL, anchorCDDL] = fromA
-          const committeeColdCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const anchor = anchorCDDL ? yield* ParseResult.decodeEither(Anchor.FromCDDL)(anchorCDDL) : undefined
-          return new ResignCommitteeColdCert(
-            {
-              committeeColdCredential,
-              anchor
-            },
-            { disableValidation: true }
-          )
-        }
-        case 16n: {
-          // reg_drep_cert = (16, drep_credential, coin, anchor/ nil)
-          const [, credentialCDDL, coinBigInt, anchorCDDL] = fromA
-          const drepCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          const anchor = anchorCDDL ? yield* ParseResult.decodeEither(Anchor.FromCDDL)(anchorCDDL) : undefined
-          return new RegDrepCert({ drepCredential, coin, anchor }, { disableValidation: true })
-        }
-        case 17n: {
-          // unreg_drep_cert = (17, drep_credential, coin)
-          const [, credentialCDDL, coinBigInt] = fromA
-          const drepCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const coin = yield* ParseResult.decodeEither(Schema.typeSchema(Coin.Coin))(coinBigInt)
-          return new UnregDrepCert({ drepCredential, coin }, { disableValidation: true })
-        }
-        case 18n: {
-          // update_drep_cert = (18, drep_credential, anchor/ nil)
-          const [, credentialCDDL, anchorCDDL] = fromA
-          const drepCredential = yield* ParseResult.decodeEither(Credential.FromCDDL)(credentialCDDL)
-          const anchor = anchorCDDL ? yield* ParseResult.decodeEither(Anchor.FromCDDL)(anchorCDDL) : undefined
-          return new UpdateDrepCert({ drepCredential, anchor }, { disableValidation: true })
-        }
-        // default:
-        //   return yield* ParseResult.fail(
-        //     new ParseResult.Type(CDDLSchema.ast, fromA, `Unsupported certificate type ID: ${fromA}`)
-        //   )
-      }
-    })
-})
-
 /**
  * CBOR bytes transformation schema for Certificate.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Certificate
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Certificate),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Certificate.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Certificate.
@@ -1208,11 +964,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Certificate
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Certificate.FromCBORHex" })
 
 /**
  * Type alias for Certificate.
@@ -1309,8 +1062,7 @@ export const arbitrary = FastCheck.oneof(
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): Certificate =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse a Certificate from CBOR hex string.
@@ -1318,8 +1070,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): C
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Certificate =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert a Certificate to CBOR bytes.
@@ -1327,8 +1078,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Certifica
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (certificate: Certificate, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(certificate)
+export const toCBORBytes = (certificate: Certificate, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, certificate)
+  return w.finishView()
+}
 
 /**
  * Convert a Certificate to CBOR hex string.
@@ -1336,5 +1090,5 @@ export const toCBORBytes = (certificate: Certificate, options?: CBOR.CodecOption
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (certificate: Certificate, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(certificate)
+export const toCBORHex = (certificate: Certificate, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(certificate, profile))

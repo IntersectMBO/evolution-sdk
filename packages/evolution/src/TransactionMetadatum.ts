@@ -1,7 +1,8 @@
-import { FastCheck, Schema } from "effect"
+import { FastCheck, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
 import * as Numeric from "./Numeric.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Encoded type for transaction metadata (wire format).
@@ -163,6 +164,72 @@ export const TransactionMetadatumSchema = Schema.Union(
 })
 
 // ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: TransactionMetadatum): void => {
+  if (typeof v === "bigint") {
+    if (v >= 0n) w.writeUint(v)
+    else w.writeNint(v)
+  } else if (v instanceof Uint8Array) {
+    w.writeBytes(v)
+  } else if (typeof v === "string") {
+    w.writeText(v)
+  } else if (Array.isArray(v)) {
+    w.writeArrayHeader(v.length)
+    for (const item of v) write(w, item)
+    w.writeArrayBreak()
+  } else if (v instanceof Map) {
+    w.writeMapHeader(v.size)
+    for (const [key, value] of v.entries()) {
+      write(w, key)
+      write(w, value)
+    }
+    w.writeMapBreak()
+  }
+}
+
+export const read = (r: CborReader): TransactionMetadatum => {
+  const mt = r.peekMajorType()
+  switch (mt) {
+    case 0: return r.readUint()
+    case 1: return r.readNint()
+    case 2: return r.readBytes()
+    case 3: return r.readText()
+    case 4: {
+      const count = r.readArrayHeader()
+      const items: Array<TransactionMetadatum> = []
+      if (count === -1) {
+        while (!r.isBreak()) items.push(read(r))
+      } else {
+        for (let i = 0; i < count; i++) items.push(read(r))
+      }
+      return items
+    }
+    case 5: {
+      const count = r.readMapHeader()
+      const map = new globalThis.Map<TransactionMetadatum, TransactionMetadatum>()
+      if (count === -1) {
+        while (!r.isBreak()) {
+          const key = read(r)
+          const value = read(r)
+          map.set(key, value)
+        }
+      } else {
+        for (let i = 0; i < count; i++) {
+          const key = read(r)
+          const value = read(r)
+          map.set(key, value)
+        }
+      }
+      return map
+    }
+    default:
+      throw new Error(`Unsupported CBOR major type ${mt} in TransactionMetadatum`)
+  }
+}
+
+// ============================================================================
 // CBOR Functions
 // ============================================================================
 
@@ -175,11 +242,18 @@ export const TransactionMetadatumSchema = Schema.Union(
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), Schema.typeSchema(TransactionMetadatumSchema)).annotations({
-    identifier: "TransactionMetadatum.FromCBORBytes",
-    description: "Transforms CBOR bytes to TransactionMetadatum"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(TransactionMetadatumSchema),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "TransactionMetadatum.FromCBORBytes" })
 
 /**
  * Schema transformer for TransactionMetadatum from CBOR hex string.
@@ -187,11 +261,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
-    identifier: "TransactionMetadatum.FromCBORHex",
-    description: "Transforms CBOR hex string to TransactionMetadatum"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "TransactionMetadatum.FromCBORHex" })
 
 // ============================================================================
 // Utility Functions
@@ -240,8 +311,7 @@ export const arbitrary: FastCheck.Arbitrary<TransactionMetadatum> = FastCheck.on
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse a TransactionMetadatum from CBOR hex string.
@@ -249,8 +319,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -262,8 +331,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: TransactionMetadatum, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: TransactionMetadatum, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert a TransactionMetadatum to CBOR hex string.
@@ -271,8 +343,8 @@ export const toCBORBytes = (data: TransactionMetadatum, options: CBOR.CodecOptio
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: TransactionMetadatum, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: TransactionMetadatum, profile?: EncodingProfile) =>
+  Schema.encodeSync(Schema.Uint8ArrayFromHex)(toCBORBytes(data, profile))
 
 // ============================================================================
 // Factory Functions

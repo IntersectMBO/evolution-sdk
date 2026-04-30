@@ -1,8 +1,10 @@
-import { Effect, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as DnsName from "./DnsName.js"
 import * as Port from "./Port.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for SingleHostName representing a network host with DNS name.
@@ -151,63 +153,54 @@ export const generator = FastCheck.record({
  */
 export const arbitrary = generator
 
-/**
- * CDDL schema for SingleHostName.
- * single_host_name = (1, port / nil, dns_name)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(
-  Schema.Tuple(
-    Schema.Literal(1n), // tag (literal 1)
-    Schema.NullOr(CBOR.Integer), // port (number or null)
-    Schema.String // dns_name (string)
-  ),
-  Schema.typeSchema(SingleHostName),
-  {
-    strict: true,
-    encode: (toA) =>
-      Effect.gen(function* () {
-        const port = toA.port !== undefined ? toA.port : null
-        const dnsName = yield* ParseResult.encode(DnsName.DnsName)(toA.dnsName)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-        return yield* Effect.succeed([1n, port, dnsName] as const)
-      }),
-    decode: ([, portValue, dnsNameValue]) =>
-      Effect.gen(function* () {
-        const port = portValue === null || portValue === undefined ? undefined : portValue
+export const write = (w: CborWriter, v: SingleHostName): void => {
+  w.writeArrayHeader(3)
+  w.writeUint(1n)
+  if (v.port !== undefined) w.writeUint(v.port)
+  else w.writeNull()
+  w.writeText(v.dnsName)
+  w.writeArrayBreak()
+}
 
-        const dnsName = yield* ParseResult.decode(DnsName.DnsName)(dnsNameValue)
-
-        return new SingleHostName({ port, dnsName })
-      })
-  }
-)
-
+export const read = (r: CborReader): SingleHostName => {
+  const count = r.readArrayHeader()
+  r.readUint() // tag = 1
+  const port = r.peekByte() === 0xf6 ? (r.readNull(), undefined) : r.readUint() as Port.Port
+  const dnsName = r.readText() as DnsName.DnsName
+  if (count === -1) r.isBreak()
+  return new SingleHostName({ port, dnsName })
+}
 /**
  * CBOR bytes transformation schema for SingleHostName.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → SingleHostName
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(SingleHostName),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "SingleHostName.FromCBORBytes" })
 
-/**
- * CBOR hex transformation schema for SingleHostName.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromBytes(options) // Uint8Array → SingleHostName
-  )
+/** @deprecated Use FromCBORBytes instead */
+export const FromBytes = FromCBORBytes
+
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "SingleHostName.FromCBORHex" })
+
+/** @deprecated Use FromCBORHex instead */
+export const FromHex = FromCBORHex
 
 // ============================================================================
 // Root Functions
@@ -219,8 +212,7 @@ export const FromHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
-  Schema.decodeSync(FromBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse a SingleHostName from CBOR hex string.
@@ -228,7 +220,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.decodeSync(FromHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 // ============================================================================
 // Encoding Functions
@@ -240,8 +232,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: SingleHostName, options?: CBOR.CodecOptions) =>
-  Schema.encodeSync(FromBytes(options))(data)
+export const toCBORBytes = (data: SingleHostName, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert a SingleHostName to CBOR hex string.
@@ -249,5 +244,5 @@ export const toCBORBytes = (data: SingleHostName, options?: CBOR.CodecOptions) =
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: SingleHostName, options?: CBOR.CodecOptions) =>
-  Schema.encodeSync(FromHex(options))(data)
+export const toCBORHex = (data: SingleHostName, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))

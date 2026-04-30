@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for AssetName representing a native asset identifier.
@@ -67,19 +69,33 @@ export class AssetName extends Schema.TaggedClass<AssetName>()("AssetName", {
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: AssetName): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): AssetName => new AssetName({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema for encoding/decoding AssetName as bytes.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(
-  Schema.typeSchema(Bytes32.VariableBytesFromHex),
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(AssetName),
   {
     strict: true,
-    decode: (bytes) => new AssetName({ bytes }, { disableValidation: true }),
-    encode: (assetName) => assetName.bytes
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new AssetName({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (assetName) => ParseResult.succeed(assetName.bytes)
   }
 ).annotations({
   identifier: "AssetName.FromBytes"
@@ -92,8 +108,8 @@ export const FromBytes = Schema.transform(
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes32.VariableBytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> AssetName
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "AssetName.FromHex"
 })
@@ -115,7 +131,7 @@ export const isAssetName = Schema.is(AssetName)
 export const arbitrary = FastCheck.uint8Array({
   minLength: 0,
   maxLength: 32
-}).map((bytes) => new AssetName({ bytes }, { disableValidation: true }))
+}).map((bytes) => new AssetName({ bytes }))
 
 // ============================================================================
 // Root Functions
@@ -127,7 +143,7 @@ export const arbitrary = FastCheck.uint8Array({
  * @since 2.0.0
  * @category parsing
  */
-export const fromBytes = (bytes: Uint8Array) => Schema.decodeSync(FromBytes)(bytes)
+export const fromBytes = Schema.decodeSync(FromBytes)
 
 /**
  * Parse AssetName from hex string.
@@ -135,7 +151,7 @@ export const fromBytes = (bytes: Uint8Array) => Schema.decodeSync(FromBytes)(byt
  * @since 2.0.0
  * @category parsing
  */
-export const fromHex = (hex: string) => Schema.decodeSync(FromHex)(hex)
+export const fromHex = Schema.decodeSync(FromHex)
 
 /**
  * Encode AssetName to bytes.
@@ -143,7 +159,7 @@ export const fromHex = (hex: string) => Schema.decodeSync(FromHex)(hex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = (assetName: AssetName) => Schema.encodeSync(FromBytes)(assetName)
+export const toBytes = (v: AssetName): Uint8Array => v.bytes
 
 /**
  * Encode AssetName to hex string.
@@ -151,4 +167,4 @@ export const toBytes = (assetName: AssetName) => Schema.encodeSync(FromBytes)(as
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (assetName: AssetName) => Schema.encodeSync(FromHex)(assetName)
+export const toHex = (v: AssetName): string => Bytes.toHex(v.bytes)

@@ -1,9 +1,11 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Ed25519Signature from "./Ed25519Signature.js"
 import * as KESVkey from "./KESVkey.js"
 import * as Numeric from "./Numeric.js"
+import { CborReader } from "./v2/CborReader.js"
+import { capture, CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * OperationalCert class based on Conway CDDL specification
@@ -65,40 +67,32 @@ export class OperationalCert extends Schema.TaggedClass<OperationalCert>()("Oper
   }
 }
 
-export const CDDLSchema = Schema.Tuple(
-  CBOR.ByteArray, // hot_vkey as bytes
-  CBOR.Integer, // sequence_number as bigint
-  CBOR.Integer, // kes_period as bigint
-  CBOR.ByteArray // sigma as bytes
-)
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL schema for OperationalCert.
- * operational_cert = [
- *   hot_vkey : kes_vkey,
- *   sequence_number : uint64,
- *   kes_period : uint64,
- *   sigma : ed25519_signature
- * ]
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(OperationalCert), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      const hotVkeyBytes = yield* ParseResult.encode(KESVkey.FromBytes)(toA.hotVkey)
-      const sigmaBytes = yield* ParseResult.encode(Ed25519Signature.FromBytes)(toA.sigma)
-      return [hotVkeyBytes, BigInt(toA.sequenceNumber), BigInt(toA.kesPeriod), sigmaBytes] as const
-    }),
-  decode: ([hotVkeyBytes, sequenceNumber, kesPeriod, sigmaBytes]) =>
-    Eff.gen(function* () {
-      const hotVkey = yield* ParseResult.decode(KESVkey.FromBytes)(hotVkeyBytes)
-      const sigma = yield* ParseResult.decode(Ed25519Signature.FromBytes)(sigmaBytes)
-      return new OperationalCert({ hotVkey, sequenceNumber, kesPeriod, sigma })
-    })
-})
+export const write = (w: CborWriter, v: OperationalCert): void => {
+  w.writeArrayHeader(4)
+  KESVkey.write(w, v.hotVkey)
+  w.writeUint(v.sequenceNumber)
+  w.writeUint(v.kesPeriod)
+  Ed25519Signature.write(w, v.sigma)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): OperationalCert => {
+  const start = r.position()
+  const count = r.readArrayHeader()
+  const cert = new OperationalCert({
+    hotVkey: KESVkey.read(r),
+    sequenceNumber: r.readUint(),
+    kesPeriod: r.readUint(),
+    sigma: Ed25519Signature.read(r)
+  })
+  if (count === -1) r.isBreak()
+  capture(cert, r.buffer().subarray(start, r.position()))
+  return cert
+}
 
 /**
  * CBOR bytes transformation schema for OperationalCert.
@@ -106,11 +100,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Ope
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → OperationalCert
-  )
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(OperationalCert),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "OperationalCert.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for OperationalCert.
@@ -118,11 +119,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → OperationalCert
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "OperationalCert.FromCBORHex" })
 
 /**
  * Check if the given value is a valid OperationalCert
@@ -155,8 +153,7 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): OperationalCert =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse OperationalCert from CBOR hex string.
@@ -164,8 +161,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): O
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): OperationalCert =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode OperationalCert to CBOR bytes.
@@ -173,8 +169,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): Operation
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (cert: OperationalCert, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(cert)
+export const toCBORBytes = (cert: OperationalCert, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, cert)
+  return w.finishView()
+}
 
 /**
  * Encode OperationalCert to CBOR hex string.
@@ -182,5 +181,5 @@ export const toCBORBytes = (cert: OperationalCert, options?: CBOR.CodecOptions):
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (cert: OperationalCert, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(cert)
+export const toCBORHex = (cert: OperationalCert, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(cert, profile))

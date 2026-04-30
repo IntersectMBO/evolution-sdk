@@ -1,8 +1,10 @@
-import { Either as E, Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Numeric from "./Numeric.js"
 import * as TransactionHash from "./TransactionHash.js"
+import { CborReader } from "./v2/CborReader.js"
+import { capture, CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for TransactionInput representing a transaction input with transaction id and index.
@@ -47,6 +49,29 @@ export class TransactionInput extends Schema.TaggedClass<TransactionInput>()("Tr
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: TransactionInput): void => {
+  w.writeArrayHeader(2)
+  TransactionHash.write(w, v.transactionId)
+  w.writeSmallUint(Number(v.index))
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): TransactionInput => {
+  const start = r.position()
+  const count = r.readArrayHeader()
+  const inp = new TransactionInput({
+    transactionId: TransactionHash.read(r),
+    index: BigInt(r.readSmallUint()),
+  })
+  if (count === -1) r.isBreak()
+  capture(inp, r.buffer().subarray(start, r.position()))
+  return inp
+}
+
 /**
  * Check if the given value is a valid TransactionInput.
  *
@@ -55,31 +80,9 @@ export class TransactionInput extends Schema.TaggedClass<TransactionInput>()("Tr
  */
 export const isTransactionInput = Schema.is(TransactionInput)
 
-export const CDDLSchema = Schema.Tuple(
-  Schema.Uint8ArrayFromSelf, // transaction_id as bytes
-  CBOR.Integer // index as bigint
-)
-
-/**
- * CDDL schema for TransactionInput.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(TransactionInput), {
-  strict: true,
-  encode: (toA) => E.right([toA.transactionId.hash, toA.index] as const),
-  decode: ([txHashBytes, indexBigInt]) =>
-    E.right(
-      new TransactionInput({
-        transactionId: new TransactionHash.TransactionHash({ hash: txHashBytes }),
-        index: indexBigInt
-      })
-    )
-}).annotations({
-  identifier: "TransactionInput.FromCDDL",
-  description: "Transforms CBOR structure to TransactionInput"
-})
+// ============================================================================
+// Schemas (legacy-compatible)
+// ============================================================================
 
 /**
  * CBOR bytes transformation schema for TransactionInput.
@@ -87,29 +90,21 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → TransactionInput
-  ).annotations({
-    identifier: "TransactionInput.FromCBORBytes",
-    description: "Transforms CBOR bytes to TransactionInput"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(TransactionInput),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "TransactionInput.FromCBORBytes" })
 
-/**
- * CBOR hex transformation schema for TransactionInput.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → TransactionInput
-  ).annotations({
-    identifier: "TransactionInput.FromCBORHex",
-    description: "Transforms CBOR hex string to TransactionInput"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "TransactionInput.FromCBORHex" })
 
 /**
  * FastCheck arbitrary for TransactionInput instances.
@@ -125,14 +120,17 @@ export const arbitrary = FastCheck.tuple(TransactionHash.arbitrary, Numeric.Uint
     })
 )
 
+// ============================================================================
+// Root Functions
+// ============================================================================
+
 /**
  * Convert CBOR bytes to TransactionInput.
  *
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Convert CBOR hex string to TransactionInput.
@@ -140,8 +138,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert TransactionInput to CBOR bytes.
@@ -149,8 +146,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORBytes = (data: TransactionInput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: TransactionInput, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert TransactionInput to CBOR hex string.
@@ -158,5 +158,5 @@ export const toCBORBytes = (data: TransactionInput, options: CBOR.CodecOptions =
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORHex = (data: TransactionInput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: TransactionInput, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))

@@ -1,6 +1,5 @@
 import { Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
 import * as Numeric from "./Numeric.js"
 
 /**
@@ -57,16 +56,4 @@ export const compare = (a: EpochNo, b: EpochNo): -1 | 0 | 1 => {
  * @category generators
  */
 export const generator = Numeric.Uint64Arbitrary
-
-/**
- * CDDL schema bridge for epoch_no = uint .size 8
- */
-export const CDDLSchema = CBOR.Integer
-
-export const FromCDDL = Schema.transform(CDDLSchema, Schema.typeSchema(EpochNoSchema), {
-  strict: true,
-  encode: (epoch) => epoch,
-  decode: (n) => EpochNoSchema.make(n)
-}).annotations({ identifier: "EpochNo.CDDL" })
-
 export const arbitrary = Numeric.Uint64Arbitrary

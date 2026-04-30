@@ -1,9 +1,11 @@
-import { FastCheck, Schema } from "effect"
+import { FastCheck, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as MultiHostName from "./MultiHostName.js"
 import * as SingleHostAddr from "./SingleHostAddr.js"
 import * as SingleHostName from "./SingleHostName.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Union schema for Relay representing various relay configurations.
@@ -17,9 +19,6 @@ export const Relay = Schema.Union(
   SingleHostName.SingleHostName,
   MultiHostName.MultiHostName
 )
-
-export const FromCDDL = Schema.Union(SingleHostAddr.FromCDDL, SingleHostName.FromCDDL, MultiHostName.FromCDDL)
-
 /**
  * Type alias for Relay.
  *
@@ -28,6 +27,33 @@ export const FromCDDL = Schema.Union(SingleHostAddr.FromCDDL, SingleHostName.Fro
  */
 export type Relay = typeof Relay.Type
 
+// ============================================================================
+// Write / Read — Relay
+// ============================================================================
+
+export const write = (w: CborWriter, v: Relay): void => {
+  switch (v._tag) {
+    case "SingleHostAddr": SingleHostAddr.write(w, v); break
+    case "SingleHostName": SingleHostName.write(w, v); break
+    case "MultiHostName": MultiHostName.write(w, v); break
+  }
+}
+
+export const read = (r: CborReader): Relay => {
+  // Peek at the tag byte (first element of the array) to determine type
+  const saved = r.offset
+  r.readArrayHeader()
+  const tag = r.readUint()
+  // Reset offset to beginning so child readers consume the full array
+  r.offset = saved
+  switch (tag) {
+    case 0n: return SingleHostAddr.read(r)
+    case 1n: return SingleHostName.read(r)
+    case 2n: return MultiHostName.read(r)
+    default: throw new Error(`Unknown Relay tag: ${tag}`)
+  }
+}
+
 /**
  * CBOR bytes transformation schema for Relay.
  * For union types, we create a union of the child CBOR schemas.
@@ -35,16 +61,18 @@ export type Relay = typeof Relay.Type
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.Union(
-    SingleHostAddr.FromCBORBytes(options),
-    SingleHostName.FromBytes(options), // Still uses old naming
-    MultiHostName.FromCBORBytes(options)
-  ).annotations({
-    identifier: "Relay.FromCBORBytes",
-    title: "Relay from CBOR Bytes",
-    description: "Transforms CBOR bytes (Uint8Array) to Relay"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Relay),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Relay.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for Relay.
@@ -52,15 +80,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Relay
-  ).annotations({
-    identifier: "Relay.FromCBORHex",
-    title: "Relay from CBOR Hex",
-    description: "Transforms CBOR hex string to Relay"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Relay.FromCBORHex" })
 
 /**
  * @since 2.0.0
@@ -98,8 +119,7 @@ export const fromMultiHostName = (multiHostName: MultiHostName.MultiHostName): R
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse Relay from CBOR hex.
@@ -107,7 +127,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert Relay to CBOR bytes.
@@ -115,7 +135,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: Relay, options?: CBOR.CodecOptions) => Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: Relay, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Convert Relay to CBOR hex.
@@ -123,7 +147,8 @@ export const toCBORBytes = (data: Relay, options?: CBOR.CodecOptions) => Schema.
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: Relay, options?: CBOR.CodecOptions) => Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: Relay, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
 /**
  * Pattern match on a Relay to handle different relay types.

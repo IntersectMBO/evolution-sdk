@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes64 from "./Bytes64.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Class-based Ed25519Signature with compile-time and runtime safety.
@@ -35,23 +37,33 @@ export class Ed25519Signature extends Schema.Class<Ed25519Signature>("Ed25519Sig
   }
 }
 
+// ============================================================================
+// Write / Read
+// ============================================================================
+
+export const write = (w: CborWriter, v: Ed25519Signature): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): Ed25519Signature => new Ed25519Signature({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema transformer from bytes to Ed25519Signature.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(
-  Schema.typeSchema(Bytes64.BytesFromHex),
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(Ed25519Signature),
   {
     strict: true,
-    decode: (bytes) =>
-      new Ed25519Signature(
-        { bytes },
-        { disableValidation: true } // Disable validation since we already check length in Bytes64
-      ),
-    encode: (signature) => new Uint8Array(signature.bytes)
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new Ed25519Signature({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (signature) => ParseResult.succeed(new Uint8Array(signature.bytes))
   }
 ).annotations({
   identifier: "Ed25519Signature.FromBytes"
@@ -64,7 +76,7 @@ export const FromBytes = Schema.transform(
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes64.BytesFromHex, // string -> Bytes64
+  Schema.Uint8ArrayFromHex,
   FromBytes
 ).annotations({
   identifier: "Ed25519Signature.FromHex"
@@ -123,4 +135,4 @@ export const is = Schema.is(Ed25519Signature)
 export const arbitrary: FastCheck.Arbitrary<Ed25519Signature> = FastCheck.uint8Array({
   minLength: 64,
   maxLength: 64
-}).map((bytes) => new Ed25519Signature({ bytes }, { disableValidation: true }))
+}).map((bytes) => new Ed25519Signature({ bytes }))

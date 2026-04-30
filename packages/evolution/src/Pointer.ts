@@ -1,6 +1,8 @@
 import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
 
 import * as Natural from "./Natural.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for pointer to a stake registration certificate
@@ -45,6 +47,29 @@ export class Pointer extends Schema.TaggedClass<Pointer>("Pointer")("Pointer", {
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: Pointer): void => {
+  w.writeArrayHeader(3)
+  w.writeUint(BigInt(v.slot))
+  w.writeUint(BigInt(v.txIndex))
+  w.writeUint(BigInt(v.certIndex))
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): Pointer => {
+  const count = r.readArrayHeader()
+  const pointer = new Pointer({
+    slot: Number(r.readUint()),
+    txIndex: Number(r.readUint()),
+    certIndex: Number(r.readUint())
+  })
+  if (count === -1) r.isBreak()
+  return pointer
+}
+
 /**
  * Check if the given value is a valid Pointer
  *
@@ -61,5 +86,5 @@ export const isPointer = Schema.is(Pointer)
  * @category generators
  */
 export const arbitrary = FastCheck.tuple(Natural.arbitrary, Natural.arbitrary, Natural.arbitrary).map(
-  ([slot, txIndex, certIndex]) => new Pointer({ slot, txIndex, certIndex }, { disableValidation: true })
+  ([slot, txIndex, certIndex]) => new Pointer({ slot, txIndex, certIndex })
 )

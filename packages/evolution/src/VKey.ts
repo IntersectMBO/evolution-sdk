@@ -1,11 +1,13 @@
 import { mod } from "@noble/curves/abstract/modular.js"
 import { ed25519 } from "@noble/curves/ed25519.js"
 import { bytesToNumberLE } from "@noble/curves/utils.js"
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
 import type * as PrivateKey from "./PrivateKey.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for VKey representing a verification key.
@@ -39,17 +41,33 @@ export class VKey extends Schema.TaggedClass<VKey>()("VKey", {
   }
 }
 
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(VKey), {
-  strict: true,
-  decode: (bytes) => new VKey({ bytes }),
-  encode: (vkey) => vkey.bytes
-}).annotations({
-  identifier: "VKey.FromBytes"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: VKey): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): VKey => new VKey({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(VKey),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new VKey({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.bytes)
+  }
+).annotations({ identifier: "VKey.FromBytes" })
 
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> VKey
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "VKey.FromHex"
 })
@@ -94,7 +112,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: VKey): Uint8Array => v.bytes
 
 /**
  * Convert a VKey to a hex string.
@@ -102,7 +120,7 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: VKey): string => Bytes.toHex(v.bytes)
 
 /**
  * FastCheck arbitrary for generating random VKey instances.

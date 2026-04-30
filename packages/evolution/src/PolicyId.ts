@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Hash28 from "./Hash28.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * PolicyId as a TaggedClass representing a minting policy identifier.
@@ -41,17 +43,35 @@ export class PolicyId extends Schema.TaggedClass<PolicyId>()("PolicyId", {
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: PolicyId): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): PolicyId => new PolicyId({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema transformer from bytes to PolicyId.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Hash28.BytesFromHex), Schema.typeSchema(PolicyId), {
-  strict: true,
-  decode: (hash) => new PolicyId({ hash }, { disableValidation: true }),
-  encode: (policyId) => policyId.hash
-}).annotations({ identifier: "PolicyId.FromBytes" })
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(PolicyId),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new PolicyId({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.hash)
+  }
+).annotations({ identifier: "PolicyId.FromBytes" })
 
 /**
  * Schema transformer from hex string to PolicyId.
@@ -59,7 +79,7 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Hash28.BytesFromHex)
  * @since 2.0.0
  * @category schemas
  */
-export const FromHex = Schema.compose(Hash28.BytesFromHex, FromBytes).annotations({
+export const FromHex = Schema.compose(Schema.Uint8ArrayFromHex, FromBytes).annotations({
   identifier: "PolicyId.FromHex"
 })
 
@@ -108,7 +128,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: PolicyId): Uint8Array => v.hash
 
 /**
  * Encode PolicyId to hex string.
@@ -116,4 +136,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: PolicyId): string => Bytes.toHex(v.hash)

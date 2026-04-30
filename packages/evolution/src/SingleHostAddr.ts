@@ -1,9 +1,11 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as IPv4 from "./IPv4.js"
 import * as IPv6 from "./IPv6.js"
 import * as Port from "./Port.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for SingleHostAddr representing a network host with IP addresses.
@@ -145,57 +147,31 @@ export const hasIPv6 = (hostAddr: SingleHostAddr): boolean => hostAddr.ipv6 !== 
  */
 export const hasPort = (hostAddr: SingleHostAddr): boolean => hostAddr.port !== undefined
 
-/**
- * CDDL schema for SingleHostAddr.
- * single_host_addr = (0, port / nil, ipv4 / nil, ipv6 / nil)
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(
-  Schema.Tuple(
-    Schema.Literal(0n), // tag (literal 0)
-    Schema.NullOr(CBOR.Integer), // port (number or null)
-    Schema.NullOr(CBOR.ByteArray), // ipv4 bytes (nullable)
-    Schema.NullOr(CBOR.ByteArray) // ipv6 bytes (nullable)
-  ),
-  Schema.typeSchema(SingleHostAddr),
-  {
-    strict: true,
-    encode: (toA) =>
-      Eff.gen(function* () {
-        const port = toA.port !== undefined ? toA.port : null
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-        const ipv4 = toA.ipv4 !== undefined ? toA.ipv4.bytes : null
+export const write = (w: CborWriter, v: SingleHostAddr): void => {
+  w.writeArrayHeader(4)
+  w.writeUint(0n)
+  if (v.port !== undefined) w.writeUint(v.port)
+  else w.writeNull()
+  if (v.ipv4 !== undefined) IPv4.write(w, v.ipv4)
+  else w.writeNull()
+  if (v.ipv6 !== undefined) IPv6.write(w, v.ipv6)
+  else w.writeNull()
+  w.writeArrayBreak()
+}
 
-        const ipv6 = toA.ipv6 !== undefined ? toA.ipv6.bytes : null
-
-        return yield* Eff.succeed([0n, port, ipv4, ipv6] as const)
-      }),
-    decode: ([, portValue, ipv4Value, ipv6Value]) =>
-      Eff.gen(function* () {
-        const port =
-          portValue === null || portValue === undefined
-            ? undefined
-            : yield* ParseResult.decode(Schema.typeSchema(Port.PortSchema))(portValue)
-
-        const ipv4 =
-          ipv4Value === null || ipv4Value === undefined
-            ? undefined
-            : yield* ParseResult.decode(IPv4.FromBytes)(ipv4Value)
-
-        const ipv6 =
-          ipv6Value === null || ipv6Value === undefined
-            ? undefined
-            : yield* ParseResult.decode(IPv6.FromBytes)(ipv6Value)
-
-        return new SingleHostAddr({ port, ipv4, ipv6 }, { disableValidation: true })
-      })
-  }
-).annotations({
-  identifier: "SingleHostAddr.SingleHostAddrCDDLSchema",
-  description: "Transforms CBOR structure to SingleHostAddr"
-})
+export const read = (r: CborReader): SingleHostAddr => {
+  const count = r.readArrayHeader()
+  r.readUint() // tag = 0
+  const port = r.peekByte() === 0xf6 ? (r.readNull(), undefined) : r.readUint() as Port.Port
+  const ipv4 = r.peekByte() === 0xf6 ? (r.readNull(), undefined) : IPv4.read(r)
+  const ipv6 = r.peekByte() === 0xf6 ? (r.readNull(), undefined) : IPv6.read(r)
+  if (count === -1) r.isBreak()
+  return new SingleHostAddr({ port, ipv4, ipv6 }, { disableValidation: true })
+}
 
 /**
  * FastCheck arbitrary for generating random SingleHostAddr instances
@@ -222,29 +198,21 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → SingleHostAddr
-  ).annotations({
-    identifier: "SingleHostAddr.FromCBORBytes",
-    description: "Transforms CBOR bytes to SingleHostAddr"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(SingleHostAddr),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "SingleHostAddr.FromCBORBytes" })
 
-/**
- * CBOR hex transformation schema for SingleHostAddr.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → SingleHostAddr
-  ).annotations({
-    identifier: "SingleHostAddr.FromCBORHex",
-    description: "Transforms CBOR hex string to SingleHostAddr"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "SingleHostAddr.FromCBORHex" })
 
 /**
  * Parse SingleHostAddr from CBOR bytes.
@@ -252,8 +220,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Parse SingleHostAddr from CBOR hex string.
@@ -261,7 +228,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions) =>
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Encode SingleHostAddr to CBOR bytes.
@@ -269,8 +236,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions) => Schema.
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: SingleHostAddr, options?: CBOR.CodecOptions) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: SingleHostAddr, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, data)
+  return w.finishView()
+}
 
 /**
  * Encode SingleHostAddr to CBOR hex string.
@@ -278,5 +248,5 @@ export const toCBORBytes = (data: SingleHostAddr, options?: CBOR.CodecOptions) =
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: SingleHostAddr, options?: CBOR.CodecOptions) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: SingleHostAddr, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))

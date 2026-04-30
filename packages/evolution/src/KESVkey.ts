@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for KESVkey representing a KES verification key.
@@ -35,19 +37,35 @@ export class KESVkey extends Schema.TaggedClass<KESVkey>()("KESVkey", {
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: KESVkey): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): KESVkey => new KESVkey({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema for transforming between Uint8Array and KESVkey.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(KESVkey), {
-  strict: true,
-  decode: (bytes) => new KESVkey({ bytes }, { disableValidation: true }),
-  encode: (k) => k.bytes
-}).annotations({
-  identifier: "KESVkey.FromBytes"
-})
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(KESVkey),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new KESVkey({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.bytes)
+  }
+).annotations({ identifier: "KESVkey.FromBytes" })
 
 /**
  * Schema for transforming between hex string and KESVkey.
@@ -56,8 +74,8 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> KESVkey
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "KESVkey.FromHex"
 })
@@ -106,7 +124,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: KESVkey): Uint8Array => v.bytes
 
 /**
  * Encode KESVkey to hex string.
@@ -114,4 +132,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: KESVkey): string => Bytes.toHex(v.bytes)

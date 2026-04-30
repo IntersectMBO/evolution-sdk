@@ -1,9 +1,11 @@
 import { blake2b } from "@noble/hashes/blake2"
-import { Data as EffectData, Effect, Equal, FastCheck, Hash, ParseResult, Schema } from "effect"
+import { Data as EffectData, Equal, FastCheck, Hash, ParseResult, Schema } from "effect"
 
 import * as CBOR from "./CBOR.js"
 import * as DatumHash from "./DatumHash.js"
 import * as Numeric from "./Numeric.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Error class for Data related operations.
@@ -748,49 +750,259 @@ export const hash = (data: Data): number => {
  */
 export const equals: (a: Data, b: Data) => boolean = Schema.equivalence(DataSchema)
 
-export const CDDLSchema = CBOR.CBORSchema
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+/** Encode a PlutusData key to bytes for canonical sorting */
+const encodeKey = (key: Data, options: CBOR.CodecOptions): Uint8Array => {
+  const kw = new CborWriter(64)
+  write(kw, key, options)
+  return kw.finishView()
+}
+
+/** BoundedBytes chunk size per Conway CDDL: bounded_bytes = bytes .size (0..64) */
+const BOUNDED_BYTES_CHUNK = 64
 
 /**
- * CDDL schema for PlutusData following the Conway specification.
- *
- * ```
- * plutus_data =
- *   constr<plutus_data>
- *   / {* plutus_data => plutus_data}
- *   / [* plutus_data]
- *   / big_int
- *   / bounded_bytes
- *
- * constr<a0> =
- *   #6.121([* a0])    // index 0
- *   / #6.122([* a0])  // index 1
- *   / #6.123([* a0])  // index 2
- *   / #6.124([* a0])  // index 3
- *   / #6.125([* a0])  // index 4
- *   / #6.126([* a0])  // index 5
- *   / #6.127([* a0])  // index 6
- *   / #6.102([uint, [* a0]])  // general constructor
- *
- * big_int = int / big_uint / big_nint
- * big_uint = #6.2(bounded_bytes)
- * big_nint = #6.3(bounded_bytes)
- * ```
- *
- * This transforms between CBOR values and PlutusData using the existing
- * plutusDataToCBORValue and cborValueToPlutusData functions.
- *
- * @since 2.0.0
- * @category schemas
+ * Write a BoundedBytes value — bytes ≤ 64 as definite, > 64 as indefinite 64-byte chunks.
  */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(DataSchema), {
-  strict: true,
-  encode: (_, __, ___, data) => Effect.succeed(plutusDataToCBORValue(data)),
-  decode: (_, __, ___, cborValue) =>
-    Effect.try({
-      try: () => cborValueToPlutusData(cborValue),
-      catch: (error) => new ParseResult.Type(DataSchema.ast, cborValue, String(error))
-    })
-})
+/** Encode bounded bytes to raw CBOR bytes */
+const encodeBoundedBytes = (value: Uint8Array): Uint8Array => {
+  if (value.length <= BOUNDED_BYTES_CHUNK) {
+    // Definite byte string
+    const w = new CborWriter(value.length + 3)
+    w.writeBytes(value)
+    return w.finishView()
+  }
+  // Indefinite: 0x5f + chunks + 0xff
+  const numChunks = Math.ceil(value.length / BOUNDED_BYTES_CHUNK)
+  // Each chunk has a 1-2 byte header + data. Max total: 1 + numChunks*(2+64) + 1
+  const result = new CborWriter(2 + numChunks * (BOUNDED_BYTES_CHUNK + 3))
+  result.writeRaw(new Uint8Array([0x5f])) // indefinite byte string
+  let offset = 0
+  while (offset < value.length) {
+    const chunkLen = Math.min(BOUNDED_BYTES_CHUNK, value.length - offset)
+    result.writeBytes(value.subarray(offset, offset + chunkLen))
+    offset += chunkLen
+  }
+  result.writeBreak() // 0xff
+  return result.finishView()
+}
+
+/**
+ * Write PlutusData directly to CborWriter. No CBOR value tree intermediate.
+ *
+ * Encoding rules:
+ * - Integer: uint (≥0) or nint (<0), big_uint (tag 2) / big_nint (tag 3) for large values
+ * - Bytes: BoundedBytes — ≤64 definite, >64 indefinite 64-byte chunks
+ * - List: indefinite array (Plutus default) or definite (CML default)
+ * - Map: indefinite map (Plutus default) or definite (CML default)
+ * - Constr 0-6: tag 121-127 + array of fields
+ * - Constr 7-127: tag 1280+(index-7) + array of fields
+ * - Constr ≥128: tag 102 + [index, fields]
+ */
+export const write = (w: CborWriter, v: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): void => {
+  const isCanonical = options.mode === "canonical"
+  const useIndef = options.mode === "custom" && options.useIndefiniteArrays
+  const mapAsPairs = options.mode === "custom" && options.encodeMapAsPairs === true
+  const sortKeys = isCanonical || (options.mode === "custom" && options.sortMapKeys)
+
+  matchData(v, {
+    Int: (value) => {
+      if (value >= 0n) {
+        if (value < 0x10000000000000000n) {
+          w.writeUint(value)
+        } else {
+          // big_uint: tag(2) + bytes (big-endian)
+          w.writeTagHeader(2)
+          w.writeRaw(encodeBoundedBytes(bigintToBytes(value)))
+        }
+      } else {
+        const pv = -value - 1n
+        if (pv < 0x10000000000000000n) {
+          w.writeNint(value)
+        } else {
+          // big_nint: tag(3) + bytes (big-endian of -1-n)
+          w.writeTagHeader(3)
+          w.writeRaw(encodeBoundedBytes(bigintToBytes(pv)))
+        }
+      }
+    },
+    Bytes: (bytes) => {
+      w.writeRaw(encodeBoundedBytes(bytes))
+    },
+    List: (items) => {
+      const empty = items.length === 0
+      if (useIndef && !empty) {
+        w.writeIndefiniteArrayHeader()
+        for (const item of items) write(w, item, options)
+        w.writeBreak()
+      } else {
+        w.writeDefiniteArrayHeader(items.length)
+        for (const item of items) write(w, item, options)
+      }
+    },
+    Map: (entries) => {
+      // Sort entries by canonical CBOR key order if requested
+      const sorted = sortKeys ? [...entries].sort((a, b) => {
+        const ka = encodeKey(a[0], options)
+        const kb = encodeKey(b[0], options)
+        if (ka.length !== kb.length) return ka.length - kb.length
+        for (let i = 0; i < ka.length; i++) { if (ka[i] !== kb[i]) return ka[i] - kb[i] }
+        return 0
+      }) : entries
+
+      if (mapAsPairs) {
+        const empty = sorted.length === 0
+        if (useIndef && !empty) {
+          w.writeIndefiniteArrayHeader()
+          for (const [k, val] of sorted) {
+            w.writeIndefiniteArrayHeader()
+            write(w, k, options); write(w, val, options)
+            w.writeBreak()
+          }
+          w.writeBreak()
+        } else {
+          w.writeDefiniteArrayHeader(sorted.length)
+          for (const [k, val] of sorted) {
+            w.writeDefiniteArrayHeader(2)
+            write(w, k, options); write(w, val, options)
+          }
+        }
+      } else {
+        const empty = sorted.length === 0
+        if (useIndef && !empty) {
+          w.writeIndefiniteMapHeader()
+          for (const [k, val] of sorted) { write(w, k, options); write(w, val, options) }
+          w.writeBreak()
+        } else {
+          w.writeDefiniteMapHeader(sorted.length)
+          for (const [k, val] of sorted) { write(w, k, options); write(w, val, options) }
+        }
+      }
+    },
+    Constr: (constr) => {
+      if (constr.index >= 0n && constr.index <= 6n) {
+        w.writeTagHeader(Number(121n + constr.index))
+      } else if (constr.index >= 7n && constr.index <= 127n) {
+        w.writeTagHeader(Number(1280n + constr.index - 7n))
+      } else {
+        w.writeTagHeader(102)
+        if (useIndef) {
+          w.writeIndefiniteArrayHeader()
+          w.writeUint(constr.index)
+        } else {
+          w.writeDefiniteArrayHeader(2)
+          w.writeUint(constr.index)
+        }
+      }
+      // Fields array
+      if (useIndef && constr.fields.length > 0) {
+        w.writeIndefiniteArrayHeader()
+        for (const field of constr.fields) write(w, field, options)
+        w.writeBreak()
+      } else {
+        w.writeDefiniteArrayHeader(constr.fields.length)
+        for (const field of constr.fields) write(w, field, options)
+      }
+      // Close tag 102 outer array
+      if (constr.index > 127n && useIndef) {
+        w.writeBreak()
+      }
+    }
+  })
+}
+
+/**
+ * Read PlutusData directly from CborReader. No CBOR value tree intermediate.
+ */
+export const read = (r: CborReader): Data => {
+  const mt = r.peekMajorType()
+
+  switch (mt) {
+    case 0: return r.readUint()    // positive integer
+    case 1: return r.readNint()    // negative integer
+    case 2: return readBoundedBytes(r)  // byte string (possibly indefinite/chunked)
+    case 3: throw new DataError({ message: "Unexpected text string in PlutusData" })
+    case 4: {
+      // Array = List
+      const count = r.readArrayHeader()
+      const items: Array<Data> = []
+      if (count === -1) { while (!r.isBreak()) items.push(read(r)) }
+      else { for (let i = 0; i < count; i++) items.push(read(r)) }
+      return items
+    }
+    case 5: {
+      // Map
+      const count = r.readMapHeader()
+      const entries: Array<readonly [Data, Data]> = []
+      if (count === -1) { while (!r.isBreak()) entries.push([read(r), read(r)] as const) }
+      else { for (let i = 0; i < count; i++) entries.push([read(r), read(r)] as const) }
+      return new Map(entries)
+    }
+    case 6: {
+      // Tag — Constr or big integer
+      const tag = r.readTagHeader()
+
+      // big_uint: tag 2 + bytes
+      if (tag === 2) return bytesToBigint(readBoundedBytes(r))
+      // big_nint: tag 3 + bytes
+      if (tag === 3) return -(bytesToBigint(readBoundedBytes(r)) + 1n)
+
+      // Constr 0-6: tag 121-127
+      if (tag >= 121 && tag <= 127) {
+        const fields = readFieldsArray(r)
+        return new Constr({ index: Numeric.Uint64Make(BigInt(tag - 121)), fields })
+      }
+      // Constr 7-127: tag 1280-1400
+      if (tag >= 1280 && tag <= 1400) {
+        const fields = readFieldsArray(r)
+        return new Constr({ index: Numeric.Uint64Make(BigInt(tag - 1280 + 7)), fields })
+      }
+      // Constr general: tag 102 + [index, fields]
+      if (tag === 102) {
+        const outerCount = r.readArrayHeader()
+        const index = r.readUint()
+        const fields = readFieldsArray(r)
+        if (outerCount === -1) r.isBreak()
+        return new Constr({ index: Numeric.Uint64Make(index), fields })
+      }
+      throw new DataError({ message: `Unsupported PlutusData CBOR tag: ${tag}` })
+    }
+    default:
+      throw new DataError({ message: `Unexpected CBOR major type ${mt} in PlutusData` })
+  }
+}
+
+/** Read an array of PlutusData fields — validates major type is array (4) */
+const readFieldsArray = (r: CborReader): Array<Data> => {
+  const mt = r.peekMajorType()
+  if (mt !== 4) throw new DataError({ message: `Expected array for Constr fields, got major type ${mt}` })
+  const count = r.readArrayHeader()
+  const fields: Array<Data> = []
+  if (count === -1) { while (!r.isBreak()) fields.push(read(r)) }
+  else { for (let i = 0; i < count; i++) fields.push(read(r)) }
+  return fields
+}
+
+/** Read BoundedBytes — handles both definite and indefinite byte strings */
+const readBoundedBytes = (r: CborReader): Uint8Array => {
+  return r.readBytes() // CborReader already handles indefinite byte strings
+}
+
+/** Convert bigint to big-endian bytes */
+const bigintToBytes = (value: bigint): Uint8Array => {
+  if (value === 0n) return new Uint8Array([0])
+  const hex = value.toString(16)
+  const paddedHex = hex.length % 2 ? "0" + hex : hex
+  const bytes = new Uint8Array(paddedHex.length / 2)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(paddedHex.substring(i * 2, i * 2 + 2), 16)
+  }
+  return bytes
+}
 
 /**
  * CBOR bytes transformation schema for PlutusData using CDDL.
@@ -799,15 +1011,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Dat
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Data
-  ).annotations({
-    identifier: "Data.FromCBORBytes",
-    title: "Data from CBOR Bytes using CDDL",
-    description: "Transforms CBOR bytes to Data using CDDL encoding"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(DataSchema),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "Data.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for PlutusData using CDDL.
@@ -816,15 +1031,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → Data
-  ).annotations({
-    identifier: "Data.FromCBORHex",
-    title: "Data from CBOR Hex using CDDL",
-    description: "Transforms CBOR hex string to Data using CDDL encoding"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "Data.FromCBORHex" })
 
 /**
  * Encode PlutusData to CBOR bytes
@@ -832,8 +1040,11 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_O
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Uint8Array => {
+  const w = new CborWriter(256)
+  write(w, data, options)
+  return w.finishView()
+}
 
 /**
  * Encode PlutusData to CBOR hex string
@@ -842,7 +1053,7 @@ export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DA
  * @category transformation
  */
 export const toCBORHex = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+  Schema.encodeSync(Schema.Uint8ArrayFromHex)(toCBORBytes(data, options))
 
 /**
  * Decode PlutusData from CBOR bytes
@@ -850,8 +1061,7 @@ export const toCBORHex = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Decode PlutusData from CBOR hex string
@@ -859,8 +1069,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Create a schema that transforms from a custom type to Data and provides CBOR encoding
@@ -875,10 +1084,10 @@ export const withSchema = <A, I extends Data>(
   return {
     toData: Schema.encodeSync(schema),
     fromData: Schema.decodeSync(schema),
-    toCBORHex: Schema.encodeSync(Schema.compose(FromCBORHex(options), schema)),
-    toCBORBytes: Schema.encodeSync(Schema.compose(FromCBORBytes(options), schema)),
-    fromCBORHex: Schema.decodeSync(Schema.compose(FromCBORHex(options), schema)),
-    fromCBORBytes: Schema.decodeSync(Schema.compose(FromCBORBytes(options), schema))
+    toCBORHex: (a: A) => toCBORHex(Schema.encodeSync(schema)(a) as Data, options),
+    toCBORBytes: (a: A) => toCBORBytes(Schema.encodeSync(schema)(a) as Data, options),
+    fromCBORHex: (hex: string) => Schema.decodeSync(schema)(fromCBORHex(hex) as I),
+    fromCBORBytes: (bytes: Uint8Array) => Schema.decodeSync(schema)(fromCBORBytes(bytes) as I)
   }
 }
 

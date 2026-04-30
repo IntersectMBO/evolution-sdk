@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes4 from "./Bytes4.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * IPv4 model stored as 4 raw bytes (network byte order).
@@ -33,18 +35,33 @@ export class IPv4 extends Schema.TaggedClass<IPv4>()("IPv4", {
   }
 }
 
-// Transform between raw bytes (Uint8Array length 4) and IPv4
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes4.BytesFromHex), Schema.typeSchema(IPv4), {
-  strict: true,
-  decode: (bytes) => new IPv4({ bytes }, { disableValidation: true }),
-  encode: (ipv4) => ipv4.bytes
-}).annotations({
-  identifier: "IPv4.FromBytes"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: IPv4): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): IPv4 => new IPv4({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(IPv4),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new IPv4({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.bytes)
+  }
+).annotations({ identifier: "IPv4.FromBytes" })
 
 export const FromHex = Schema.compose(
-  Bytes4.BytesFromHex, // string -> Uint8Array(4)
-  FromBytes // bytes -> IPv4
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "IPv4.FromHex"
 })
@@ -93,7 +110,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: IPv4): Uint8Array => v.bytes
 
 /**
  * Encode IPv4 to hex string.
@@ -101,4 +118,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: IPv4): string => Bytes.toHex(v.bytes)

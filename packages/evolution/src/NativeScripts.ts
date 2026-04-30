@@ -1,8 +1,9 @@
-import { Data, Effect as Eff, Equal, FastCheck, Hash, ParseResult, Schema } from "effect"
+import { Data, Equal, FastCheck, Hash, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
-import * as CBOR from "./CBOR.js"
 import * as Hash28 from "./Hash28.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Error class for Native script related operations.
@@ -303,176 +304,139 @@ export const toJSON = (script: NativeScriptVariants): any => {
   }
 }
 
+
 // ============================================================================
-// CDDL Types and Schemas
+// Write / Read (CborReader/CborWriter — for composition in parent types)
 // ============================================================================
 
-/**
- * CDDL representation following Cardano specification
- *
- * native_script =
- *   [ script_pubkey      // 0
- *   // script_all         // 1
- *   // script_any         // 2
- *   // script_n_of_k      // 3
- *   // invalid_before     // 4
- *   // invalid_hereafter  // 5
- *   ]
- *
- * @since 2.0.0
- * @category model
- */
-export type NativeScriptCDDL =
-  | readonly [0n, Uint8Array] // script_pubkey
-  | readonly [1n, ReadonlyArray<NativeScriptCDDL>] // script_all
-  | readonly [2n, ReadonlyArray<NativeScriptCDDL>] // script_any
-  | readonly [3n, bigint, ReadonlyArray<NativeScriptCDDL>] // script_n_of_k
-  | readonly [4n, bigint] // invalid_before
-  | readonly [5n, bigint] // invalid_hereafter
+const writeVariant = (w: CborWriter, script: NativeScriptVariants): void => {
+  switch (script._tag) {
+    case "ScriptPubKey":
+      w.writeArrayHeader(2)
+      w.writeUint(0n)
+      w.writeBytes(script.keyHash)
+      w.writeArrayBreak()
+      break
+    case "ScriptAll":
+      w.writeArrayHeader(2)
+      w.writeUint(1n)
+      w.writeArrayHeader(script.scripts.length)
+      for (const s of script.scripts) writeVariant(w, s)
+      w.writeArrayBreak()
+      w.writeArrayBreak()
+      break
+    case "ScriptAny":
+      w.writeArrayHeader(2)
+      w.writeUint(2n)
+      w.writeArrayHeader(script.scripts.length)
+      for (const s of script.scripts) writeVariant(w, s)
+      w.writeArrayBreak()
+      w.writeArrayBreak()
+      break
+    case "ScriptNOfK":
+      w.writeArrayHeader(3)
+      w.writeUint(3n)
+      w.writeUint(script.required)
+      w.writeArrayHeader(script.scripts.length)
+      for (const s of script.scripts) writeVariant(w, s)
+      w.writeArrayBreak()
+      w.writeArrayBreak()
+      break
+    case "InvalidBefore":
+      w.writeArrayHeader(2)
+      w.writeUint(4n)
+      w.writeUint(script.slot)
+      w.writeArrayBreak()
+      break
+    case "InvalidHereafter":
+      w.writeArrayHeader(2)
+      w.writeUint(5n)
+      w.writeUint(script.slot)
+      w.writeArrayBreak()
+      break
+  }
+}
 
-// Individual CDDL schemas
-const ScriptPubKeyCDDL = Schema.Tuple(Schema.Literal(0n), Schema.Uint8ArrayFromSelf)
-const ScriptAllCDDL = Schema.Tuple(
-  Schema.Literal(1n),
-  Schema.Array(Schema.suspend((): Schema.Schema<NativeScriptCDDL> => CDDLSchema))
-)
-const ScriptAnyCDDL = Schema.Tuple(
-  Schema.Literal(2n),
-  Schema.Array(Schema.suspend((): Schema.Schema<NativeScriptCDDL> => CDDLSchema))
-)
-const ScriptNOfKCDDL = Schema.Tuple(
-  Schema.Literal(3n),
-  Schema.BigIntFromSelf,
-  Schema.Array(Schema.suspend((): Schema.Schema<NativeScriptCDDL> => CDDLSchema))
-)
-const InvalidBeforeCDDL = Schema.Tuple(Schema.Literal(4n), Schema.BigIntFromSelf)
-const InvalidHereafterCDDL = Schema.Tuple(Schema.Literal(5n), Schema.BigIntFromSelf)
+const readVariant = (r: CborReader): NativeScriptVariants => {
+  const count = r.readArrayHeader()
+  const tag = r.readUint()
+  let result: NativeScriptVariants
+  switch (tag) {
+    case 0n: {
+      const keyHash = r.readBytes()
+      result = { _tag: "ScriptPubKey", keyHash }
+      break
+    }
+    case 1n: {
+      const scriptCount = r.readArrayHeader()
+      const scripts: Array<NativeScriptVariants> = []
+      if (scriptCount === -1) {
+        while (!r.isBreak()) scripts.push(readVariant(r))
+      } else {
+        for (let i = 0; i < scriptCount; i++) scripts.push(readVariant(r))
+      }
+      result = { _tag: "ScriptAll", scripts }
+      break
+    }
+    case 2n: {
+      const scriptCount = r.readArrayHeader()
+      const scripts: Array<NativeScriptVariants> = []
+      if (scriptCount === -1) {
+        while (!r.isBreak()) scripts.push(readVariant(r))
+      } else {
+        for (let i = 0; i < scriptCount; i++) scripts.push(readVariant(r))
+      }
+      result = { _tag: "ScriptAny", scripts }
+      break
+    }
+    case 3n: {
+      const required = r.readUint()
+      const scriptCount = r.readArrayHeader()
+      const scripts: Array<NativeScriptVariants> = []
+      if (scriptCount === -1) {
+        while (!r.isBreak()) scripts.push(readVariant(r))
+      } else {
+        for (let i = 0; i < scriptCount; i++) scripts.push(readVariant(r))
+      }
+      result = { _tag: "ScriptNOfK", required, scripts }
+      break
+    }
+    case 4n: {
+      const slot = r.readUint()
+      result = { _tag: "InvalidBefore", slot }
+      break
+    }
+    case 5n: {
+      const slot = r.readUint()
+      result = { _tag: "InvalidHereafter", slot }
+      break
+    }
+    default:
+      throw new NativeScriptError({ message: `Unknown native script tag: ${tag}` })
+  }
+  if (count === -1) r.isBreak()
+  return result
+}
 
-export const CDDLSchema: Schema.Schema<NativeScriptCDDL> = Schema.Union(
-  ScriptPubKeyCDDL,
-  ScriptAllCDDL,
-  ScriptAnyCDDL,
-  ScriptNOfKCDDL,
-  InvalidBeforeCDDL,
-  InvalidHereafterCDDL
-).annotations({
-  identifier: "NativeScriptCDDL"
-})
+export const write = (w: CborWriter, v: NativeScript): void => writeVariant(w, v.script)
 
-/**
- * Transform between NativeScript and CDDL representation
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL: Schema.Schema<NativeScript, NativeScriptCDDL> = Schema.transformOrFail(
-  CDDLSchema,
+export const read = (r: CborReader): NativeScript => new NativeScript({ script: readVariant(r) })
+
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
   Schema.typeSchema(NativeScript),
   {
     strict: true,
-    encode: (nativeScript: NativeScript): Eff.Effect<NativeScriptCDDL, ParseResult.ParseIssue> =>
-      Eff.gen(function* () {
-        const script = nativeScript.script
-        switch (script._tag) {
-          case "ScriptPubKey":
-            return [0n, script.keyHash] as const
-          case "ScriptAll": {
-            const encodedScripts: Array<NativeScriptCDDL> = []
-            for (const nestedScript of script.scripts) {
-              const nestedNativeScript = new NativeScript({ script: nestedScript })
-              const encoded = yield* ParseResult.encode(FromCDDL)(nestedNativeScript)
-              encodedScripts.push(encoded)
-            }
-            return [1n, encodedScripts] as const
-          }
-          case "ScriptAny": {
-            const encodedScripts: Array<NativeScriptCDDL> = []
-            for (const nestedScript of script.scripts) {
-              const nestedNativeScript = new NativeScript({ script: nestedScript })
-              const encoded = yield* ParseResult.encode(FromCDDL)(nestedNativeScript)
-              encodedScripts.push(encoded)
-            }
-            return [2n, encodedScripts] as const
-          }
-          case "ScriptNOfK": {
-            const encodedScripts: Array<NativeScriptCDDL> = []
-            for (const nestedScript of script.scripts) {
-              const nestedNativeScript = new NativeScript({ script: nestedScript })
-              const encoded = yield* ParseResult.encode(FromCDDL)(nestedNativeScript)
-              encodedScripts.push(encoded)
-            }
-            return [3n, script.required, encodedScripts] as const
-          }
-          case "InvalidBefore":
-            return [4n, script.slot] as const
-          case "InvalidHereafter":
-            return [5n, script.slot] as const
-        }
-      }),
-    decode: (cddl: NativeScriptCDDL): Eff.Effect<NativeScript, ParseResult.ParseIssue> =>
-      Eff.gen(function* () {
-        switch (cddl[0]) {
-          case 0n: {
-            const [, keyHash] = cddl as readonly [0n, Uint8Array]
-            return makeScriptPubKey(keyHash)
-          }
-          case 1n: {
-            const [, scripts] = cddl as readonly [1n, ReadonlyArray<NativeScriptCDDL>]
-            const decodedScripts: Array<NativeScriptVariants> = []
-            for (const scriptCddl of scripts) {
-              const decoded = yield* ParseResult.decode(FromCDDL)(scriptCddl)
-              decodedScripts.push(decoded.script)
-            }
-            return makeScriptAll(decodedScripts)
-          }
-          case 2n: {
-            const [, scripts] = cddl as readonly [2n, ReadonlyArray<NativeScriptCDDL>]
-            const decodedScripts: Array<NativeScriptVariants> = []
-            for (const scriptCddl of scripts) {
-              const decoded = yield* ParseResult.decode(FromCDDL)(scriptCddl)
-              decodedScripts.push(decoded.script)
-            }
-            return makeScriptAny(decodedScripts)
-          }
-          case 3n: {
-            const [, required, scripts] = cddl as readonly [3n, bigint, ReadonlyArray<NativeScriptCDDL>]
-            const decodedScripts: Array<NativeScriptVariants> = []
-            for (const scriptCddl of scripts) {
-              const decoded = yield* ParseResult.decode(FromCDDL)(scriptCddl)
-              decodedScripts.push(decoded.script)
-            }
-            return makeScriptNOfK(required, decodedScripts)
-          }
-          case 4n: {
-            const [, slot] = cddl as readonly [4n, bigint]
-            return makeInvalidBefore(slot)
-          }
-          case 5n: {
-            const [, slot] = cddl as readonly [5n, bigint]
-            return makeInvalidHereafter(slot)
-          }
-          default:
-            return yield* ParseResult.fail(
-              new ParseResult.Type(Schema.typeSchema(NativeScript).ast, cddl, `Unknown native script tag: ${cddl[0]}`)
-            )
-        }
-      })
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
   }
-).annotations({
-  identifier: "NativeScript.FromCDDL"
-})
+).annotations({ identifier: "NativeScript.FromCBORBytes" })
 
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → NativeScript
-  )
-
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → NativeScript
-  )
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "NativeScript.FromCBORHex" })
 
 /**
  * Check if the given value is a valid NativeScript
@@ -555,8 +519,8 @@ export const arbitrary: FastCheck.Arbitrary<NativeScript> = FastCheck.letrec((ti
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): NativeScript =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = (bytes: Uint8Array): NativeScript =>
+  read(new CborReader(bytes))
 
 /**
  * Parse a NativeScript from CBOR hex string.
@@ -564,8 +528,8 @@ export const fromCBORBytes = (bytes: Uint8Array, options?: CBOR.CodecOptions): N
  * @since 2.0.0
  * @category parsing
  */
-export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): NativeScript =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = (hex: string): NativeScript =>
+  fromCBORBytes(Schema.decodeSync(Schema.Uint8ArrayFromHex)(hex))
 
 /**
  * Convert a NativeScript to CBOR bytes.
@@ -573,8 +537,11 @@ export const fromCBORHex = (hex: string, options?: CBOR.CodecOptions): NativeScr
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (nativeScript: NativeScript, options?: CBOR.CodecOptions): Uint8Array =>
-  Schema.encodeSync(FromCBORBytes(options))(nativeScript)
+export const toCBORBytes = (nativeScript: NativeScript, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, nativeScript)
+  return w.finish()
+}
 
 /**
  * Convert a NativeScript to CBOR hex string.
@@ -582,8 +549,10 @@ export const toCBORBytes = (nativeScript: NativeScript, options?: CBOR.CodecOpti
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (nativeScript: NativeScript, options?: CBOR.CodecOptions): string =>
-  Schema.encodeSync(FromCBORHex(options))(nativeScript)
+export const toCBORHex = (nativeScript: NativeScript, profile?: EncodingProfile): string => {
+  const bytes = toCBORBytes(nativeScript, profile)
+  return Schema.encodeSync(Schema.Uint8ArrayFromHex)(bytes)
+}
 
 // ============================================================================
 // Required Signers Calculation

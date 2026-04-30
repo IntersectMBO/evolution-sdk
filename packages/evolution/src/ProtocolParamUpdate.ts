@@ -1,11 +1,13 @@
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Coin from "./Coin.js"
 import * as CostModel from "./CostModel.js"
 import * as NonnegativeInterval from "./NonnegativeInterval.js"
 import * as Numeric from "./Numeric.js"
 import * as UnitInterval from "./UnitInterval.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * ex_unit_prices (domain) = [mem_price : NonnegativeInterval, step_price : NonnegativeInterval]
@@ -128,14 +130,6 @@ export class DRepVotingThresholds extends Schema.Class<DRepVotingThresholds>("DR
  * ProtocolParamUpdate CDDL record with optional fields keyed by indexes.
  * Mirrors Conway CDDL `protocol_param_update`.
  */
-// Map-based CDDL: { * uint => value }
-// We keep the value loosely typed as CBOR to allow nested encoded schemas where needed.
-export const CDDLSchema = Schema.MapFromSelf({
-  key: CBOR.Integer,
-  value: CBOR.CBORSchema
-}).annotations({ identifier: "ProtocolParamUpdate.CDDL" })
-
-export type CDDLSchema = typeof CDDLSchema.Type
 
 /**
  * Convenience domain class mirroring the same structure.
@@ -260,262 +254,307 @@ export class ProtocolParamUpdate extends Schema.TaggedClass<ProtocolParamUpdate>
   }
 }
 
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(ProtocolParamUpdate), {
-  strict: true,
-  encode: (toA) =>
-    Eff.gen(function* () {
-      const out = new Map<bigint, CBOR.CBOR>()
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-      // Simple passthrough bigints
-      if (toA.minfeeA !== undefined) out.set(0n, toA.minfeeA)
-      if (toA.minfeeB !== undefined) out.set(1n, toA.minfeeB)
-      if (toA.maxBlockBodySize !== undefined) out.set(2n, toA.maxBlockBodySize)
-      if (toA.maxTxSize !== undefined) out.set(3n, toA.maxTxSize)
-      if (toA.maxBlockHeaderSize !== undefined) out.set(4n, toA.maxBlockHeaderSize)
-      if (toA.keyDeposit !== undefined) out.set(5n, toA.keyDeposit)
-      if (toA.poolDeposit !== undefined) out.set(6n, toA.poolDeposit)
-      if (toA.maxEpoch !== undefined) out.set(7n, toA.maxEpoch)
-      if (toA.nOpt !== undefined) out.set(8n, toA.nOpt)
+// Inline helpers for interval types: #6.30([uint, uint])
+const writeUnitInterval = (w: CborWriter, v: UnitInterval.UnitInterval): void => {
+  w.writeTagHeader(30)
+  w.writeArrayHeader(2)
+  w.writeUint(v.numerator)
+  w.writeUint(v.denominator)
+  w.writeArrayBreak()
+}
 
-      // Intervals (encoded via tag 30)
-      if (toA.poolPledgeInfluence !== undefined)
-        out.set(9n, yield* ParseResult.encode(NonnegativeInterval.FromCDDL)(toA.poolPledgeInfluence))
-      if (toA.expansionRate !== undefined)
-        out.set(10n, yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.expansionRate))
-      if (toA.treasuryGrowthRate !== undefined)
-        out.set(11n, yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.treasuryGrowthRate))
+const readUnitInterval = (r: CborReader): UnitInterval.UnitInterval => {
+  const tag = r.readTagHeader()
+  if (tag !== 30) throw new Error(`UnitInterval: expected tag 30, got ${tag}`)
+  const count = r.readArrayHeader()
+  const result = new UnitInterval.UnitInterval({
+    numerator: r.readUint(),
+    denominator: r.readUint()
+  })
+  if (count === -1) r.isBreak()
+  return result
+}
 
-      if (toA.minPoolCost !== undefined) out.set(16n, toA.minPoolCost)
-      if (toA.adaPerUtxoByte !== undefined) out.set(17n, toA.adaPerUtxoByte)
+const writeNonnegativeInterval = (w: CborWriter, v: NonnegativeInterval.NonnegativeInterval): void => {
+  w.writeTagHeader(30)
+  w.writeArrayHeader(2)
+  w.writeUint(v.numerator)
+  w.writeUint(v.denominator)
+  w.writeArrayBreak()
+}
 
-      // Cost models (encoded schema)
-      if (toA.costModels !== undefined) out.set(18n, yield* ParseResult.encode(CostModel.FromCDDL)(toA.costModels))
+const readNonnegativeInterval = (r: CborReader): NonnegativeInterval.NonnegativeInterval => {
+  const tag = r.readTagHeader()
+  if (tag !== 30) throw new Error(`NonnegativeInterval: expected tag 30, got ${tag}`)
+  const count = r.readArrayHeader()
+  const result = new NonnegativeInterval.NonnegativeInterval({
+    numerator: r.readUint(),
+    denominator: r.readUint()
+  })
+  if (count === -1) r.isBreak()
+  return result
+}
 
-      // ExUnitPrices (tuple of two nonnegative intervals)
-      if (toA.exUnitPrices !== undefined) {
-        out.set(19n, [
-          yield* ParseResult.encode(NonnegativeInterval.FromCDDL)(toA.exUnitPrices.memPrice),
-          yield* ParseResult.encode(NonnegativeInterval.FromCDDL)(toA.exUnitPrices.stepPrice)
-        ] as const)
-      }
+// Inline helpers for ExUnits: [uint, uint]
+const writeExUnits = (w: CborWriter, v: ExUnits): void => {
+  w.writeArrayHeader(2)
+  w.writeUint(v.mem)
+  w.writeUint(v.steps)
+  w.writeArrayBreak()
+}
 
-      // ExUnits (convert to tuple)
-      if (toA.maxTxExUnits !== undefined) out.set(20n, [toA.maxTxExUnits.mem, toA.maxTxExUnits.steps] as const)
-      if (toA.maxBlockExUnits !== undefined) out.set(21n, [toA.maxBlockExUnits.mem, toA.maxBlockExUnits.steps] as const)
+const readExUnits = (r: CborReader): ExUnits => {
+  const count = r.readArrayHeader()
+  const result = new ExUnits({ mem: r.readUint(), steps: r.readUint() })
+  if (count === -1) r.isBreak()
+  return result
+}
 
-      if (toA.maxValueSize !== undefined) out.set(22n, toA.maxValueSize)
-      if (toA.collateralPercentage !== undefined) out.set(23n, toA.collateralPercentage)
-      if (toA.maxCollateralInputs !== undefined) out.set(24n, toA.maxCollateralInputs)
+// Inline helpers for ExUnitPrices: [NonnegativeInterval, NonnegativeInterval]
+const writeExUnitPrices = (w: CborWriter, v: ExUnitPrices): void => {
+  w.writeArrayHeader(2)
+  writeNonnegativeInterval(w, v.memPrice)
+  writeNonnegativeInterval(w, v.stepPrice)
+  w.writeArrayBreak()
+}
 
-      // PoolVotingThresholds (5 unit intervals)
-      if (toA.poolVotingThresholds !== undefined) {
-        out.set(25n, [
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.poolVotingThresholds.t1),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.poolVotingThresholds.t2),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.poolVotingThresholds.t3),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.poolVotingThresholds.t4),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(toA.poolVotingThresholds.t5)
-        ] as const)
-      }
+const readExUnitPrices = (r: CborReader): ExUnitPrices => {
+  const count = r.readArrayHeader()
+  const result = new ExUnitPrices({
+    memPrice: readNonnegativeInterval(r),
+    stepPrice: readNonnegativeInterval(r)
+  })
+  if (count === -1) r.isBreak()
+  return result
+}
 
-      // DRepVotingThresholds (10 unit intervals)
-      if (toA.drepVotingThresholds !== undefined) {
-        const d = toA.drepVotingThresholds
-        out.set(26n, [
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t1),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t2),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t3),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t4),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t5),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t6),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t7),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t8),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t9),
-          yield* ParseResult.encode(UnitInterval.FromCDDL)(d.t10)
-        ] as const)
-      }
+// Inline helpers for PoolVotingThresholds: [5 unit_intervals]
+const writePoolVotingThresholds = (w: CborWriter, v: PoolVotingThresholds): void => {
+  w.writeArrayHeader(5)
+  writeUnitInterval(w, v.t1)
+  writeUnitInterval(w, v.t2)
+  writeUnitInterval(w, v.t3)
+  writeUnitInterval(w, v.t4)
+  writeUnitInterval(w, v.t5)
+  w.writeArrayBreak()
+}
 
-      if (toA.minCommitteeSize !== undefined) out.set(27n, toA.minCommitteeSize)
-      if (toA.committeeTermLimit !== undefined) out.set(28n, toA.committeeTermLimit)
-      if (toA.governanceActionValidity !== undefined) out.set(29n, toA.governanceActionValidity)
-      if (toA.governanceActionDeposit !== undefined) out.set(30n, toA.governanceActionDeposit)
-      if (toA.drepDeposit !== undefined) out.set(31n, toA.drepDeposit)
-      if (toA.drepInactivityPeriod !== undefined) out.set(32n, toA.drepInactivityPeriod)
+const readPoolVotingThresholds = (r: CborReader): PoolVotingThresholds => {
+  const count = r.readArrayHeader()
+  const result = new PoolVotingThresholds({
+    t1: readUnitInterval(r),
+    t2: readUnitInterval(r),
+    t3: readUnitInterval(r),
+    t4: readUnitInterval(r),
+    t5: readUnitInterval(r)
+  })
+  if (count === -1) r.isBreak()
+  return result
+}
 
-      if (toA.minfeeRefScriptCoinsPerByte !== undefined)
-        out.set(33n, yield* ParseResult.encode(NonnegativeInterval.FromCDDL)(toA.minfeeRefScriptCoinsPerByte))
+// Inline helpers for DRepVotingThresholds: [10 unit_intervals]
+const writeDRepVotingThresholds = (w: CborWriter, v: DRepVotingThresholds): void => {
+  w.writeArrayHeader(10)
+  writeUnitInterval(w, v.t1)
+  writeUnitInterval(w, v.t2)
+  writeUnitInterval(w, v.t3)
+  writeUnitInterval(w, v.t4)
+  writeUnitInterval(w, v.t5)
+  writeUnitInterval(w, v.t6)
+  writeUnitInterval(w, v.t7)
+  writeUnitInterval(w, v.t8)
+  writeUnitInterval(w, v.t9)
+  writeUnitInterval(w, v.t10)
+  w.writeArrayBreak()
+}
 
-      return out
+const readDRepVotingThresholds = (r: CborReader): DRepVotingThresholds => {
+  const count = r.readArrayHeader()
+  const result = new DRepVotingThresholds({
+    t1: readUnitInterval(r),
+    t2: readUnitInterval(r),
+    t3: readUnitInterval(r),
+    t4: readUnitInterval(r),
+    t5: readUnitInterval(r),
+    t6: readUnitInterval(r),
+    t7: readUnitInterval(r),
+    t8: readUnitInterval(r),
+    t9: readUnitInterval(r),
+    t10: readUnitInterval(r)
+  })
+  if (count === -1) r.isBreak()
+  return result
+}
+
+// Inline helper for CostModels: { uint => [* int] }
+const writeCostModels = (w: CborWriter, v: CostModel.CostModels): void => {
+  let count = 0
+  if (v.PlutusV1.costs.length > 0) count++
+  if (v.PlutusV2.costs.length > 0) count++
+  if (v.PlutusV3.costs.length > 0) count++
+  w.writeMapHeader(count)
+  const writeCostArray = (lang: number, costs: ReadonlyArray<bigint>) => {
+    w.writeSmallUint(lang)
+    w.writeArrayHeader(costs.length)
+    for (const c of costs) {
+      if (c >= 0n) w.writeUint(c)
+      else w.writeNint(c)
+    }
+    w.writeArrayBreak()
+  }
+  if (v.PlutusV1.costs.length > 0) writeCostArray(0, v.PlutusV1.costs)
+  if (v.PlutusV2.costs.length > 0) writeCostArray(1, v.PlutusV2.costs)
+  if (v.PlutusV3.costs.length > 0) writeCostArray(2, v.PlutusV3.costs)
+  w.writeMapBreak()
+}
+
+const readCostModels = (r: CborReader): CostModel.CostModels => {
+  const mapCount = r.readMapHeader()
+  let v1: Array<bigint> = []
+  let v2: Array<bigint> = []
+  let v3: Array<bigint> = []
+  const readEntry = () => {
+    const key = r.readUint()
+    const arrCount = r.readArrayHeader()
+    const costs: Array<bigint> = []
+    if (arrCount === -1) {
+      while (!r.isBreak()) costs.push(r.readInt())
+    } else {
+      for (let i = 0; i < arrCount; i++) costs.push(r.readInt())
+    }
+    switch (key) {
+      case 0n: v1 = costs; break
+      case 1n: v2 = costs; break
+      case 2n: v3 = costs; break
+    }
+  }
+  if (mapCount === -1) {
+    while (!r.isBreak()) readEntry()
+  } else {
+    for (let i = 0; i < mapCount; i++) readEntry()
+  }
+  return new CostModel.CostModels({
+    PlutusV1: new CostModel.CostModel({ costs: v1 }),
+    PlutusV2: new CostModel.CostModel({ costs: v2 }),
+    PlutusV3: new CostModel.CostModel({ costs: v3 })
+  })
+}
+
+// Field definitions: [fieldName, cborKey, writeFn, readFn]
+type PPField = {
+  name: string & keyof ProtocolParamUpdate
+  key: number
+  write: (w: CborWriter, v: any) => void
+  read: (r: CborReader) => any
+}
+
+const ppFields: ReadonlyArray<PPField> = [
+  { name: "minfeeA", key: 0, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "minfeeB", key: 1, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "maxBlockBodySize", key: 2, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "maxTxSize", key: 3, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "maxBlockHeaderSize", key: 4, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "keyDeposit", key: 5, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "poolDeposit", key: 6, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "maxEpoch", key: 7, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "nOpt", key: 8, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "poolPledgeInfluence", key: 9, write: (w, v) => writeNonnegativeInterval(w, v), read: (r) => readNonnegativeInterval(r) },
+  { name: "expansionRate", key: 10, write: (w, v) => writeUnitInterval(w, v), read: (r) => readUnitInterval(r) },
+  { name: "treasuryGrowthRate", key: 11, write: (w, v) => writeUnitInterval(w, v), read: (r) => readUnitInterval(r) },
+  { name: "minPoolCost", key: 16, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "adaPerUtxoByte", key: 17, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "costModels", key: 18, write: (w, v) => writeCostModels(w, v), read: (r) => readCostModels(r) },
+  { name: "exUnitPrices", key: 19, write: (w, v) => writeExUnitPrices(w, v), read: (r) => readExUnitPrices(r) },
+  { name: "maxTxExUnits", key: 20, write: (w, v) => writeExUnits(w, v), read: (r) => readExUnits(r) },
+  { name: "maxBlockExUnits", key: 21, write: (w, v) => writeExUnits(w, v), read: (r) => readExUnits(r) },
+  { name: "maxValueSize", key: 22, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "collateralPercentage", key: 23, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "maxCollateralInputs", key: 24, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "poolVotingThresholds", key: 25, write: (w, v) => writePoolVotingThresholds(w, v), read: (r) => readPoolVotingThresholds(r) },
+  { name: "drepVotingThresholds", key: 26, write: (w, v) => writeDRepVotingThresholds(w, v), read: (r) => readDRepVotingThresholds(r) },
+  { name: "minCommitteeSize", key: 27, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "committeeTermLimit", key: 28, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "governanceActionValidity", key: 29, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "governanceActionDeposit", key: 30, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "drepDeposit", key: 31, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "drepInactivityPeriod", key: 32, write: (w, v) => w.writeUint(v), read: (r) => r.readUint() },
+  { name: "minfeeRefScriptCoinsPerByte", key: 33, write: (w, v) => writeNonnegativeInterval(w, v), read: (r) => readNonnegativeInterval(r) },
+]
+
+// Build lookup from CBOR key to field def for read
+const ppFieldsByKey = new Map<number, PPField>(ppFields.map((f) => [f.key, f]))
+
+export const write = (w: CborWriter, v: ProtocolParamUpdate): void => {
+  // Count present fields
+  let count = 0
+  for (const f of ppFields) {
+    if ((v as any)[f.name] !== undefined) count++
+  }
+  w.writeMapHeader(count)
+  for (const f of ppFields) {
+    const val = (v as any)[f.name]
+    if (val !== undefined) {
+      w.writeSmallUint(f.key)
+      f.write(w, val)
+    }
+  }
+  w.writeMapBreak()
+}
+
+export const read = (r: CborReader): ProtocolParamUpdate => {
+  const mapCount = r.readMapHeader()
+  const model: Record<string, unknown> = {}
+  const readEntry = () => {
+    const key = Number(r.readUint())
+    const field = ppFieldsByKey.get(key)
+    if (field) {
+      model[field.name] = field.read(r)
+    } else {
+      r.skip()
+    }
+  }
+  if (mapCount === -1) {
+    while (!r.isBreak()) readEntry()
+  } else {
+    for (let i = 0; i < mapCount; i++) readEntry()
+  }
+  return new ProtocolParamUpdate(model as any)
+}
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(ProtocolParamUpdate),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
     }),
-  decode: (fromA) =>
-    Eff.gen(function* () {
-      const model: {
-        minfeeA?: Coin.Coin
-        minfeeB?: Coin.Coin
-        maxBlockBodySize?: Numeric.Uint32
-        maxTxSize?: Numeric.Uint32
-        maxBlockHeaderSize?: Numeric.Uint16
-        keyDeposit?: Coin.Coin
-        poolDeposit?: Coin.Coin
-        maxEpoch?: Numeric.Uint32
-        nOpt?: Numeric.Uint16
-        poolPledgeInfluence?: NonnegativeInterval.NonnegativeInterval
-        expansionRate?: UnitInterval.UnitInterval
-        treasuryGrowthRate?: UnitInterval.UnitInterval
-        minPoolCost?: Coin.Coin
-        adaPerUtxoByte?: Coin.Coin
-        costModels?: CostModel.CostModels
-        exUnitPrices?: ExUnitPrices
-        maxTxExUnits?: ExUnits
-        maxBlockExUnits?: ExUnits
-        maxValueSize?: Numeric.Uint32
-        collateralPercentage?: Numeric.Uint16
-        maxCollateralInputs?: Numeric.Uint16
-        poolVotingThresholds?: PoolVotingThresholds
-        drepVotingThresholds?: DRepVotingThresholds
-        minCommitteeSize?: Numeric.Uint16
-        committeeTermLimit?: Numeric.Uint32
-        governanceActionValidity?: Numeric.Uint32
-        governanceActionDeposit?: Coin.Coin
-        drepDeposit?: Coin.Coin
-        drepInactivityPeriod?: Numeric.Uint32
-        minfeeRefScriptCoinsPerByte?: NonnegativeInterval.NonnegativeInterval
-      } = {}
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "ProtocolParamUpdate.FromCBORBytes" })
 
-      const get = <T = unknown>(k: bigint): T | undefined =>
-        (fromA as ReadonlyMap<CBOR.CBOR, CBOR.CBOR>).get(k as any) as any
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "ProtocolParamUpdate.FromCBORHex" })
 
-      const v0 = get<Coin.Coin>(0n)
-      if (v0 !== undefined) model.minfeeA = v0
-      const v1 = get<Coin.Coin>(1n)
-      if (v1 !== undefined) model.minfeeB = v1
-      const v2 = get<Numeric.Uint32>(2n)
-      if (v2 !== undefined) model.maxBlockBodySize = v2
-      const v3 = get<Numeric.Uint32>(3n)
-      if (v3 !== undefined) model.maxTxSize = v3
-      const v4 = get<Numeric.Uint16>(4n)
-      if (v4 !== undefined) model.maxBlockHeaderSize = v4
-      const v5 = get<Coin.Coin>(5n)
-      if (v5 !== undefined) model.keyDeposit = v5
-      const v6 = get<Coin.Coin>(6n)
-      if (v6 !== undefined) model.poolDeposit = v6
-      const v7 = get<Numeric.Uint32>(7n)
-      if (v7 !== undefined) model.maxEpoch = v7
-      const v8 = get<Numeric.Uint16>(8n)
-      if (v8 !== undefined) model.nOpt = v8
+export const toCBOR = (data: ProtocolParamUpdate, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(256, profile)
+  write(w, data)
+  return w.finishView()
+}
 
-      const v9 = get(9n)
-      if (v9 !== undefined)
-        model.poolPledgeInfluence = yield* ParseResult.decode(NonnegativeInterval.FromCDDL)(v9 as any)
-      const v10 = get(10n)
-      if (v10 !== undefined) model.expansionRate = yield* ParseResult.decode(UnitInterval.FromCDDL)(v10 as any)
-      const v11 = get(11n)
-      if (v11 !== undefined) model.treasuryGrowthRate = yield* ParseResult.decode(UnitInterval.FromCDDL)(v11 as any)
-
-      const v16 = get<Coin.Coin>(16n)
-      if (v16 !== undefined) model.minPoolCost = v16
-      const v17 = get<Coin.Coin>(17n)
-      if (v17 !== undefined) model.adaPerUtxoByte = v17
-
-      const v18 = get(18n)
-      if (v18 !== undefined) model.costModels = yield* ParseResult.decode(CostModel.FromCDDL)(v18 as any)
-
-      const v19 = get<readonly [unknown, unknown]>(19n)
-      if (v19 !== undefined) {
-        const [mem, step] = v19 as any
-        model.exUnitPrices = new ExUnitPrices({
-          memPrice: yield* ParseResult.decode(NonnegativeInterval.FromCDDL)(mem),
-          stepPrice: yield* ParseResult.decode(NonnegativeInterval.FromCDDL)(step)
-        })
-      }
-
-      const v20 = get<readonly [bigint, bigint]>(20n)
-      if (v20 !== undefined) model.maxTxExUnits = new ExUnits({ mem: v20[0], steps: v20[1] })
-      const v21 = get<readonly [bigint, bigint]>(21n)
-      if (v21 !== undefined) model.maxBlockExUnits = new ExUnits({ mem: v21[0], steps: v21[1] })
-
-      const v22 = get<Numeric.Uint32>(22n)
-      if (v22 !== undefined) model.maxValueSize = v22
-      const v23 = get<Numeric.Uint16>(23n)
-      if (v23 !== undefined) model.collateralPercentage = v23
-      const v24 = get<Numeric.Uint16>(24n)
-      if (v24 !== undefined) model.maxCollateralInputs = v24
-
-      const v25 = get<readonly [unknown, unknown, unknown, unknown, unknown]>(25n)
-      if (v25 !== undefined) {
-        const [a, b, c, d, e] = v25 as any
-        model.poolVotingThresholds = new PoolVotingThresholds({
-          t1: yield* ParseResult.decode(UnitInterval.FromCDDL)(a),
-          t2: yield* ParseResult.decode(UnitInterval.FromCDDL)(b),
-          t3: yield* ParseResult.decode(UnitInterval.FromCDDL)(c),
-          t4: yield* ParseResult.decode(UnitInterval.FromCDDL)(d),
-          t5: yield* ParseResult.decode(UnitInterval.FromCDDL)(e)
-        })
-      }
-
-      const v26 =
-        get<readonly [unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown]>(26n)
-      if (v26 !== undefined) {
-        const [a, b, c, d, e, f, g, h, i, j] = v26 as any
-        model.drepVotingThresholds = new DRepVotingThresholds({
-          t1: yield* ParseResult.decode(UnitInterval.FromCDDL)(a),
-          t2: yield* ParseResult.decode(UnitInterval.FromCDDL)(b),
-          t3: yield* ParseResult.decode(UnitInterval.FromCDDL)(c),
-          t4: yield* ParseResult.decode(UnitInterval.FromCDDL)(d),
-          t5: yield* ParseResult.decode(UnitInterval.FromCDDL)(e),
-          t6: yield* ParseResult.decode(UnitInterval.FromCDDL)(f),
-          t7: yield* ParseResult.decode(UnitInterval.FromCDDL)(g),
-          t8: yield* ParseResult.decode(UnitInterval.FromCDDL)(h),
-          t9: yield* ParseResult.decode(UnitInterval.FromCDDL)(i),
-          t10: yield* ParseResult.decode(UnitInterval.FromCDDL)(j)
-        })
-      }
-
-      const v27 = get<Numeric.Uint16>(27n)
-      if (v27 !== undefined) model.minCommitteeSize = v27
-      const v28 = get<Numeric.Uint32>(28n)
-      if (v28 !== undefined) model.committeeTermLimit = v28
-      const v29 = get<Numeric.Uint32>(29n)
-      if (v29 !== undefined) model.governanceActionValidity = v29
-      const v30 = get<Coin.Coin>(30n)
-      if (v30 !== undefined) model.governanceActionDeposit = v30
-      const v31 = get<Coin.Coin>(31n)
-      if (v31 !== undefined) model.drepDeposit = v31
-      const v32 = get<Numeric.Uint32>(32n)
-      if (v32 !== undefined) model.drepInactivityPeriod = v32
-
-      const v33 = get(33n)
-      if (v33 !== undefined)
-        model.minfeeRefScriptCoinsPerByte = yield* ParseResult.decode(NonnegativeInterval.FromCDDL)(v33 as any)
-
-      return new ProtocolParamUpdate(model)
-    })
-})
-
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
-    identifier: "ProtocolParamUpdate.FromCBORBytes"
-  })
-
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
-    identifier: "ProtocolParamUpdate.FromCBORHex"
-  })
-
-export const toCBOR = (data: ProtocolParamUpdate, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
-
-export const fromCBOR = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBOR = Schema.decodeSync(FromCBORBytes)
 
 export const toCBORBytes = toCBOR
 export const fromCBORBytes = fromCBOR
 
-export const toCBORHex = (data: ProtocolParamUpdate, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: ProtocolParamUpdate, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(data, profile))
 
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 const coinArb = Coin.arbitrary
 const costModelsArb = FastCheck.record({

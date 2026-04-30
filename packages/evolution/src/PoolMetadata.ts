@@ -1,8 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
-import * as CBOR from "./CBOR.js"
 import * as Url from "./Url.js"
+import { CborReader } from "./v2/CborReader.js"
+import { capture, CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for PoolMetadata representing pool metadata information.
@@ -70,35 +71,28 @@ export class PoolMetadata extends Schema.TaggedClass<PoolMetadata>()("PoolMetada
   }
 }
 
-/**
- * CDDL schema for PoolMetadata as defined in the specification:
- * pool_metadata = [url, bytes]
- *
- * Transforms between CBOR tuple structure and PoolMetadata model.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transform(
-  Schema.Tuple(
-    CBOR.Text, // url as CBOR text string
-    CBOR.ByteArray // hash as CBOR byte string
-  ),
-  Schema.typeSchema(PoolMetadata),
-  {
-    strict: true,
-    encode: (poolMetadata) => [poolMetadata.url.href, poolMetadata.hash] as const,
-    decode: ([urlText, hash]) => {
-      const url = Url.Url.make({
-        href: urlText
-      })
-      return new PoolMetadata({ url, hash })
-    }
-  }
-).annotations({
-  identifier: "PoolMetadata.FromCDDL",
-  description: "Transforms CBOR structure to PoolMetadata"
-})
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: PoolMetadata): void => {
+  w.writeArrayHeader(2)
+  Url.write(w, v.url)
+  w.writeBytes(v.hash)
+  w.writeArrayBreak()
+}
+
+export const read = (r: CborReader): PoolMetadata => {
+  const start = r.position()
+  const count = r.readArrayHeader()
+  const pm = new PoolMetadata({
+    url: Url.read(r),
+    hash: r.readBytesView()
+  })
+  if (count === -1) r.isBreak()
+  capture(pm, r.buffer().subarray(start, r.position()))
+  return pm
+}
 
 /**
  * FastCheck arbitrary for generating random PoolMetadata instances
@@ -118,14 +112,18 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → PoolMetadata
-  ).annotations({
-    identifier: "PoolMetadata.FromCBORBytes",
-    description: "Transforms CBOR bytes to PoolMetadata"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(PoolMetadata),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "PoolMetadata.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for PoolMetadata.
@@ -134,14 +132,8 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → PoolMetadata
-  ).annotations({
-    identifier: "PoolMetadata.FromCBORHex",
-    description: "Transforms CBOR hex string to PoolMetadata"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "PoolMetadata.FromCBORHex" })
 
 /**
  * Convert CBOR bytes to PoolMetadata (unsafe)
@@ -149,8 +141,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
 
 /**
  * Convert CBOR hex string to PoolMetadata (unsafe)
@@ -158,8 +149,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category conversion
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert PoolMetadata to CBOR bytes (unsafe)
@@ -167,8 +157,11 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORBytes = (poolMetadata: PoolMetadata, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(poolMetadata)
+export const toCBORBytes = (poolMetadata: PoolMetadata, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(64, profile)
+  write(w, poolMetadata)
+  return w.finishView()
+}
 
 /**
  * Convert PoolMetadata to CBOR hex string (unsafe)
@@ -176,5 +169,5 @@ export const toCBORBytes = (poolMetadata: PoolMetadata, options: CBOR.CodecOptio
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORHex = (poolMetadata: PoolMetadata, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(poolMetadata)
+export const toCBORHex = (poolMetadata: PoolMetadata, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(poolMetadata, profile))

@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Schema for BlockBodyHash representing a block body hash.
@@ -12,12 +14,12 @@ import * as Bytes32 from "./Bytes32.js"
  * @category model
  */
 export class BlockBodyHash extends Schema.TaggedClass<BlockBodyHash>()("BlockBodyHash", {
-  bytes: Bytes32.BytesFromHex
+  hash: Bytes32.BytesFromHex
 }) {
   toJSON() {
     return {
       _tag: "BlockBodyHash" as const,
-      bytes: Bytes.toHex(this.bytes)
+      hash: Bytes.toHex(this.hash)
     }
   }
 
@@ -30,13 +32,24 @@ export class BlockBodyHash extends Schema.TaggedClass<BlockBodyHash>()("BlockBod
   }
 
   [Equal.symbol](that: unknown): boolean {
-    return that instanceof BlockBodyHash && Bytes.equals(this.bytes, that.bytes)
+    return that instanceof BlockBodyHash && Bytes.equals(this.hash, that.hash)
   }
 
   [Hash.symbol](): number {
-    return Hash.array(Array.from(this.bytes))
+    return Hash.cached(this, Hash.array(Array.from(this.hash)))
   }
 }
+
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: BlockBodyHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): BlockBodyHash => new BlockBodyHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
 
 /**
  * Schema for transforming between Uint8Array and BlockBodyHash.
@@ -44,11 +57,18 @@ export class BlockBodyHash extends Schema.TaggedClass<BlockBodyHash>()("BlockBod
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(BlockBodyHash), {
-  strict: true,
-  decode: (bytes) => new BlockBodyHash({ bytes }, { disableValidation: true }),
-  encode: (bbh) => bbh.bytes
-}).annotations({
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(BlockBodyHash),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new BlockBodyHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (bbh) => ParseResult.succeed(bbh.hash)
+  }
+).annotations({
   identifier: "BlockBodyHash.FromBytes"
 })
 
@@ -59,8 +79,8 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> Bytes32
-  FromBytes // Bytes32 -> BlockBodyHash
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "BlockBodyHash.FromHex"
 })
@@ -80,7 +100,7 @@ export const isBlockBodyHash = Schema.is(BlockBodyHash)
  * @category arbitrary
  */
 export const arbitrary = FastCheck.uint8Array({ minLength: 32, maxLength: 32 }).map(
-  (bytes) => new BlockBodyHash({ bytes }, { disableValidation: true })
+  (hash) => new BlockBodyHash({ hash })
 )
 
 // ============================================================================
@@ -109,7 +129,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: BlockBodyHash): Uint8Array => v.hash
 
 /**
  * Encode BlockBodyHash to hex string.
@@ -117,4 +137,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: BlockBodyHash): string => Bytes.toHex(v.hash)

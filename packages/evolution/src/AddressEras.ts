@@ -1,5 +1,5 @@
 import { bech32 } from "@scure/base"
-import { Effect as Eff, FastCheck, ParseResult, Schema } from "effect"
+import { FastCheck, ParseResult, Schema } from "effect"
 
 import * as BaseAddress from "./BaseAddress.js"
 import * as ByronAddress from "./ByronAddress.js"
@@ -89,44 +89,43 @@ export const FromBytes = Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schem
         return ParseResult.encode(ByronAddress.BytesSchema)(toA)
     }
   },
-  decode: (_, __, ast, fromA) =>
-    Eff.gen(function* () {
-      const header = fromA[0]
-      // Extract address type from the upper 4 bits (bits 4-7)
-      const addressType = header >> 4
+  decode: (_, __, ast, fromA) => {
+    const header = fromA[0]
+    // Extract address type from the upper 4 bits (bits 4-7)
+    const addressType = header >> 4
 
-      switch (addressType) {
-        // Base address types (0000, 0001, 0010, 0011)
-        // Format: [payment credential, stake credential]
-        case 0b0000: // Key payment, Key stake
-        case 0b0001: // Script payment, Key stake
-        case 0b0010: // Key payment, Script stake
-        case 0b0011:
-          return yield* ParseResult.decode(BaseAddress.FromBytes)(fromA)
+    switch (addressType) {
+      // Base address types (0000, 0001, 0010, 0011)
+      // Format: [payment credential, stake credential]
+      case 0b0000: // Key payment, Key stake
+      case 0b0001: // Script payment, Key stake
+      case 0b0010: // Key payment, Script stake
+      case 0b0011:
+        return ParseResult.decode(BaseAddress.FromBytes)(fromA)
 
-        // Enterprise address types (0110, 0111)
-        // Format: [payment credential only]
-        case 0b0110: // Key payment
-        case 0b0111:
-          return yield* ParseResult.decode(EnterpriseAddress.FromBytes)(fromA)
+      // Enterprise address types (0110, 0111)
+      // Format: [payment credential only]
+      case 0b0110: // Key payment
+      case 0b0111:
+        return ParseResult.decode(EnterpriseAddress.FromBytes)(fromA)
 
-        // Pointer address types (0100, 0101)
-        // Format: [payment credential, variable length integers for slot, txIndex, certIndex]
-        case 0b0100: // Key payment with pointer
-        case 0b0101:
-          return yield* ParseResult.decode(PointerAddress.FromBytes)(fromA)
+      // Pointer address types (0100, 0101)
+      // Format: [payment credential, variable length integers for slot, txIndex, certIndex]
+      case 0b0100: // Key payment with pointer
+      case 0b0101:
+        return ParseResult.decode(PointerAddress.FromBytes)(fromA)
 
-        case 0b1110:
-        case 0b1111:
-          return yield* ParseResult.decode(RewardAccount.FromBytes)(fromA)
+      case 0b1110:
+      case 0b1111:
+        return ParseResult.decode(RewardAccount.FromBytes)(fromA)
 
-        case 0b1000:
-          return yield* ParseResult.decode(ByronAddress.BytesSchema)(fromA)
+      case 0b1000:
+        return ParseResult.decode(ByronAddress.BytesSchema)(fromA)
 
-        default:
-          return yield* ParseResult.fail(new ParseResult.Type(ast, fromA, `Unknown address type: ${addressType}`))
-      }
-    })
+      default:
+        return ParseResult.fail(new ParseResult.Type(ast, fromA, `Unknown address type: ${addressType}`))
+    }
+  }
 })
 
 /**
@@ -145,47 +144,50 @@ export const FromHex = Schema.compose(Schema.Uint8ArrayFromHex, FromBytes)
  */
 export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchema(AddressEras), {
   strict: true,
-  encode: (_, __, ast, toA) =>
-    Eff.gen(function* () {
-      const bytes = yield* ParseResult.encode(FromBytes)(toA)
-      let prefix: string
-      switch (toA._tag) {
-        case "BaseAddress":
-        case "EnterpriseAddress":
-        case "PointerAddress":
-          prefix = toA.networkId === 0 ? "addr_test" : "addr"
-          break
-        case "RewardAccount":
-          prefix = toA.networkId === 0 ? "stake_test" : "stake"
-          break
-        case "ByronAddress":
-          return yield* ParseResult.fail(
-            new ParseResult.Type(ast, toA, "Byron addresses do not support Bech32 encoding")
-          )
+  encode: (_, __, ast, toA) => {
+    if (toA._tag === "ByronAddress") {
+      return ParseResult.fail(
+        new ParseResult.Type(ast, toA, "Byron addresses do not support Bech32 encoding")
+      )
+    }
+    return ParseResult.flatMap(
+      ParseResult.encode(FromBytes)(toA),
+      (bytes) => {
+        let prefix: string
+        switch (toA._tag) {
+          case "BaseAddress":
+          case "EnterpriseAddress":
+          case "PointerAddress":
+            prefix = toA.networkId === 0 ? "addr_test" : "addr"
+            break
+          case "RewardAccount":
+            prefix = toA.networkId === 0 ? "stake_test" : "stake"
+            break
+        }
+        return ParseResult.try({
+          try: () => {
+            const words = bech32.toWords(bytes)
+            return bech32.encode(prefix, words, false)
+          },
+          catch: (error) => new ParseResult.Type(ast, toA, `Failed to encode Bech32: ${(error as Error).message}`)
+        })
       }
-      const result = yield* Eff.try({
-        try: () => {
-          const words = bech32.toWords(bytes)
-          return bech32.encode(prefix, words, false)
-        },
-        catch: (error) => new ParseResult.Type(ast, toA, `Failed to encode Bech32: ${(error as Error).message}`)
-      })
-      return result
-    }),
+    )
+  },
   decode: (fromA, _, ast) =>
-    Eff.gen(function* () {
-      const result = yield* Eff.try({
+    ParseResult.flatMap(
+      ParseResult.try({
+        // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
+        // but Schema provides plain string. Consider using decodeToBytes which accepts string.
         try: () => {
-          // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
-          // but Schema provides plain string. Consider using decodeToBytes which accepts string.
           const decoded = bech32.decode(fromA as any, false)
           const bytes = bech32.fromWords(decoded.words)
           return new Uint8Array(bytes)
         },
         catch: (error) => new ParseResult.Type(ast, fromA, `Failed to decode Bech32: ${(error as Error).message}`)
-      })
-      return yield* ParseResult.decode(FromBytes)(result)
-    })
+      }),
+      (result) => ParseResult.decode(FromBytes)(result)
+    )
 }).annotations({
   identifier: "Address.FromBech32",
   description: "Transforms Bech32 string to Address"

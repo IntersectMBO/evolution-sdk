@@ -1,7 +1,9 @@
-import { BigDecimal, Effect, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { BigDecimal, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
-import * as CBOR from "./CBOR.js"
+import * as Bytes from "./Bytes.js"
 import * as Numeric from "./Numeric.js"
+import { CborReader } from "./v2/CborReader.js"
+import { CborWriter, type EncodingProfile } from "./v2/CborWriter.js"
 
 /**
  * Schema for UnitInterval representing a fractional value between 0 and 1.
@@ -104,52 +106,26 @@ export class UnitInterval extends Schema.Class<UnitInterval>("UnitInterval")({
   }
 }
 
-export const CDDLSchema = CBOR.tag(30, Schema.Tuple(CBOR.Integer, CBOR.Integer))
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
 
-/**
- * CDDL schema for UnitInterval following the Conway specification.
- *
- * ```
- * unit_interval = #6.30([uint, uint])
- * ```
- *
- * Transforms between CBOR tag 30 structure and UnitInterval model.
- *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(UnitInterval), {
-  strict: true,
-  encode: (_, __, ___, unitInterval) =>
-    Effect.succeed({
-      _tag: "Tag" as const,
-      tag: 30 as const,
-      value: [unitInterval.numerator, unitInterval.denominator] as const
-    }),
-  decode: (_, __, ___, taggedValue) =>
-    Effect.gen(function* () {
-      // Validate tag number
-      if (taggedValue.tag !== 30) {
-        return yield* Effect.fail(
-          new ParseResult.Type(
-            UnitInterval.ast,
-            taggedValue,
-            `Expected tag 30 for UnitInterval, got ${taggedValue.tag}`
-          )
-        )
-      }
+export const write = (w: CborWriter, v: UnitInterval): void => {
+  w.writeTagHeader(30)
+  w.writeArrayHeader(2)
+  w.writeUint(v.numerator)
+  w.writeUint(v.denominator)
+  w.writeArrayBreak()
+}
 
-      // Validate that the value is a tuple of two integers
-      const tupleValue = yield* ParseResult.decodeUnknown(Schema.Tuple(CBOR.Integer, CBOR.Integer))(taggedValue.value)
-
-      const [numerator, denominator] = tupleValue
-
-      // Create and validate UnitInterval using the validated schema
-      return new UnitInterval({ numerator, denominator })
-    })
-}).annotations({
-  identifier: "UnitInterval.CDDL"
-})
+export const read = (r: CborReader): UnitInterval => {
+  r.readTagHeader()
+  const count = r.readArrayHeader()
+  const numerator = r.readUint()
+  const denominator = r.readUint()
+  if (count === -1) r.isBreak()
+  return new UnitInterval({ numerator, denominator })
+}
 
 /**
  * CBOR bytes transformation schema for UnitInterval.
@@ -158,13 +134,18 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Uni
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → UnitInterval
-  ).annotations({
-    identifier: "UnitInterval.CBORBytes"
-  })
+export const FromCBORBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(UnitInterval),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => read(new CborReader(bytes)),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (_, __, ast) => ParseResult.fail(new ParseResult.Type(ast, _, "Use toCBORBytes instead"))
+  }
+).annotations({ identifier: "UnitInterval.FromCBORBytes" })
 
 /**
  * CBOR hex transformation schema for UnitInterval.
@@ -173,13 +154,45 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    Schema.Uint8ArrayFromHex, // string → Uint8Array
-    FromCBORBytes(options) // Uint8Array → UnitInterval
-  ).annotations({
-    identifier: "UnitInterval.CBORHex"
-  })
+export const FromCBORHex = Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes)
+  .annotations({ identifier: "UnitInterval.FromCBORHex" })
+
+/**
+ * Convert UnitInterval to CBOR bytes.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORBytes = (interval: UnitInterval, profile?: EncodingProfile): Uint8Array => {
+  const w = new CborWriter(128, profile)
+  write(w, interval)
+  return w.finish()
+}
+
+/**
+ * Convert UnitInterval to CBOR hex.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORHex = (interval: UnitInterval, profile?: EncodingProfile): string =>
+  Bytes.toHex(toCBORBytes(interval, profile))
+
+/**
+ * Convert CBOR bytes to UnitInterval.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromCBORBytes = Schema.decodeSync(FromCBORBytes)
+
+/**
+ * Convert CBOR hex string to UnitInterval.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromCBORHex = Schema.decodeSync(FromCBORHex)
 
 /**
  * Convert UnitInterval to BigDecimal value.

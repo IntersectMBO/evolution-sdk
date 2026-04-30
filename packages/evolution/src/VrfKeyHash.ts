@@ -1,7 +1,9 @@
-import { Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "./Bytes.js"
 import * as Bytes32 from "./Bytes32.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * VrfKeyHash is a 32-byte hash representing a VRF verification key.
@@ -37,17 +39,35 @@ export class VrfKeyHash extends Schema.TaggedClass<VrfKeyHash>()("VrfKeyHash", {
   }
 }
 
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes32.BytesFromHex), Schema.typeSchema(VrfKeyHash), {
-  strict: true,
-  decode: (bytes) => new VrfKeyHash({ hash: bytes }, { disableValidation: true }), // Disable validation since we already check length in Bytes32
-  encode: (vrfKeyHash) => vrfKeyHash.hash
-}).annotations({
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: VrfKeyHash): void => w.writeBytes(v.hash)
+export const read = (r: CborReader): VrfKeyHash => new VrfKeyHash({ hash: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(VrfKeyHash),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new VrfKeyHash({ hash: bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.hash)
+  }
+).annotations({
   identifier: "VrfKeyHash.FromBytes"
 })
 
 export const FromHex = Schema.compose(
-  Bytes32.BytesFromHex, // string -> hex string
-  FromBytes // hex string -> VrfKeyHash
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "VrfKeyHash.FromHex"
 })
@@ -61,7 +81,7 @@ export const FromHex = Schema.compose(
 export const arbitrary = FastCheck.uint8Array({
   minLength: Bytes32.BYTES_LENGTH,
   maxLength: Bytes32.BYTES_LENGTH
-}).map((bytes) => new VrfKeyHash({ hash: bytes }, { disableValidation: true }))
+}).map((bytes) => new VrfKeyHash({ hash: bytes }))
 
 // ============================================================================
 // Root Functions
@@ -89,7 +109,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: VrfKeyHash): Uint8Array => v.hash
 
 /**
  * Encode VrfKeyHash to hex string.
@@ -97,4 +117,4 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: VrfKeyHash): string => Bytes.toHex(v.hash)

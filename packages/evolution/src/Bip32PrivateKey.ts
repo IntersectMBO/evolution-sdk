@@ -4,12 +4,14 @@ import { bytesToNumberLE } from "@noble/curves/utils.js"
 import { hmac } from "@noble/hashes/hmac.js"
 import { pbkdf2 } from "@noble/hashes/pbkdf2"
 import { sha512 } from "@noble/hashes/sha2"
-import { Data, Effect, Equal, FastCheck, Hash, Inspectable, Schema } from "effect"
+import { Data, Effect, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bip32PublicKey from "./Bip32PublicKey.js"
 import * as Bytes from "./Bytes.js"
 import * as Bytes96 from "./Bytes96.js"
 import * as PrivateKey from "./PrivateKey.js"
+import type { CborReader } from "./v2/CborReader.js"
+import type { CborWriter } from "./v2/CborWriter.js"
 
 /**
  * Error class for Bip32PrivateKey related operations.
@@ -54,19 +56,35 @@ export class Bip32PrivateKey extends Schema.TaggedClass<Bip32PrivateKey>()("Bip3
   }
 }
 
+// ============================================================================
+// Write / Read (CborReader/CborWriter — for composition in parent types)
+// ============================================================================
+
+export const write = (w: CborWriter, v: Bip32PrivateKey): void => w.writeBytes(v.bytes)
+export const read = (r: CborReader): Bip32PrivateKey => new Bip32PrivateKey({ bytes: r.readBytesView() })
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 /**
  * Schema for transforming between Uint8Array and Bip32PrivateKey.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromBytes = Schema.transform(Schema.typeSchema(Bytes96.BytesFromHex), Schema.typeSchema(Bip32PrivateKey), {
-  strict: true,
-  decode: (bytes) => new Bip32PrivateKey({ bytes }, { disableValidation: true }),
-  encode: (bip32PrivateKey) => bip32PrivateKey.bytes
-}).annotations({
-  identifier: "Bip32PrivateKey.FromBytes"
-})
+export const FromBytes = Schema.transformOrFail(
+  Schema.Uint8ArrayFromSelf,
+  Schema.typeSchema(Bip32PrivateKey),
+  {
+    strict: true,
+    decode: (bytes, _, ast) => ParseResult.try({
+      try: () => new Bip32PrivateKey({ bytes }),
+      catch: (e) => new ParseResult.Type(ast, bytes, e instanceof Error ? e.message : String(e))
+    }),
+    encode: (v) => ParseResult.succeed(v.bytes)
+  }
+).annotations({ identifier: "Bip32PrivateKey.FromBytes" })
 
 /**
  * Schema for transforming between hex string and Bip32PrivateKey.
@@ -75,8 +93,8 @@ export const FromBytes = Schema.transform(Schema.typeSchema(Bytes96.BytesFromHex
  * @category schemas
  */
 export const FromHex = Schema.compose(
-  Bytes96.BytesFromHex, // string -> Bytes96
-  FromBytes // Bytes96 -> Bip32PrivateKey
+  Schema.Uint8ArrayFromHex,
+  FromBytes
 ).annotations({
   identifier: "Bip32PrivateKey.FromHex"
 })
@@ -168,7 +186,7 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toBytes = Schema.encodeSync(FromBytes)
+export const toBytes = (v: Bip32PrivateKey): Uint8Array => v.bytes
 
 /**
  * Convert a Bip32PrivateKey to hex string.
@@ -176,7 +194,7 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (v: Bip32PrivateKey): string => Bytes.toHex(v.bytes)
 
 /**
  * Create a Bip32PrivateKey from BIP39 entropy with PBKDF2 key stretching.
@@ -261,7 +279,7 @@ export const from128XPRV = (bytes: Uint8Array): Bip32PrivateKey => {
 }
 
 export const arbitrary = FastCheck.uint8Array({ minLength: 96, maxLength: 96 }).map(
-  (bytes) => new Bip32PrivateKey({ bytes }, { disableValidation: true })
+  (bytes) => new Bip32PrivateKey({ bytes })
 )
 
 export namespace Either {

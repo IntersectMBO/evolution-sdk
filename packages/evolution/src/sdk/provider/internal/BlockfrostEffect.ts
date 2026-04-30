@@ -646,7 +646,7 @@ export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: Dat
       Effect.flatMap((datum) => {
         // Parse CBOR hex to PlutusData
         return Effect.try({
-          try: () => Schema.decodeSync(PlutusData.FromCBORHex())(datum.cbor),
+          try: () => Schema.decodeSync(PlutusData.FromCBORHex)(datum.cbor),
           catch: (error) => new ProviderError({ message: "Failed to parse datum CBOR", cause: error })
         })
       }),
