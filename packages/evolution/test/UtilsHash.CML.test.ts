@@ -1,10 +1,9 @@
 import * as CML from "@dcspark/cardano-multiplatform-lib-nodejs"
-import { FastCheck, Schema } from "effect"
+import { FastCheck } from "effect"
 import { describe, expect, it } from "vitest"
 
 import * as AuxiliaryData from "../src/AuxiliaryData.js"
 import * as AuxiliaryDataHash from "../src/AuxiliaryDataHash.js"
-import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Data from "../src/Data.js"
 import * as Redeemer from "../src/Redeemer.js"
@@ -111,10 +110,8 @@ describe("UtilsHash helpers CML parity", () => {
         const evolutionHex = ScriptDataHash.toHex(evolution)
 
         // Build CML inputs from Evolution CBOR encodings
-        // Redeemers: encode array of CDDL tuples and feed to CML
-        const encRedeemer = Schema.encodeSync(Redeemer.FromCDDL)
-        const redeemersCbor = redeemers.map((r) => encRedeemer(r))
-        const redeemersHex = CBOR.toCBORHex(redeemersCbor)
+        // Redeemers: encode via CborWriter and feed to CML
+        const redeemersHex = Redeemers.toCBORHex(redeemerArray)
         const cmlRedeemers = CML.Redeemers.from_cbor_hex(redeemersHex)
 
         // CostModels: direct CBOR hex roundtrip

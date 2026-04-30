@@ -1,4 +1,4 @@
-import { Equal, ParseResult } from "effect"
+import { Equal } from "effect"
 import { describe, expect, test } from "vitest"
 
 import type * as Coin from "../src/Coin.js"
@@ -10,6 +10,8 @@ import * as RewardAccount from "../src/RewardAccount.js"
 import * as ScriptHash from "../src/ScriptHash.js"
 import * as TransactionHash from "../src/TransactionHash.js"
 import * as UnitInterval from "../src/UnitInterval.js"
+import { CborReader } from "../src/v2/CborReader.js"
+import { CborWriter } from "../src/v2/CborWriter.js"
 
 describe("GovernanceAction Map types CBOR round-trip", () => {
   test("TreasuryWithdrawalsAction with Map<RewardAccount, Coin> should round-trip correctly", () => {
@@ -41,11 +43,13 @@ describe("GovernanceAction Map types CBOR round-trip", () => {
         policyHash
       })
 
-      // Encode to CBOR
-      const encoded = ParseResult.encodeSync(GovernanceAction.TreasuryWithdrawalsActionFromCDDL)(original)
+      // Encode to CBOR via CborWriter
+      const w = new CborWriter(256)
+      GovernanceAction.write(w, original)
+      const bytes = w.finishView()
 
-      // Decode back
-      const decoded = ParseResult.decodeSync(GovernanceAction.TreasuryWithdrawalsActionFromCDDL)(encoded)
+      // Decode back via CborReader
+      const decoded = GovernanceAction.read(new CborReader(bytes))
 
       // Check equality using Effect's Equal
       expect(Equal.equals(original, decoded)).toBe(true)
@@ -86,11 +90,13 @@ describe("GovernanceAction Map types CBOR round-trip", () => {
         threshold
       })
 
-      // Encode to CBOR
-      const encoded = ParseResult.encodeSync(GovernanceAction.UpdateCommitteeActionFromCDDL)(original)
+      // Encode to CBOR via CborWriter
+      const w = new CborWriter(256)
+      GovernanceAction.write(w, original)
+      const bytes = w.finishView()
 
-      // Decode back
-      const decoded = ParseResult.decodeSync(GovernanceAction.UpdateCommitteeActionFromCDDL)(encoded)
+      // Decode back via CborReader
+      const decoded = GovernanceAction.read(new CborReader(bytes))
 
       // Check equality using Effect's Equal
       expect(Equal.equals(original, decoded)).toBe(true)
