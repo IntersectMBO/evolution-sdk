@@ -1,11 +1,16 @@
 ---
 title: Message Signing
-description: Sign and verify messages using CIP-30 COSE signatures
+description: Sign and verify messages using CIP-8 COSE signatures
 ---
 
 # Message Signing
 
-Evolution SDK implements the CIP-30 message signing standard using COSE (CBOR Object Signing and Encryption). This allows wallets to sign arbitrary data and prove ownership of an address without submitting a transaction.
+Evolution SDK implements [CIP-8](https://cips.cardano.org/cip/CIP-0008) message signing using COSE (CBOR Object Signing and Encryption). This is the same byte-level format that [CIP-30](https://cips.cardano.org/cip/CIP-0030) browser wallets return from `api.signData()`, so signatures produced here are interoperable with CIP-30 wallet flows.
+
+- **CIP-8** defines the on-the-wire format: a `COSE_Sign1` structure with the signer's address in the protected header, EdDSA/Ed25519, and a `Sig_structure1` over the payload.
+- **CIP-30** is the wallet JS API; its `api.signData(addr, payload)` returns a `DataSignature = { signature, key }` whose contents are a CIP-8 `COSE_Sign1` + `COSE_Key` pair.
+
+This lets wallets sign arbitrary data and prove ownership of an address without submitting a transaction.
 
 Common use cases:
 - **Authentication** — Prove you control an address (login with wallet)
