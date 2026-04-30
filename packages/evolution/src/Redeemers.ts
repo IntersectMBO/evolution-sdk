@@ -1,4 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2"
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as CBOR from "./CBOR.js"

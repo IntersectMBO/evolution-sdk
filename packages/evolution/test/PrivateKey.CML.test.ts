@@ -435,7 +435,7 @@ describe("PrivateKey CML Compatibility", () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
       const { mnemonicToEntropy } = require("@scure/bip39") as typeof import("@scure/bip39")
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
-      const { wordlist } = require("@scure/bip39/wordlists/english") as typeof import("@scure/bip39/wordlists/english")
+      const { wordlist } = require("@scure/bip39/wordlists/english.js") as typeof import("@scure/bip39/wordlists/english.js")
       const entropy = mnemonicToEntropy(testMnemonic, wordlist)
       const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy as unknown as Uint8Array, "")
       const paymentNode = Bip32PrivateKey.derive(rootXPrv, Bip32PrivateKey.CardanoPath.paymentIndices(0, 0))

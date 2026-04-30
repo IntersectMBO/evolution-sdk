@@ -1,4 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2"
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 import type { NonEmptyArray } from "effect/Array"
 

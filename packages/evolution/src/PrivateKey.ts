@@ -6,7 +6,7 @@ import { randomBytes } from "@noble/hashes/utils.js"
 import { bech32 } from "@scure/base"
 import * as BIP32 from "@scure/bip32"
 import * as BIP39 from "@scure/bip39"
-import { wordlist } from "@scure/bip39/wordlists/english"
+import { wordlist } from "@scure/bip39/wordlists/english.js"
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bip32PrivateKey from "./Bip32PrivateKey.js"

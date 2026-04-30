@@ -7,7 +7,7 @@
  * @category Sign Data
  */
 
-import { blake2b } from "@noble/hashes/blake2"
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Equal, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bytes from "../Bytes.js"
