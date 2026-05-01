@@ -25,7 +25,13 @@ export default defineConfig({
       langs: ["ts", "tsx", "js", "jsx", "bash", "sh"],
       transformers: [
         ...(rehypeCodeDefaultOptions.transformers ?? []),
-        transformerTwoslash()
+        transformerTwoslash({
+          twoslashOptions: {
+            compilerOptions: {
+              types: ["node"]
+            }
+          }
+        })
       ]
     }
   }
