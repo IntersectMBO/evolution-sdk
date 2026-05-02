@@ -26,8 +26,8 @@
       "@evolution-sdk/evolution/*": [
         "../packages/evolution/dist/*"
       ],
-      "@/.source": [
-        "./.source/index.ts"
+      "@/.source/server": [
+        "./.source/server.ts"
       ],
       "@/*": [
         "./*"
