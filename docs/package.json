@@ -18,7 +18,7 @@
     "@orama/orama": "^3.1.11",
     "@stackblitz/sdk": "^1.11.0",
     "fumadocs-core": "16.8.5",
-    "fumadocs-mdx": "14.3.0",
+    "fumadocs-mdx": "14.3.2",
     "fumadocs-twoslash": "^3.1.10",
     "fumadocs-ui": "16.8.5",
     "lucide-react": "^1.8.0",
