@@ -1,7 +1,7 @@
 {
-  "name": "@evolution-sdk/scalus-uplc",
+  "name": "@evolution-sdk/scalus-emulator",
   "version": "0.0.1",
-  "description": "Scalus UPLC evaluator adapter for Evolution SDK",
+  "description": "Scalus Emulator provider for Evolution SDK",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -11,14 +11,14 @@
     "typescript",
     "cardano",
     "scalus",
-    "uplc",
-    "evaluator"
+    "emulator",
+    "provider"
   ],
   "exports": {
     ".": {
-      "types": "./src/index.node.ts",
-      "node": "./src/index.node.ts",
-      "default": "./src/index.node.ts"
+      "types": "./src/index.ts",
+      "node": "./src/index.ts",
+      "default": "./src/index.ts"
     },
     "./package.json": "./package.json"
   },

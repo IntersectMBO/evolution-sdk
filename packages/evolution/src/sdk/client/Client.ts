@@ -3,6 +3,7 @@ import { Data, type Effect, type Schedule } from "effect"
 import type * as CoreUTxO from "../../UTxO.js"
 import type { ReadOnlyTransactionBuilder, SigningTransactionBuilder } from "../builders/TransactionBuilder.js"
 import type * as Provider from "../provider/Provider.js"
+import type { SlotConfig } from "../../Time/SlotConfig.js"
 import type { EffectToPromiseAPI } from "../Type.js"
 import type { ApiWalletEffect, ReadOnlyWalletEffect, SigningWalletEffect, WalletApi, WalletError } from "../wallet/WalletNew.js"
 
@@ -261,12 +262,51 @@ export interface KoiosConfig {
 }
 
 /**
+ * Node-emulator provider configuration.
+ *
+ * Backed by the Scalus emulator (compiled from Scala via Scala.js), this runs an
+ * in-process Cardano node simulation.
+ *
+ */
+export interface NodeEmulatorConfig {
+  readonly type: "node-emulator"
+  readonly slotConfig: SlotConfig
+  /** Initial UTxOs to seed the ledger with. */
+  readonly initialUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  /** Optional protocol parameters. Falls back to emulator defaults. */
+  readonly protocolParameters?: Provider.ProtocolParameters
+  /** Pre-registered stake credentials with rewards and optional delegation. */
+  readonly stakeRegistrations?: ReadonlyArray<{
+    readonly credentialType: "key" | "script"
+    readonly credentialHash: string
+    readonly rewards: bigint
+    readonly delegatedTo?: string
+  }>
+  /** Pre-registered stake pools. */
+  readonly poolRegistrations?: ReadonlyArray<{
+    readonly params: Uint8Array
+  }>
+  /** Pre-registered DReps. */
+  readonly drepRegistrations?: ReadonlyArray<{
+    readonly credentialType: "key" | "script"
+    readonly credentialHash: string
+    readonly deposit: bigint
+    readonly anchor?: Uint8Array
+  }>
+  /** Pre-seeded datum store entries (hex hash -> hex CBOR datum). */
+  readonly datums?: ReadonlyArray<{
+    readonly hash: string
+    readonly datum: string
+  }>
+}
+
+/**
  * Provider configuration union type.
  *
  * @since 2.0.0
  * @category model
  */
-export type ProviderConfig = BlockfrostConfig | KupmiosConfig | MaestroConfig | KoiosConfig
+export type ProviderConfig = BlockfrostConfig | KupmiosConfig | MaestroConfig | KoiosConfig | NodeEmulatorConfig
 
 /**
  * Seed phrase wallet configuration.
