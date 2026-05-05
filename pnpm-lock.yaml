@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  scalus: link:./vendor/scalus
+  scalus: ^0.17.0
 
 importers:
 
@@ -301,8 +301,8 @@ importers:
         specifier: ^3.19.3
         version: 3.19.3
       scalus:
-        specifier: link:../../vendor/scalus
-        version: link:../../vendor/scalus
+        specifier: ^0.17.0
+        version: 0.17.0
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -317,8 +317,8 @@ importers:
         specifier: ^3.19.3
         version: 3.19.3
       scalus:
-        specifier: link:../../vendor/scalus
-        version: link:../../vendor/scalus
+        specifier: ^0.17.0
+        version: 0.17.0
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -5386,6 +5386,9 @@ packages:
     resolution: {integrity: sha512-Zx+lVyoWqXZxHuYWlTA17Z5sczJ6braNT2C7rmClw+c4E7r/n911Zwss3h1uHI9reR5AgHZyNHF7c2+VIp5AUA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  scalus@0.17.0:
+    resolution: {integrity: sha512-74mD4wL1vw4GVh2ECemQhoB3q5Smwj5S8W7OG1j7OWuLkwJ0Mvz4LFhZPA9rZjpNvanZoKiDqc3S/qGD65uRYg==}
 
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
@@ -12100,6 +12103,8 @@ snapshots:
     dependencies:
       commander: 12.1.0
       enhanced-resolve: 5.18.3
+
+  scalus@0.17.0: {}
 
   scheduler@0.27.0: {}
 

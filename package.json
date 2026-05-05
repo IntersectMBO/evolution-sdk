@@ -60,7 +60,7 @@
   },
   "pnpm": {
     "overrides": {
-      "scalus": "link:./vendor/scalus"
+      "scalus": "^0.17.0"
     }
   },
   "engines": {
