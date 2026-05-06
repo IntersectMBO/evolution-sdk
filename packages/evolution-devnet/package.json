@@ -38,7 +38,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
-    "@types/dockerode": "^3.3.43",
+    "@types/dockerode": "^4.0.1",
     "tsx": "^4.20.4",
     "typescript": "^6.0.3"
   },
