@@ -96,14 +96,15 @@ export const createCollectFromProgram = (
       let newRedeemers = state.redeemers
       let newDeferredRedeemers = state.deferredRedeemers
 
-      // 5. Track redeemer information if spending from scripts
-      if (params.redeemer && scriptUtxos.length > 0) {
+      // 5. Track redeemer information if spending from Plutus scripts
+      // Native scripts are validated by signatures, not redeemers
+      if (params.redeemer && plutusScriptUtxos.length > 0) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
 
         if (deferred._tag === "static") {
           // Static mode: store resolved data immediately
           newRedeemers = new Map(state.redeemers)
-          scriptUtxos.forEach((utxo) => {
+          plutusScriptUtxos.forEach((utxo) => {
             const inputKey = UTxO.toOutRefString(utxo)
             newRedeemers.set(inputKey, {
               tag: "spend",
@@ -115,7 +116,7 @@ export const createCollectFromProgram = (
         } else {
           // Self or Batch mode: store deferred for resolution after coin selection
           newDeferredRedeemers = new Map(state.deferredRedeemers)
-          scriptUtxos.forEach((utxo) => {
+          plutusScriptUtxos.forEach((utxo) => {
             const inputKey = UTxO.toOutRefString(utxo)
             newDeferredRedeemers.set(inputKey, {
               tag: "spend",

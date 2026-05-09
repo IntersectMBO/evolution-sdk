@@ -618,6 +618,7 @@ export const assembleTransaction = (
     }
 
     yield* Effect.logDebug(`[Assembly] WitnessSet populated:`)
+    yield* Effect.logDebug(`  - Native scripts: ${nativeScripts.length}`)
     yield* Effect.logDebug(`  - PlutusV1 scripts: ${plutusV1Scripts.length}`)
     yield* Effect.logDebug(`  - PlutusV2 scripts: ${plutusV2Scripts.length}`)
     yield* Effect.logDebug(`  - PlutusV3 scripts: ${plutusV3Scripts.length}`)
