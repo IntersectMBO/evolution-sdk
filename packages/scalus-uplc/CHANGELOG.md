@@ -1,5 +1,12 @@
 # @evolution-sdk/scalus-uplc
 
+## 2.0.8
+
+### Patch Changes
+
+- Updated dependencies [[`3f98d9f`](https://github.com/IntersectMBO/evolution-sdk/commit/3f98d9fae5e2c9255700eca691521812c81f18da)]:
+  - @evolution-sdk/evolution@0.5.8
+
 ## 2.0.7
 
 ### Patch Changes

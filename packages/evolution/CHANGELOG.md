@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.5.8
+
+### Patch Changes
+
+- [#340](https://github.com/IntersectMBO/evolution-sdk/pull/340) [`3f98d9f`](https://github.com/IntersectMBO/evolution-sdk/commit/3f98d9fae5e2c9255700eca691521812c81f18da) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix collectFrom storing redeemers for native script UTxOs. When a redeemer was passed to collectFrom for a native script input, it was incorrectly treated as a Plutus spend, causing "associated script witness is missing" errors during evaluation.
+
 ## 0.5.7
 
 ### Patch Changes
