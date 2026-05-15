@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",
-    "dockerode": "^4.0.7"
+    "dockerode": "^5.0.0"
   },
   "peerDependencies": {
     "@evolution-sdk/aiken-uplc": "workspace:*",
