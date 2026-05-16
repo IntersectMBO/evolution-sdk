@@ -322,7 +322,7 @@ const FLOAT64_BYTES = new Uint8Array(FLOAT64_BUF)
 export const encodeArrayAsDefinite = (items: ReadonlyArray<Uint8Array>): Uint8Array => {
   const len = items.length
   // Compute header length based on array length (major type 4: arrays)
-  let headerLen = 0
+  let headerLen: number
   if (len < 24) headerLen = 1
   else if (len < 256) headerLen = 2
   else if (len < 65536) headerLen = 3
@@ -391,7 +391,7 @@ export const encodeTaggedValue = (tag: number, valueBytes: Uint8Array): Uint8Arr
   if (tag < 0) throw new Error("CBOR.encodeTaggedValue: negative tag")
 
   // Compute header length based on tag value (major type 6: tags)
-  let headerLen = 0
+  let headerLen: number
   if (tag < 24) headerLen = 1
   else if (tag < 256) headerLen = 2
   else if (tag < 65536) headerLen = 3
@@ -1553,8 +1553,8 @@ const encodeTagSync = (tag: number, value: CBOR, options: CodecOptions, fmt?: CB
     return out
   }
   const useMinimal = options.mode !== "custom" || options.useMinimalEncoding
-  let headerSize = 0
-  let h0 = 0,
+  let headerSize: number
+  let h0: number,
     h1 = 0,
     h2 = 0
   if (tag < 24) {
@@ -2431,8 +2431,8 @@ const decodeLengthSync = (data: Uint8Array, offset: number): { length: number; b
   const firstByte = data[offset]
   const majorType = (firstByte >> 5) & 0x07
   const additionalInfo = firstByte & 0x1f
-  let length = 0
-  let bytesRead = 0
+  let length: number
+  let bytesRead: number
   if (
     majorType !== CBOR_MAJOR_TYPE.BYTE_STRING &&
     majorType !== CBOR_MAJOR_TYPE.TEXT_STRING &&
