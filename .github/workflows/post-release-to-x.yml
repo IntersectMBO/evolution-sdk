@@ -69,23 +69,23 @@ jobs:
             fi
           done
 
-          echo "found=$FOUND" >> $GITHUB_OUTPUT
-          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "HAS_RELEASES=$FOUND" >> $GITHUB_ENV
+          echo "RELEASE_URL=$URL" >> $GITHUB_ENV
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        if: steps.releases.outputs.found == 'true'
+        if: env.HAS_RELEASES == 'true'
         uses: actions/setup-node@v6.4.0
         with:
           node-version: "22"
 
       - name: Generate tweets with AI
-        if: steps.releases.outputs.found == 'true'
+        if: env.HAS_RELEASES == 'true'
         id: ai
         run: |
           RESULT=$(RELEASE_NOTES="$(cat /tmp/release-notes.md)" \
-            RELEASE_URL="${{ steps.releases.outputs.url }}" \
+            RELEASE_URL="${{ env.RELEASE_URL }}" \
             GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             node .github/scripts/generate-release-tweet.mjs)
           {
@@ -95,11 +95,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Post thread to X
-        if: steps.releases.outputs.found == 'true'
+        if: env.HAS_RELEASES == 'true'
         run: |
+          # Install in isolated dir to avoid peer dep conflicts with monorepo root
+          mkdir -p /tmp/tweet-lib && cd /tmp/tweet-lib
+          npm init -y --silent
           npm install twitter-api-v2@1
           node -e "
-            const { TwitterApi } = require('twitter-api-v2');
+            const { TwitterApi } = require('/tmp/tweet-lib/node_modules/twitter-api-v2');
 
             const client = new TwitterApi({
               appKey: process.env.TWITTER_API_KEY,
