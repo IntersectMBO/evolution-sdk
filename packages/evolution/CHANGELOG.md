@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.5.9
+
+### Patch Changes
+
+- [#334](https://github.com/IntersectMBO/evolution-sdk/pull/334) [`e59b557`](https://github.com/IntersectMBO/evolution-sdk/commit/e59b557e86bbaae01b43a82a9619063e9f7cd2aa) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update lint compatibility for the ESLint JavaScript config 10 upgrade.
+
 ## 0.5.8
 
 ### Patch Changes
