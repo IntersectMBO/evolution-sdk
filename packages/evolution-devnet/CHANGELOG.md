@@ -1,5 +1,16 @@
 # @evolution-sdk/devnet
 
+## 3.0.9
+
+### Patch Changes
+
+- [#344](https://github.com/IntersectMBO/evolution-sdk/pull/344) [`ed3f4ed`](https://github.com/IntersectMBO/evolution-sdk/commit/ed3f4ed83a86848e71d3453312419cf8ebb53539) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update dockerode to version 5.
+
+- Updated dependencies [[`e59b557`](https://github.com/IntersectMBO/evolution-sdk/commit/e59b557e86bbaae01b43a82a9619063e9f7cd2aa)]:
+  - @evolution-sdk/evolution@0.5.9
+  - @evolution-sdk/aiken-uplc@2.0.9
+  - @evolution-sdk/scalus-uplc@2.0.9
+
 ## 3.0.8
 
 ### Patch Changes
