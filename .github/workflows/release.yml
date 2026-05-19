@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: 📦 Install pnpm
-        uses: pnpm/action-setup@v6.0.5
+        uses: pnpm/action-setup@v6.0.7
 
       - name: ⎔ Setup Node.js
         uses: actions/setup-node@v6.4.0
@@ -48,7 +48,7 @@ jobs:
 
       - name: 🦋 Create Release Pull Request or Publish to npm
         id: changesets
-        uses: changesets/action@v1.7.0
+        uses: changesets/action@v1.8.0
         continue-on-error: true
         with:
           # This uses our custom publish script that builds before publishing
