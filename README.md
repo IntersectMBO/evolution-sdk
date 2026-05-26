@@ -21,10 +21,10 @@
 Evolution SDK is a **TypeScript-first** Cardano development framework. Define your data schemas and build transactions with full type safety. You'll get back strongly typed, validated results with comprehensive error handling.
 
 ```typescript
-import { client, preprod } from "@evolution-sdk/evolution"
+import { Address, Assets, Client, preprod } from "@evolution-sdk/evolution"
 
 // Create a client with wallet and provider
-const sdk = client(preprod)
+const sdk = Client.make(preprod)
   .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
@@ -38,8 +38,8 @@ const sdk = client(preprod)
 const tx = await sdk
   .newTx()
   .payToAddress({
-    address: "addr_test1qz...",
-    assets: { lovelace: 2000000n }
+    address: Address.fromBech32("addr_test1qz..."),
+    assets: Assets.fromLovelace(2_000_000n)
   })
   .build()
 
@@ -70,7 +70,7 @@ npm install @evolution-sdk/evolution
 ## Quick Start
 
 ```typescript
-import { Address, client, preprod } from "@evolution-sdk/evolution"
+import { Address, Assets, Client, preprod } from "@evolution-sdk/evolution"
 
 // Work with addresses - convert between formats
 const bech32 = "addr1qx2kd28nq8ac5prwg32hhvudlwggpgfp8utlyqxu6wqgz62f79qsdmm5dsknt9ecr5w468r9ey0fxwkdrwh08ly3tu9sy0f4qd"
@@ -85,7 +85,7 @@ const hex = Address.toHex(address)
 const bytes = Address.toBytes(address)
 
 // Build and submit transactions
-const sdk = client(preprod)
+const sdk = Client.make(preprod)
   .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
@@ -98,8 +98,8 @@ const sdk = client(preprod)
 const tx = await sdk
   .newTx()
   .payToAddress({
-    address: bech32,
-    assets: { lovelace: 2000000n }
+    address: address,
+    assets: Assets.fromLovelace(2_000_000n)
   })
   .build()
 
