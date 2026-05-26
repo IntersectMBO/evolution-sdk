@@ -14,10 +14,13 @@ docs/.twoslash
 
 .github/instructions/
 .github/skills/
+.opencode/
+.claude/
 
 # Ignore debug
 debug/
 CLAUDE.md
+AGENTS.md
 
 # Local env overrides — never commit API keys
 .env.local
