@@ -33,18 +33,13 @@ describe("TxBuilder Script Handling", () => {
     try {
       devnetCluster = await Cluster.make({
         clusterName: "txbuilder-plutus-script-eval",
-        ports: {
-          node: 5001,
-          submit: 9001
-        },
-        shelleyGenesis: {
+      shelleyGenesis: {
           slotLength: 0.02, // 20ms per slot (fast)
           epochLength: 50,
           activeSlotsCoeff: 1.0
         },
         ogmios: {
           enabled: true,
-          port: 1337,
           logLevel: "info"
         }
       })
@@ -54,13 +49,12 @@ describe("TxBuilder Script Handling", () => {
       // Wait for Ogmios to be ready
       await new Promise((resolve) => setTimeout(resolve, 2_000))
 
-      // Ogmios serves both HTTP (for JSON-RPC) and WebSocket on the same port
-      const ogmiosUrl = "http://localhost:1337"
+      const ogmiosUrl = `http://localhost:${devnetCluster.ports.ogmios}`
 
       // Create provider using local Ogmios
       // Note: Kupo URL is required but not used in these tests (only Ogmios for evaluation)
       kupmiosProvider = new KupmiosProvider(
-        "http://localhost:1442", // Kupo (not used)
+        `http://localhost:${devnetCluster.ports.kupo}`, // Kupo (not used)
         ogmiosUrl // Ogmios for script evaluation via HTTP
       )
 

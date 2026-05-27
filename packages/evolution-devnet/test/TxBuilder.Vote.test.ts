@@ -35,7 +35,10 @@ describe("TxBuilder Vote Operations (script-free)", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1453", ogmiosUrl: "http://localhost:1343" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
@@ -61,7 +64,9 @@ describe("TxBuilder Vote Operations (script-free)", () => {
       }
     }
 
-    conwayGenesis = Config.DEFAULT_CONWAY_GENESIS
+    // Bump govActionLifetime past the default 8 epochs so a slow CI run can finish
+    // propose → vote within the proposal's active window.
+    conwayGenesis = { ...Config.DEFAULT_CONWAY_GENESIS, govActionLifetime: 30 }
 
     const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
 
@@ -72,11 +77,10 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "vote-test",
-      ports: { node: 6010, submit: 9010 },
       shelleyGenesis: genesisConfig,
       conwayGenesis,
-      kupo: { enabled: true, port: 1453, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1343, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

@@ -31,7 +31,10 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
   const createTestClient = () => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1443", ogmiosUrl: "http://localhost:1338" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
   }
 
@@ -64,10 +67,9 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "client-minting-test",
-      ports: { node: 6001, submit: 9002 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1443, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1338, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

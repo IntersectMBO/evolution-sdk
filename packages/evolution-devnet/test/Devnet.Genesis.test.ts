@@ -25,7 +25,6 @@ describe("Devnet.Genesis", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "genesis-utxo-calculation-test",
-      ports: { node: 6002, submit: 9003 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: false },
       ogmios: { enabled: false }

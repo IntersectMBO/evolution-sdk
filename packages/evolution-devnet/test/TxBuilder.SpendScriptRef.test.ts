@@ -39,7 +39,10 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
   const createTestClient = () => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1454", ogmiosUrl: "http://localhost:1346" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
   }
 
@@ -63,10 +66,9 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "spend-scriptref-test",
-      ports: { node: 6011, submit: 9011 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1454, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1346, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

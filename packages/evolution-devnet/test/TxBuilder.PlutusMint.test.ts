@@ -66,7 +66,10 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
   const createTestClient = () => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1444", ogmiosUrl: "http://localhost:1339" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
   }
 
@@ -92,10 +95,9 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "plutus-minting-test",
-      ports: { node: 6002, submit: 9003 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1444, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1339, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

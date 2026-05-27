@@ -83,7 +83,10 @@ describe("TxBuilder Script Stake Operations", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1447", ogmiosUrl: "http://localhost:1342" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
@@ -109,10 +112,9 @@ describe("TxBuilder Script Stake Operations", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "script-stake-test",
-      ports: { node: 6005, submit: 9006 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1447, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1342, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

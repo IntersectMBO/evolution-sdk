@@ -26,7 +26,10 @@ describe("TxBuilder compose (Devnet Submit)", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1458", ogmiosUrl: "http://localhost:1350" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
@@ -48,10 +51,9 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "compose-test",
-      ports: { node: 6015, submit: 9015 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1458, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1350, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)
