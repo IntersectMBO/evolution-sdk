@@ -52,7 +52,10 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1455", ogmiosUrl: "http://localhost:1347" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
   const genesisUtxosByAccount: Map<number, Cardano.UTxO.UTxO> = new Map()
@@ -82,8 +85,8 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
       ports: { node: 6012, submit: 9012 },
       shelleyGenesis: genesisConfig,
       conwayGenesis: { ...Config.DEFAULT_CONWAY_GENESIS, govActionLifetime: 30 },
-      kupo: { enabled: true, port: 1455, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1347, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

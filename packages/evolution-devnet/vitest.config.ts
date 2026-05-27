@@ -8,12 +8,15 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 90_000,
     teardownTimeout: 60_000,
-    // Serialize all test files — each file creates its own cluster (cardano-node + kupo + ogmios)
-    // Running them concurrently exhausts Docker resources on CI / local machines
+    // Pre-pull images before any test forks start, otherwise concurrent pulls of
+    // the same image race dockerode's pull stream.
+    globalSetup: ["./test/globalSetup.ts"],
+    // Each test file creates its own cluster (cardano-node + kupo + ogmios).
+    // Cap parallelism so total RAM stays within typical 7-8GB CI runner budget.
     pool: "forks",
     poolOptions: {
       forks: {
-        maxForks: 3
+        maxForks: 2
       }
     },
     // Devnet tests are slow but should not be retried — flakiness here is a real infra failure

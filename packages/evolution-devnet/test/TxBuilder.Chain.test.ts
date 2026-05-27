@@ -18,7 +18,10 @@ describe("TxBuilder.chainResult", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1456", ogmiosUrl: "http://localhost:1348" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
@@ -42,8 +45,8 @@ describe("TxBuilder.chainResult", () => {
       clusterName: "chain-test",
       ports: { node: 6013, submit: 9013 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1456, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1348, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

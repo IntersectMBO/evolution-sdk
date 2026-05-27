@@ -29,7 +29,10 @@ describe("TxBuilder Governance Operations", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1457", ogmiosUrl: "http://localhost:1349" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
@@ -83,8 +86,8 @@ describe("TxBuilder Governance Operations", () => {
       ports: { node: 6014, submit: 9014 },
       shelleyGenesis: genesisConfig,
       conwayGenesis,
-      kupo: { enabled: true, port: 1457, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1349, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

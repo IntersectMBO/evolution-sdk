@@ -42,7 +42,10 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
     return Client.make(Cluster.getChain(devnetCluster))
-      .withKupmios({ kupoUrl: "http://localhost:1449", ogmiosUrl: "http://localhost:1344" })
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
       .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
@@ -66,8 +69,8 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
       clusterName: "nativescript-test",
       ports: { node: 6007, submit: 9008 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1449, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1344, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)
