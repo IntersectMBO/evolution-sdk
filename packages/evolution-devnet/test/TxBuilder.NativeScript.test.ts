@@ -67,7 +67,6 @@ describe("TxBuilder NativeScript (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "nativescript-test",
-      ports: { node: 6007, submit: 9008 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

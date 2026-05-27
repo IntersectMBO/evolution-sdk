@@ -50,7 +50,6 @@ describe("TxBuilder addSigner (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "addsigner-test",
-      ports: { node: 6007, submit: 9008 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

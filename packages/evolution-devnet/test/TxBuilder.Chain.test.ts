@@ -43,7 +43,6 @@ describe("TxBuilder.chainResult", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "chain-test",
-      ports: { node: 6013, submit: 9013 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

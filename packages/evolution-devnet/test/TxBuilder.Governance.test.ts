@@ -83,7 +83,6 @@ describe("TxBuilder Governance Operations", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "governance-ops-test",
-      ports: { node: 6014, submit: 9014 },
       shelleyGenesis: genesisConfig,
       conwayGenesis,
       kupo: { enabled: true, logLevel: "Info" },

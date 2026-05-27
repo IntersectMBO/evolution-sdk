@@ -51,7 +51,6 @@ describe("TxBuilder compose (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "compose-test",
-      ports: { node: 6015, submit: 9015 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

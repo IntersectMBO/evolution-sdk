@@ -112,7 +112,6 @@ describe("TxBuilder Script Stake Operations", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "script-stake-test",
-      ports: { node: 6005, submit: 9006 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

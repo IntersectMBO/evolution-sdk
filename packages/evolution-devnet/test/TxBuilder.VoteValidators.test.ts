@@ -82,7 +82,6 @@ describe("TxBuilder Vote Validator (script DRep)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "vote-validator-test",
-      ports: { node: 6012, submit: 9012 },
       shelleyGenesis: genesisConfig,
       conwayGenesis: { ...Config.DEFAULT_CONWAY_GENESIS, govActionLifetime: 30 },
       kupo: { enabled: true, logLevel: "Info" },

@@ -50,7 +50,6 @@ describe("TxBuilder attachMetadata (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "metadata-test",
-      ports: { node: 6008, submit: 9009 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

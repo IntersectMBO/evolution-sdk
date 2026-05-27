@@ -66,7 +66,6 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "spend-scriptref-test",
-      ports: { node: 6011, submit: 9011 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

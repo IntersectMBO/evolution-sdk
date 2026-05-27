@@ -33,11 +33,7 @@ describe("TxBuilder Script Handling", () => {
     try {
       devnetCluster = await Cluster.make({
         clusterName: "txbuilder-plutus-script-eval",
-        ports: {
-          node: 5001,
-          submit: 9001
-        },
-        shelleyGenesis: {
+      shelleyGenesis: {
           slotLength: 0.02, // 20ms per slot (fast)
           epochLength: 50,
           activeSlotsCoeff: 1.0

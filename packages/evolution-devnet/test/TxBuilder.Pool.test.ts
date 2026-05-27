@@ -75,7 +75,6 @@ describe("TxBuilder Pool Operations", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "pool-ops-test",
-      ports: { node: 6006, submit: 9007 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

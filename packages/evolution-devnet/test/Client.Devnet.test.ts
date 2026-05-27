@@ -44,7 +44,6 @@ describe("Client with Devnet", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "client-kupmios-wallet-test",
-      ports: { node: 6001, submit: 9002 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

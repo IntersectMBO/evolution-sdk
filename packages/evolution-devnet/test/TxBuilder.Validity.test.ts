@@ -59,7 +59,6 @@ describe("TxBuilder Validity Interval", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "validity-test",
-      ports: { node: 6009, submit: 9016 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

@@ -114,7 +114,6 @@ describe("TxBuilder RedeemerBuilder", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "redeemer-builder-test",
-      ports: { node: 6003, submit: 9004 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }

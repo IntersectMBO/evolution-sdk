@@ -64,7 +64,9 @@ describe("TxBuilder Vote Operations (script-free)", () => {
       }
     }
 
-    conwayGenesis = Config.DEFAULT_CONWAY_GENESIS
+    // Bump govActionLifetime past the default 8 epochs so a slow CI run can finish
+    // propose → vote within the proposal's active window.
+    conwayGenesis = { ...Config.DEFAULT_CONWAY_GENESIS, govActionLifetime: 30 }
 
     const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
 
@@ -75,7 +77,6 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "vote-test",
-      ports: { node: 6010, submit: 9010 },
       shelleyGenesis: genesisConfig,
       conwayGenesis,
       kupo: { enabled: true, logLevel: "Info" },

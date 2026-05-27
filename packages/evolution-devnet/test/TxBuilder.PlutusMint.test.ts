@@ -95,7 +95,6 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "plutus-minting-test",
-      ports: { node: 6002, submit: 9003 },
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, logLevel: "Info" },
       ogmios: { enabled: true, logLevel: "info" }
