@@ -33,6 +33,7 @@ import {
   type MinimalClient,
   type MinimalClientEffect,
   type NetworkId,
+  type NodeEmulatorConfig,
   type PrivateKeyWalletConfig,
   type ProviderConfig,
   type ProviderOnlyClient,
@@ -61,7 +62,38 @@ const createProvider = (config: ProviderConfig): Provider.Provider => {
       return new Maestro.MaestroProvider(config.baseUrl, config.apiKey, config.turboSubmit)
     case "koios":
       return new Koios.Koios(config.baseUrl, config.token)
+    case "node-emulator":
+      return createNodeEmulatorProvider(config)
   }
+}
+
+/**
+ * Factory for the `node-emulator` provider. Registered by `@evolution-sdk/scalus-emulator`
+ * on import — we keep this indirection so `@evolution-sdk/evolution` doesn't have to
+ * statically depend on the emulator package (which would cause a cycle, since the
+ * emulator package peer-depends on evolution).
+ */
+export type NodeEmulatorProviderFactory = (config: NodeEmulatorConfig) => Provider.Provider
+
+let nodeEmulatorProviderFactory: NodeEmulatorProviderFactory | null = null
+
+/**
+ * Register the factory that constructs a Scalus-backed emulator provider.
+ * Called from `@evolution-sdk/scalus-emulator` at import time.
+ */
+export const registerNodeEmulatorProviderFactory = (factory: NodeEmulatorProviderFactory): void => {
+  nodeEmulatorProviderFactory = factory
+}
+
+const createNodeEmulatorProvider = (config: NodeEmulatorConfig): Provider.Provider => {
+  if (!nodeEmulatorProviderFactory) {
+    throw new Error(
+      "node-emulator provider requires `@evolution-sdk/scalus-emulator`. " +
+        "Install it and add `import \"@evolution-sdk/scalus-emulator\"` (or any import from it) " +
+        "in your entry point to register the factory."
+    )
+  }
+  return nodeEmulatorProviderFactory(config)
 }
 
 /**
