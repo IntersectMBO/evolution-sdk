@@ -111,6 +111,20 @@ function costModelsToScalusArrays(costModels: CostModel.CostModels): Array<Array
   ]
 }
 
+/**
+ * Convert protocol-parameter cost models (Record<string, number>, ordered like
+ * evolution core's buildCostModels) to Scalus arrays [V1, V2, V3].
+ */
+function protocolCostModelsToScalusArrays(
+  costModels: ProtocolParameters["costModels"]
+): Array<Array<number>> {
+  return [
+    Object.values(costModels.PlutusV1),
+    Object.values(costModels.PlutusV2),
+    Object.values(costModels.PlutusV3)
+  ]
+}
+
 /** Redeemer tag mapping from Scalus to Evolution SDK. */
 const REDEEMER_TAG_MAP: Record<string, Redeemer.RedeemerTag> = {
   Spend: "spend",
@@ -280,15 +294,13 @@ export class ScalusEmulatorProvider implements Provider {
             }
             const utxosBytes = buildUtxoMapCBOR(allUtxos)
 
-            const costModelArrays = costModelsToScalusArrays(self.costModels)
+            // Use caller-supplied cost models from protocolParameters when present,
+            // falling back to the bundled defaults.
+            const costModelArrays = self.protocolParameters.costModels
+              ? protocolCostModelsToScalusArrays(self.protocolParameters.costModels)
+              : costModelsToScalusArrays(self.costModels)
 
-            const scalusSlotConfig = new Scalus.SlotConfig(
-              self.slotConfig.slotToTime(0),
-              0,
-              1000
-            )
-
-            const redeemers = Scalus.Scalus.evalPlutusScripts(txBytes, utxosBytes, scalusSlotConfig, costModelArrays)
+            const redeemers = Scalus.Scalus.evalPlutusScripts(txBytes, utxosBytes, self.slotConfig, costModelArrays)
 
             return redeemers.map((r): EvalRedeemer => ({
               redeemer_tag: REDEEMER_TAG_MAP[r.tag] || "spend",

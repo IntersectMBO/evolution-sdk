@@ -180,7 +180,15 @@ describe("TxBuilder Pool Operations (node-emulator)", () => {
 
     expect(await client.awaitTx(registerTxHash, 1000)).toBe(true)
 
-    const retirementEpoch: EpochNo.EpochNo = 5n
+    // The retirement epoch must be in (currentEpoch, currentEpoch + poolRetireMaxEpoch].
+    // The node emulator is advanced to the current wall-clock slot on creation, so derive
+    // the current epoch the same way the emulator does: from the slot config (epoch 0 at
+    // zeroSlot, 432000 slots per epoch).
+    const currentSlot = Math.floor(
+      (Date.now() - Number(slotConfig.zeroTime)) / slotConfig.slotLength + Number(slotConfig.zeroSlot)
+    )
+    const currentEpoch = Math.floor((currentSlot - Number(slotConfig.zeroSlot)) / 432_000)
+    const retirementEpoch: EpochNo.EpochNo = BigInt(currentEpoch + 1)
     const retireTxHash = await client
       .newTx()
       .retirePool({ poolKeyHash, epoch: retirementEpoch })

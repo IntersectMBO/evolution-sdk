@@ -6,7 +6,10 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "sideEffects": [],
+  "sideEffects": [
+    "./src/index.ts",
+    "./dist/index.js"
+  ],
   "tags": [
     "typescript",
     "cardano",
@@ -21,6 +24,17 @@
       "default": "./src/index.ts"
     },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "files": [
     "src/**/*.ts",
@@ -38,7 +52,7 @@
   },
   "dependencies": {
     "effect": "^3.19.3",
-    "scalus": "^0.17.0"
+    "scalus": "^0.18.0"
   },
   "peerDependencies": {
     "@evolution-sdk/evolution": "workspace:*"

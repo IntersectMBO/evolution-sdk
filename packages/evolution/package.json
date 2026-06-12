@@ -50,14 +50,6 @@
     "tsx": "^4.20.4",
     "typescript": "^5.9.2"
   },
-  "peerDependencies": {
-    "@evolution-sdk/scalus-emulator": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@evolution-sdk/scalus-emulator": {
-      "optional": true
-    }
-  },
   "dependencies": {
     "@effect/platform": "^0.90.10",
     "@effect/platform-node": "^0.96.1",
