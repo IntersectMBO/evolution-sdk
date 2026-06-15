@@ -51,7 +51,7 @@
   },
   "dependencies": {
     "@effect/platform": "^0.96.0",
-    "@effect/platform-node": "^0.106.0",
+    "@effect/platform-node": "^0.107.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.2.0",
     "@scure/base": "^2.0.0",
