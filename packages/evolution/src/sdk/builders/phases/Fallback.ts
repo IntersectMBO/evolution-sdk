@@ -10,8 +10,8 @@
 
 import { Effect, Ref } from "effect"
 
+import type { PhaseResult } from "../TransactionBuilder.js"
 import { BuildOptionsTag, PhaseContextTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
-import type { PhaseResult } from "./Phases.js"
 
 /**
  * Fallback Phase - Terminal Strategy Selection

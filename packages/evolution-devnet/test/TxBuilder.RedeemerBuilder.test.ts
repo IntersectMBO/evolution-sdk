@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -18,7 +18,6 @@ import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import { Schema } from "effect"
@@ -83,29 +82,21 @@ describe("TxBuilder RedeemerBuilder", () => {
   const scriptHashValue = ScriptHash.fromScript(mintMultiScript)
   const calculatedPolicyId = ScriptHash.toHex(scriptHashValue)
 
-  const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1445",
-        ogmiosUrl: "http://localhost:1340"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+  const createTestClient = () => {
+    if (!devnetCluster) throw new Error("Cluster not initialized")
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
+  }
 
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedPolicyId).toBe(MINT_MULTI_POLICY_ID_HEX)
 
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
 
     const testAddress = await testClient.address()
     const testAddressHex = CoreAddress.toHex(testAddress)
@@ -123,10 +114,9 @@ describe("TxBuilder RedeemerBuilder", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "redeemer-builder-test",
-      ports: { node: 6003, submit: 9004 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1445, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1340, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)
@@ -258,10 +248,11 @@ describe("TxBuilder RedeemerBuilder", () => {
 
     // Verify we have 4 redeemers: 3 spends + 1 mint
     expect(spendTx.witnessSet.redeemers).toBeDefined()
-    expect(spendTx.witnessSet.redeemers!.length).toBe(4)
+    expect(spendTx.witnessSet.redeemers!.size).toBe(4)
 
-    const spendRedeemers = spendTx.witnessSet.redeemers!.filter((r) => r.tag === "spend")
-    const mintRedeemers = spendTx.witnessSet.redeemers!.filter((r) => r.tag === "mint")
+    const allRedeemers = spendTx.witnessSet.redeemers!.toArray()
+    const spendRedeemers = allRedeemers.filter((r) => r.tag === "spend")
+    const mintRedeemers = allRedeemers.filter((r) => r.tag === "mint")
 
     expect(spendRedeemers.length).toBe(3)
     expect(mintRedeemers.length).toBe(1)

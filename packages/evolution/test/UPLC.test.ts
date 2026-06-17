@@ -5,7 +5,7 @@ import * as CBOR from "../src/CBOR.js"
 import * as Data from "../src/Data.js"
 import { PlutusV2 } from "../src/PlutusV2.js"
 import * as ScriptHash from "../src/ScriptHash.js"
-import * as UPLC from "../src/uplc/UPLC.js"
+import * as UPLC from "../src/UPLC.js"
 import plutusJson from "./spec/plutus.json"
 
 describe("UPLC Module", () => {

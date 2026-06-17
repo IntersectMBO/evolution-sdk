@@ -2,11 +2,12 @@ import { describe, expect, it } from "@effect/vitest"
 import { FastCheck, Schema } from "effect"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
+import * as FeeValidation from "../src/FeeValidation.js"
 import * as KeyHash from "../src/KeyHash.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
-import * as FeeValidation from "../src/utils/FeeValidation.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -73,7 +74,7 @@ const assertFeeValid = async (
 const createSufficientUtxo = (lovelace: bigint = 100_000_000n): CoreUTxO.UTxO =>
   createCoreTestUtxo({ transactionId: "a".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace })
 
-const baseConfig: TxBuilderConfig = {}
+const baseConfig: TxBuilderConfig = { chain: mainnet }
 
 describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
   it("should throw error by default when change is insufficient (safe default)", async () => {

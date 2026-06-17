@@ -94,7 +94,7 @@ See [Provider Layer](/docs/architecture/provider-layer) and [Wallet Layer](/docs
 
 The type system prevents impossible states at compile time. A client without a provider cannot call `newTx()`. A client without a signing wallet cannot call `signTx()`. A read-only wallet produces unsigned transactions. These aren't runtime checks—they're enforced by TypeScript's type checker.
 
-The approach turns capabilities into types. When you attach a provider, the client's type changes to include provider operations. When you attach a signing wallet, signing operations become available. The type system documents what a client can do and prevents you from calling operations it cannot support.
+The approach turns staged capability assembly into types. When you add a provider, the client gains read and submission operations. When you add an address, the client gains wallet identity. When you add a signer, signing operations become available. The type system documents what a client can do and prevents you from calling operations it cannot support.
 
 This compile-time safety eliminates a class of runtime errors, makes refactoring safer, and serves as living documentation of each client configuration's capabilities.
 
@@ -106,30 +106,39 @@ The architecture maintains strict boundaries between layers. The client never di
 
 <Mermaid chart={`
 stateDiagram-v2
-    [*] --> MinimalClient
-    
-    MinimalClient --> ProviderOnlyClient: attachProvider()
-    MinimalClient --> WalletClient: attachWallet()
-    MinimalClient --> FullClient: attach(provider, wallet)
-    
-    ProviderOnlyClient --> FullClient: attachWallet()
-    WalletClient --> FullClient: attachProvider()
-    
-    FullClient --> [*]
-    
-    MinimalClient: [1] MinimalClient
-    ProviderOnlyClient: [2] ProviderOnlyClient
-    WalletClient: [3] WalletClient
-    FullClient: [4] FullClient
+    [*] --> ClientAssembly
+
+  ClientAssembly --> ReadClient: withBlockfrost / withKoios / withKupmios / withMaestro
+  ClientAssembly --> AddressClient: withAddress()
+  ClientAssembly --> OfflineSignerClient: withSeed / withPrivateKey / withCip30
+
+  ReadClient --> ReadOnlyClient: withAddress()
+  ReadClient --> SigningClient: withSeed / withPrivateKey / withCip30
+  AddressClient --> ReadOnlyClient: withBlockfrost / withKoios / withKupmios / withMaestro
+  OfflineSignerClient --> SigningClient: withBlockfrost / withKoios / withKupmios / withMaestro
+
+  ReadOnlyClient --> [*]
+  SigningClient --> [*]
+
+    ClientAssembly: [1] ClientAssembly
+    ReadClient: [2] ReadClient
+    AddressClient: [3] AddressClient
+    OfflineSignerClient: [4] OfflineSignerClient
+    ReadOnlyClient: [5] ReadOnlyClient
+    SigningClient: [6] SigningClient
 `} />
 
-**[1] MinimalClient**: Network context only, no blockchain access or signing capability
+**[1] ClientAssembly**: Chain-scoped entry point. No read, identity, or signing capability yet.
 
-**[2] ProviderOnlyClient**: Can query blockchain and submit transactions, cannot sign
+**[2] ReadClient**: Provider-backed read and submission capability, but no wallet identity or signing.
 
-**[3] WalletClient**: Can sign transactions and messages, must attach provider to build transactions
+**[3] AddressClient**: Wallet identity only. Exposes address and reward address, but no provider queries or signing.
 
-**[4] FullClient**: Either ReadOnlyClient (query + unsigned transactions) or SigningClient (query + sign + submit) depending on wallet type
+**[4] OfflineSignerClient**: Signing capability without provider-backed reads or transaction building.
+
+**[5] ReadOnlyClient**: Provider-backed read capability plus wallet identity. Can build unsigned transactions.
+
+**[6] SigningClient**: Full client. Can read, build, sign, and submit.
 
 ## When This Matters
 
@@ -188,6 +197,6 @@ Architectural patterns provide consistency:
 
 ## Related Topics
 
-- [Getting Started](/docs/getting-started) - Practical usage examples
+- [Getting Started](/docs/introduction/getting-started) - Practical usage examples
 - [Client Basics](/docs/clients) - Client API and capabilities
 - [Transactions](/docs/transactions) - Transaction building guide

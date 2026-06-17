@@ -21,29 +21,25 @@
 Evolution SDK is a **TypeScript-first** Cardano development framework. Define your data schemas and build transactions with full type safety. You'll get back strongly typed, validated results with comprehensive error handling.
 
 ```typescript
-import { createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Client, preprod } from "@evolution-sdk/evolution"
 
 // Create a client with wallet and provider
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
+const sdk = Client.make(preprod)
+  .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
+  })
+  .withSeed({
     mnemonic: "your twelve word mnemonic phrase here...",
     accountIndex: 0
-  }
-})
+  })
 
 // Build a transaction with full type safety
-const tx = await client
+const tx = await sdk
   .newTx()
   .payToAddress({
-    address: "addr_test1qz...",
-    assets: { lovelace: 2000000n }
+    address: Address.fromBech32("addr_test1qz..."),
+    assets: Assets.fromLovelace(2_000_000n)
   })
   .build()
 
@@ -74,40 +70,36 @@ npm install @evolution-sdk/evolution
 ## Quick Start
 
 ```typescript
-import { Core, createClient } from "@evolution-sdk/evolution"
+import { Address, Assets, Client, preprod } from "@evolution-sdk/evolution"
 
 // Work with addresses - convert between formats
 const bech32 = "addr1qx2kd28nq8ac5prwg32hhvudlwggpgfp8utlyqxu6wqgz62f79qsdmm5dsknt9ecr5w468r9ey0fxwkdrwh08ly3tu9sy0f4qd"
 
 // Parse Bech32 to address structure
-const address = Core.Address.fromBech32(bech32)
+const address = Address.fromBech32(bech32)
 console.log("Network ID:", address.networkId)
 console.log("Payment credential:", address.paymentCredential)
 
 // Convert to different formats
-const hex = Core.Address.toHex(address)
-const bytes = Core.Address.toBytes(address)
+const hex = Address.toHex(address)
+const bytes = Address.toBytes(address)
 
 // Build and submit transactions
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
+const sdk = Client.make(preprod)
+  .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
+  })
+  .withSeed({
     mnemonic: "your mnemonic here...",
     accountIndex: 0
-  }
-})
+  })
 
-const tx = await client
+const tx = await sdk
   .newTx()
   .payToAddress({
-    address: bech32,
-    assets: { lovelace: 2000000n }
+    address: address,
+    assets: Assets.fromLovelace(2_000_000n)
   })
   .build()
 
@@ -275,36 +267,47 @@ Join our thriving community of Cardano developers:
 
 ## Roadmap
 
-### Phase 3: Transaction Building & Providers (In Progress)
-- [ ] **Transaction Builder Components**
-  - [ ] Transaction builder with fluent API
-  - [ ] UTXO selection algorithms
-  - [ ] Fee calculation utilities
-  - [ ] Balance and change computation
-  - [ ] Multi-asset transaction support
-  - [ ] Script witness attachment
-- [ ] **Provider Integrations**
-  - [ ] `Maestro` - Maestro API provider
-  - [ ] `Blockfrost` - Blockfrost API provider  
-  - [ ] `Koios` - Koios API provider
-  - [ ] `KupoOgmios` - Kupo/Ogmios provider
+### Phase 3: Transaction Building & Providers (Mostly Complete)
+- [x] **Transaction Builder Components**
+  - [x] Transaction builder with fluent API
+  - [x] UTXO selection algorithms (largest-first)
+  - [x] Fee calculation utilities
+  - [x] Balance and change computation
+  - [x] Multi-asset transaction support
+  - [x] Script witness attachment
+- [x] **Provider Integrations**
+  - [x] `Maestro` - Maestro API provider
+  - [x] `Blockfrost` - Blockfrost API provider
+  - [x] `Koios` - Koios API provider
+  - [x] `KupoOgmios` - Kupo/Ogmios provider
   - [ ] `UtxoRpc` - UTXO RPC provider
-  - [ ] Provider abstraction layer
+  - [x] Provider abstraction layer
   - [ ] Failover and load balancing
-- [ ] **Wallet Integration**
+- **Wallet Integration**
   - [ ] Hardware wallet support (Ledger, Trezor)
-  - [ ] Browser wallet integration (Nami, Eternl, Flint)
+  - [x] Browser wallet integration (CIP-30)
   - [ ] Multi-signature wallet support
   - [ ] Wallet connector abstraction layer
-  - [ ] CIP-30 standard implementation
-- [ ] **Smart Contract Support**
-  - [ ] UPLC evaluation from Aiken
-  - [ ] UPLC evaluation from Helios
-  - [ ] UPLC evaluation from Plu-ts
-  - [ ] UPLC evaluation from Scalus
-  - [ ] Script validation utilities
-  - [ ] Datum and redeemer handling
-  - [ ] Script cost estimation
+  - [x] CIP-30 standard implementation
+- [x] **Smart Contract Support**
+  - [x] Plutus V1/V2/V3 script evaluation
+  - [x] Script validation utilities
+  - [x] Datum and redeemer handling (inline datums, datum hashes, 3 redeemer modes)
+  - [x] Script cost estimation (automatic ExUnits computation)
+  - [x] Reference scripts support
+- [x] **Governance (Conway Era)**
+  - [x] DRep registration, update, deregistration
+  - [x] Governance voting (DRep, Committee, SPO)
+  - [x] Governance proposals
+  - [x] Constitutional Committee operations
+  - [x] Vote delegation
+- [x] **Staking**
+  - [x] Stake credential registration/deregistration
+  - [x] Pool delegation
+  - [x] DRep delegation (Conway)
+  - [x] Combined register + delegate certificates
+  - [x] Rewards withdrawal
+  - [x] Script-controlled staking
 - [ ] **Effect 4.0 Migration**
   - [ ] Upgrade to Effect 4.0 when released
   - [ ] Leverage new Effect features and performance improvements
@@ -327,10 +330,10 @@ Join our thriving community of Cardano developers:
   - [ ] CLI tool for project scaffolding
   - [ ] VS Code extension
   - [ ] Interactive tutorials
-  - [ ] Schema types from Plutus blueprint types
+  - [x] Schema types from Plutus blueprint types (codegen)
 
 ### Current Focus
-We're currently prioritizing transaction building components and provider integrations (Maestro, Blockfrost, Koios, Kupo/Ogmios, UTXO RPC) to provide developers with the essential infrastructure needed for building production Cardano applications.
+The core SDK covers transaction building, smart contracts (Plutus V1/V2/V3), providers (Blockfrost, Maestro, Koios, Kupo/Ogmios), CIP-30 wallet integration, Conway governance, and staking. Current priorities include additional coin selection algorithms, UTXO RPC provider support, hardware wallet integration, and Hydra integration.
 
 ## Contributing
 

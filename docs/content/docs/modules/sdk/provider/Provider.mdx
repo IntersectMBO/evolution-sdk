@@ -1,6 +1,6 @@
 ---
 title: sdk/provider/Provider.ts
-nav_order: 162
+nav_order: 157
 parent: Modules
 ---
 
@@ -97,7 +97,7 @@ Auto-generated wrapper around ProviderEffect with promise-based methods.
 
 ```ts
 export interface Provider extends EffectToPromiseAPI<ProviderEffect> {
-  readonly Effect: ProviderEffect
+  readonly effect: ProviderEffect
 }
 ```
 
@@ -167,12 +167,12 @@ export interface ProviderEffect {
    */
   readonly awaitTx: (
     txHash: TransactionHash.TransactionHash,
-    checkInterval?: number
+    checkInterval?: number,
+    timeout?: number
   ) => Effect.Effect<boolean, ProviderError>
   /**
    * Submit a signed transaction to the blockchain.
    * @param tx - Signed transaction to submit
-   * @returns Transaction hash of the submitted transaction
    */
   readonly submitTx: (tx: Transaction.Transaction) => Effect.Effect<TransactionHash.TransactionHash, ProviderError>
   /**

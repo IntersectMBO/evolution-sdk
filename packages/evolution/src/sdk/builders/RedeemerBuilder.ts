@@ -96,7 +96,7 @@ export const isSelfFn = (arg: RedeemerArg): arg is SelfRedeemerFn => typeof arg 
 
 /** @since 2.0.0 @category guards */
 export const isBatchBuilder = (arg: RedeemerArg): arg is BatchRedeemerBuilder =>
-  typeof arg === "object" && arg !== null && "all" in arg && typeof (arg as BatchRedeemerBuilder).all === "function"
+  typeof arg === "object" && arg !== null && "all" in arg && typeof arg.all === "function"
 
 /** @since 2.0.0 @category guards */
 export const isStaticData = (arg: RedeemerArg): arg is Data.Data => !isSelfFn(arg) && !isBatchBuilder(arg)

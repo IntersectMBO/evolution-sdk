@@ -25,9 +25,12 @@ Eliminate derivation overhead, integrate with hardware security modules (HSMs) a
 
 ## How to Secure
 
-**Critical**: You manage raw cryptographic material with no backup mechanism.
+<Callout type="error">
+You manage raw cryptographic material with **no backup mechanism**. If you lose the key, the funds are gone.
+</Callout>
 
 Requirements for production:
+
 - Store in dedicated secret management (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault)
 - Rotate keys regularly with automated schedules
 - Encrypt at rest and in transit
@@ -39,33 +42,29 @@ Never log or transmit keys in plaintext. Never store in environment variables as
 ## Basic Setup
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { preprod, Client } from "@evolution-sdk/evolution"
 
 // Create signing-only client with private key (no provider)
 // Can sign transactions but cannot query blockchain or submit
-const client = createClient({
-  network: "preprod",
-  wallet: {
-    type: "private-key",
-    paymentKey: process.env.PAYMENT_SIGNING_KEY!  // 192 hex chars
+const client = Client.make(preprod)
+  .withPrivateKey({
+    paymentKey: process.env.PAYMENT_SIGNING_KEY! // 192 hex chars
     // Optional: stakeKey for staking operations
-  }
-});
+  })
 
-const address = await client.address();
-console.log("Payment address:", address);
+const address = await client.address()
+console.log("Payment address:", address)
 
-// To query blockchain or submit, attach a provider:
-// const fullClient = client.attachProvider({ type: "blockfrost", ... });
+// To query blockchain or submit, add a provider:
+// const fullClient = client.withBlockfrost({ ... });
 ```
 
 ## Configuration Options
 
 ```typescript twoslash
 interface PrivateKeyWalletConfig {
-  type: "private-key"
-  paymentKey: string    // Extended signing key (96 bytes = 192 hex chars) (required)
-  stakeKey?: string     // Extended staking key (optional)
+  paymentKey: string // Extended signing key (96 bytes = 192 hex chars) (required)
+  stakeKey?: string // Extended staking key (optional)
 }
 ```
 
@@ -74,36 +73,35 @@ interface PrivateKeyWalletConfig {
 Load keys from secure secret management systems:
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { mainnet, Client } from "@evolution-sdk/evolution"
 
 // Mock vault client for documentation purposes
 declare const secretsManager: {
   getSecretValue(params: { SecretId: string }): {
     promise(): Promise<{ SecretString: string }>
   }
-};
+}
 
 async function createSecureClient() {
   // Load from secure vault (AWS Secrets Manager, Azure Key Vault, etc.)
-  const signingKey = await loadFromSecureVault("cardano-payment-key");
-  
-  return createClient({
-    network: "mainnet",
-    wallet: {
-      type: "private-key",
+  const signingKey = await loadFromSecureVault("cardano-payment-key")
+
+  return Client.make(mainnet)
+    .withPrivateKey({
       paymentKey: signingKey
-    }
-  });
+    })
 }
 
 // Example vault integration pattern
 async function loadFromSecureVault(keyId: string): Promise<string> {
   // Example: AWS Secrets Manager pattern
-  const { SecretString } = await secretsManager.getSecretValue({
-    SecretId: keyId
-  }).promise();
-  
-  return JSON.parse(SecretString).paymentKey;
+  const { SecretString } = await secretsManager
+    .getSecretValue({
+      SecretId: keyId
+    })
+    .promise()
+
+  return JSON.parse(SecretString).paymentKey
 }
 ```
 
@@ -127,144 +125,130 @@ Log all key access events without logging the keys themselves. Alert on unusual 
 
 ## AWS Secrets Manager Example
 
+Uses [`@aws-sdk/client-secrets-manager`](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/secrets-manager/) — see the [official quickstart](https://docs.aws.amazon.com/secretsmanager/latest/userguide/retrieving-secrets-javascript.html).
+
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { mainnet, Client } from "@evolution-sdk/evolution"
 
 // Mock AWS SDK classes for documentation
 declare class SecretsManagerClient {
-  constructor(config: { region: string });
-  send(command: GetSecretValueCommand): Promise<{ SecretString?: string }>;
+  constructor(config: { region: string })
+  send(command: GetSecretValueCommand): Promise<{ SecretString?: string }>
 }
 
 declare class GetSecretValueCommand {
-  constructor(params: { SecretId: string });
+  constructor(params: { SecretId: string })
 }
 
-const secretsManager = new SecretsManagerClient({ region: "us-east-1" });
+const secretsManager = new SecretsManagerClient({ region: "us-east-1" })
 
 async function createProductionClient() {
   // Retrieve secret
   const command = new GetSecretValueCommand({
     SecretId: "prod/cardano/payment-key"
-  });
-  
-  const response = await secretsManager.send(command);
-  const secret = JSON.parse(response.SecretString!);
-  
+  })
+
+  const response = await secretsManager.send(command)
+  const secret = JSON.parse(response.SecretString!)
+
   // Create client with retrieved key
-  return createClient({
-    network: "mainnet",
-    wallet: {
-      type: "private-key",
+  return Client.make(mainnet)
+    .withPrivateKey({
       paymentKey: secret.paymentKey
-    }
-  });
+    })
 }
 ```
 
 ## Azure Key Vault Example
 
+Uses [`@azure/keyvault-secrets`](https://learn.microsoft.com/en-us/javascript/api/@azure/keyvault-secrets/secretclient) + [`@azure/identity`](https://learn.microsoft.com/en-us/azure/key-vault/secrets/quick-create-node) — see the [official quickstart](https://learn.microsoft.com/en-us/azure/key-vault/secrets/quick-create-node).
+
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { mainnet, Client } from "@evolution-sdk/evolution"
 
 // Mock Azure SDK classes for documentation
 declare class DefaultAzureCredential {}
 
 declare class SecretClient {
-  constructor(vaultUrl: string, credential: any);
-  getSecret(name: string): Promise<{ value?: string }>;
+  constructor(vaultUrl: string, credential: any)
+  getSecret(name: string): Promise<{ value?: string }>
 }
 
-const credential = new DefaultAzureCredential();
-const vaultUrl = "https://your-vault.vault.azure.net";
-const secretClient = new SecretClient(vaultUrl, credential);
+const credential = new DefaultAzureCredential()
+const vaultUrl = "https://your-vault.vault.azure.net"
+const secretClient = new SecretClient(vaultUrl, credential)
 
 async function createProductionClient() {
   // Retrieve secret
-  const secret = await secretClient.getSecret("cardano-payment-key");
-  
-  return createClient({
-    network: "mainnet",
-    wallet: {
-      type: "private-key",
+  const secret = await secretClient.getSecret("cardano-payment-key")
+
+  return Client.make(mainnet)
+    .withPrivateKey({
       paymentKey: secret.value!
-    }
-  });
+    })
 }
 ```
 
 ## Key Rotation Strategy
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { mainnet, Client } from "@evolution-sdk/evolution"
 
 async function rotateKeys() {
   // 1. Generate new key (offline, secure environment)
-  const newKey = await generateNewSigningKey();
-  
+  const newKey = await generateNewSigningKey()
+
   // 2. Store new key in vault
-  await storeInVault("cardano-payment-key-new", newKey);
-  
+  await storeInVault("cardano-payment-key-new", newKey)
+
   // 3. Create client with new key
-  const client = createClient({
-    network: "mainnet",
-    wallet: {
-      type: "private-key",
+  const client = Client.make(mainnet)
+    .withPrivateKey({
       paymentKey: await loadFromVault("cardano-payment-key-new")
-    }
-  });
-  
+    })
+
   // 4. Monitor for issues
-  await monitorTransactions(client);
-  
+  await monitorTransactions(client)
+
   // 5. After confirmation period, promote new key
-  await promoteKey("cardano-payment-key-new", "cardano-payment-key");
-  
+  await promoteKey("cardano-payment-key-new", "cardano-payment-key")
+
   // 6. Archive old key (don't delete immediately)
-  await archiveKey("cardano-payment-key-old");
+  await archiveKey("cardano-payment-key-old")
 }
 
-declare function generateNewSigningKey(): Promise<string>;
-declare function storeInVault(id: string, key: string): Promise<void>;
-declare function loadFromVault(id: string): Promise<string>;
-declare function monitorTransactions(client: any): Promise<void>;
-declare function promoteKey(newId: string, currentId: string): Promise<void>;
-declare function archiveKey(id: string): Promise<void>;
+declare function generateNewSigningKey(): Promise<string>
+declare function storeInVault(id: string, key: string): Promise<void>
+declare function loadFromVault(id: string): Promise<string>
+declare function monitorTransactions(client: any): Promise<void>
+declare function promoteKey(newId: string, currentId: string): Promise<void>
+declare function archiveKey(id: string): Promise<void>
 ```
 
 ## Environment Separation
 
 ```typescript twoslash
-import { createClient } from "@evolution-sdk/evolution";
+import { preprod, mainnet, Client } from "@evolution-sdk/evolution"
 
 // Development
-const devClient = createClient({
-  network: "preprod",
-  wallet: {
-    type: "private-key",
+const devClient = Client.make(preprod)
+  .withPrivateKey({
     paymentKey: await loadFromVault("dev/cardano-payment-key")
-  }
-});
+  })
 
 // Staging
-const stagingClient = createClient({
-  network: "preprod",  // Still testnet
-  wallet: {
-    type: "private-key",
-    paymentKey: await loadFromVault("staging/cardano-payment-key")  // Different key
-  }
-});
+const stagingClient = Client.make(preprod)
+  .withPrivateKey({
+    paymentKey: await loadFromVault("staging/cardano-payment-key") // Different key
+  })
 
 // Production
-const prodClient = createClient({
-  network: "mainnet",
-  wallet: {
-    type: "private-key",
-    paymentKey: await loadFromVault("prod/cardano-payment-key")  // Different key
-  }
-});
+const prodClient = Client.make(mainnet)
+  .withPrivateKey({
+    paymentKey: await loadFromVault("prod/cardano-payment-key") // Different key
+  })
 
-declare function loadFromVault(id: string): Promise<string>;
+declare function loadFromVault(id: string): Promise<string>
 ```
 
 ## Security Reminders

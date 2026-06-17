@@ -1,6 +1,6 @@
 import type * as CoreAddress from "../../../Address.js"
 import type * as Anchor from "../../../Anchor.js"
-import type * as CoreAssets from "../../../Assets/index.js"
+import type * as CoreAssets from "../../../Assets.js"
 import type * as Credential from "../../../Credential.js"
 import type * as CoreDatumOption from "../../../DatumOption.js"
 import type * as DRep from "../../../DRep.js"
@@ -12,8 +12,8 @@ import type * as PoolKeyHash from "../../../PoolKeyHash.js"
 import type * as PoolParams from "../../../PoolParams.js"
 import type * as RewardAccount from "../../../RewardAccount.js"
 import type * as CoreScript from "../../../Script.js"
-import type * as Time from "../../../Time/index.js"
 import type * as TransactionMetadatum from "../../../TransactionMetadatum.js"
+import type * as UnixTime from "../../../UnixTime.js"
 import type * as UTxO from "../../../UTxO.js"
 import type * as VotingProcedures from "../../../VotingProcedures.js"
 import type * as RedeemerBuilder from "../RedeemerBuilder.js"
@@ -36,9 +36,9 @@ import type * as RedeemerBuilder from "../RedeemerBuilder.js"
  */
 export interface ValidityParams {
   /** Transaction valid after this Unix time (milliseconds). Converted to slot. */
-  readonly from?: Time.UnixTime
+  readonly from?: UnixTime.UnixTime
   /** Transaction expires after this Unix time (milliseconds). Converted to slot. */
-  readonly to?: Time.UnixTime
+  readonly to?: UnixTime.UnixTime
 }
 
 export interface PayToAddressParams {
@@ -47,6 +47,8 @@ export interface PayToAddressParams {
   readonly datum?: CoreDatumOption.DatumOption
   /** Optional script to store as a reference script in the output */
   readonly script?: CoreScript.Script
+  /** Override the build-level `autoMinUtxo` setting for this specific output. */
+  readonly autoMinUtxo?: boolean
 }
 
 /**
@@ -114,6 +116,24 @@ export interface RegisterStakeParams {
 }
 
 /**
+ * Parameters for legacy (pre-Conway) stake credential registration.
+ *
+ * Creates a StakeRegistration certificate (CDDL tag 0) with no deposit.
+ * This is the pre-Conway registration format still accepted on mainnet.
+ *
+ * @since 2.0.0
+ * @category staking
+ */
+export interface RegisterStakeLegacyParams {
+  /** The stake credential to register (key hash or script hash) */
+  readonly stakeCredential: Credential.Credential
+  /** Redeemer for script-controlled stake credentials */
+  readonly redeemer?: RedeemerBuilder.RedeemerArg
+  /** Optional label for debugging script failures - identifies this operation in error messages */
+  readonly label?: string
+}
+
+/**
  * Parameters for deregistering a stake credential.
  *
  * Removes a stake credential from the chain and reclaims the deposit.
@@ -123,6 +143,24 @@ export interface RegisterStakeParams {
  * @category staking
  */
 export interface DeregisterStakeParams {
+  /** The stake credential to deregister */
+  readonly stakeCredential: Credential.Credential
+  /** Redeemer for script-controlled stake credentials */
+  readonly redeemer?: RedeemerBuilder.RedeemerArg
+  /** Optional label for debugging script failures - identifies this operation in error messages */
+  readonly label?: string
+}
+
+/**
+ * Parameters for legacy (pre-Conway) stake credential deregistration.
+ *
+ * Creates a StakeDeregistration certificate (CDDL tag 1) with no deposit refund.
+ * This is the pre-Conway deregistration format still accepted on mainnet.
+ *
+ * @since 2.0.0
+ * @category staking
+ */
+export interface DeregisterStakeLegacyParams {
   /** The stake credential to deregister */
   readonly stakeCredential: Credential.Credential
   /** Redeemer for script-controlled stake credentials */

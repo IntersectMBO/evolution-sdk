@@ -2,9 +2,17 @@
   "title": "Smart Contracts",
   "pages": [
     "index",
-    "validators",
-    "datums-redeemers",
-    "minting-policies",
-    "testing"
+    "datums",
+    "locking",
+    "spending",
+    "minting",
+    "native-scripts",
+    "redeemers",
+    "reference-scripts",
+    "apply-params",
+    "blueprint-codegen",
+    "vesting",
+    "mint-nft",
+    "multi-sig"
   ]
 }

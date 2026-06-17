@@ -1,5 +1,7 @@
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as AuxiliaryDataHash from "./AuxiliaryDataHash.js"
 import * as CBOR from "./CBOR.js"
 import * as Metadata from "./Metadata.js"
 import * as NativeScripts from "./NativeScripts.js"
@@ -638,3 +640,15 @@ export const toCBORBytes = (data: AuxiliaryData, options: CBOR.CodecOptions = CB
  */
 export const toCBORHex = (data: AuxiliaryData, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORHex(options))(data)
+
+/**
+ * Compute hash of auxiliary data (tag 259) per ledger rules.
+ *
+ * @since 2.0.0
+ * @category hashing
+ */
+export const toHash = (aux: AuxiliaryData): AuxiliaryDataHash.AuxiliaryDataHash => {
+  const bytes = toCBORBytes(aux)
+  const digest = blake2b(bytes, { dkLen: 32 })
+  return new AuxiliaryDataHash.AuxiliaryDataHash({ bytes: digest })
+}

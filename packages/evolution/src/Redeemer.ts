@@ -444,6 +444,22 @@ export const arbitraryExUnits: FastCheck.Arbitrary<ExUnits> = FastCheck.tuple(
  * @since 2.0.0
  * @category generators
  */
+/**
+ * Compute total ex_units by summing over redeemers.
+ *
+ * @since 2.0.0
+ * @category utilities
+ */
+export const totalExUnits = (redeemers: ReadonlyArray<Redeemer>): ExUnits => {
+  let mem = 0n
+  let steps = 0n
+  for (const r of redeemers) {
+    mem += r.exUnits.mem
+    steps += r.exUnits.steps
+  }
+  return new ExUnits({ mem, steps })
+}
+
 export const arbitrary: FastCheck.Arbitrary<Redeemer> = FastCheck.record({
   index: FastCheck.bigInt({ min: 0n, max: 1000n }),
   tag: arbitraryRedeemerTag,

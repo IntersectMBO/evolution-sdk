@@ -1,6 +1,6 @@
 ---
 title: sdk/builders/SignBuilder.ts
-nav_order: 147
+nav_order: 143
 parent: Modules
 ---
 
@@ -32,7 +32,7 @@ Includes `chainResult` for transaction chaining - use `chainResult.available` as
 
 ```ts
 export interface SignBuilder extends TransactionResultBase, EffectToPromiseAPI<SignBuilderEffect> {
-  readonly Effect: SignBuilderEffect
+  readonly effect: SignBuilderEffect
   /**
    * Compute chain result for building dependent transactions.
    * Contains consumed UTxOs, available UTxOs (remaining + created), and txHash.

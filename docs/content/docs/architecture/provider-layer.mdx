@@ -21,8 +21,6 @@ The architecture establishes a thin interface capturing what transaction buildin
 
 The abstraction remains thin by design—it does not attempt to expose every provider's unique features. Focused scope keeps the interface stable and implementations maintainable.
 
-The abstraction remains thin by design—it does not attempt to expose every provider's unique features. Focused scope keeps the interface stable and implementations maintainable.
-
 ## Provider Interface Contract
 
 All providers implement the same core operations required for transaction building:
@@ -62,12 +60,10 @@ graph TD
 **[1] Provider Interface**: Defines required operations:
 - `getUtxos(address)` - Query unspent outputs at address
 - `getProtocolParameters()` - Fetch current protocol parameters
-- `submitTx(cbor)` - Submit signed transaction
+- `submitTx(tx)` - Submit signed transaction
 - `evaluateTx(tx, utxos)` - Calculate script execution costs
 - `getDatum(hash)` - Retrieve datum by hash
 - `awaitTx(hash)` - Wait for transaction confirmation
-
-**[2] Provider Implementations**: Each translates interface calls to their native API. Application code depends only on interface, never on specific implementation.
 
 **[2] Provider Implementations**: Each translates interface calls to their native API. Application code depends only on interface, never on specific implementation.
 
@@ -101,15 +97,13 @@ graph LR
     style Instance fill:#3b82f6,stroke:#1e3a8a,stroke-width:3px,color:#ffffff
 `} />
 
-**[1] ProviderConfig**: Discriminated union type. The `type` field determines which configuration properties are required.
+**[1] Provider Config**: Method-specific config object. Each `.withX()` provider method determines which configuration properties are required.
 
-**[2] Provider Factory**: Pattern matches on `type` to construct appropriate implementation. Invalid configurations produce compile-time errors.
+**[2] Provider Factory**: The selected `.withX()` method constructs the appropriate implementation. Invalid configurations produce compile-time errors.
 
 **[3] Provider Instance**: Implements unified interface. Type system guarantees all required configuration is present.
 
-TypeScript enforces: `type: "blockfrost"` requires `url` and `projectId`. `type: "kupmios"` requires `kupoUrl` and `ogmiosUrl`. Mismatches are compilation errors, not runtime failures.
-
-TypeScript enforces: `type: "blockfrost"` requires `url` and `projectId`. `type: "kupmios"` requires `kupoUrl` and `ogmiosUrl`. Mismatches are compilation errors, not runtime failures.
+TypeScript enforces: `.withBlockfrost()` requires `baseUrl` and `projectId`. `.withKupmios()` requires `kupoUrl` and `ogmiosUrl`. Mismatches are compilation errors, not runtime failures.
 
 ## Integration Points
 
@@ -120,7 +114,7 @@ The provider layer integrates with other architectural components:
 - Available UTxOs at wallet addresses (coin selection)
 - Script evaluation (calculating execution units for Plutus scripts)
 
-**Client Configuration**: Provider is attached via `createClient()` or `attachProvider()`. The client stores the provider reference and passes it to transaction builders.
+**Client Configuration**: Provider capability is added during assembly via `client(chain).withBlockfrost()` or the other `.withX()` provider methods. The client stores the provider reference and passes it to transaction builders.
 
 **Error Handling**: Provider methods return `Effect<Result, ProviderError>`. All provider-specific errors (HTTP failures, WebSocket disconnections, rate limits, authentication) normalize to `ProviderError` with consistent structure. Application code handles one error type, not provider-specific exceptions.
 

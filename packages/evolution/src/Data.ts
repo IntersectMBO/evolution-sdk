@@ -1,4 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2"
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Data as EffectData, Effect, Equal, FastCheck, Hash, ParseResult, Schema } from "effect"
 
 import * as CBOR from "./CBOR.js"
@@ -739,53 +739,14 @@ export const hash = (data: Data): number => {
 }
 
 /**
- * Deep structural equality for Plutus Data values.
- * Handles maps, lists, ints, bytes, and constrs.
+ * Schema-derived structural equality for Plutus Data values.
+ * Handles maps, lists, ints, bytes, and constrs via the
+ * recursive DataSchema definition — no hand-rolled comparison needed.
  *
  * @since 2.0.0
  * @category equality
  */
-export const equals = (a: Data, b: Data): boolean => {
-  // bigint
-  if (typeof a === "bigint" && typeof b === "bigint") return a === b
-
-  // Uint8Array (ByteArray) - bytewise comparison
-  if (a instanceof Uint8Array && b instanceof Uint8Array) {
-    if (a.length !== b.length) return false
-    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
-    return true
-  }
-
-  // Arrays (Lists)
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false
-    for (let i = 0; i < a.length; i++) if (!equals(a[i] as Data, b[i] as Data)) return false
-    return true
-  }
-
-  // Constr
-  if (a instanceof Constr && b instanceof Constr) {
-    if (a.index !== b.index) return false
-    if (a.fields.length !== b.fields.length) return false
-    for (let i = 0; i < a.fields.length; i++) if (!equals(a.fields[i] as Data, b.fields[i] as Data)) return false
-    return true
-  }
-
-  // Map
-  if (a instanceof Map && b instanceof Map) {
-    if (a.size !== b.size) return false
-    const aEntries = Array.from(a.entries())
-    for (const [ak, av] of aEntries) {
-      // find equivalent key in b
-      const match = Array.from(b.entries()).find(([bk]) => equals(ak as Data, bk as Data))
-      if (!match) return false
-      if (!equals(av as Data, match[1] as Data)) return false
-    }
-    return true
-  }
-
-  return false
-}
+export const equals: (a: Data, b: Data) => boolean = Schema.equivalence(DataSchema)
 
 export const CDDLSchema = CBOR.CBORSchema
 
@@ -933,18 +894,18 @@ export const withSchema = <A, I extends Data>(
  *
  * // Hash a simple integer
  * const intData = 42n
- * const intHash = Data.hashData(intData)
+ * const intHash = Data.toDatumHash(intData)
  *
  * // Hash a constructor
  * const constr = new Data.Constr({ index: 0n, fields: [1n, 2n] })
- * const constrHash = Data.hashData(constr)
+ * const constrHash = Data.toDatumHash(constr)
  *
  * // Hash a bytearray
  * const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef])
- * const bytesHash = Data.hashData(bytes)
+ * const bytesHash = Data.toDatumHash(bytes)
  * ```
  */
-export const hashData = (
+export const toDatumHash = (
   data: Data,
   options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS
 ): DatumHash.DatumHash => {
@@ -952,3 +913,10 @@ export const hashData = (
   const digest = blake2b(bytes, { dkLen: 32 })
   return new DatumHash.DatumHash({ hash: digest })
 }
+
+/**
+ * @since 2.0.0
+ * @category hashing
+ * @deprecated Use `toDatumHash` instead.
+ */
+export const hashData = toDatumHash

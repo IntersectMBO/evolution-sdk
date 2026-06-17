@@ -2,9 +2,10 @@
   "title": "Advanced",
   "pages": [
     "index",
-    "performance",
-    "debugging",
+    "architecture",
+    "custom-providers",
     "error-handling",
-    "best-practices"
+    "performance",
+    "typescript"
   ]
 }

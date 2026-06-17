@@ -2,10 +2,9 @@ import { FetchHttpClient } from "@effect/platform"
 import { Effect, pipe, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
-import * as AssetsUnit from "../../../Assets/Unit.js"
+import * as CoreAssets from "../../../Assets.js"
 import * as Bytes from "../../../Bytes.js"
-import type * as Credential from "../../../Credential.js"
+import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
 import * as PolicyId from "../../../PolicyId.js"
@@ -15,6 +14,7 @@ import type * as CoreRewardAddress from "../../../RewardAddress.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
+import * as AssetsUnit from "../../../Unit.js"
 import type * as CoreUTxO from "../../../UTxO.js"
 import type * as EvalRedeemer from "../../EvalRedeemer.js"
 import * as Provider from "../Provider.js"
@@ -22,18 +22,27 @@ import * as HttpUtils from "./HttpUtils.js"
 import * as _Koios from "./Koios.js"
 import * as _Ogmios from "./Ogmios.js"
 
+/**
+ * Wrap errors into ProviderError
+ */
+const wrapError = (operation: string) => (cause: unknown) =>
+  Effect.fail(
+    new Provider.ProviderError({
+      message: `Koios ${operation} failed`,
+      cause
+    })
+  )
+
 export const getProtocolParameters = (baseUrl: string, token?: string) =>
   Effect.gen(function* () {
-    const url = `${baseUrl}/epoch_params?limit=1`
+    const url = `${baseUrl}/epoch_params?limit=1&order=epoch_no.desc`
     const schema = Schema.Array(_Koios.ProtocolParametersSchema)
     const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
     const [result] = yield* pipe(
       HttpUtils.get(url, schema, bearerToken),
       // Allows for dependency injection and easier testing
       Effect.timeout(10_000),
-      Effect.catchAllCause(
-        (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch protocol parameters from Koios" })
-      ),
+      Effect.catchAll(wrapError("getProtocolParameters")),
       Effect.provide(FetchHttpClient.layer)
     )
 
@@ -62,32 +71,31 @@ export const getProtocolParameters = (baseUrl: string, token?: string) =>
     }
   })
 
-export const getUtxos =
-  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
-    // Convert CoreAddress to Bech32 string for Koios API
-    const addressStr =
-      addressOrCredential instanceof CoreAddress.Address
-        ? CoreAddress.toBech32(addressOrCredential)
-        : addressOrCredential
-    return pipe(
-      _Koios.getUtxosEffect(baseUrl, addressStr, token ? { Authorization: `Bearer ${token}` } : undefined),
-      Effect.timeout(10_000),
-      Effect.catchAllCause(
-        (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch UTxOs from Koios" })
-      )
-    )
+const getUtxosForAddressOrCredential = (
+  baseUrl: string,
+  addressOrCredential: CoreAddress.Address | Credential.Credential,
+  token?: string
+) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+  if (!("hash" in addressOrCredential)) {
+    return _Koios.getUtxosEffect(baseUrl, CoreAddress.toBech32(addressOrCredential), headers)
   }
+  return _Koios.getCredentialUtxosEffect(baseUrl, Credential.toHex(addressOrCredential), headers)
+}
+
+export const getUtxos =
+  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) =>
+    pipe(
+      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token),
+      Effect.timeout(10_000),
+      Effect.catchAll(wrapError("getUtxos"))
+    )
 
 export const getUtxosWithUnit =
   (baseUrl: string, token?: string) =>
-  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) => {
-    // Convert CoreAddress to Bech32 string for Koios API
-    const addressStr =
-      addressOrCredential instanceof CoreAddress.Address
-        ? CoreAddress.toBech32(addressOrCredential)
-        : addressOrCredential
-    return pipe(
-      _Koios.getUtxosEffect(baseUrl, addressStr, token ? { Authorization: `Bearer ${token}` } : undefined),
+  (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) =>
+    pipe(
+      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token),
       Effect.map((utxos) =>
         utxos.filter((utxo) => {
           const units = CoreAssets.getUnits(utxo.assets)
@@ -95,11 +103,8 @@ export const getUtxosWithUnit =
         })
       ),
       Effect.timeout(10_000),
-      Effect.catchAllCause(
-        (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch UTxOs with unit from Koios" })
-      )
+      Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
-  }
 
 export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string) =>
   pipe(
@@ -148,9 +153,7 @@ export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string)
       )
     }),
     Effect.timeout(10_000),
-    Effect.catchAllCause(
-      (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch UTxO by unit from Koios" })
-    )
+    Effect.catchAll(wrapError("getUtxoByUnit"))
   )
 
 export const getUtxosByOutRef =
@@ -168,9 +171,7 @@ export const getUtxosByOutRef =
         HttpUtils.postJson(url, body, Schema.Array(_Koios.TxInfoSchema), bearerToken),
         Effect.provide(FetchHttpClient.layer),
         Effect.timeout(10_000),
-        Effect.catchAllCause(
-          (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch UTxOs by OutRef from Koios" })
-        )
+        Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
 
       if (result) {
@@ -224,13 +225,11 @@ export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress
           : Effect.succeed(result[0])
       ),
       Effect.timeout(10_000),
-      Effect.catchAllCause(
-        (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch delegation from Koios" })
-      )
+      Effect.catchAll(wrapError("getDelegation"))
     )
 
     return {
-      poolId: result.delegated_pool ? Schema.decodeSync(PoolKeyHash.FromHex)(result.delegated_pool) : null,
+      poolId: result.delegated_pool ? Schema.decodeSync(PoolKeyHash.FromBech32)(result.delegated_pool) : null,
       rewards: BigInt(result.rewards_available)
     } satisfies Provider.Delegation
   })
@@ -258,9 +257,7 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
           : Effect.succeed(result[0])
       ),
       Effect.timeout(10_000),
-      Effect.catchAllCause(
-        (cause) => new Provider.ProviderError({ cause, message: "Failed to fetch datum from Koios" })
-      )
+      Effect.catchAll(wrapError("getDatum"))
     )
 
     return Schema.decodeSync(PlutusData.FromCBORHex())(result.bytes)
@@ -268,7 +265,7 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
 
 export const awaitTx =
   (baseUrl: string, token?: string) =>
-  (txHash: TransactionHash.TransactionHash, checkInterval = 20000) =>
+  (txHash: TransactionHash.TransactionHash, checkInterval = 20000, timeout = 160_000) =>
     Effect.gen(function* () {
       const txHashHex = TransactionHash.toHex(txHash)
       const body = {
@@ -284,9 +281,9 @@ export const awaitTx =
           schedule: Schedule.exponential(checkInterval),
           until: (result) => result.length > 0
         }),
-        Effect.timeout(160_000),
-        Effect.catchAllCause(
-          (cause) => new Provider.ProviderError({ cause, message: "Failed to await transaction confirmation" })
+        Effect.timeout(timeout),
+        Effect.catchAllCause((cause) =>
+          Effect.fail(new Provider.ProviderError({ cause, message: "Koios awaitTx failed" }))
         ),
         Effect.as(true)
       )
@@ -304,7 +301,7 @@ export const submitTx = (baseUrl: string, token?: string) => (tx: Transaction.Tr
       HttpUtils.postUint8Array(url, txCborBytes, _Koios.TxHashSchema, bearerToken),
       Effect.provide(FetchHttpClient.layer),
       Effect.timeout(10_000),
-      Effect.catchAllCause((cause) => new Provider.ProviderError({ cause, message: "Failed to submit transaction" }))
+      Effect.catchAll(wrapError("submitTx"))
     )
 
     return Schema.decodeSync(TransactionHash.FromHex)(result)
@@ -336,9 +333,7 @@ export const evaluateTx =
         HttpUtils.postJson(url, body, schema, bearerToken),
         Effect.provide(FetchHttpClient.layer),
         Effect.timeout(10_000),
-        Effect.catchAllCause(
-          (cause) => new Provider.ProviderError({ cause, message: "Failed to evaluate transaction" })
-        )
+        Effect.catchAll(wrapError("evaluateTx"))
       )
 
       const evalRedeemers = result.map((item) => {

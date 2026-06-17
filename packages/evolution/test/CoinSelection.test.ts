@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import { CoinSelectionError, largestFirstSelection } from "../src/sdk/builders/CoinSelection.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"

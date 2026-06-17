@@ -11,6 +11,7 @@ import * as Credential from "./Credential.js"
 import * as KeyHash from "./KeyHash.js"
 import * as NetworkId from "./NetworkId.js"
 import * as ScriptHash from "./ScriptHash.js"
+import { addressFromSeed as _addressFromSeed } from "./sdk/wallet/Derivation.js"
 
 /**
  * @since 2.0.0
@@ -193,6 +194,14 @@ export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchem
 export const hasStakingCredential = (address: Address): boolean => address.stakingCredential !== undefined
 
 /**
+ * Check if address has a script payment credential.
+ *
+ * @since 2.0.0
+ * @category predicates
+ */
+export const isScript = (address: Address): boolean => address.paymentCredential?._tag === "ScriptHash"
+
+/**
  * Check if AddressStructure is enterprise-like (no staking credential)
  *
  * @since 2.0.0
@@ -220,6 +229,36 @@ export const fromHex = Schema.decodeSync(FromHex)
 export const toHex = Schema.encodeSync(FromHex)
 export const fromBytes = Schema.decodeSync(FromBytes)
 export const toBytes = Schema.encodeSync(FromBytes)
+
+/**
+ * Derive an address from a BIP-39 seed phrase.
+ *
+ * Pure, synchronous key derivation — no network access or running cluster required.
+ * Useful for generating addresses before a devnet cluster starts (e.g. for genesis funding).
+ *
+ * @since 2.1.0
+ * @category Functions
+ *
+ * @example
+ * ```typescript
+ * import * as Address from "@evolution-sdk/evolution/Address"
+ *
+ * const address = Address.fromSeed("test test test test test test test test test test test test test test test test test test test test test test test sauce", {
+ *   accountIndex: 0,
+ *   networkId: 0 // 0 = testnet, 1 = mainnet
+ * })
+ * const hex = Address.toHex(address)
+ * ```
+ */
+export const fromSeed = (
+  seed: string,
+  options: {
+    password?: string
+    addressType?: "Base" | "Enterprise"
+    accountIndex?: number
+    networkId?: number
+  } = {}
+): Address => _addressFromSeed(seed, options).address
 
 /**
  * FastCheck arbitrary generator for testing

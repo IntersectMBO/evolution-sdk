@@ -7,12 +7,14 @@ import { HttpClientError } from "@effect/platform"
 import { Effect, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
+import * as AssetName from "../../../AssetName.js"
 import * as Bytes from "../../../Bytes.js"
-import type * as Credential from "../../../Credential.js"
+import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as InlineDatum from "../../../InlineDatum.js"
+import * as NativeScripts from "../../../NativeScripts.js"
 import * as PlutusV1 from "../../../PlutusV1.js"
 import * as PlutusV2 from "../../../PlutusV2.js"
 import * as PlutusV3 from "../../../PlutusV3.js"
@@ -26,7 +28,6 @@ import type * as Provider from "../Provider.js"
 import { ProviderError } from "../Provider.js"
 import * as Blockfrost from "./Blockfrost.js"
 import * as HttpUtils from "./HttpUtils.js"
-import * as Ogmios from "./Ogmios.js"
 
 // ============================================================================
 // Rate Limiting Configuration
@@ -51,13 +52,15 @@ const createHeaders = (projectId?: string) => ({
 })
 
 /**
- * Wrap HTTP errors into ProviderError
+ * Wrap errors into ProviderError
  */
-const wrapError = (operation: string) => (error: unknown) =>
-  new ProviderError({
-    message: `Blockfrost ${operation} failed. ${(error as Error).message}`,
-    cause: error
-  })
+const wrapError = (operation: string) => (cause: unknown) =>
+  Effect.fail(
+    new ProviderError({
+      message: `Blockfrost ${operation} failed`,
+      cause
+    })
+  )
 
 /**
  * Check if an error is a 404 Not Found response
@@ -70,16 +73,99 @@ const is404Error = (error: unknown): boolean => {
 }
 
 /**
- * Convert address or credential to appropriate Blockfrost endpoint path
+ * Convert address or credential to Blockfrost endpoint path.
+ * Blockfrost /addresses/{address} endpoints accept payment credentials
+ * in bech32 format (CIP-0005: addr_vkh for key hashes, script for script hashes).
  */
 const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Credential): string => {
-  // For Core Address, convert to bech32 string
-  if (addressOrCredential instanceof CoreAddress.Address) {
+  if (!("hash" in addressOrCredential)) {
     return CoreAddress.toBech32(addressOrCredential)
   }
-  // For Credential, convert to string representation
-  return addressOrCredential.toString()
+  return Credential.toBech32(addressOrCredential)
 }
+
+const toBlockfrostValue = (assets: CoreUTxO.UTxO["assets"]): Record<string, unknown> => {
+  const value: Record<string, unknown> = {
+    coins: Number(assets.lovelace)
+  }
+
+  if (assets.multiAsset) {
+    for (const [policyId, assetMap] of assets.multiAsset.map.entries()) {
+      const policyIdHex = Bytes.toHex(policyId.hash)
+      const assetRecord: Record<string, number> = {}
+
+      for (const [assetName, quantity] of assetMap.entries()) {
+        assetRecord[AssetName.toHex(assetName)] = Number(quantity)
+      }
+
+      if (Object.keys(assetRecord).length > 0) {
+        value[policyIdHex] = assetRecord
+      }
+    }
+  }
+
+  return value
+}
+
+const toBlockfrostDatum = (
+  datumOption: DatumOption.DatumOption | undefined
+): { datumHash?: string; datum?: string } => {
+  if (!datumOption) {
+    return {}
+  }
+
+  if (datumOption._tag === "DatumHash") {
+    return { datumHash: Bytes.toHex(datumOption.hash) }
+  }
+
+  return { datum: PlutusData.toCBORHex(datumOption.data) }
+}
+
+const toBlockfrostScript = (
+  script: Script.Script | undefined
+):
+  | { native: ReturnType<typeof NativeScripts.toJSON> }
+  | { "plutus:v1": string }
+  | { "plutus:v2": string }
+  | { "plutus:v3": string }
+  | undefined => {
+  if (!script) {
+    return undefined
+  }
+
+  switch (script._tag) {
+    case "NativeScript":
+      return { native: NativeScripts.toJSON(script.script) }
+    case "PlutusV1":
+      return { "plutus:v1": Bytes.toHex(script.bytes) }
+    case "PlutusV2":
+      return { "plutus:v2": Bytes.toHex(script.bytes) }
+    case "PlutusV3":
+      return { "plutus:v3": Bytes.toHex(script.bytes) }
+  }
+}
+
+const toBlockfrostAdditionalUtxoSet = (additionalUTxOs: Array<CoreUTxO.UTxO>) =>
+  additionalUTxOs.map((utxo) => {
+    const txOut: Record<string, unknown> = {
+      address: CoreAddress.toBech32(utxo.address),
+      value: toBlockfrostValue(utxo.assets),
+      ...toBlockfrostDatum(utxo.datumOption)
+    }
+
+    const script = toBlockfrostScript(utxo.scriptRef)
+    if (script) {
+      txOut.script = script
+    }
+
+    return [
+      {
+        txId: TransactionHash.toHex(utxo.transactionId),
+        index: Number(utxo.index)
+      },
+      txOut
+    ]
+  })
 
 /**
  * Blockfrost script info response schema
@@ -107,25 +193,19 @@ const getScriptByHash =
     return withRateLimit(
       HttpUtils.get(`${baseUrl}/scripts/${scriptHash}`, BlockfrostScriptInfo, createHeaders(projectId))
     ).pipe(
-      Effect.mapError(wrapError("getScriptByHash")),
+      Effect.catchAll(wrapError("getScriptByHash")),
       Effect.flatMap((info) => {
-        // For native scripts, we could return NativeScript but for now focus on Plutus
-        if (info.type === "timelock" || info.type === "native") {
-          return Effect.fail(
-            new ProviderError({
-              message: `Native scripts not yet supported: ${scriptHash}`,
-              cause: "Native script"
-            })
-          )
-        }
-        // Fetch CBOR for Plutus scripts
+        // Fetch CBOR for all script types (Blockfrost serves CBOR for native/timelock too)
         return withRateLimit(
           HttpUtils.get(`${baseUrl}/scripts/${scriptHash}/cbor`, BlockfrostScriptCbor, createHeaders(projectId))
         ).pipe(
-          Effect.mapError(wrapError("getScriptByHash")),
+          Effect.catchAll(wrapError("getScriptByHash")),
           Effect.map((cbor) => {
             const scriptBytes = Bytes.fromHex(cbor.cbor)
             switch (info.type) {
+              case "timelock":
+              case "native":
+                return NativeScripts.fromCBORHex(cbor.cbor)
               case "plutusV1":
                 return new PlutusV1.PlutusV1({ bytes: scriptBytes })
               case "plutusV2":
@@ -162,7 +242,7 @@ const getDatumByHash =
         const data = PlutusData.fromCBORHex(datum.cbor)
         return new InlineDatum.InlineDatum({ data })
       }),
-      Effect.mapError(wrapError("getDatumByHash"))
+      Effect.catchAll(wrapError("getDatumByHash"))
     )
   }
 
@@ -180,7 +260,7 @@ export const getProtocolParameters = (baseUrl: string, projectId?: string) =>
       `${baseUrl}/epochs/latest/parameters`,
       Blockfrost.BlockfrostProtocolParameters,
       createHeaders(projectId)
-    ).pipe(Effect.map(Blockfrost.transformProtocolParameters), Effect.mapError(wrapError("getProtocolParameters")))
+    ).pipe(Effect.map(Blockfrost.transformProtocolParameters), Effect.catchAll(wrapError("getProtocolParameters")))
   )
 
 /**
@@ -267,8 +347,14 @@ export const getUtxos =
     }
 
     return fetchAllPages.pipe(
-      Effect.flatMap((utxos) => Effect.forEach(utxos, transformWithResolution, { concurrency: 10 })),
-      Effect.mapError(wrapError("getUtxos"))
+      Effect.flatMap((utxos) =>
+        Effect.forEach(
+          utxos.filter((u) => u.tx_hash !== ""),
+          transformWithResolution,
+          { concurrency: 10 }
+        )
+      ),
+      Effect.catchAll(wrapError("getUtxos"))
     )
   }
 
@@ -341,7 +427,7 @@ export const getUtxosWithUnit =
       return Effect.all([scriptEffect, datumEffect]).pipe(
         Effect.map(([scriptRef, datumOption]) => {
           const assets = Blockfrost.transformAmounts(utxo.amount)
-          const address = CoreAddress.fromBech32(addressPath)
+          const address = CoreAddress.fromBech32(utxo.address)
           const transactionId = TransactionHash.fromHex(utxo.tx_hash)
 
           return new CoreUTxO.UTxO({
@@ -357,8 +443,14 @@ export const getUtxosWithUnit =
     }
 
     return fetchAllPages.pipe(
-      Effect.flatMap((utxos) => Effect.forEach(utxos, transformWithResolution, { concurrency: 10 })),
-      Effect.mapError(wrapError("getUtxosWithUnit"))
+      Effect.flatMap((utxos) =>
+        Effect.forEach(
+          utxos.filter((u) => u.tx_hash !== ""),
+          transformWithResolution,
+          { concurrency: 10 }
+        )
+      ),
+      Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
   }
 
@@ -447,7 +539,7 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
         })
       )
     }),
-    Effect.mapError(wrapError("getUtxoByUnit"))
+    Effect.catchAll(wrapError("getUtxoByUnit"))
   )
 }
 
@@ -514,7 +606,7 @@ export const getUtxosByOutRef =
             { concurrency: 10 }
           )
         }),
-        Effect.mapError(wrapError("getUtxosByOutRef"))
+        Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
     )
 
@@ -533,7 +625,7 @@ export const getDelegation = (baseUrl: string, projectId?: string) => (rewardAdd
     Effect.map(Blockfrost.transformDelegation),
     // Handle 404 - account not registered/never staked
     Effect.catchIf(is404Error, () => Effect.succeed({ poolId: null, rewards: 0n } as Provider.Delegation)),
-    Effect.mapError(wrapError("getDelegation"))
+    Effect.catchAll(wrapError("getDelegation"))
   )
 }
 
@@ -544,11 +636,7 @@ export const getDelegation = (baseUrl: string, projectId?: string) => (rewardAdd
 export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: DatumHash.DatumHash) => {
   const datumHashHex = Bytes.toHex(datumHash.hash)
   return withRateLimit(
-    HttpUtils.get(
-      `${baseUrl}/scripts/datum/${datumHashHex}`,
-      Blockfrost.BlockfrostDatum,
-      createHeaders(projectId)
-    ).pipe(
+    HttpUtils.get(`${baseUrl}/scripts/datum/${datumHashHex}/cbor`, BlockfrostDatumCbor, createHeaders(projectId)).pipe(
       Effect.flatMap((datum) => {
         // Parse CBOR hex to PlutusData
         return Effect.try({
@@ -556,7 +644,7 @@ export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: Dat
           catch: (error) => new ProviderError({ message: "Failed to parse datum CBOR", cause: error })
         })
       }),
-      Effect.mapError(wrapError("getDatum"))
+      Effect.catchAll(wrapError("getDatum"))
     )
   )
 }
@@ -567,7 +655,7 @@ export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: Dat
  */
 export const awaitTx =
   (baseUrl: string, projectId?: string) =>
-  (txHash: TransactionHash.TransactionHash, checkInterval: number = 5000) => {
+  (txHash: TransactionHash.TransactionHash, checkInterval: number = 5000, timeout: number = 300_000) => {
     const txHashHex = TransactionHash.toHex(txHash)
     const checkTx = withRateLimit(
       HttpUtils.get(
@@ -576,17 +664,13 @@ export const awaitTx =
         createHeaders(projectId)
       ).pipe(
         Effect.map(() => true),
-        Effect.mapError(wrapError("awaitTx"))
+        Effect.catchAll(wrapError("awaitTx"))
       )
     )
 
-    // Poll every checkInterval milliseconds until transaction is found
-    const pollSchedule = Schedule.fixed(`${checkInterval} millis`).pipe(
-      Schedule.compose(Schedule.recurs(60)) // Max 60 attempts (5 minutes with 5s interval)
-    )
-
-    return Effect.retry(checkTx, pollSchedule).pipe(
-      Effect.orElse(() => Effect.succeed(false)) // Return false if not found after max attempts
+    return Effect.retry(checkTx, Schedule.fixed(`${checkInterval} millis`)).pipe(
+      Effect.timeout(timeout),
+      Effect.catchAllCause((cause) => Effect.fail(new ProviderError({ cause, message: "Blockfrost awaitTx failed" })))
     )
   }
 
@@ -610,7 +694,7 @@ export const submitTx = (baseUrl: string, projectId?: string) => (tx: Transactio
           catch: (error) => new ProviderError({ message: "Failed to parse transaction hash", cause: error })
         })
       }),
-      Effect.mapError(wrapError("submitTx"))
+      Effect.catchAll(wrapError("submitTx"))
     )
   )
 }
@@ -633,33 +717,7 @@ export const evaluateTx =
 
     // Build additional UTxO set if provided
     const additionalUtxoSet =
-      additionalUTxOs && additionalUTxOs.length > 0
-        ? Ogmios.toOgmiosUTxOs(additionalUTxOs).map((utxo) => {
-            const txIn = {
-              txId: utxo.transaction.id,
-              index: utxo.index
-            }
-
-            const txOut: Record<string, unknown> = {
-              address: utxo.address,
-              value: utxo.value
-            }
-
-            // Add datum if present
-            if (utxo.datum) {
-              txOut.datum = utxo.datum
-            } else if (utxo.datumHash) {
-              txOut.datumHash = utxo.datumHash
-            }
-
-            // Add script if present (required for reference script UTxOs)
-            if (utxo.script) {
-              txOut.script = utxo.script
-            }
-
-            return [txIn, txOut]
-          })
-        : []
+      additionalUTxOs && additionalUTxOs.length > 0 ? toBlockfrostAdditionalUtxoSet(additionalUTxOs) : []
 
     const payload = {
       cbor: txCborHex,
@@ -672,6 +730,9 @@ export const evaluateTx =
         payload,
         Blockfrost.JsonwspOgmiosEvaluationResponse,
         headers
-      ).pipe(Effect.map(Blockfrost.transformJsonwspOgmiosEvaluationResult), Effect.mapError(wrapError("evaluateTx")))
+      ).pipe(
+        Effect.flatMap(Blockfrost.transformJsonwspOgmiosEvaluationResult),
+        Effect.catchAll(wrapError("evaluateTx"))
+      )
     )
   }

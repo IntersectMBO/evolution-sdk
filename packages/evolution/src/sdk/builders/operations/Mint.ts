@@ -8,7 +8,7 @@
 import { Effect, Ref } from "effect"
 
 import * as AssetName from "../../../AssetName.js"
-import * as Assets from "../../../Assets/index.js"
+import * as Assets from "../../../Assets.js"
 import * as Mint from "../../../Mint.js"
 import * as NonZeroInt64 from "../../../NonZeroInt64.js"
 import * as PolicyId from "../../../PolicyId.js"
@@ -147,7 +147,6 @@ export const createMintAssetsProgram = (
  * - Negative values = tokens burned (assets destroyed)
  *
  * @param mint - The mint field from transaction state
- * @returns Assets record with mint amounts preserved
  * @internal
  */
 export const mintToAssets = (mint: Mint.Mint | undefined): Assets.Assets => {
@@ -178,7 +177,6 @@ export const mintToAssets = (mint: Mint.Mint | undefined): Assets.Assets => {
  * - Negative burns → positive (deficit, need to select from inputs)
  *
  * @param mint - The mint field from transaction state
- * @returns Assets record with negated mint amounts
  * @internal
  */
 export const negatedMintAssets = (mint: Mint.Mint | undefined): Assets.Assets => {

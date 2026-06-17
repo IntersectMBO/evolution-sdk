@@ -25,7 +25,6 @@ export interface SubmitBuilderEffect {
   /**
    * Submit the signed transaction to the blockchain via the provider.
    *
-   * @returns Effect resolving to the transaction hash
    * @since 2.0.0
    */
   readonly submit: () => Effect.Effect<TransactionHash.TransactionHash, TransactionBuilderError>
@@ -47,7 +46,7 @@ export interface SubmitBuilder extends EffectToPromiseAPI<SubmitBuilderEffect> {
    *
    * @since 2.0.0
    */
-  readonly Effect: SubmitBuilderEffect
+  readonly effect: SubmitBuilderEffect
 
   /**
    * The witness set containing all signatures for this transaction.

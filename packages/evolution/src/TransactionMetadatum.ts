@@ -198,51 +198,16 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
 // ============================================================================
 
 /**
- * Check if two TransactionMetadatum instances are equal.
+ * Schema-derived structural equality for TransactionMetadatum values.
+ * Handles maps, lists, ints, bytes, and text via the
+ * recursive TransactionMetadatumSchema definition — no hand-rolled comparison needed.
  *
  * @since 2.0.0
- * @category utilities
+ * @category equality
  */
-export const equals = (a: TransactionMetadatum, b: TransactionMetadatum): boolean => {
-  // String comparison
-  if (typeof a === "string" && typeof b === "string") {
-    return a === b
-  }
-
-  // BigInt comparison
-  if (typeof a === "bigint" && typeof b === "bigint") {
-    return a === b
-  }
-
-  // Uint8Array comparison
-  if (a instanceof Uint8Array && b instanceof Uint8Array) {
-    return a.length === b.length && a.every((byte, i) => byte === b[i])
-  }
-
-  // Array comparison
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, i) => equals(item, b[i]))
-  }
-
-  // Map comparison
-  if (a instanceof globalThis.Map && b instanceof globalThis.Map) {
-    if (a.size !== b.size) return false
-    for (const [key, value] of a.entries()) {
-      let found = false
-      for (const [bKey, bVal] of b.entries()) {
-        if (equals(key, bKey)) {
-          if (!equals(value, bVal)) return false
-          found = true
-          break
-        }
-      }
-      if (!found) return false
-    }
-    return true
-  }
-
-  return false
-}
+export const equals: (a: TransactionMetadatum, b: TransactionMetadatum) => boolean = Schema.equivalence(
+  TransactionMetadatumSchema
+)
 
 /**
  * FastCheck arbitrary for generating random TransactionMetadatum instances.

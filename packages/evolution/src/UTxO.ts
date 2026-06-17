@@ -1,11 +1,12 @@
 import { Equal, Hash, HashSet, Inspectable, Schema } from "effect"
 
 import * as Address from "./Address.js"
-import * as Assets from "./Assets/index.js"
+import * as Assets from "./Assets.js"
 import * as DatumOption from "./DatumOption.js"
 import * as Numeric from "./Numeric.js"
 import * as Script from "./Script.js"
 import * as TransactionHash from "./TransactionHash.js"
+import * as TransactionInput from "./TransactionInput.js"
 
 /**
  * UTxO (Unspent Transaction Output) - A transaction output with its on-chain reference.
@@ -190,3 +191,59 @@ export const toArray = (set: UTxOSet): Array<UTxO> => Array.from(set)
  * @category getters
  */
 export const toOutRefString = (utxo: UTxO): string => `${TransactionHash.toHex(utxo.transactionId)}#${utxo.index}`
+
+// =============================================================================
+// Aggregate Utilities
+// =============================================================================
+
+/**
+ * Calculate total assets from a collection of UTxOs.
+ *
+ * @since 2.0.0
+ * @category getters
+ */
+export const totalAssets = (utxos: ReadonlyArray<UTxO> | Set<UTxO>): Assets.Assets => {
+  const utxoArray = (
+    globalThis.Array.isArray(utxos) ? utxos : globalThis.Array.from(utxos)
+  ) as ReadonlyArray<UTxO>
+  return utxoArray.reduce(
+    (total: Assets.Assets, utxo: UTxO) => Assets.merge(total, utxo.assets),
+    Assets.zero
+  )
+}
+
+/**
+ * Convert UTxOs to sorted TransactionInputs.
+ * Inputs are sorted by transaction hash then output index for deterministic ordering.
+ *
+ * @since 2.0.0
+ * @category conversions
+ */
+export const toInputs = (
+  utxos: ReadonlyArray<UTxO>
+): ReadonlyArray<TransactionInput.TransactionInput> => {
+  const inputs: Array<TransactionInput.TransactionInput> = utxos.map(
+    (utxo) =>
+      new TransactionInput.TransactionInput({
+        transactionId: utxo.transactionId,
+        index: utxo.index
+      })
+  )
+
+  // Sort inputs for deterministic ordering:
+  // First by transaction hash, then by output index
+  inputs.sort((a, b) => {
+    const hashA = a.transactionId.hash
+    const hashB = b.transactionId.hash
+
+    for (let i = 0; i < hashA.length; i++) {
+      if (hashA[i] !== hashB[i]) {
+        return hashA[i]! - hashB[i]!
+      }
+    }
+
+    return Number(a.index - b.index)
+  })
+
+  return inputs
+}

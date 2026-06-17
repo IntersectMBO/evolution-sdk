@@ -1,0 +1,117 @@
+name: Dependabot Auto-Merge
+
+# Runs on Dependabot PRs. Auto-approves + queues merge for low-risk updates.
+# Relies on repo's required status checks to gate the actual merge.
+#
+# Requirements (one-time setup in repo settings):
+#   - Settings > General > "Allow auto-merge" must be enabled
+#   - Branch protection on `main` must require status checks to pass
+#
+# Security model:
+#   - `pull_request_target` runs from the base branch (trusted context) so
+#     GITHUB_TOKEN has write access. We NEVER check out the PR head here.
+#   - Guard `if: github.event.pull_request.user.login == 'dependabot[bot]'`
+#     is critical — this checks the PR AUTHOR (not github.actor, which
+#     reflects the last identity to touch the PR and is spoofable).
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge Dependabot PR
+    # Check the PR author, NOT github.actor — with pull_request_target,
+    # github.actor reflects the last identity to touch the PR, which an
+    # attacker could flip. user.login is the PR author (Dependabot).
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide if PR is auto-mergeable
+        id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          DEPENDENCY_GROUP: ${{ steps.meta.outputs.dependency-group }}
+          DEPENDENCY_NAMES: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          set -euo pipefail
+
+          # Never auto-merge major updates (single-dep PRs only — grouped PRs
+          # have empty update-type so they pass this check)
+          if [ "$UPDATE_TYPE" = "version-update:semver-major" ]; then
+            echo "mergeable=false" >> "$GITHUB_OUTPUT"
+            echo "reason=major update — manual review required" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Never auto-merge sensitive groups (core runtime + crypto + cardano)
+          case "$DEPENDENCY_GROUP" in
+            effect-ecosystem|noble-scure-crypto|cardano-ecosystem)
+              echo "mergeable=false" >> "$GITHUB_OUTPUT"
+              echo "reason=group '$DEPENDENCY_GROUP' requires manual review" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          # Grouped PRs from allow-listed groups → auto-merge
+          case "$DEPENDENCY_GROUP" in
+            eslint|babel|vitest|turbo|typescript|changesets|react|docs-tooling|misc-devdeps-patch-minor)
+              echo "mergeable=true" >> "$GITHUB_OUTPUT"
+              echo "reason=group '$DEPENDENCY_GROUP' is auto-mergeable" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          # Ungrouped patch/minor single-dep PRs → auto-merge
+          if [ "$UPDATE_TYPE" = "version-update:semver-patch" ] || \
+             [ "$UPDATE_TYPE" = "version-update:semver-minor" ]; then
+            echo "mergeable=true" >> "$GITHUB_OUTPUT"
+            echo "reason=$UPDATE_TYPE single-dep update" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Default: do not auto-merge
+          echo "mergeable=false" >> "$GITHUB_OUTPUT"
+          echo "reason=no rule matched — manual review required" >> "$GITHUB_OUTPUT"
+
+      - name: Approve PR
+        if: steps.decide.outputs.mergeable == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh pr view "$PR_URL" --json reviews --jq '.reviews | any(.author.login == "github-actions[bot]" and .state == "APPROVED")' | grep -qx 'true'; then
+            echo "PR already approved; skipping."
+          else
+            gh pr review --approve "$PR_URL" --body "Auto-approved: ${{ steps.decide.outputs.reason }}"
+          fi
+
+      - name: Enable auto-merge
+        if: steps.decide.outputs.mergeable == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null' | grep -qx 'true'; then
+            echo "Auto-merge already enabled; skipping."
+          else
+            gh pr merge --auto --squash "$PR_URL"
+          fi
+
+      - name: Skip auto-merge
+        if: steps.decide.outputs.mergeable != 'true'
+        run: |
+          echo "Not auto-merging: ${{ steps.decide.outputs.reason }}"
+          echo "update-type: ${{ steps.meta.outputs.update-type }}"
+          echo "dependency-group: ${{ steps.meta.outputs.dependency-group }}"
+          echo "dependency-names: ${{ steps.meta.outputs.dependency-names }}"

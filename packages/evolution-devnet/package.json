@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/devnet",
-  "version": "1.1.22",
+  "version": "3.0.10",
   "description": "Local Cardano devnet for testing and development with Docker",
   "type": "module",
   "main": "./dist/index.js",
@@ -40,19 +40,19 @@
   "devDependencies": {
     "@types/dockerode": "^3.3.43",
     "tsx": "^4.20.4",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@noble/hashes": "^1.8.0",
-    "dockerode": "^4.0.7"
+    "@noble/hashes": "^2.2.0",
+    "dockerode": "^5.0.0"
   },
   "peerDependencies": {
     "@evolution-sdk/aiken-uplc": "workspace:*",
     "@evolution-sdk/evolution": "workspace:*",
     "@evolution-sdk/scalus-uplc": "workspace:*",
-    "@effect/platform": "^0.90.10",
-    "@effect/platform-node": "^0.96.1",
-    "effect": "^3.19.3"
+    "@effect/platform": "^0.96.0",
+    "@effect/platform-node": "^0.106.0",
+    "effect": "^3.21.1"
   },
   "keywords": [
     "cardano",

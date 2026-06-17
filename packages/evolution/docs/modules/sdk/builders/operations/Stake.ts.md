@@ -1,6 +1,6 @@
 ---
 title: sdk/builders/operations/Stake.ts
-nav_order: 134
+nav_order: 132
 parent: Modules
 ---
 
@@ -18,9 +18,11 @@ Added in v2.0.0
   - [createDelegateToDRepProgram](#createdelegatetodrepprogram)
   - [createDelegateToPoolAndDRepProgram](#createdelegatetopoolanddrepprogram)
   - [createDelegateToPoolProgram](#createdelegatetopoolprogram)
-  - [createDelegateToProgram](#createdelegatetoprogram)
+  - [~~createDelegateToProgram~~](#createdelegatetoprogram)
+  - [createDeregisterStakeLegacyProgram](#createderegisterstakelegacyprogram)
   - [createDeregisterStakeProgram](#createderegisterstakeprogram)
   - [createRegisterAndDelegateToProgram](#createregisteranddelegatetoprogram)
+  - [createRegisterStakeLegacyProgram](#createregisterstakelegacyprogram)
   - [createRegisterStakeProgram](#createregisterstakeprogram)
   - [createWithdrawProgram](#createwithdrawprogram)
 
@@ -79,25 +81,32 @@ export declare const createDelegateToPoolProgram: (
 
 Added in v2.0.0
 
-## createDelegateToProgram
+## ~~createDelegateToProgram~~
 
 Creates a ProgramStep for delegateTo operation.
-Adds delegation certificate(s) to the transaction.
-
-Supports three modes:
-
-- Pool only: Creates StakeDelegation certificate
-- DRep only: Creates VoteDelegCert certificate (Conway)
-- Both: Creates StakeVoteDelegCert certificate (Conway)
-
-For script-controlled credentials, tracks redeemer for evaluation.
+Delegates stake and/or voting power based on parameters provided.
 
 **Signature**
 
 ```ts
 export declare const createDelegateToProgram: (
   params: DelegateToParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext>
+```
+
+Added in v2.0.0
+
+## createDeregisterStakeLegacyProgram
+
+Creates a ProgramStep for legacy (pre-Conway) stake deregistration.
+Adds a StakeDeregistration (CDDL tag 1) certificate with no deposit refund.
+
+**Signature**
+
+```ts
+export declare const createDeregisterStakeLegacyProgram: (
+  params: DeregisterStakeLegacyParams
+) => Effect.Effect<void, TransactionBuilderError, TxContext>
 ```
 
 Added in v2.0.0
@@ -143,6 +152,21 @@ export declare const createRegisterAndDelegateToProgram: (
 
 Added in v2.0.0
 
+## createRegisterStakeLegacyProgram
+
+Creates a ProgramStep for legacy (pre-Conway) stake registration.
+Adds a StakeRegistration (CDDL tag 0) certificate with no deposit.
+
+**Signature**
+
+```ts
+export declare const createRegisterStakeLegacyProgram: (
+  params: RegisterStakeLegacyParams
+) => Effect.Effect<void, TransactionBuilderError, TxContext>
+```
+
+Added in v2.0.0
+
 ## createRegisterStakeProgram
 
 Creates a ProgramStep for registerStake operation.
@@ -171,9 +195,8 @@ Use amount: 0n to trigger stake validator without withdrawing (coordinator patte
 
 ```ts
 export declare const createWithdrawProgram: (
-  params: WithdrawParams,
-  config: TxBuilderConfig
-) => Effect.Effect<void, TransactionBuilderError, TxContext>
+  params: WithdrawParams
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
 ```
 
 Added in v2.0.0

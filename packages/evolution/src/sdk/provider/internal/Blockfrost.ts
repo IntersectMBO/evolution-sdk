@@ -3,13 +3,14 @@
  * Internal module for Blockfrost provider implementation
  */
 
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as CoreAssets from "../../../Assets.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import type * as Provider from "../Provider.js"
+import { ProviderError } from "../Provider.js"
 
 // ============================================================================
 // Blockfrost API Response Schemas
@@ -23,11 +24,14 @@ export const BlockfrostProtocolParameters = Schema.Struct({
   min_fee_b: Schema.Number,
   pool_deposit: Schema.String,
   key_deposit: Schema.String,
-  min_utxo: Schema.String,
+  min_utxo: Schema.optional(Schema.String),
   max_tx_size: Schema.Number,
   max_val_size: Schema.optional(Schema.String),
   utxo_cost_per_word: Schema.optional(Schema.String),
   cost_models: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  cost_models_raw: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.Array(Schema.Number) })
+  ),
   price_mem: Schema.optional(Schema.Number),
   price_step: Schema.optional(Schema.Number),
   max_tx_ex_mem: Schema.optional(Schema.String),
@@ -158,7 +162,7 @@ export const JsonwspOgmiosEvaluationResponse = Schema.Struct({
   version: Schema.optional(Schema.String),
   servicename: Schema.optional(Schema.String),
   methodname: Schema.optional(Schema.String),
-  result: Schema.Struct({
+  result: Schema.optional(Schema.Struct({
     EvaluationResult: Schema.optional(
       Schema.Record({
         key: Schema.String, // "spend:0", "mint:1", etc.
@@ -169,7 +173,11 @@ export const JsonwspOgmiosEvaluationResponse = Schema.Struct({
       })
     ),
     EvaluationFailure: Schema.optional(Schema.Unknown)
-  }),
+  })),
+  fault: Schema.optional(Schema.Struct({
+    code: Schema.optional(Schema.String),
+    string: Schema.optional(Schema.String)
+  })),
   reflection: Schema.optional(Schema.Unknown)
 })
 
@@ -182,6 +190,15 @@ export type JsonwspOgmiosEvaluationResponse = Schema.Schema.Type<typeof JsonwspO
 /**
  * Transform Blockfrost protocol parameters to Evolution SDK format
  */
+const costModelFromBlockfrost = (
+  params: BlockfrostProtocolParameters,
+  lang: "PlutusV1" | "PlutusV2" | "PlutusV3"
+): Record<string, number> => {
+  const raw = params.cost_models_raw?.[lang]
+  if (raw) return Object.fromEntries(raw.map((v, i) => [i.toString(), v]))
+  return (params.cost_models?.[lang] as Record<string, number>) ?? {}
+}
+
 export const transformProtocolParameters = (
   blockfrostParams: BlockfrostProtocolParameters
 ): Provider.ProtocolParameters => {
@@ -203,9 +220,9 @@ export const transformProtocolParameters = (
     drepDeposit: blockfrostParams.drep_deposit ? BigInt(blockfrostParams.drep_deposit) : 0n,
     govActionDeposit: blockfrostParams.gov_action_deposit ? BigInt(blockfrostParams.gov_action_deposit) : 0n,
     costModels: {
-      PlutusV1: (blockfrostParams.cost_models?.PlutusV1 as Record<string, number>) || {},
-      PlutusV2: (blockfrostParams.cost_models?.PlutusV2 as Record<string, number>) || {},
-      PlutusV3: (blockfrostParams.cost_models?.PlutusV3 as Record<string, number>) || {}
+      PlutusV1: costModelFromBlockfrost(blockfrostParams, "PlutusV1"),
+      PlutusV2: costModelFromBlockfrost(blockfrostParams, "PlutusV2"),
+      PlutusV3: costModelFromBlockfrost(blockfrostParams, "PlutusV3")
     }
   }
 }
@@ -258,25 +275,59 @@ export const transformDelegation = (blockfrostDelegation: BlockfrostDelegation):
  */
 export const transformJsonwspOgmiosEvaluationResult = (
   jsonwspResponse: JsonwspOgmiosEvaluationResponse
-): Array<EvalRedeemer> => {
+): Effect.Effect<Array<EvalRedeemer>, ProviderError> => {
+  // Handle JSONWSP fault response (Ogmios backend error)
+  if (jsonwspResponse.type === "jsonwsp/fault") {
+    const faultMessage = jsonwspResponse.fault?.string ?? "unknown fault"
+    return Effect.fail(
+      new ProviderError({
+        message: `Blockfrost evaluation fault: ${faultMessage}`,
+        cause: jsonwspResponse
+      })
+    )
+  }
+
+  // Handle missing result field
+  if (!jsonwspResponse.result) {
+    return Effect.fail(
+      new ProviderError({
+        message: `Blockfrost evaluation returned no result`,
+        cause: jsonwspResponse
+      })
+    )
+  }
+
   // Check for evaluation failure
   if (jsonwspResponse.result.EvaluationFailure) {
     const failure = jsonwspResponse.result.EvaluationFailure
-    throw new Error(`Script evaluation failed: ${JSON.stringify(failure)}`)
+    return Effect.fail(
+      new ProviderError({
+        message: `Blockfrost script evaluation failed`,
+        cause: failure
+      })
+    )
   }
 
   // Handle success case
   const evaluationResult = jsonwspResponse.result.EvaluationResult
   if (!evaluationResult) {
-    throw new Error("No evaluation result returned from Blockfrost")
+    return Effect.fail(
+      new ProviderError({
+        message: `Blockfrost evaluation returned no result`,
+        cause: "No EvaluationResult in response"
+      })
+    )
   }
 
   const result: Array<EvalRedeemer> = []
 
   for (const [key, budget] of Object.entries(evaluationResult)) {
-    // Parse "spend:0", "mint:1", etc.
-    const [tag, indexStr] = key.split(":")
+    // Parse "spend:0", "mint:1", "certificate:0", "withdrawal:0", etc.
+    // Blockfrost uses Ogmios v5 JSONWSP which returns "certificate" and "withdrawal";
+    // normalize to the SDK's canonical tags "cert" and "reward" (Ogmios v6 / CDDL names).
+    const [rawTag, indexStr] = key.split(":")
     const index = parseInt(indexStr, 10)
+    const tag = rawTag === "certificate" ? "cert" : rawTag === "withdrawal" ? "reward" : rawTag
 
     result.push({
       ex_units: new Redeemer.ExUnits({
@@ -288,5 +339,5 @@ export const transformJsonwspOgmiosEvaluationResult = (
     })
   }
 
-  return result
+  return Effect.succeed(result)
 }

@@ -1,9 +1,16 @@
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+
+import { loadEnv } from "vite"
 import { defineConfig } from "vitest/config"
 
-export default defineConfig({
+const workspaceRoot = path.dirname(fileURLToPath(import.meta.url))
+
+export default defineConfig(({ mode }) => ({
   test: {
     globals: true,
     environment: "node",
+    env: loadEnv(mode, workspaceRoot, ""),
     testTimeout: 60000,
     hookTimeout: 30000,
     teardownTimeout: 30000,
@@ -18,4 +25,4 @@ export default defineConfig({
       exclude: ["node_modules/", "dist/", "**/*.test.ts", "**/*.spec.ts", "examples/", "scripts/", "temp/"]
     }
   }
-})
+}))

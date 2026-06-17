@@ -104,19 +104,18 @@ with-vite-react/
 The app demonstrates how to use the Evolution SDK for building and submitting transactions:
 
 ```typescript
-import { createClient } from "@evolution-sdk/evolution";
+import { client, preprod } from "@evolution-sdk/evolution";
 
-// Create client with network
-const client = createClient("preprod")
-  .attachWallet({ type: "api", api: walletApi })
-  .attachProvider({
-    type: "blockfrost",
+// Create a staged client with provider and CIP-30 wallet access
+const sdk = client(preprod)
+  .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: "your_project_id"
-  });
+  })
+  .withCip30(walletApi);
 
 // Build and submit transaction
-const txHash = await client
+const txHash = await sdk
   .newTx()
   .payToAddress({
     address: recipientAddress,
@@ -129,9 +128,9 @@ const txHash = await client
 
 ### Key Concepts
 
-- **Client Creation**: Initialize with network ID (`"preprod"`, `"mainnet"`, etc.)
-- **Wallet Attachment**: Connect CIP-30 wallet API
-- **Provider Configuration**: Use Blockfrost, Maestro, Kupmios, or Koios
+- **Client Assembly**: Start with `client(chain)` and add capabilities with `.withX(...)`
+- **Wallet Capability**: Connect a CIP-30 wallet with `.withCip30(walletApi)`
+- **Provider Capability**: Add Blockfrost, Maestro, Kupmios, or Koios with `.withBlockfrost(...)` and the related methods
 - **Transaction Building**: Chain operations like `payToAddress()`, `collectFrom()`, etc.
 - **Signing & Submission**: Build → Sign → Submit pipeline
 

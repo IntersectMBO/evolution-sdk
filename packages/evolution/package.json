@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/evolution",
-  "version": "0.3.22",
+  "version": "0.5.9",
   "description": "A modern TypeScript SDK for Cardano blockchain development",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,15 +16,15 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
-    "./Assets": "./src/Assets/index.ts",
-    "./Time": "./src/Time/index.ts",
-    "./blueprint": "./src/blueprint/index.ts",
-    "./message-signing": "./src/message-signing/index.ts",
-    "./plutus": "./src/plutus/index.ts",
-    "./uplc": "./src/uplc/index.ts",
     "./*": "./src/*.ts",
-    "./internal/*": null,
-    "./*/index": null
+    "./blueprint": "./src/blueprint/index.ts",
+    "./blueprint/*": null,
+    "./cose": "./src/cose/index.ts",
+    "./cose/*": null,
+    "./plutus": "./src/plutus/index.ts",
+    "./plutus/*": null,
+    "./sdk/client/internal/*": null,
+    "./internal/*": null
   },
   "files": [
     "src/**/*.ts",
@@ -45,21 +45,21 @@
   "devDependencies": {
     "@dcspark/cardano-multiplatform-lib-nodejs": "^6.2.0",
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
-    "tinybench": "^5.0.0",
+    "tinybench": "^6.0.0",
     "tsx": "^4.20.4",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@effect/platform": "^0.90.10",
-    "@effect/platform-node": "^0.96.1",
+    "@effect/platform": "^0.96.0",
+    "@effect/platform-node": "^0.106.0",
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^1.8.0",
-    "@scure/base": "^1.2.6",
-    "@scure/bip32": "^1.7.0",
-    "@scure/bip39": "^1.6.0",
+    "@noble/hashes": "^2.2.0",
+    "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
     "@types/bip39": "^3.0.4",
     "bip39": "^3.1.0",
-    "effect": "^3.19.3"
+    "effect": "^3.21.1"
   },
   "keywords": [
     "cardano",
@@ -84,15 +84,15 @@
     "exports": {
       "./package.json": "./package.json",
       ".": "./dist/index.js",
-      "./Assets": "./dist/Assets/index.js",
-      "./Time": "./dist/Time/index.js",
-      "./blueprint": "./dist/blueprint/index.js",
-      "./message-signing": "./dist/message-signing/index.js",
-      "./plutus": "./dist/plutus/index.js",
-      "./uplc": "./dist/uplc/index.js",
       "./*": "./dist/*.js",
-      "./internal/*": null,
-      "./*/index": null
+      "./blueprint": "./dist/blueprint/index.js",
+      "./blueprint/*": null,
+      "./cose": "./dist/cose/index.js",
+      "./cose/*": null,
+      "./plutus": "./dist/plutus/index.js",
+      "./plutus/*": null,
+      "./sdk/client/internal/*": null,
+      "./internal/*": null
     }
   }
 }

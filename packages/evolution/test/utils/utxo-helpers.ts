@@ -1,5 +1,5 @@
 import * as CoreAddress from "../../src/Address.js"
-import * as CoreAssets from "../../src/Assets/index.js"
+import * as CoreAssets from "../../src/Assets.js"
 import type * as Assets from "../../src/sdk/Assets.js"
 import type * as Datum from "../../src/sdk/Datum.js"
 import type * as Script from "../../src/sdk/Script.js"

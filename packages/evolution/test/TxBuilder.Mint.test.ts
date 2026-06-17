@@ -1,16 +1,16 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect } from "effect"
 
 import * as CoreAddress from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
+import * as FeeValidation from "../src/FeeValidation.js"
 import * as Mint from "../src/Mint.js"
 import * as NativeScripts from "../src/NativeScripts.js"
 import * as ScriptHash from "../src/ScriptHash.js"
+import { calculateTransactionSize } from "../src/sdk/builders/internal/txBuilder.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
-import { calculateTransactionSize } from "../src/sdk/builders/TxBuilderImpl.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import * as Text from "../src/Text.js"
-import * as FeeValidation from "../src/utils/FeeValidation.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
 const PROTOCOL_PARAMS = {
@@ -23,7 +23,7 @@ const PROTOCOL_PARAMS = {
 const CHANGE_ADDRESS =
   "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
 
-const baseConfig: TxBuilderConfig = {}
+const baseConfig: TxBuilderConfig = { chain: mainnet }
 
 // Create a native script for minting
 const createNativeScript = () => {
@@ -86,7 +86,7 @@ describe("TxBuilder Mint", () => {
     expect(validation.isValid).toBe(true)
     expect(validation.difference).toBeGreaterThanOrEqual(0n) // Fee can be overpaid
 
-    const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+    const size = calculateTransactionSize(txWithFakeWitnesses)
     expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
     // Strict output expectations
@@ -154,7 +154,7 @@ describe("TxBuilder Mint", () => {
     expect(validation.isValid).toBe(true)
     expect(validation.difference).toBe(0n)
 
-    const size = await Effect.runPromise(calculateTransactionSize(txWithFakeWitnesses))
+    const size = calculateTransactionSize(txWithFakeWitnesses)
     expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
     // Strict output expectations

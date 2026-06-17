@@ -27,32 +27,34 @@ This guide demonstrates these patterns with complete, runnable examples.
 This example shows the full cycle from cluster creation to confirmed transaction:
 
 ```typescript twoslash
-import { Cluster, Config, Genesis } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import {
+  Cluster,
+  Config,
+  Genesis } from "@evolution-sdk/devnet"
+import { Address,
+  Assets,
+  TransactionHash,
+  Client,
+} from "@evolution-sdk/evolution"
 
-const MNEMONIC = "your twenty-four word mnemonic phrase here";
+const MNEMONIC = "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
 async function completeWorkflow() {
-  // Step 1: Generate sender address
-  const wallet = createClient({
-    network: 0,
-    wallet: { type: "seed", mnemonic: MNEMONIC, accountIndex: 0 }
-  });
+  // Step 1: Derive sender address (synchronous, no network required)
+  const senderAddress = Address.fromSeed(MNEMONIC, { accountIndex: 0, networkId: 0 })
+  const senderAddressHex = Address.toHex(senderAddress)
 
-  const senderAddress = await wallet.address();
-  const senderAddressHex = Address.toHex(senderAddress);
-
-  console.log("Sender address:", senderAddress);
+  console.log("Sender address:", Address.toBech32(senderAddress))
 
   // Step 2: Create genesis configuration with funded address
   const genesisConfig = {
     ...Config.DEFAULT_SHELLEY_GENESIS,
-    slotLength: 0.1,     // 100ms blocks
+    slotLength: 0.1, // 100ms blocks
     epochLength: 100,
     initialFunds: {
       [senderAddressHex]: 1_000_000_000_000 // 1 million ADA
     }
-  };
+  }
 
   // Step 3: Create and start devnet cluster
   const cluster = await Cluster.make({
@@ -61,46 +63,40 @@ async function completeWorkflow() {
     shelleyGenesis: genesisConfig,
     kupo: { enabled: true, port: 1442, logLevel: "Info" },
     ogmios: { enabled: true, port: 1337, logLevel: "info" }
-  });
+  })
 
-  await Cluster.start(cluster);
-  
+  await Cluster.start(cluster)
+
   // Wait for Kupo and Ogmios to fully initialize
-  await new Promise(resolve => setTimeout(resolve, 8000));
+  await new Promise((resolve) => setTimeout(resolve, 8000))
 
-  console.log("Devnet started with Kupo and Ogmios");
+  console.log("Devnet started with Kupo and Ogmios")
 
   // Step 4: Create client connected to devnet
-  const client = createClient({
-    network: 0,
-    provider: {
-      type: "kupmios",
-      kupoUrl: "http://localhost:1442",
-      ogmiosUrl: "http://localhost:1337"
-    },
-    wallet: { type: "seed", mnemonic: MNEMONIC, accountIndex: 0 }
-  });
+  const client = Client.make(Cluster.getChain(cluster))
+  .withKupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl: "http://localhost:1337" })
+  .withSeed({ mnemonic: MNEMONIC, accountIndex: 0 })
 
-  console.log("Client connected to devnet");
+  console.log("Client connected to devnet")
 
   // Step 5: Query protocol parameters
-  const params = await client.getProtocolParameters();
+  const params = await client.getProtocolParameters()
   console.log("Protocol parameters:", {
     minFeeA: params.minFeeA,
     minFeeB: params.minFeeB,
     maxTxSize: params.maxTxSize
-  });
+  })
 
   // Step 6: Calculate genesis UTxOs (returns Core UTxOs)
-  const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig);
-  
-  console.log("Genesis UTxOs:", genesisUtxos.length);
-  console.log("Initial balance:", genesisUtxos[0]?.assets.lovelace, "lovelace");
+  const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
+
+  console.log("Genesis UTxOs:", genesisUtxos.length)
+  console.log("Initial balance:", genesisUtxos[0]?.assets.lovelace, "lovelace")
 
   // Step 7: Build transaction
   const receiverAddress = Address.fromBech32(
     "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
-  );
+  )
 
   const signBuilder = await client
     .newTx()
@@ -108,43 +104,40 @@ async function completeWorkflow() {
       address: receiverAddress,
       assets: Assets.fromLovelace(10_000_000n) // Send 10 ADA
     })
-    .build({ availableUtxos: genesisUtxos });
+    .build({ availableUtxos: genesisUtxos })
 
-  const tx = await signBuilder.toTransaction();
+  const tx = await signBuilder.toTransaction()
   console.log("Transaction built:", {
     inputs: tx.body.inputs.length,
     outputs: tx.body.outputs.length
-  });
+  })
 
   // Step 8: Sign transaction
-  const submitBuilder = await signBuilder.sign();
-  console.log("Transaction signed");
+  const submitBuilder = await signBuilder.sign()
+  console.log("Transaction signed")
 
   // Step 9: Submit transaction
-  const txHash = await submitBuilder.submit();
-  console.log("Transaction submitted:", txHash);
+  const txHash = await submitBuilder.submit()
+  console.log("Transaction submitted:", txHash)
 
   // Step 10: Wait for confirmation
-  const confirmed = await client.awaitTx(txHash, 1000);
-  console.log("Transaction confirmed:", confirmed);
+  const confirmed = await client.awaitTx(txHash, 1000)
+  console.log("Transaction confirmed:", confirmed)
 
   // Step 11: Query final state
-  const finalUtxos = await client.getWalletUtxos();
-  const totalBalance = finalUtxos.reduce(
-    (sum, utxo) => sum + utxo.assets.lovelace,
-    0n
-  );
+  const finalUtxos = await client.getWalletUtxos()
+  const totalBalance = finalUtxos.reduce((sum, utxo) => sum + utxo.assets.lovelace, 0n)
 
-  console.log("Final balance:", totalBalance, "lovelace");
-  console.log("Fee paid:", genesisUtxos[0]?.assets.lovelace! - totalBalance - 10_000_000n, "lovelace");
+  console.log("Final balance:", totalBalance, "lovelace")
+  console.log("Fee paid:", genesisUtxos[0]?.assets.lovelace! - totalBalance - 10_000_000n, "lovelace")
 
   // Step 12: Clean up
-  await Cluster.stop(cluster);
-  await Cluster.remove(cluster);
-  console.log("Devnet stopped and removed");
+  await Cluster.stop(cluster)
+  await Cluster.remove(cluster)
+  console.log("Devnet stopped and removed")
 }
 
-completeWorkflow().catch(console.error);
+completeWorkflow().catch(console.error)
 ```
 
 This workflow demonstrates the complete integration: from empty Docker environment to confirmed transaction in under 10 seconds.
@@ -168,8 +161,15 @@ Three key integration points connect devnet to the Evolution SDK:
 Not all workflows require a wallet. Query blockchain state using a provider-only client:
 
 ```typescript twoslash
-import { Cluster, Config, Genesis } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import {
+  Cluster,
+  Config,
+  Genesis } from "@evolution-sdk/devnet"
+import { Address,
+  Assets,
+  TransactionHash,
+  Client,
+} from "@evolution-sdk/evolution"
 
 // Start devnet with funded address
 const cluster = await Cluster.make({
@@ -178,38 +178,34 @@ const cluster = await Cluster.make({
   shelleyGenesis: {
     ...Config.DEFAULT_SHELLEY_GENESIS,
     initialFunds: {
-      "address_hex_here": 100_000_000_000
+      address_hex_here: 100_000_000_000
     }
   },
   kupo: { enabled: true, port: 1442 },
   ogmios: { enabled: true, port: 1337 }
-});
+})
 
-await Cluster.start(cluster);
-await new Promise(resolve => setTimeout(resolve, 6000));
+await Cluster.start(cluster)
+await new Promise((resolve) => setTimeout(resolve, 6000))
 
 // Provider-only client (no wallet configured)
-const providerClient = createClient({
-  network: 0,
-  provider: {
-    type: "kupmios",
-    kupoUrl: "http://localhost:1442",
-    ogmiosUrl: "http://localhost:1337"
-  }
-});
+const providerClient = Client.make(Cluster.getChain(cluster))
+  .withKupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl: "http://localhost:1337" })
 
 // Query any address on the devnet
 const utxos = await providerClient.getUtxos(
-  Address.fromBech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae")
-);
-console.log("UTxOs at address:", utxos.length);
+  Address.fromBech32(
+    "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
+  )
+)
+console.log("UTxOs at address:", utxos.length)
 
 // Query protocol parameters
-const params = await providerClient.getProtocolParameters();
-console.log("Max transaction size:", params.maxTxSize);
+const params = await providerClient.getProtocolParameters()
+console.log("Max transaction size:", params.maxTxSize)
 
-await Cluster.stop(cluster);
-await Cluster.remove(cluster);
+await Cluster.stop(cluster)
+await Cluster.remove(cluster)
 ```
 
 Provider-only clients are ideal for blockchain explorers, monitoring tools, and backend services that query multiple addresses without signing transactions.
@@ -219,31 +215,38 @@ Provider-only clients are ideal for blockchain explorers, monitoring tools, and 
 **Integration Test Setup**: Create a fresh cluster for each test suite to ensure isolated state:
 
 ```typescript twoslash
-import { describe, it, beforeAll, afterAll, expect } from "vitest";
-import { Cluster, Config } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient, type SigningClient } from "@evolution-sdk/evolution";
+import {
+  describe,
+  it,
+  beforeAll,
+  afterAll,
+  expect } from "vitest"
+import { Cluster,
+  Config } from "@evolution-sdk/devnet"
+import {
+  Address,
+  Assets,
+  TransactionHash,
+  Client,
+} from "@evolution-sdk/evolution"
 
 describe("Transaction Tests", () => {
-  let cluster: Cluster.Cluster;
-  let client: SigningClient;
+  let cluster: Cluster.Cluster
+  let client: Client.SigningClient
 
   beforeAll(async () => {
     // Setup devnet for test suite
-    const mnemonic = "test test test test test test test test test test test test test test test test test test test test test test test sauce";
-    
-    const wallet = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic, accountIndex: 0 }
-    });
+    const mnemonic =
+      "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
-    const addressHex = Address.toHex(await wallet.address());
+    const addressHex = Address.toHex(Address.fromSeed(mnemonic, { accountIndex: 0, networkId: 0 }))
 
     const genesisConfig = {
       ...Config.DEFAULT_SHELLEY_GENESIS,
       slotLength: 0.02, // Fast blocks for quick tests
       epochLength: 50,
       initialFunds: { [addressHex]: 10_000_000_000_000 }
-    };
+    }
 
     cluster = await Cluster.make({
       clusterName: "test-suite-" + Date.now(),
@@ -251,63 +254,63 @@ describe("Transaction Tests", () => {
       shelleyGenesis: genesisConfig,
       kupo: { enabled: true, port: 1442 },
       ogmios: { enabled: true, port: 1337 }
-    });
+    })
 
-    await Cluster.start(cluster);
-    await new Promise(resolve => setTimeout(resolve, 8000));
+    await Cluster.start(cluster)
+    await new Promise((resolve) => setTimeout(resolve, 8000))
 
-    client = createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1442",
-        ogmiosUrl: "http://localhost:1337"
-      },
-      wallet: { type: "seed", mnemonic, accountIndex: 0 }
-    });
-  }, 180_000); // Extended timeout for cluster startup
+    client = Client.make(Cluster.getChain(cluster))
+  .withKupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl: "http://localhost:1337" })
+  .withSeed({ mnemonic, accountIndex: 0 })
+  }, 180_000) // Extended timeout for cluster startup
 
   afterAll(async () => {
-    await Cluster.stop(cluster);
-    await Cluster.remove(cluster);
-  }, 60_000);
+    await Cluster.stop(cluster)
+    await Cluster.remove(cluster)
+  }, 60_000)
 
   it("should submit simple payment", async () => {
     const signBuilder = await client
       .newTx()
       .payToAddress({
-        address: Address.fromBech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"),
+        address: Address.fromBech32(
+          "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
+        ),
         assets: Assets.fromLovelace(5_000_000n)
       })
-      .build();
+      .build()
 
-    const submitBuilder = await signBuilder.sign();
-    const txHash = await submitBuilder.submit();
-    const confirmed = await client.awaitTx(txHash, 1000);
+    const submitBuilder = await signBuilder.sign()
+    const txHash = await submitBuilder.submit()
+    const confirmed = await client.awaitTx(txHash, 1000)
 
-    expect(confirmed).toBe(true);
-  }, 30_000);
+    expect(confirmed).toBe(true)
+  }, 30_000)
 
   it("should handle multiple outputs", async () => {
     const signBuilder = await client
       .newTx()
       .payToAddress({
-        address: Address.fromBech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"),
+        address: Address.fromBech32(
+          "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae"
+        ),
         assets: Assets.fromLovelace(2_000_000n)
       })
       .payToAddress({
-        address: Address.fromBech32("addr_test1qpq6xvp5y4fw0wfgxfqmn78qqagkpv4q7qpqyz8s8x3snp5n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgsc3z7t3"),
+        address: Address.fromBech32(
+          "addr_test1qpq6xvp5y4fw0wfgxfqmn78qqagkpv4q7qpqyz8s8x3snp5n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgsc3z7t3"
+        ),
         assets: Assets.fromLovelace(3_000_000n)
       })
-      .build();
+      .build()
 
-    const submitBuilder = await signBuilder.sign();
-    const txHash = await submitBuilder.submit();
-    const confirmed = await client.awaitTx(txHash, 1000);
+    const submitBuilder = await signBuilder.sign()
+    const txHash = await submitBuilder.submit()
+    const confirmed = await client.awaitTx(txHash, 1000)
 
-    expect(confirmed).toBe(true);
-  }, 30_000);
-});
+    expect(confirmed).toBe(true)
+  }, 30_000)
+})
 ```
 
 The `beforeAll` setup ensures all tests share the same devnet instance, reducing test suite runtime. The `afterAll` cleanup prevents resource leaks.
@@ -317,108 +320,75 @@ The `beforeAll` setup ensures all tests share the same devnet instance, reducing
 Test multi-party protocols by funding multiple addresses in genesis:
 
 ```typescript twoslash
-import { Cluster, Config } from "@evolution-sdk/devnet";
-import { Address, Assets, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import {
+  Cluster,
+  Config } from "@evolution-sdk/devnet"
+import { Address,
+  Assets,
+  TransactionHash,
+  Client,
+} from "@evolution-sdk/evolution"
 
 async function multiWalletExample() {
-  // Create two wallets
-  const wallet1 = createClient({
-    network: 0,
-    wallet: {
-      type: "seed",
-      mnemonic: "wallet one mnemonic here",
-      accountIndex: 0
+  // Derive addresses for genesis funding (synchronous)
+  const addr1Hex = Address.toHex(Address.fromSeed("wallet one mnemonic here", { accountIndex: 0, networkId: 0 }))
+  const addr2Hex = Address.toHex(Address.fromSeed("wallet two mnemonic here", { accountIndex: 0, networkId: 0 }))
+
+  // Fund both in genesis
+  const genesisConfig = {
+    ...Config.DEFAULT_SHELLEY_GENESIS,
+    slotLength: 0.1,
+    initialFunds: {
+      [addr1Hex]: 500_000_000_000,
+      [addr2Hex]: 300_000_000_000
     }
-  });
-
-  const wallet2 = createClient({
-    network: 0,
-    wallet: {
-      type: "seed",
-      mnemonic: "wallet two mnemonic here",
-      accountIndex: 0
-    }
-  });
-
-  // Get addresses as hex for genesis config
-  const addr1Hex = Address.toHex(await wallet1.address());
-  const addr2Hex = Address.toHex(await wallet2.address());
-
-// Fund both in genesis
-const genesisConfig = {
-  ...Config.DEFAULT_SHELLEY_GENESIS,
-  slotLength: 0.1,
-  initialFunds: {
-    [addr1Hex]: 500_000_000_000,
-    [addr2Hex]: 300_000_000_000
   }
-};
 
-const cluster = await Cluster.make({
-  clusterName: "multi-wallet",
-  ports: { node: 3001, submit: 3002 },
-  shelleyGenesis: genesisConfig,
-  kupo: { enabled: true, port: 1442 },
-  ogmios: { enabled: true, port: 1337 }
-});
+  const cluster = await Cluster.make({
+    clusterName: "multi-wallet",
+    ports: { node: 3001, submit: 3002 },
+    shelleyGenesis: genesisConfig,
+    kupo: { enabled: true, port: 1442 },
+    ogmios: { enabled: true, port: 1337 }
+  })
 
-await Cluster.start(cluster);
-await new Promise(resolve => setTimeout(resolve, 8000));
+  await Cluster.start(cluster)
+  await new Promise((resolve) => setTimeout(resolve, 8000))
 
-// Create connected clients for both wallets
-const client1 = createClient({
-  network: 0,
-  provider: {
-    type: "kupmios",
-    kupoUrl: "http://localhost:1442",
-    ogmiosUrl: "http://localhost:1337"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "wallet one mnemonic here",
-    accountIndex: 0
-  }
-});
+  // Create connected clients for both wallets
+  const client1 = Client.make(Cluster.getChain(cluster))
+  .withKupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl: "http://localhost:1337" })
+  .withSeed({ mnemonic: "wallet one mnemonic here", accountIndex: 0 })
 
-const client2 = createClient({
-  network: 0,
-  provider: {
-    type: "kupmios",
-    kupoUrl: "http://localhost:1442",
-    ogmiosUrl: "http://localhost:1337"
-  },
-  wallet: {
-    type: "seed",
-    mnemonic: "wallet two mnemonic here",
-    accountIndex: 0
-  }
-});
+  const client2 = Client.make(Cluster.getChain(cluster))
+  .withKupmios({ kupoUrl: "http://localhost:1442", ogmiosUrl: "http://localhost:1337" })
+  .withSeed({ mnemonic: "wallet two mnemonic here", accountIndex: 0 })
 
   // Wallet 1 sends to Wallet 2
-  const wallet2Address = await wallet2.address();
+  const wallet2Address = await client2.address()
   const signBuilder = await client1
     .newTx()
     .payToAddress({
       address: wallet2Address,
       assets: Assets.fromLovelace(50_000_000n)
     })
-    .build();
+    .build()
 
-  const txHash = await signBuilder.sign().then(b => b.submit());
-  await client1.awaitTx(txHash, 1000);
+  const txHash = await signBuilder.sign().then((b) => b.submit())
+  await client1.awaitTx(txHash, 1000)
 
   // Verify Wallet 2 received funds
-  const wallet2Utxos = await client2.getWalletUtxos();
+  const wallet2Utxos = await client2.getWalletUtxos()
   const receivedUtxo = wallet2Utxos.find(
-    u => TransactionHash.toHex(u.transactionId) === TransactionHash.toHex(txHash)
-  );
+    (u) => TransactionHash.toHex(u.transactionId) === TransactionHash.toHex(txHash)
+  )
 
   if (receivedUtxo) {
-    console.log("Wallet 2 received:", receivedUtxo.assets.lovelace, "lovelace");
+    console.log("Wallet 2 received:", receivedUtxo.assets.lovelace, "lovelace")
   }
 
-  await Cluster.stop(cluster);
-  await Cluster.remove(cluster);
+  await Cluster.stop(cluster)
+  await Cluster.remove(cluster)
 }
 ```
 
@@ -429,7 +399,7 @@ This pattern enables testing escrow contracts, multi-signature scenarios, and an
 For interactive development, start devnet once and keep it running:
 
 ```typescript twoslash
-import { Cluster, Config, Genesis } from "@evolution-sdk/devnet";
+import { Cluster, Config, Genesis } from "@evolution-sdk/devnet"
 
 async function startDevSession() {
   const cluster = await Cluster.make({
@@ -439,35 +409,35 @@ async function startDevSession() {
       ...Config.DEFAULT_SHELLEY_GENESIS,
       slotLength: 0.1,
       initialFunds: {
-        "your_address_hex_here": 1_000_000_000_000
+        your_address_hex_here: 1_000_000_000_000
       }
     },
     kupo: { enabled: true, port: 1442, logLevel: "Info" },
     ogmios: { enabled: true, port: 1337, logLevel: "info" }
-  });
+  })
 
-  await Cluster.start(cluster);
+  await Cluster.start(cluster)
 
-  console.log("\n✓ Devnet running");
-  console.log("  Ogmios: http://localhost:1337");
-  console.log("  Kupo: http://localhost:1442");
-  console.log("  Node: localhost:3001");
-  console.log("\nPress Ctrl+C to stop\n");
+  console.log("\n✓ Devnet running")
+  console.log("  Ogmios: http://localhost:1337")
+  console.log("  Kupo: http://localhost:1442")
+  console.log("  Node: localhost:3001")
+  console.log("\nPress Ctrl+C to stop\n")
 
   // Graceful shutdown
   process.on("SIGINT", async () => {
-    console.log("\nStopping devnet...");
-    await Cluster.stop(cluster);
-    await Cluster.remove(cluster);
-    console.log("✓ Devnet stopped\n");
-    process.exit(0);
-  });
+    console.log("\nStopping devnet...")
+    await Cluster.stop(cluster)
+    await Cluster.remove(cluster)
+    console.log("✓ Devnet stopped\n")
+    process.exit(0)
+  })
 
   // Keep process alive
-  await new Promise(() => {});
+  await new Promise(() => {})
 }
 
-startDevSession().catch(console.error);
+startDevSession().catch(console.error)
 ```
 
 Run this script to start a persistent devnet for manual testing, dApp development, or interactive exploration. The devnet persists until you stop it with Ctrl+C.
@@ -501,6 +471,7 @@ For production deployment, replace devnet provider configuration with mainnet or
 ## Common Integration Patterns Reference
 
 **Quick Test**: Fast blocks, high initial balance, single wallet
+
 ```typescript
 {
   slotLength: 0.02,
@@ -510,6 +481,7 @@ For production deployment, replace devnet provider configuration with mainnet or
 ```
 
 **Multi-Party Testing**: Multiple funded addresses
+
 ```typescript
 {
   initialFunds: {
@@ -521,6 +493,7 @@ For production deployment, replace devnet provider configuration with mainnet or
 ```
 
 **Mainnet Simulation**: Realistic timing and parameters
+
 ```typescript
 {
   slotLength: 1.0,
@@ -531,6 +504,7 @@ For production deployment, replace devnet provider configuration with mainnet or
 ```
 
 **High-Throughput Testing**: Large blocks, fast slots
+
 ```typescript
 {
   slotLength: 0.05,

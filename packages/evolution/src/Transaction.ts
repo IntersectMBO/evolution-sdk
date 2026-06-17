@@ -63,16 +63,10 @@ export class Transaction extends Schema.TaggedClass<Transaction>()("Transaction"
  *
  * CDDL: transaction = [transaction_body, transaction_witness_set, bool, auxiliary_data / nil]
  */
-export const CDDLSchema = Schema.Tuple(
-  TransactionBody.CDDLSchema.annotations({ identifier: "TransactionBodyCDDL", description: "Transaction body" }),
-  TransactionWitnessSet.CDDLSchema.annotations({
-    identifier: "TransactionWitnessSetCDDL",
-    description: "Transaction witness set"
-  }),
-  Schema.Boolean,
-  // Auxiliary data is a CBOR value; CBOR schema already includes null in its domain
-  CBOR.CBORSchema.annotations({ identifier: "AuxiliaryDataCDDL", description: "Auxiliary data as raw CBOR" })
-).annotations({ identifier: "TransactionCDDL", description: "Transaction tuple structure" })
+export const CDDLSchema = Schema.declare(
+  (input: unknown): input is readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR | null] =>
+    Array.isArray(input)
+).annotations({ identifier: "Transaction.CDDLSchema", description: "Transaction tuple structure" })
 
 /**
  * Transform between CDDL tuple and Transaction class.
@@ -89,7 +83,8 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       const isValid = tx.isValid
       const auxiliaryData =
         tx.auxiliaryData === null ? null : yield* ParseResult.encode(AuxiliaryData.FromCDDL)(tx.auxiliaryData)
-      return [body, witnessSet, isValid, auxiliaryData] as const
+      const result = [body, witnessSet, isValid, auxiliaryData] as const
+      return result
     }),
   decode: (tuple) =>
     Eff.gen(function* () {
@@ -123,75 +118,144 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
 // Parsing / Encoding Functions
 // ============================================================================
 
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+/**
+ * Internal cache that associates a Transaction with the CBORFormat tree
+ * captured when it was decoded. This lets the default `toCBORHex` /
+ * `toCBORBytes` path automatically preserve the original CBOR encoding
+ * (indefinite-length arrays, map key ordering, etc.) without requiring
+ * callers to use the explicit WithFormat API.
+ *
+ * WeakMap ensures the format is garbage-collected with the Transaction.
+ */
+const formatCache = new WeakMap<Transaction, CBOR.CBORFormat>()
 
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
-
-export const toCBORBytes = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
-
-export const toCBORHex = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
-
-// ============================================================================
-// Byte-level witness merging (CML-like approach)
-//
-// These functions operate directly on raw CBOR bytes. The full transaction is
-// never decoded/re-encoded — only the vkey witnesses entry in the witness set
-// map is spliced. Body, redeemers, datums, scripts, isValid, auxData, and
-// even the map entry ordering are preserved byte-for-byte.
-// ============================================================================
-
-/** Skip a CBOR item header and return its byte width. */
-const cborHeaderSize = (data: Uint8Array, offset: number): number => {
-  const additionalInfo = data[offset] & 0x1f
-  if (additionalInfo < 24) return 1
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.DIRECT) return 2
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT16) return 3
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT32) return 5
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT64) return 9
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.INDEFINITE) return 1
-  throw new CBOR.CBORError({ message: `Unsupported additional info: ${additionalInfo}` })
-}
-
-/** Read a definite-length count from a CBOR header. */
-const readMapCount = (data: Uint8Array, offset: number): { count: number; hdrSize: number } => {
-  const additionalInfo = data[offset] & 0x1f
-  if (additionalInfo < 24) return { count: additionalInfo, hdrSize: 1 }
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.DIRECT) return { count: data[offset + 1], hdrSize: 2 }
-  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT16)
-    return { count: (data[offset + 1] << 8) | data[offset + 2], hdrSize: 3 }
-  throw new CBOR.CBORError({ message: `Unsupported map count encoding: ${additionalInfo}` })
-}
-
-/** Encode a CBOR map header with a given entry count. */
-const encodeMapHeader = (count: number): Uint8Array => {
-  if (count < 24) return new Uint8Array([(0x05 << 5) | count])
-  if (count < 256) return new Uint8Array([(0x05 << 5) | CBOR.CBOR_ADDITIONAL_INFO.DIRECT, count])
-  return new Uint8Array([(0x05 << 5) | CBOR.CBOR_ADDITIONAL_INFO.UINT16, (count >> 8) & 0xff, count & 0xff])
-}
-
-/** Unwrap tag(258, [...]) or plain [...] to get the inner array. */
-const unwrapVkeyArray = (val: CBOR.CBOR | undefined): Array<CBOR.CBOR> => {
-  if (val === undefined) return []
-  if (CBOR.isTag(val)) {
-    const tag = val as { _tag: "Tag"; tag: number; value: unknown }
-    if (tag.tag === 258 && Array.isArray(tag.value)) return tag.value as Array<CBOR.CBOR>
-    return []
+export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Transaction => {
+  // When caller passes non-default codec options, honor them via the legacy
+  // decode path and skip format caching — custom options typically imply the
+  // caller wants re-canonicalization, which is incompatible with preserving
+  // the original encoding.
+  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+    return Schema.decodeSync(FromCBORBytes(options))(bytes)
   }
-  if (Array.isArray(val)) return val as Array<CBOR.CBOR>
-  return []
+  const { format, value } = fromCBORBytesWithFormat(bytes)
+  formatCache.set(value, format)
+  return value
+}
+
+export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Transaction => {
+  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+    return Schema.decodeSync(FromCBORHex(options))(hex)
+  }
+  const { format, value } = fromCBORHexWithFormat(hex)
+  formatCache.set(value, format)
+  return value
 }
 
 /**
- * Merge wallet vkey witnesses into a transaction at the raw CBOR byte level.
+ * Parse a Transaction from CBOR bytes and return the root format tree.
  *
- * Works like CML: the entire transaction byte stream is preserved except for
- * the vkey witnesses value in the witness set map. Body, redeemers, datums,
- * scripts, isValid, auxiliaryData, and map entry ordering stay byte-for-byte
- * identical — preserving both the txId and scriptDataHash.
+ * @since 2.0.0
+ * @category parsing
+ */
+export const fromCBORBytesWithFormat = (
+  bytes: Uint8Array
+): CBOR.DecodedWithFormat<Transaction> => {
+  const decoded = CBOR.fromCBORBytesWithFormat(bytes)
+  const value = Schema.decodeSync(FromCDDL)(
+    decoded.value as readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR | null]
+  )
+  return { value, format: decoded.format }
+}
+
+/**
+ * Parse a Transaction from CBOR hex string and return the root format tree.
+ *
+ * @since 2.0.0
+ * @category parsing
+ */
+export const fromCBORHexWithFormat = (
+  hex: string
+): CBOR.DecodedWithFormat<Transaction> => {
+  const decoded = CBOR.fromCBORHexWithFormat(hex)
+  const value = Schema.decodeSync(FromCDDL)(
+    decoded.value as readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR | null]
+  )
+  return { value, format: decoded.format }
+}
+
+export const toCBORBytes = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array => {
+  // Non-default options signal an explicit re-encode request — bypass the
+  // cached format so the caller's options actually take effect.
+  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+    return Schema.encodeSync(FromCBORBytes(options))(data)
+  }
+  const cached = formatCache.get(data)
+  if (cached) return toCBORBytesWithFormat(data, cached)
+  return Schema.encodeSync(FromCBORBytes(options))(data)
+}
+
+export const toCBORHex = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string => {
+  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+    return Schema.encodeSync(FromCBORHex(options))(data)
+  }
+  const cached = formatCache.get(data)
+  if (cached) return toCBORHexWithFormat(data, cached)
+  return Schema.encodeSync(FromCBORHex(options))(data)
+}
+
+/**
+ * Convert a Transaction to CBOR bytes using an explicit root format tree.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORBytesWithFormat = (
+  data: Transaction,
+  format: CBOR.CBORFormat
+): Uint8Array => {
+  const cborTuple = Schema.encodeSync(FromCDDL)(data)
+  return CBOR.toCBORBytesWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+}
+
+/**
+ * Convert a Transaction to CBOR hex string using an explicit root format tree.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORHexWithFormat = (
+  data: Transaction,
+  format: CBOR.CBORFormat
+): string => {
+  const cborTuple = Schema.encodeSync(FromCDDL)(data)
+  return CBOR.toCBORHexWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+}
+
+// ============================================================================
+// Witness merging via WithFormat round-trip
+//
+// Decode the full transaction with format preservation, merge witnesses at
+// the domain level, then re-encode using the captured format tree. The format
+// tree ensures body, redeemers, scripts, and all other entries maintain their
+// original encoding — preserving txId and scriptDataHash.
+//
+// Reconciliation handles structural changes gracefully:
+// - New map entries (key 0 absent → added) get default encoding
+// - Extended arrays (more witnesses) encode extra children minimally
+// - Surviving entries replay their captured format exactly
+// ============================================================================
+
+/**
+ * Merge wallet vkey witnesses into a transaction, preserving CBOR encoding.
+ *
+ * Uses the WithFormat round-trip: decode with format capture, mutate at the
+ * domain level, re-encode with the original format tree. Body encoding,
+ * redeemer bytes, map key ordering, and all non-witness data are preserved
+ * through the format tree reconciliation.
+ *
+ * `options` applies only to parsing the wallet witness set bytes. Transaction
+ * decoding and re-encoding are governed by the captured format tree, making
+ * codec options irrelevant for the transaction round-trip path.
  *
  * @since 2.0.0
  * @category encoding
@@ -201,85 +265,20 @@ export const addVKeyWitnessesBytes = (
   walletWitnessSetBytes: Uint8Array,
   options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
 ): Uint8Array => {
-  // --- Extract wallet vkey pairs (the only thing we decode) ---
-  const walletWsDecoded = CBOR.fromCBORBytes(walletWitnessSetBytes)
-  if (!(walletWsDecoded instanceof Map)) {
-    throw new CBOR.CBORError({ message: "Wallet witness set must be a CBOR map" })
-  }
-  const walletPairs = unwrapVkeyArray(walletWsDecoded.get(0n))
-  if (walletPairs.length === 0) return txBytes
+  // Decode wallet witness set to extract vkey witnesses
+  const walletWs = TransactionWitnessSet.fromCBORBytes(walletWitnessSetBytes, options)
+  const walletVkeys = walletWs.vkeyWitnesses ?? []
+  if (walletVkeys.length === 0) return txBytes
 
-  // --- Locate witness set in the raw transaction bytes ---
-  //     transaction = [body, witness_set, is_valid, auxiliary_data]
-  const arrHdr = cborHeaderSize(txBytes, 0)
-  const { newOffset: bodyEnd } = CBOR.decodeItemWithOffset(txBytes, arrHdr, options)
-  const wsStart = bodyEnd
-  const { newOffset: wsEnd } = CBOR.decodeItemWithOffset(txBytes, wsStart, options)
+  // Decode transaction with full format preservation
+  const { format, value: tx } = fromCBORBytesWithFormat(txBytes)
 
-  // --- Scan witness set map entries to find key 0 (vkeywitnesses) ---
-  const { count: wsMapCount, hdrSize: wsHdrSize } = readMapCount(txBytes, wsStart)
-  let offset = wsStart + wsHdrSize
-  let key0ValueStart = -1
-  let key0ValueEnd = -1
-  let existingPairs: Array<CBOR.CBOR> = []
+  // Add witnesses at the domain level
+  const merged = addVKeyWitnesses(tx, walletVkeys)
 
-  for (let i = 0; i < wsMapCount; i++) {
-    const { item: keyItem, newOffset: keyEnd } = CBOR.decodeItemWithOffset(txBytes, offset, options)
-    const valStart = keyEnd
-    const { item: valItem, newOffset: valEnd } = CBOR.decodeItemWithOffset(txBytes, valStart, options)
-
-    if (keyItem === 0n) {
-      key0ValueStart = valStart
-      key0ValueEnd = valEnd
-      existingPairs = unwrapVkeyArray(valItem)
-    }
-    offset = valEnd
-  }
-
-  // --- Encode merged vkeys: tag(258, [...existing, ...wallet]) ---
-  const mergedPairs = [...existingPairs, ...walletPairs]
-  const mergedBytes = CBOR.internalEncodeSync(CBOR.Tag.make({ tag: 258, value: mergedPairs }), options)
-
-  if (key0ValueStart !== -1) {
-    // Key 0 exists → splice new value in-place (header, key order, everything else untouched)
-    const before = txBytes.slice(0, key0ValueStart)
-    const after = txBytes.slice(key0ValueEnd)
-    const result = new Uint8Array(before.length + mergedBytes.length + after.length)
-    result.set(before, 0)
-    result.set(mergedBytes, before.length)
-    result.set(after, before.length + mergedBytes.length)
-    return result
-  } else {
-    // Key 0 absent → append new entry, bump map count in header
-    const newKeyBytes = CBOR.internalEncodeSync(0n, options)
-    const newMapHeader = encodeMapHeader(wsMapCount + 1)
-
-    const txBefore = txBytes.slice(0, wsStart) // [array hdr + body]
-    const wsEntries = txBytes.slice(wsStart + wsHdrSize, wsEnd) // existing map entries (raw)
-    const txAfter = txBytes.slice(wsEnd) // [isValid + aux]
-
-    const result = new Uint8Array(
-      txBefore.length +
-        newMapHeader.length +
-        wsEntries.length +
-        newKeyBytes.length +
-        mergedBytes.length +
-        txAfter.length
-    )
-    let pos = 0
-    result.set(txBefore, pos)
-    pos += txBefore.length
-    result.set(newMapHeader, pos)
-    pos += newMapHeader.length
-    result.set(wsEntries, pos)
-    pos += wsEntries.length
-    result.set(newKeyBytes, pos)
-    pos += newKeyBytes.length
-    result.set(mergedBytes, pos)
-    pos += mergedBytes.length
-    result.set(txAfter, pos)
-    return result
-  }
+  // Re-encode using the captured format tree — reconciliation handles
+  // the added/extended witness entries while preserving everything else
+  return toCBORBytesWithFormat(merged, format)
 }
 
 /**
@@ -297,6 +296,73 @@ export const addVKeyWitnessesHex = (
   const wsBytes = Schema.decodeSync(Schema.Uint8ArrayFromHex)(walletWitnessSetHex)
   const result = addVKeyWitnessesBytes(txBytes, wsBytes, options)
   return Schema.encodeSync(Schema.Uint8ArrayFromHex)(result)
+}
+
+// ============================================================================
+// Raw body bytes extraction
+// ============================================================================
+
+/** Skip a CBOR item header and return its byte width. */
+const cborHeaderSize = (data: Uint8Array, offset: number): number => {
+  const additionalInfo = data[offset] & 0x1f
+  if (additionalInfo < 24) return 1
+  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.DIRECT) return 2
+  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT16) return 3
+  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT32) return 5
+  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.UINT64) return 9
+  if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.INDEFINITE) return 1
+  throw new CBOR.CBORError({ message: `Unsupported additional info: ${additionalInfo}` })
+}
+
+/**
+ * Extract the original body bytes from a raw transaction CBOR byte array.
+ * A Cardano transaction is a 4-element CBOR array: `[body, witnessSet, isValid, auxiliaryData]`.
+ * This returns the raw body bytes without decoding/re-encoding, preserving the exact CBOR encoding.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const extractBodyBytes = (txBytes: Uint8Array): Uint8Array => {
+  const arrHdr = cborHeaderSize(txBytes, 0)
+  const { newOffset: bodyEnd } = CBOR.decodeItemWithOffset(txBytes, arrHdr)
+  return txBytes.subarray(arrHdr, bodyEnd)
+}
+
+// ============================================================================
+// Domain-level witness addition
+// ============================================================================
+
+/**
+ * Add VKey witnesses to a transaction at the domain level.
+ *
+ * This creates a new Transaction with the additional witnesses merged in.
+ * All encoding metadata (body bytes, redeemers format, witness map structure)
+ * is preserved so that txId and scriptDataHash remain stable.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const addVKeyWitnesses = (
+  tx: Transaction,
+  witnesses: ReadonlyArray<TransactionWitnessSet.VKeyWitness>
+): Transaction => {
+  if (witnesses.length === 0) return tx
+  const oldWs = tx.witnessSet
+  const newWs = new TransactionWitnessSet.TransactionWitnessSet(
+    {
+      ...oldWs,
+      vkeyWitnesses: [...(oldWs.vkeyWitnesses ?? []), ...witnesses]
+    },
+    { disableValidation: true }
+  )
+  const result = new Transaction(
+    { body: tx.body, witnessSet: newWs, isValid: tx.isValid, auxiliaryData: tx.auxiliaryData },
+    { disableValidation: true }
+  )
+  // Transfer cached format so toCBORHex/toCBORBytes preserves encoding
+  const fmt = formatCache.get(tx)
+  if (fmt) formatCache.set(result, fmt)
+  return result
 }
 
 // ============================================================================

@@ -1,6 +1,8 @@
 /**
  * Plutus core types for Cardano blockchain
- * @module
+ *
+ * @since 2.0.0
+ * @category namespace
  */
 
 export * as Address from "./Address.js"

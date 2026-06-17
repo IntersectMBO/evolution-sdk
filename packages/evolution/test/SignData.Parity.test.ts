@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 import * as CML from "@dcspark/cardano-multiplatform-lib-nodejs"
 import * as M from "@emurgo/cardano-message-signing-nodejs"
 import { describe, expect, it } from "vitest"
 
 import { fromHex, toHex } from "../src/Bytes.js"
+import { SignData } from "../src/cose/index.js"
 import * as KeyHash from "../src/KeyHash.js"
-import { SignData } from "../src/message-signing/index.js"
 import * as PrivateKey from "../src/PrivateKey.js"
 
 function signData(addressHex: string, payload: string, privateKey: string): { signature: string; key: string } {
@@ -52,8 +51,8 @@ export function verifyData(
   const cose1Address = (() => {
     try {
       return toHex(protectedHeaders.header(M.Label.new_text("address"))?.as_bytes()!)
-    } catch (_e) {
-      throw new Error("No address found in signature.")
+    } catch (cause) {
+      throw new Error("No address found in signature.", { cause })
     }
   })()
 
@@ -62,8 +61,8 @@ export function verifyData(
       const int = protectedHeaders.algorithm_id()?.as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Algorithm Id.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Algorithm Id.", { cause })
     }
   })()
 
@@ -72,8 +71,8 @@ export function verifyData(
       const int = key.algorithm_id()?.as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Algorithm Id.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Algorithm Id.", { cause })
     }
   })()
 
@@ -82,8 +81,8 @@ export function verifyData(
       const int = key.header(M.Label.new_int(M.Int.new_negative(M.BigNum.from_str("1"))))?.as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Curve.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Curve.", { cause })
     }
   })()
 
@@ -92,8 +91,8 @@ export function verifyData(
       const int = key.key_type().as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Key Type.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Key Type.", { cause })
     }
   })()
 
@@ -102,16 +101,16 @@ export function verifyData(
       return CML.PublicKey.from_bytes(
         key.header(M.Label.new_int(M.Int.new_negative(M.BigNum.from_str("2"))))?.as_bytes()!
       )
-    } catch (_e) {
-      throw new Error("No public key found.")
+    } catch (cause) {
+      throw new Error("No public key found.", { cause })
     }
   })()
 
   const cose1Payload = (() => {
     try {
       return toHex(cose1.payload()!)
-    } catch (_e) {
-      throw new Error("No payload found.")
+    } catch (cause) {
+      throw new Error("No payload found.", { cause })
     }
   })()
 

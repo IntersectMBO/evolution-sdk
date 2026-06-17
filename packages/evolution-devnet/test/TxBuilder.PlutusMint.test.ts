@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
@@ -18,7 +18,6 @@ import * as Data from "@evolution-sdk/evolution/Data"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 
@@ -64,29 +63,21 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
   const scriptHash = ScriptHash.fromScript(simpleMintScript)
   const calculatedPolicyId = ScriptHash.toHex(scriptHash)
 
-  const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1444",
-        ogmiosUrl: "http://localhost:1339"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+  const createTestClient = () => {
+    if (!devnetCluster) throw new Error("Cluster not initialized")
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
+  }
 
   beforeAll(async () => {
     // Verify our script hash calculation matches the blueprint
     expect(calculatedPolicyId).toBe(SIMPLE_MINT_POLICY_ID_HEX)
 
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
 
     const testAddress = await testClient.address()
     const testAddressHex = CoreAddress.toHex(testAddress)
@@ -104,10 +95,9 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "plutus-minting-test",
-      ports: { node: 6002, submit: 9003 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1444, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1339, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)
@@ -171,9 +161,9 @@ describe("TxBuilder Plutus Minting (Devnet Submit)", () => {
 
     // Verify redeemers with evaluated exUnits
     expect(tx.witnessSet.redeemers).toBeDefined()
-    expect(tx.witnessSet.redeemers!.length).toBe(1)
+    expect(tx.witnessSet.redeemers!.size).toBe(1)
 
-    const redeemer = tx.witnessSet.redeemers![0]
+    const redeemer = tx.witnessSet.redeemers!.toArray()[0]
     expect(redeemer.tag).toBe("mint")
     expect(redeemer.exUnits.mem).toBeGreaterThan(0n)
     expect(redeemer.exUnits.steps).toBeGreaterThan(0n)

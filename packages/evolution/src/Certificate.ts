@@ -1,3 +1,9 @@
+/**
+ * Certificate types and schemas for Cardano Conway-era transactions.
+ *
+ * @module Certificate
+ * @since 2.0.0
+ */
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Anchor from "./Anchor.js"
@@ -12,6 +18,12 @@ import * as PoolParams from "./PoolParams.js"
 import * as Relay from "./Relay.js"
 import * as UnitInterval from "./UnitInterval.js"
 
+/**
+ * Register a stake credential (CDDL: stake_registration = 0).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class StakeRegistration extends Schema.TaggedClass<StakeRegistration>("StakeRegistration")("StakeRegistration", {
   stakeCredential: Credential.Credential
 }) {
@@ -39,6 +51,12 @@ export class StakeRegistration extends Schema.TaggedClass<StakeRegistration>("St
   }
 }
 
+/**
+ * Deregister a stake credential (CDDL: stake_deregistration = 1).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class StakeDeregistration extends Schema.TaggedClass<StakeDeregistration>("StakeDeregistration")(
   "StakeDeregistration",
   {
@@ -69,6 +87,12 @@ export class StakeDeregistration extends Schema.TaggedClass<StakeDeregistration>
   }
 }
 
+/**
+ * Delegate stake to a pool (CDDL: stake_delegation = 2).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class StakeDelegation extends Schema.TaggedClass<StakeDelegation>("StakeDelegation")("StakeDelegation", {
   stakeCredential: Credential.Credential,
   poolKeyHash: PoolKeyHash.PoolKeyHash
@@ -107,6 +131,12 @@ export class StakeDelegation extends Schema.TaggedClass<StakeDelegation>("StakeD
   }
 }
 
+/**
+ * Register a stake pool (CDDL: pool_registration = 3).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class PoolRegistration extends Schema.TaggedClass<PoolRegistration>("PoolRegistration")("PoolRegistration", {
   poolParams: PoolParams.PoolParams
 }) {
@@ -134,6 +164,12 @@ export class PoolRegistration extends Schema.TaggedClass<PoolRegistration>("Pool
   }
 }
 
+/**
+ * Retire a stake pool at a given epoch (CDDL: pool_retirement = 4).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class PoolRetirement extends Schema.TaggedClass<PoolRetirement>("PoolRetirement")("PoolRetirement", {
   poolKeyHash: PoolKeyHash.PoolKeyHash,
   epoch: EpochNo.EpochNoSchema
@@ -170,6 +206,12 @@ export class PoolRetirement extends Schema.TaggedClass<PoolRetirement>("PoolReti
   }
 }
 
+/**
+ * Conway-era stake registration with deposit (CDDL: reg_cert = 7).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class RegCert extends Schema.TaggedClass<RegCert>("RegCert")("RegCert", {
   stakeCredential: Credential.Credential,
   coin: Coin.Coin
@@ -206,6 +248,12 @@ export class RegCert extends Schema.TaggedClass<RegCert>("RegCert")("RegCert", {
   }
 }
 
+/**
+ * Conway-era stake deregistration with deposit refund (CDDL: unreg_cert = 8).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class UnregCert extends Schema.TaggedClass<UnregCert>("UnregCert")("UnregCert", {
   stakeCredential: Credential.Credential,
   coin: Coin.Coin
@@ -242,6 +290,12 @@ export class UnregCert extends Schema.TaggedClass<UnregCert>("UnregCert")("Unreg
   }
 }
 
+/**
+ * Delegate voting rights to a DRep (CDDL: vote_deleg_cert = 9).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class VoteDelegCert extends Schema.TaggedClass<VoteDelegCert>("VoteDelegCert")("VoteDelegCert", {
   stakeCredential: Credential.Credential,
   drep: DRep.DRep
@@ -278,6 +332,12 @@ export class VoteDelegCert extends Schema.TaggedClass<VoteDelegCert>("VoteDelegC
   }
 }
 
+/**
+ * Delegate stake to a pool and voting rights to a DRep (CDDL: stake_vote_deleg_cert = 10).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class StakeVoteDelegCert extends Schema.TaggedClass<StakeVoteDelegCert>("StakeVoteDelegCert")(
   "StakeVoteDelegCert",
   {
@@ -322,6 +382,12 @@ export class StakeVoteDelegCert extends Schema.TaggedClass<StakeVoteDelegCert>("
   }
 }
 
+/**
+ * Register stake and delegate to a pool in one certificate (CDDL: stake_reg_deleg_cert = 11).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class StakeRegDelegCert extends Schema.TaggedClass<StakeRegDelegCert>("StakeRegDelegCert")("StakeRegDelegCert", {
   stakeCredential: Credential.Credential,
   poolKeyHash: PoolKeyHash.PoolKeyHash,
@@ -363,6 +429,12 @@ export class StakeRegDelegCert extends Schema.TaggedClass<StakeRegDelegCert>("St
   }
 }
 
+/**
+ * Register stake and delegate voting rights to a DRep (CDDL: vote_reg_deleg_cert = 12).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class VoteRegDelegCert extends Schema.TaggedClass<VoteRegDelegCert>("VoteRegDelegCert")("VoteRegDelegCert", {
   stakeCredential: Credential.Credential,
   drep: DRep.DRep,
@@ -404,6 +476,12 @@ export class VoteRegDelegCert extends Schema.TaggedClass<VoteRegDelegCert>("Vote
   }
 }
 
+/**
+ * Register stake, delegate to a pool, and delegate voting rights to a DRep (CDDL: stake_vote_reg_deleg_cert = 13).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class StakeVoteRegDelegCert extends Schema.TaggedClass<StakeVoteRegDelegCert>("StakeVoteRegDelegCert")(
   "StakeVoteRegDelegCert",
   {
@@ -453,6 +531,12 @@ export class StakeVoteRegDelegCert extends Schema.TaggedClass<StakeVoteRegDelegC
   }
 }
 
+/**
+ * Authorize a committee hot credential (CDDL: auth_committee_hot_cert = 14).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class AuthCommitteeHotCert extends Schema.TaggedClass<AuthCommitteeHotCert>("AuthCommitteeHotCert")(
   "AuthCommitteeHotCert",
   {
@@ -494,6 +578,12 @@ export class AuthCommitteeHotCert extends Schema.TaggedClass<AuthCommitteeHotCer
   }
 }
 
+/**
+ * Resign a committee cold credential (CDDL: resign_committee_cold_cert = 15).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class ResignCommitteeColdCert extends Schema.TaggedClass<ResignCommitteeColdCert>("ResignCommitteeColdCert")(
   "ResignCommitteeColdCert",
   {
@@ -535,6 +625,12 @@ export class ResignCommitteeColdCert extends Schema.TaggedClass<ResignCommitteeC
   }
 }
 
+/**
+ * Register as a DRep (CDDL: reg_drep_cert = 16).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class RegDrepCert extends Schema.TaggedClass<RegDrepCert>("RegDrepCert")("RegDrepCert", {
   drepCredential: Credential.Credential,
   coin: Coin.Coin,
@@ -576,6 +672,12 @@ export class RegDrepCert extends Schema.TaggedClass<RegDrepCert>("RegDrepCert")(
   }
 }
 
+/**
+ * Unregister as a DRep (CDDL: unreg_drep_cert = 17).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class UnregDrepCert extends Schema.TaggedClass<UnregDrepCert>("UnregDrepCert")("UnregDrepCert", {
   drepCredential: Credential.Credential,
   coin: Coin.Coin
@@ -612,6 +714,12 @@ export class UnregDrepCert extends Schema.TaggedClass<UnregDrepCert>("UnregDrepC
   }
 }
 
+/**
+ * Update DRep metadata anchor (CDDL: update_drep_cert = 18).
+ *
+ * @since 2.0.0
+ * @category certificate
+ */
 export class UpdateDrepCert extends Schema.TaggedClass<UpdateDrepCert>("UpdateDrepCert")("UpdateDrepCert", {
   drepCredential: Credential.Credential,
   anchor: Schema.NullishOr(Anchor.Anchor)

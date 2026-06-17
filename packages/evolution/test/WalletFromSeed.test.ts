@@ -13,13 +13,13 @@ describe("WalletFromSeed", () => {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Base",
         accountIndex: 0,
-        network: "Mainnet"
+        networkId: 0
       })
 
       expect(Address.toBech32(result1.address)).toBe(
-        "addr1q98wl3hnya9l94rt58ky533deyqe9t8zz5n9su26k8e5g23yar4q0adtaax9q9g0kphpv2ws7vxqwu6ln6pqx7j29nfqsfy9mg"
+        "addr_test1qp8wl3hnya9l94rt58ky533deyqe9t8zz5n9su26k8e5g23yar4q0adtaax9q9g0kphpv2ws7vxqwu6ln6pqx7j29nfqnle9hh"
       )
-      expect(result1.rewardAddress).toBe("stake1uyjw36s87k477nzsz58mqmsk98g0xrq8wd0eaqsr0f9ze5s48wtl9")
+      expect(result1.rewardAddress).toBe("stake_test1uqjw36s87k477nzsz58mqmsk98g0xrq8wd0eaqsr0f9ze5sjdyfmc")
       expect(result1.paymentKey).toBe(
         "ed25519e_sk1krszcw3ujfs3qnsjwl6wynw7dwudgnq69w9lrrtdf46yqnd25dgv4f5ttaqxr2v6n6azee489c7mryudvhu8n4x4tcvd5hvhtwswsuc4s4c2d"
       )
@@ -35,12 +35,33 @@ describe("WalletFromSeed", () => {
     })
   )
 
+  it.effect("Mainnet", () =>
+    Effect.gen(function* () {
+      const result1 = yield* walletFromSeed(seedPhrase, {
+        addressType: "Base",
+        accountIndex: 0,
+        networkId: 1
+      })
+
+      expect(Address.toBech32(result1.address)).toBe(
+        "addr1q98wl3hnya9l94rt58ky533deyqe9t8zz5n9su26k8e5g23yar4q0adtaax9q9g0kphpv2ws7vxqwu6ln6pqx7j29nfqsfy9mg"
+      )
+      expect(result1.rewardAddress).toBe("stake1uyjw36s87k477nzsz58mqmsk98g0xrq8wd0eaqsr0f9ze5s48wtl9")
+      expect(result1.paymentKey).toBe(
+        "ed25519e_sk1krszcw3ujfs3qnsjwl6wynw7dwudgnq69w9lrrtdf46yqnd25dgv4f5ttaqxr2v6n6azee489c7mryudvhu8n4x4tcvd5hvhtwswsuc4s4c2d"
+      )
+      expect(result1.stakeKey).toBe(
+        "ed25519e_sk19q4d6fguvncszk6f46fvvep5y5w3877y77t3n3dc446wgja25dg968hm8jxkc9d7p982uls6k8uq0srs69e44lay43hxmdx4nc3rttsn0h2f5"
+      )
+    })
+  )
+
   it.effect("accountIndex 1", () =>
     Effect.gen(function* () {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Base",
         accountIndex: 1,
-        network: "Mainnet"
+        networkId: 1
       })
 
       expect(Address.toBech32(result1.address)).toBe(
@@ -57,39 +78,7 @@ describe("WalletFromSeed", () => {
       const result2 = yield* walletFromSeed(seedPhrase, {
         accountIndex: 1
       })
-      expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
-      expect(result2.rewardAddress).toBe(result1.rewardAddress)
-      expect(result2.paymentKey).toBe(result1.paymentKey)
-      expect(result2.stakeKey).toBe(result1.stakeKey)
-    })
-  )
-
-  it.effect("Custom Network", () =>
-    Effect.gen(function* () {
-      const result1 = yield* walletFromSeed(seedPhrase, {
-        addressType: "Base",
-        accountIndex: 0,
-        network: "Custom"
-      })
-
-      expect(Address.toBech32(result1.address)).toBe(
-        "addr_test1qp8wl3hnya9l94rt58ky533deyqe9t8zz5n9su26k8e5g23yar4q0adtaax9q9g0kphpv2ws7vxqwu6ln6pqx7j29nfqnle9hh"
-      )
-      expect(result1.rewardAddress).toBe("stake_test1uqjw36s87k477nzsz58mqmsk98g0xrq8wd0eaqsr0f9ze5sjdyfmc")
-      expect(result1.paymentKey).toBe(
-        "ed25519e_sk1krszcw3ujfs3qnsjwl6wynw7dwudgnq69w9lrrtdf46yqnd25dgv4f5ttaqxr2v6n6azee489c7mryudvhu8n4x4tcvd5hvhtwswsuc4s4c2d"
-      )
-      expect(result1.stakeKey).toBe(
-        "ed25519e_sk19q4d6fguvncszk6f46fvvep5y5w3877y77t3n3dc446wgja25dg968hm8jxkc9d7p982uls6k8uq0srs69e44lay43hxmdx4nc3rttsn0h2f5"
-      )
-
-      const result2 = yield* walletFromSeed(seedPhrase, {
-        network: "Custom"
-      })
-      expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
-      expect(result2.rewardAddress).toBe(result1.rewardAddress)
-      expect(result2.paymentKey).toBe(result1.paymentKey)
-      expect(result2.stakeKey).toBe(result1.stakeKey)
+      expect(Address.toBech32(result2.address)).not.toBe(Address.toBech32(result1.address))
     })
   )
 
@@ -98,7 +87,7 @@ describe("WalletFromSeed", () => {
       const result1 = yield* walletFromSeed(seedPhrase, {
         addressType: "Enterprise",
         accountIndex: 0,
-        network: "Mainnet"
+        networkId: 1
       })
 
       expect(Address.toBech32(result1.address)).toBe("addr1v98wl3hnya9l94rt58ky533deyqe9t8zz5n9su26k8e5g2srcn4hd")
@@ -111,7 +100,7 @@ describe("WalletFromSeed", () => {
       const result2 = yield* walletFromSeed(seedPhrase, {
         addressType: "Enterprise"
       })
-      expect(Address.toBech32(result2.address)).toBe(Address.toBech32(result1.address))
+      expect(Address.toBech32(result2.address)).not.toBe(Address.toBech32(result1.address))
       expect(result2.rewardAddress).toBeUndefined()
       expect(result2.paymentKey).toBe(result1.paymentKey)
       expect(result2.stakeKey).toBeUndefined()

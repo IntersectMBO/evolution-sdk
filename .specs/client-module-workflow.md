@@ -1,212 +1,196 @@
-# Evolution SDK Client Module
+# Evolution SDK Client Capability Assembly Specification
 
 ## Abstract
 
-This document specifies the Evolution SDK client architecture and normative behaviors for composing provider and wallet capabilities in TypeScript applications. It defines client roles, available operations, upgrade semantics, transaction building constraints, and the error model. Examples illustrate key usage patterns; detailed feature matrices are provided in the Appendix.
+This document specifies the Evolution SDK client architecture as a chain-scoped capability assembly model. It defines the public stages, legal transitions between stages, capability ordering rules, execution boundaries, and error semantics. The specification replaces the older attach-based model in which provider and wallet objects were primary public composition units.
 
 ## Purpose and Scope
 
-This specification describes how clients are constructed and enhanced with providers and wallets, what operations are available for each client role, and how transaction building and submission behave. It does not define provider-specific protocols, CIP-30 details, or internal implementation; those are covered by code and provider-specific documents. Multi-provider behavior is specified at a high level here and in detail in the Provider Failover specification. For Effect-based vs Promise-based usage, see the [Effect-Promise Architecture Guide](./effect-promise-architecture.md).
+This specification defines how applications construct executable SDK clients from chain context and named capability additions. It covers stage semantics, immutable upgrade rules, operation availability, transaction building constraints, and the Effect-Promise execution contract. It does not define provider-specific protocols, browser wallet standards, or internal implementation details. Provider failover remains defined by the [Provider Failover specification](./provider-failover.md). Dual-interface execution semantics remain defined by the [Effect-Promise Architecture specification](./effect-promise-architecture.md).
 
 ## Introduction
 
-The Evolution SDK offers a progressive client model: start with a minimal client and add a provider and/or wallet to unlock read, sign, and submit capabilities. The goal is clear separation of concerns and compile-time safety for what a given client can do.
+The Evolution SDK exposes a client-centric assembly flow. Construction begins from chain context. Read capability, address capability, and signing capability are then added through flat, named capability operations. Each addition returns a new stage with a larger executable surface. Provider and wallet implementations exist to satisfy these capabilities but are not the primary public composition model.
 
 ```mermaid
 graph TD
-    A[MinimalClient] -->|Add Provider| B[ProviderOnlyClient]
-    A -->|Add Signing Wallet| C[SigningWalletClient]
-    A -->|Add ReadOnly Wallet| D[ReadOnlyWalletClient]
-    A -->|Add API Wallet| E[ApiWalletClient]
-    B -->|Add Signing Wallet| F[SigningClient]
-    B -->|Add ReadOnly Wallet| G[ReadOnlyClient]
-    C -->|Add Provider| F
-    D -->|Add Provider| G
-    E -->|Add Provider| F
-    
-    classDef minimal fill:#3b82f6,stroke:#1e3a8a,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    classDef provider fill:#8b5cf6,stroke:#4c1d95,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    classDef signingWallet fill:#f59e0b,stroke:#92400e,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    classDef readOnlyWallet fill:#10b981,stroke:#065f46,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    classDef apiWallet fill:#f97316,stroke:#9a3412,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    classDef readOnlyClient fill:#06b6d4,stroke:#0e7490,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    classDef signingClient fill:#ef4444,stroke:#991b1b,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:14px
-    
-    class A minimal
-    class B provider
-    class C signingWallet
-    class D readOnlyWallet
-    class E apiWallet
-    class F signingClient
-    class G readOnlyClient
+    A([Chain-Scoped Assembly]) --> B[Add Read Capability]
+    A --> C[Add Address Capability]
+    A --> D[Add Signing Capability]
+    B --> E([Read Client])
+    C --> F([Address Client])
+    D --> G([Offline Signing Client])
+    E --> H[Add Address Capability]
+    E --> I[Add Signing Capability]
+    F --> J[Add Read Capability]
+    G --> K[Add Read Capability]
+    H --> L([Read-Only Client])
+    J --> L
+    I --> M([Signing Client])
+    K --> M
+
+    classDef phase    fill:#ecf0f1,stroke:#34495e,stroke-width:3px,color:#000000
+    classDef minimal  fill:#3b82f6,stroke:#1e3a8a,stroke-width:3px,color:#ffffff
+    classDef provider fill:#8b5cf6,stroke:#4c1d95,stroke-width:3px,color:#ffffff
+    classDef wallet   fill:#f59e0b,stroke:#92400e,stroke-width:3px,color:#ffffff
+    classDef success  fill:#2ecc71,stroke:#27ae60,stroke-width:4px,color:#ffffff
+
+    class A phase
+    class B,E,J,K provider
+    class C,D,F,G,H,I wallet
+    class L,M success
 ```
 
-Summary:
-- MinimalClient: no read/sign/submit
-- ProviderOnlyClient: read and submit (where applicable), no signing
-- SigningWalletClient: sign only
-- ReadOnlyWalletClient: address/rewardAddress only
-- ApiWalletClient: CIP-30 sign and submit via wallet API
-- ReadOnlyClient: provider + read-only wallet; can query wallet data
-- SigningClient: provider + signing wallet or API wallet; full capability
-
-Matrices summarizing exact method availability appear in the Appendix.
+The stages are:
+- Chain-Scoped Assembly: chain metadata and capability addition only; not executable
+- Read Client: provider-backed read and submission operations
+- Address Client: address and reward-address operations only
+- Offline Signing Client: address and signing operations only
+- Read-Only Client: read capability plus address capability
+- Signing Client: read capability plus signing capability
 
 ## Functional Specification (Normative)
 
 Requirements language: The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are to be interpreted as described in RFC 2119 and RFC 8174 when, and only when, they appear in all capitals.
 
-### 1. Client roles and conformance
+### 1. Public construction model
 
-An Evolution SDK client instance conforms to exactly one role at a time:
-- MinimalClient
-- ProviderOnlyClient
-- SigningWalletClient
-- ReadOnlyWalletClient
-- ApiWalletClient
-- ReadOnlyClient
-- SigningClient
+1. The public entrypoint MUST begin from explicit chain context.
+2. The initial returned stage MUST represent assembly, not execution.
+3. The initial returned stage MUST expose chain metadata and named capability-addition operations only.
+4. The initial returned stage MUST NOT expose provider queries, wallet operations, transaction building, submission, or a generic execution namespace.
+5. The public API MUST use flat, named capability operations for concrete capability kinds.
+6. The public API MUST NOT require callers to construct standalone provider runtime objects or standalone wallet runtime objects in order to assemble a client.
+7. Generic attachment operations that accept arbitrary provider or wallet objects MUST NOT be part of the primary public composition surface.
 
-For each role, the following MUST hold:
-- MinimalClient MUST NOT expose provider or wallet operations; it MAY be upgraded.
-- ProviderOnlyClient MUST expose provider operations and MAY submit transactions if the provider supports submission; it MUST NOT expose signing.
-- SigningWalletClient MUST expose signing and message signing; it MUST NOT expose submission or provider queries.
-- ReadOnlyWalletClient MUST expose address() and rewardAddress(); it MUST NOT expose signing, provider queries, or submission.
-- ApiWalletClient MUST expose signing and MAY expose submission via the wallet API; it MUST NOT expose provider queries unless upgraded with a provider.
-- ReadOnlyClient MUST expose provider queries scoped to the configured address and MUST NOT expose signing.
-- SigningClient MUST expose provider queries, transaction building, signing, and submission.
+### 2. Capability kinds
 
-### 2. Network and provider operations
+The public composition model defines three capability kinds:
+- Read Capability: blockchain queries, protocol parameters, transaction evaluation, confirmation waiting, and submission where supported
+- Address Capability: payment address and reward address resolution without signing
+- Signing Capability: address resolution plus transaction signing and message signing; submission MAY be available when the signing source natively supports submission
 
-- A client configured with a provider (ProviderOnlyClient, ReadOnlyClient, SigningClient) MUST provide `networkId` and provider query methods (e.g., `getProtocolParameters`, `getUtxos`, `awaitTx`, `evaluateTx`) as listed in the Appendix.
-- `submitTx` MUST be available on clients with a provider or API wallet capable of submission (ProviderOnlyClient, ReadOnlyClient, SigningClient, ApiWalletClient).
-- Provider implementations and their supported operations are out of scope here; see provider-specific docs. A multi-provider MUST follow the strategy defined in the [Provider Failover specification](./provider-failover.md).
+The following MUST hold:
+- Signing Capability MUST subsume Address Capability.
+- Address Capability MUST NOT subsume Signing Capability.
+- Read Capability MUST be independent of Address Capability and Signing Capability.
+- Transaction building MUST require Read Capability.
 
-### 3. Wallet operations
+### 3. Stage conformance
 
-- A client configured with a wallet MUST provide `address()` and `rewardAddress()` where the wallet type supports them.
-- SigningWalletClient and SigningClient MUST provide `signTx(tx)` and `signMessage(address, payload)`.
-- ReadOnlyWalletClient and ReadOnlyClient MUST NOT provide signing methods.
-- ApiWalletClient MUST provide signTx and SHOULD provide submitTx if the wallet API supports submission.
+An executable client instance conforms to exactly one of the following executable stages:
+- Read Client
+- Address Client
+- Offline Signing Client
+- Read-Only Client
+- Signing Client
 
-### 4. Transaction building
+The following MUST hold for each stage:
+- Read Client MUST expose read operations and transaction submission where the configured read capability supports submission.
+- Read Client MUST NOT expose address-scoped convenience operations or signing operations.
+- Address Client MUST expose payment address and reward address resolution.
+- Address Client MUST NOT expose signing, read operations, transaction building, or submission.
+- Offline Signing Client MUST expose payment address and reward address resolution together with transaction signing and message signing.
+- Offline Signing Client MUST NOT expose read operations or transaction building.
+- Read-Only Client MUST expose read operations, payment address and reward address resolution, and address-scoped convenience queries.
+- Read-Only Client MUST NOT expose signing.
+- Signing Client MUST expose read operations, payment address and reward address resolution, address-scoped convenience queries, transaction building, signing, and submission.
 
-- `newTx()` MUST be exposed only on clients that have a provider (ReadOnlyClient, SigningClient).
-- Building a transaction MUST require provider protocol parameters.
-- `build()`/`complete()` on ReadOnlyClient MUST produce an unsigned `Transaction`.
-- `build()`/`complete()` on SigningClient MUST produce a `SignBuilder` (or equivalent) that can be signed and submitted.
-- ApiWalletClient MUST be upgraded to SigningClient (by attaching a provider) before it can build transactions.
+### 4. Legal transitions and ordering
 
-### 5. Attachment and upgrade semantics
+The public API MUST support the following stage transitions:
+- Chain-Scoped Assembly to Read Client
+- Chain-Scoped Assembly to Address Client
+- Chain-Scoped Assembly to Offline Signing Client
+- Read Client to Read-Only Client
+- Read Client to Signing Client
+- Address Client to Read-Only Client
+- Offline Signing Client to Signing Client
 
-- `createClient()` without arguments MUST return a MinimalClient.
-- `attachProvider(provider)` and `attachWallet(wallet)` MUST return new client instances (i.e., the API is immutable) with upgraded roles as per the Introduction diagram.
-- `createClient({ network, provider })` MUST produce a ProviderOnlyClient.
-- `createClient({ network, wallet })` MUST produce SigningWalletClient, ReadOnlyWalletClient, or ApiWalletClient depending on wallet type.
-- `createClient({ network, provider, wallet })` MUST produce ReadOnlyClient or SigningClient depending on wallet type.
+The following MUST also hold:
+- Adding Read Capability and then Signing Capability MUST produce the same final stage semantics as adding Signing Capability and then Read Capability.
+- Adding Read Capability and then Address Capability MUST produce the same final stage semantics as adding Address Capability and then Read Capability.
+- A stage that already contains Signing Capability MUST NOT accept an additional Address Capability.
+- A stage that already contains Read Capability MUST NOT accept a second Read Capability.
+- A stage that already contains Signing Capability MUST NOT accept a second Signing Capability.
+- A stage that already contains Address Capability MUST NOT accept a second Address Capability.
+- Capability addition MUST be immutable: each addition returns a new stage and MUST NOT mutate a previously returned stage.
 
-### 6. Error model and effect semantics
+### 5. Operation availability
 
-- Methods that interact with external systems MUST reject/raise with typed errors: ProviderError for provider failures, WalletError for wallet failures, MultiProviderError for strategy/exhaustion failures, and TransactionBuilderError for builder validation issues.
-- The Effect API MUST preserve the same error categories as typed causes; callers MAY use retries, timeouts, and fallbacks. The Promise API MUST be semantically equivalent to running the corresponding Effect program to completion.
-- Multi-provider failover MUST adhere to the [Provider Failover specification](./provider-failover.md).
+The following availability rules are normative:
+- Read operations MUST only be available on stages with Read Capability.
+- Address resolution MUST only be available on stages with Address Capability or Signing Capability.
+- Transaction signing and message signing MUST only be available on stages with Signing Capability.
+- Address-scoped convenience queries, including wallet UTxO lookup and wallet delegation lookup, MUST only be available on stages that contain both Read Capability and address resolution.
+- Transaction building MUST only be available on stages with Read Capability.
+- Read-Only transaction building MUST produce an unsigned transaction result.
+- Signing transaction building MUST produce a result that can continue into signing and submission.
 
-### 7. API equivalence (Effect vs Promise)
+### 6. Input treatment and implementation hiding
 
-For every Promise-returning method, an equivalent Effect program MUST exist under the `client.Effect` namespace with identical semantics regarding success values and error categories.
+The public API MAY accept configuration data or external API handles as inputs to named capability operations.
 
-### 8. Examples (Informative)
+The following MUST hold:
+- Read-capability operations MUST accept provider-specific configuration data and internally construct the required runtime implementation.
+- Address-capability operations MUST accept address data and optional reward-address data and internally construct the required runtime implementation.
+- Signing-capability operations MUST accept signing-source configuration data or external wallet API handles and internally construct the required runtime implementation.
+- Provider runtime implementations and wallet runtime implementations MUST be treated as internal capability backends rather than primary public assembly objects.
 
-Simple creation and upgrade:
-```typescript
-const client = createClient()
-const providerClient = client.attachProvider({ type: "blockfrost", apiKey: "your-key" })
-const signingClient = providerClient.attachWallet({ type: "seed", mnemonic: "your mnemonic" })
-```
+### 7. Chain semantics and validation
 
-Direct creation:
-```typescript
-const client = createClient({
-  network: "mainnet",
-  provider: { type: "blockfrost", apiKey: "your-key" },
-  wallet: { type: "seed", mnemonic: "your mnemonic" }
-})
-```
+Chain context is the root configuration for all stages.
 
-Browser wallet (CIP-30) with upgrade:
-```typescript
-const apiClient = createClient({ network: "mainnet", wallet: { type: "api", api: window.cardano.nami } })
-const fullClient = apiClient.attachProvider({ type: "blockfrost", apiKey: "your-key" })
-```
+The following MUST hold:
+- Chain context MUST be available to every stage produced from the same assembly root.
+- Capability implementations MUST validate network-sensitive inputs against chain context.
+- Address capability and signing capability MUST fail when resolved address data conflicts with the configured chain.
+- Reward-address resolution MUST fail when the resolved reward address conflicts with the configured chain.
 
-Signing-only wallet (no submit without provider):
-```typescript
-const signingWallet = createClient({ network: "mainnet", wallet: { type: "seed", mnemonic: "your mnemonic" } })
-// await signingWallet.submitTx(...) // not available
-```
+### 8. Error model and execution semantics
 
-Effect usage (retries, timeouts):
-```typescript
-const program = client.Effect.signTx(tx).pipe(Effect.retry({ times: 3 }), Effect.timeout(30000))
-const signed = await Effect.runPromise(program)
-```
+The following MUST hold:
+- External read failures MUST surface as provider-classified failures.
+- Address and signing failures MUST surface as wallet-classified failures.
+- Transaction-building validation failures MUST surface as builder-classified failures.
+- Order-independent stage composition MUST preserve the same success values and error classes for equivalent final stages.
+- Every executable stage method with Promise semantics MUST have an equivalent Effect program with identical success values and error categories.
+- Assembly-stage operations MUST remain side-effect free until an executable method is interpreted or awaited.
 
-## Appendix (Informative)
+### 9. Compatibility and removal
 
-### A. Core methods by role
+The attach-based role model is removed by this specification.
 
-| Method/Capability | MinimalClient | ProviderOnlyClient | SigningWalletClient | ReadOnlyWalletClient | ApiWalletClient | ReadOnlyClient | SigningClient |
-|-------------------|---------------|--------------------|---------------------|----------------------|-----------------|----------------|---------------|
-| **Network Access** |
-| `networkId` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Provider Operations** |
-| `getProtocolParameters()` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getUtxos(address)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getUtxosWithUnit(address, unit)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getUtxoByUnit(unit)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getUtxosByOutRef(outRefs)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getDelegation(rewardAddress)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getDatum(datumHash)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `awaitTx(txHash)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `evaluateTx(tx)` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `submitTx(tx)` | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| **Wallet Operations** |
-| `address()` | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `rewardAddress()` | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `getWalletUtxos()` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `getWalletDelegation()` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `signTx(tx)` | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| `signMessage(address, payload)` | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| **Transaction Building** |
-| `newTx()` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| **Client Composition** |
-| `attachProvider()` | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| `attachWallet()` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `attach(provider, wallet)` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+The following MUST hold:
+- The primary public API MUST NOT expose generic provider-attachment operations.
+- The primary public API MUST NOT expose generic wallet-attachment operations.
+- Public examples, guides, and tests MUST describe client construction in terms of chain-scoped assembly and named capability operations.
+- Legacy role names centered on provider-only and wallet-only composition SHOULD be removed from user-facing documentation unless required for migration notes.
 
-### B. Transaction builder capabilities
+### Examples (Informative)
 
-| Builder Method | ReadOnlyClient | SigningClient | Notes |
-|----------------|----------------|---------------|--------|
-| `build()` | ✅ → `Transaction` | ✅ → `SignBuilder` | ReadOnlyClient returns unsigned transaction; SigningClient returns a builder with signing capabilities |
+Example 1: An application starts from chain context, adds a read capability backed by an HTTP service, and then adds a mnemonic-based signing capability. The resulting stage can build, sign, and submit transactions.
 
-Note: Transaction building requires protocol parameters from a provider. ApiWalletClient MUST be upgraded before building.
+Example 2: An application starts from chain context, adds address capability for a watched account, and later adds read capability. The resulting stage can resolve the watched account, query its UTxOs, and inspect delegation state, but cannot sign.
 
-### C. Provider support (categories)
+Example 3: An application starts from chain context, adds browser-wallet signing capability, and later adds read capability. The resulting stage can build transactions from chain data and sign them through the external wallet.
 
-| Category | Description | Supported Operations |
-|----------|-------------|---------------------|
-| REST API provider | External REST service | All provider operations |
-| Node-backed stack | Local/remote node stack (e.g., indexer + node) | All provider operations |
-| Cloud API provider | Managed blockchain API | All provider operations |
-| Alternative REST provider | Another REST-based service | All provider operations |
-| Multi-provider (strategy) | Failover/hedged strategy | All provider operations with redundancy (see [Provider Failover Specification](./provider-failover.md)) |
+## Appendix
 
-### D. Wallet support
+### Appendix A: Rationale and Alternatives (Informative)
 
-| Wallet Type | Client Types | Description | Capabilities |
-|-------------|-------------|-------------|--------------|
-| **Seed Wallet** | SigningWalletClient, SigningClient | HD wallet from mnemonic | Sign only (no submit without provider) |
-| **Private Key** | SigningWalletClient, SigningClient | Single key wallet | Sign only (no submit without provider) |
-| **Read-Only** | ReadOnlyWalletClient, ReadOnlyClient | Address monitoring | Query only, no signing |
-| **API Wallet (CIP-30)** | ApiWalletClient, SigningClient | Browser extension | Sign + submit via extension |
+This specification replaces the older attach-based model for three reasons:
+- It makes chain context the clear root of all capability resolution.
+- It makes capability growth explicit without elevating provider and wallet runtimes into primary public concepts.
+- It keeps the public surface flat and intention-revealing.
+
+The primary alternative was to preserve generic attachment operations and merely rename the stages. That approach was rejected because it continued to center public composition on provider and wallet objects rather than on client capability assembly.
+
+### Appendix B: Glossary (Informative)
+
+- Chain-Scoped Assembly: the initial non-executable stage from which capability additions begin
+- Read Capability: the capability that provides chain queries, transaction evaluation, and submission where supported
+- Address Capability: the capability that provides payment-address and reward-address resolution without signing
+- Signing Capability: the capability that provides address resolution plus transaction and message signing
+- Executable Stage: a stage that exposes Promise and Effect operations rather than capability addition only
+- Final Stage: a stage that contains all capabilities required for a target application workflow

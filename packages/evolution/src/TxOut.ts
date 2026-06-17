@@ -1,7 +1,7 @@
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Address from "./Address.js"
-import * as Assets from "./Assets/index.js"
+import * as Assets from "./Assets.js"
 import * as CBOR from "./CBOR.js"
 import * as DatumHash from "./DatumHash.js"
 import * as DatumOption from "./DatumOption.js"

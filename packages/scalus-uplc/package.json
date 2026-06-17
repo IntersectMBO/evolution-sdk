@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/scalus-uplc",
-  "version": "0.0.12",
+  "version": "2.0.9",
   "description": "Scalus UPLC evaluator adapter for Evolution SDK",
   "type": "module",
   "main": "./dist/index.js",
@@ -37,14 +37,14 @@
     "clean": "rm -rf dist .turbo .tsbuildinfo"
   },
   "dependencies": {
-    "effect": "^3.19.3",
-    "scalus": "^0.14.2"
+    "effect": "^3.21.1",
+    "scalus": "^0.17.0"
   },
   "peerDependencies": {
     "@evolution-sdk/evolution": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "keywords": [
     "cardano",

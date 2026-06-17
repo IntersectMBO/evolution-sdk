@@ -3,7 +3,7 @@ import { Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
 import * as AssetName from "../../../AssetName.js"
-import type * as CoreAssets from "../../../Assets/index.js"
+import type * as CoreAssets from "../../../Assets.js"
 import * as Bytes from "../../../Bytes.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumOption from "../../../DatumOption.js"
@@ -110,14 +110,13 @@ export const ProtocolParametersSchema = Schema.Struct({
 
 export interface ProtocolParameters extends Schema.Schema.Type<typeof ProtocolParametersSchema> {}
 
-export const Delegation = Schema.NullOr(
-  Schema.Record({
-    key: Schema.String,
-    value: Schema.Struct({
-      delegate: Schema.Struct({ id: Schema.String }),
-      rewards: Schema.Struct({ ada: Schema.Struct({ lovelace: Schema.Number }) }),
-      deposit: Schema.Struct({ ada: Schema.Struct({ lovelace: Schema.Number }) })
-    })
+export const Delegation = Schema.Array(
+  Schema.Struct({
+    from: Schema.String,
+    credential: Schema.String,
+    stakePool: Schema.optional(Schema.Struct({ id: Schema.String })),
+    rewards: Schema.Struct({ ada: Schema.Struct({ lovelace: Schema.Number }) }),
+    deposit: Schema.Struct({ ada: Schema.Struct({ lovelace: Schema.Number }) })
   })
 )
 

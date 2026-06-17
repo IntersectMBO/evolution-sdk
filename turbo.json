@@ -29,6 +29,15 @@
     "clean": {
       "cache": false
     },
+    "docs#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../packages/*/src/**",
+        "../packages/*/package.json"
+      ],
+      "outputs": [".next/**"]
+    },
     "docgen": {
       "dependsOn": ["^docgen"],
       "inputs": ["$TURBO_DEFAULT$", ".env*", "docgen.json"],

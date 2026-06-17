@@ -11,12 +11,14 @@ export * as BaseAddress from "./BaseAddress.js"
 export * as ByronAddress from "./ByronAddress.js"
 export * as EnterpriseAddress from "./EnterpriseAddress.js"
 export * as PaymentAddress from "./PaymentAddress.js"
+export * as Pointer from "./Pointer.js"
 export * as PointerAddress from "./PointerAddress.js"
 export * as RewardAccount from "./RewardAccount.js"
 export * as RewardAddress from "./RewardAddress.js"
 
 // Bytes & Encoding
 export * as Bech32 from "./Bech32.js"
+export * as BoundedBytes from "./BoundedBytes.js"
 export * as Bytes from "./Bytes.js"
 export * as Bytes4 from "./Bytes4.js"
 export * as Bytes16 from "./Bytes16.js"
@@ -29,10 +31,13 @@ export * as Bytes96 from "./Bytes96.js"
 export * as Bytes128 from "./Bytes128.js"
 export * as Bytes448 from "./Bytes448.js"
 export * as CBOR from "./CBOR.js"
+export * as Codec from "./Codec.js"
 export * as Text from "./Text.js"
 export * as Text128 from "./Text128.js"
 
 // Transactions
+export * as BootstrapWitness from "./BootstrapWitness.js"
+export * as FeeValidation from "./FeeValidation.js"
 export * as Transaction from "./Transaction.js"
 export * as TransactionBody from "./TransactionBody.js"
 export * as TransactionHash from "./TransactionHash.js"
@@ -42,21 +47,26 @@ export * as TransactionMetadatum from "./TransactionMetadatum.js"
 export * as TransactionMetadatumLabels from "./TransactionMetadatumLabels.js"
 export * as TransactionOutput from "./TransactionOutput.js"
 export * as TransactionWitnessSet from "./TransactionWitnessSet.js"
+export * as TxOut from "./TxOut.js"
+export * as UTxO from "./UTxO.js"
 
 // Values & Assets
 export * as AssetName from "./AssetName.js"
-export * as Assets from "./Assets/index.js"
+export * as Assets from "./Assets.js"
 export * as Coin from "./Coin.js"
+export * as Label from "./Label.js"
 export * as Mint from "./Mint.js"
 export * as MultiAsset from "./MultiAsset.js"
 export * as PolicyId from "./PolicyId.js"
 export * as PositiveCoin from "./PositiveCoin.js"
+export * as Unit from "./Unit.js"
 export * as Value from "./Value.js"
 
 // Credentials & Keys
 export * as Bip32PrivateKey from "./Bip32PrivateKey.js"
 export * as Bip32PublicKey from "./Bip32PublicKey.js"
 export * as Credential from "./Credential.js"
+export * as DRepCredential from "./DRepCredential.js"
 export * as Ed25519Signature from "./Ed25519Signature.js"
 export * as Hash28 from "./Hash28.js"
 export * as KeyHash from "./KeyHash.js"
@@ -64,6 +74,8 @@ export * as PrivateKey from "./PrivateKey.js"
 export * as VKey from "./VKey.js"
 
 // Scripts
+export * as CostModel from "./CostModel.js"
+export * as Language from "./Language.js"
 export * as NativeScriptJSON from "./NativeScriptJSON.js"
 export * as NativeScripts from "./NativeScripts.js"
 export * as PlutusV1 from "./PlutusV1.js"
@@ -78,6 +90,7 @@ export * as ScriptRef from "./ScriptRef.js"
 
 // Plutus Data
 export * as Data from "./Data.js"
+export * as DataJson from "./DataJson.js"
 export * as DatumHash from "./DatumHash.js"
 export * as DatumOption from "./DatumOption.js"
 export * as InlineDatum from "./InlineDatum.js"
@@ -85,12 +98,12 @@ export * as Plutus from "./plutus/index.js"
 export * as TSchema from "./TSchema.js"
 
 // Certificates & Governance
+export * as Anchor from "./Anchor.js"
 export * as Certificate from "./Certificate.js"
 export * as CommitteeColdCredential from "./CommitteeColdCredential.js"
 export * as CommitteeHotCredential from "./CommitteeHotCredential.js"
 export * as Constitution from "./Constitution.js"
 export * as DRep from "./DRep.js"
-export * as DRepCredential from "./DRepCredential.js"
 export * as GovernanceAction from "./GovernanceAction.js"
 export * as ProposalProcedure from "./ProposalProcedure.js"
 export * as ProposalProcedures from "./ProposalProcedures.js"
@@ -107,6 +120,7 @@ export * as Withdrawals from "./Withdrawals.js"
 export * as EpochNo from "./EpochNo.js"
 export * as Network from "./Network.js"
 export * as NetworkId from "./NetworkId.js"
+export * as NonnegativeInterval from "./NonnegativeInterval.js"
 export * as ProtocolParamUpdate from "./ProtocolParamUpdate.js"
 export * as ProtocolVersion from "./ProtocolVersion.js"
 
@@ -139,38 +153,24 @@ export * as AuxiliaryData from "./AuxiliaryData.js"
 export * as AuxiliaryDataHash from "./AuxiliaryDataHash.js"
 export * as Metadata from "./Metadata.js"
 
-// Witnesses
-export * as BootstrapWitness from "./BootstrapWitness.js"
-
-// UTxO
-export * as Pointer from "./Pointer.js"
-export * as UTxO from "./UTxO.js"
-
-// Time
-export * as Time from "./Time/index.js"
-
 // Numeric Types
 export * as BigInt from "./BigInt.js"
-export * as CostModel from "./CostModel.js"
 export * as Natural from "./Natural.js"
-export * as NonnegativeInterval from "./NonnegativeInterval.js"
 export * as NonZeroInt64 from "./NonZeroInt64.js"
 export * as Numeric from "./Numeric.js"
 export * as UnitInterval from "./UnitInterval.js"
 
-// Utilities
-export * as Anchor from "./Anchor.js"
-export * as BoundedBytes from "./BoundedBytes.js"
-export * as Codec from "./Codec.js"
-export * as Combinator from "./Combinator.js"
-export * as FormatError from "./FormatError.js"
-export * as Language from "./Language.js"
+// Time
+export * as Slot from "./Slot.js"
+export * as SlotConfig from "./SlotConfig.js"
+export * as Time from "./Time.js"
+export * as UnixTime from "./UnixTime.js"
 
 // Message Signing (CIP-8, CIP-30)
-export * as MessageSigning from "./message-signing/index.js"
+export * as COSE from "./cose/index.js"
 
 // UPLC
-export * as UPLC from "./uplc/index.js"
+export * as UPLC from "./UPLC.js"
 
 // Blueprint
 export * as Blueprint from "./blueprint/index.js"

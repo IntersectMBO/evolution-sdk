@@ -1,13 +1,13 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import {
   calculateLeftoverAssets,
   calculateMinimumFee,
   tierRefScriptFee,
   validateTransactionBalance
-} from "../src/sdk/builders/TxBuilderImpl.js"
+} from "../src/sdk/builders/internal/txBuilder.js"
 
 // Test policy IDs (56 hex chars = 28 bytes each)
 const POLICY1 = "aa".repeat(28) // aaaa...aa (56 chars)

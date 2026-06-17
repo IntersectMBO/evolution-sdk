@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
 // Test configuration
@@ -47,7 +48,7 @@ const POLICY_ID = "a".repeat(56) // Valid policy ID length
 const ASSET_NAME_HEX = "544f4b454e" // "TOKEN" in hex
 
 describe.concurrent("TxBuilder - Unfrack MinUTxO", () => {
-  const baseConfig: TxBuilderConfig = {}
+  const baseConfig: TxBuilderConfig = { chain: mainnet }
 
   /**
    * Validates reselection triggers when leftover has native assets
