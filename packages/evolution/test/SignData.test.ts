@@ -1,11 +1,20 @@
 import { FastCheck } from "effect"
 import { describe, expect, it } from "vitest"
 
+import * as Address from "../src/Address.js"
 import * as Bytes from "../src/Bytes.js"
 import { COSESign1, Header, SignData, Utils } from "../src/cose/index.js"
+import * as Credential from "../src/Credential.js"
 import * as KeyHash from "../src/KeyHash.js"
 import * as PrivateKey from "../src/PrivateKey.js"
+import * as RewardAccount from "../src/RewardAccount.js"
 import * as VKey from "../src/VKey.js"
+
+// Build a real enterprise address (testnet) whose payment credential is the
+// given key hash. verifyData binds the signing key to the address credential,
+// so tests must use real addresses rather than a bare key hash.
+const addressHexFor = (keyHash: KeyHash.KeyHash): string =>
+  Address.toHex(new Address.Address({ networkId: 0, paymentCredential: keyHash }))
 
 describe("SignData", () => {
   describe("Payload", () => {
@@ -30,8 +39,8 @@ describe("SignData", () => {
       const privateKey = PrivateKey.fromBytes(privateKeyBytes)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
 
-      // Create a test address (using the public key hash)
-      const addressHex = Bytes.toHex(keyHash.hash)
+      // Create a real enterprise address bound to the signer's key hash
+      const addressHex = addressHexFor(keyHash)
 
       // Create payload
       const payload = Utils.fromText("Hello, Cardano!")
@@ -48,7 +57,7 @@ describe("SignData", () => {
       const privateKeyBytes = PrivateKey.generate()
       const privateKey = PrivateKey.fromBytes(privateKeyBytes)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
-      const addressHex = KeyHash.toHex(keyHash)
+      const addressHex = addressHexFor(keyHash)
 
       const payload1 = Utils.fromText("Hello")
       const payload2 = Utils.fromText("World")
@@ -63,8 +72,9 @@ describe("SignData", () => {
       const privateKeyBytes = PrivateKey.generate()
       const privateKey = PrivateKey.fromBytes(privateKeyBytes)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
-      const addressHex1 = KeyHash.toHex(keyHash)
-      const addressHex2 = "ff" + KeyHash.toHex(keyHash).slice(2)
+      const otherKeyHash = KeyHash.fromPrivateKey(PrivateKey.fromBytes(PrivateKey.generate()))
+      const addressHex1 = addressHexFor(keyHash)
+      const addressHex2 = addressHexFor(otherKeyHash)
 
       const payload = Utils.fromText("Hello")
 
@@ -84,7 +94,7 @@ describe("SignData", () => {
       const keyHash1 = KeyHash.fromPrivateKey(privateKey1)
       const keyHash2 = KeyHash.fromPrivateKey(privateKey2)
 
-      const addressHex = KeyHash.toHex(keyHash1)
+      const addressHex = addressHexFor(keyHash1)
       const payload = Utils.fromText("Hello")
 
       const signedMessage = SignData.signData(addressHex, payload, privateKey1)
@@ -97,7 +107,7 @@ describe("SignData", () => {
       const privateKeyBytes = PrivateKey.generate()
       const privateKey = PrivateKey.fromBytes(privateKeyBytes)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
-      const addressHex = KeyHash.toHex(keyHash)
+      const addressHex = addressHexFor(keyHash)
 
       const payload = new Uint8Array(0) as Utils.Payload
 
@@ -111,7 +121,7 @@ describe("SignData", () => {
       const privateKeyBytes = PrivateKey.generate()
       const privateKey = PrivateKey.fromBytes(privateKeyBytes)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
-      const addressHex = KeyHash.toHex(keyHash)
+      const addressHex = addressHexFor(keyHash)
 
       // Create a large payload (1KB of data)
       const largeText = "x".repeat(1024)
@@ -127,7 +137,7 @@ describe("SignData", () => {
       const extendedKey = PrivateKey.generateExtended()
       const privateKey = PrivateKey.fromBytes(extendedKey)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
-      const addressHex = KeyHash.toHex(keyHash)
+      const addressHex = addressHexFor(keyHash)
 
       const payload = Utils.fromText("Testing extended keys")
 
@@ -135,6 +145,59 @@ describe("SignData", () => {
       const isValid = SignData.verifyData(addressHex, KeyHash.toHex(keyHash), payload, signedMessage)
 
       expect(isValid).toBe(true)
+    })
+
+    it("should reject a signature from a different key carrying a victim address (address binding)", () => {
+      const victimKey = PrivateKey.fromBytes(PrivateKey.generate())
+      const attackerKey = PrivateKey.fromBytes(PrivateKey.generate())
+      const victimKeyHash = KeyHash.fromPrivateKey(victimKey)
+      const attackerKeyHash = KeyHash.fromPrivateKey(attackerKey)
+      const victimAddressHex = addressHexFor(victimKeyHash)
+      const payload = Utils.fromText("login challenge")
+
+      // Attacker signs with their own key but embeds the victim's address in the
+      // protected header, then presents their own key hash (as a naive consumer
+      // sourcing the key hash from the message would).
+      const forged = SignData.signData(victimAddressHex, payload, attackerKey)
+      expect(SignData.verifyData(victimAddressHex, KeyHash.toHex(attackerKeyHash), payload, forged)).toBe(false)
+
+      // A genuine message signed by the victim still verifies.
+      const genuine = SignData.signData(victimAddressHex, payload, victimKey)
+      expect(SignData.verifyData(victimAddressHex, KeyHash.toHex(victimKeyHash), payload, genuine)).toBe(true)
+    })
+
+    it("should reject a script payment-credential address", () => {
+      const privateKey = PrivateKey.fromBytes(PrivateKey.generate())
+      const keyHash = KeyHash.fromPrivateKey(privateKey)
+      // Address whose payment credential is a script hash, not a key hash.
+      const scriptCredential = Credential.makeScriptHash(keyHash.hash)
+      const scriptAddressHex = Address.toHex(
+        new Address.Address({ networkId: 0, paymentCredential: scriptCredential })
+      )
+      const payload = Utils.fromText("Hello")
+
+      const signedMessage = SignData.signData(scriptAddressHex, payload, privateKey)
+      const isValid = SignData.verifyData(scriptAddressHex, KeyHash.toHex(keyHash), payload, signedMessage)
+      expect(isValid).toBe(false)
+    })
+
+    it("should bind a reward (stake) address to the stake credential", () => {
+      const privateKey = PrivateKey.fromBytes(PrivateKey.generate())
+      const keyHash = KeyHash.fromPrivateKey(privateKey)
+      const rewardAddressHex = RewardAccount.toHex(
+        new RewardAccount.RewardAccount({ networkId: 0, stakeCredential: keyHash })
+      )
+      const payload = Utils.fromText("stake login")
+
+      // Genuine signature with the stake key verifies against the reward address.
+      const signed = SignData.signData(rewardAddressHex, payload, privateKey)
+      expect(SignData.verifyData(rewardAddressHex, KeyHash.toHex(keyHash), payload, signed)).toBe(true)
+
+      // A different key carrying the victim reward address is rejected.
+      const attackerKey = PrivateKey.fromBytes(PrivateKey.generate())
+      const attackerKeyHash = KeyHash.fromPrivateKey(attackerKey)
+      const forged = SignData.signData(rewardAddressHex, payload, attackerKey)
+      expect(SignData.verifyData(rewardAddressHex, KeyHash.toHex(attackerKeyHash), payload, forged)).toBe(false)
     })
   })
 
@@ -146,7 +209,7 @@ describe("SignData", () => {
           FastCheck.uint8Array({ minLength: 0, maxLength: 100 }),
           (privateKey, payloadBytes) => {
             const keyHash = KeyHash.fromPrivateKey(privateKey)
-            const addressHex = KeyHash.toHex(keyHash)
+            const addressHex = addressHexFor(keyHash)
 
             const payload = payloadBytes as Utils.Payload
 
@@ -173,7 +236,7 @@ describe("SignData", () => {
             }
 
             const keyHash = KeyHash.fromPrivateKey(privateKey)
-            const addressHex = KeyHash.toHex(keyHash)
+            const addressHex = addressHexFor(keyHash)
 
             const payload1 = payloadBytes1 as Utils.Payload
             const payload2 = payloadBytes2 as Utils.Payload
@@ -203,7 +266,7 @@ describe("SignData", () => {
               return true
             }
 
-            const addressHex = KeyHash.toHex(keyHash1)
+            const addressHex = addressHexFor(keyHash1)
             const payload = payloadBytes as Utils.Payload
 
             const signedMessage = SignData.signData(addressHex, payload, privateKey1)
@@ -381,7 +444,7 @@ describe("SignData", () => {
       const privateKeyBytes = PrivateKey.generate()
       const privateKey = PrivateKey.fromBytes(privateKeyBytes)
       const keyHash = KeyHash.fromPrivateKey(privateKey)
-      const addressHex = KeyHash.toHex(keyHash)
+      const addressHex = addressHexFor(keyHash)
       const payload = Utils.fromText("test")
 
       const signedMessage = SignData.signData(addressHex, payload, privateKey)

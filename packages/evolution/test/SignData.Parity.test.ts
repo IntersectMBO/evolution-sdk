@@ -3,6 +3,7 @@ import * as CML from "@dcspark/cardano-multiplatform-lib-nodejs"
 import * as M from "@emurgo/cardano-message-signing-nodejs"
 import { describe, expect, it } from "vitest"
 
+import * as Address from "../src/Address.js"
 import { fromHex, toHex } from "../src/Bytes.js"
 import { SignData } from "../src/cose/index.js"
 import * as KeyHash from "../src/KeyHash.js"
@@ -141,7 +142,9 @@ describe("SignData Parity with lucid-evolution", () => {
   const publicKey = PrivateKey.toPublicKey(privateKey)
   const keyHash = KeyHash.fromVKey(publicKey)
   const keyHashHex = KeyHash.toHex(keyHash)
-  const addressHex = keyHashHex
+  // Real enterprise address bound to the signer's key hash (verifyData enforces
+  // that the signing key matches the address's payment credential).
+  const addressHex = Address.toHex(new Address.Address({ networkId: 0, paymentCredential: keyHash }))
   const payload = new Uint8Array([1, 2, 3, 4, 5])
   const payloadHex = toHex(payload)
 
