@@ -9,10 +9,13 @@
 
 import { Equal, Schema } from "effect"
 
+import * as Address from "../Address.js"
 import * as Bytes from "../Bytes.js"
 import type * as CBOR from "../CBOR.js"
+import * as Credential from "../Credential.js"
 import * as KeyHash from "../KeyHash.js"
 import * as PrivateKey from "../PrivateKey.js"
+import * as RewardAccount from "../RewardAccount.js"
 import * as VKey from "../VKey.js"
 import { headerMapNew, headersNew } from "./Header.js"
 import { COSEKeyFromCBORBytes, EdDSA25519Key } from "./Key.js"
@@ -90,6 +93,28 @@ export const signData = (addressHex: string, payload: Payload, privateKey: Priva
 }
 
 /**
+ * Resolve the key-hash credential that a claimed address commits to. The
+ * signing key must hash to this credential for the signature to be bound to the
+ * address. Per CIP-19, reward (stake) addresses use header types `0b1110` and
+ * `0b1111` and carry a stake credential; base and enterprise addresses carry a
+ * payment credential. Returns undefined when the address cannot be parsed.
+ */
+const addressSignerCredential = (addressHex: string): Credential.Credential | undefined => {
+  const header = Bytes.fromHex(addressHex)[0]
+  if (header === undefined) return undefined
+  const addressType = header >> 4
+  const isRewardAddress = addressType === 0b1110 || addressType === 0b1111
+  if (isRewardAddress) {
+    try {
+      return RewardAccount.fromHex(addressHex).stakeCredential
+    } catch {
+      return undefined
+    }
+  }
+  return Address.getPaymentCredential(addressHex)
+}
+
+/**
  * Verify a COSE_Sign1 signed message.
  *
  * Validates CIP-30 signatures by verifying:
@@ -97,7 +122,15 @@ export const signData = (addressHex: string, payload: Payload, privateKey: Priva
  * - Address matches protected headers
  * - Algorithm is EdDSA
  * - Public key hash matches provided key hash
+ * - Public key hashes to the claimed address's credential (address binding):
+ *   the payment credential for base/enterprise addresses, the stake credential
+ *   for reward addresses
  * - Ed25519 signature is cryptographically valid
+ *
+ * The address-binding check prevents accepting a signature produced by one key
+ * while a different victim address is presented in the protected header. Only
+ * key-hash credentials are accepted; script addresses cannot be proven by a
+ * single Ed25519 key and are rejected.
  *
  * @since 2.0.0
  * @category API
@@ -150,7 +183,16 @@ export const verifyData = (
 
     const publicKey = VKey.fromBytes(publicKeyBytes)
     const publicKeyHash = KeyHash.fromVKey(publicKey)
-    if (KeyHash.toHex(publicKeyHash) !== keyHash) return false
+    const publicKeyHashHex = KeyHash.toHex(publicKeyHash)
+    if (publicKeyHashHex !== keyHash) return false
+
+    // Bind the signing key to the claimed address: the embedded public key must
+    // hash to the address's credential. Without this, a signature made by an
+    // attacker key carrying a victim address in its protected header would
+    // verify. Script credentials cannot be satisfied by one Ed25519 key.
+    const expectedCredential = addressSignerCredential(addressHex)
+    if (expectedCredential === undefined || expectedCredential._tag !== "KeyHash") return false
+    if (Credential.toHex(expectedCredential) !== publicKeyHashHex) return false
 
     // Get signed data
     const signedData = coseSign1.signedData()
