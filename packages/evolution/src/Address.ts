@@ -104,7 +104,12 @@ export const FromBytes = Schema.transformOrFail(
         const addressTypeBits = (header >> 4) & 0b1111
 
         if (fromA.length === 57) {
-          // BaseAddress (with staking credential)
+          // BaseAddress (with staking credential): CIP-19 header types 0-3
+          if (addressTypeBits > 0b0011) {
+            return yield* ParseResult.fail(
+              new ParseResult.Type(ast, fromA, `Invalid base address type: ${addressTypeBits}`)
+            )
+          }
           const isPaymentKey = (addressTypeBits & 0b0001) === 0
           const paymentCredential: Credential.Credential = isPaymentKey
             ? new KeyHash.KeyHash({ hash: fromA.slice(1, 29) })
@@ -121,7 +126,12 @@ export const FromBytes = Schema.transformOrFail(
             stakingCredential
           })
         } else if (fromA.length === 29) {
-          // EnterpriseAddress (no staking credential)
+          // EnterpriseAddress (no staking credential): CIP-19 header types 6-7
+          if (addressTypeBits !== 0b0110 && addressTypeBits !== 0b0111) {
+            return yield* ParseResult.fail(
+              new ParseResult.Type(ast, fromA, `Invalid enterprise address type: ${addressTypeBits}`)
+            )
+          }
           const isPaymentKey = (addressTypeBits & 0b0001) === 0
           const paymentCredential: Credential.Credential = isPaymentKey
             ? new KeyHash.KeyHash({ hash: fromA.slice(1, 29) })
@@ -168,17 +178,28 @@ export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchem
     }),
   decode: (fromA, _, ast) =>
     Eff.gen(function* () {
-      const result = yield* Eff.try({
+      const decoded = yield* Eff.try({
         try: () => {
           // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
           // but Schema provides plain string. Consider using decodeToBytes which accepts string.
-          const decoded = bech32.decode(fromA as any, false)
-          const bytes = bech32.fromWords(decoded.words)
-          return new Uint8Array(bytes)
+          const result = bech32.decode(fromA as any, false)
+          return { prefix: result.prefix, bytes: new Uint8Array(bech32.fromWords(result.words)) }
         },
         catch: () => new ParseResult.Type(ast, fromA, `Failed to decode Bech32: ${fromA}`)
       })
-      return yield* ParseResult.decode(FromBytes)(result)
+      // Reject non-payment prefixes (e.g. stake / stake_test reward addresses)
+      if (decoded.prefix !== "addr" && decoded.prefix !== "addr_test") {
+        return yield* ParseResult.fail(new ParseResult.Type(ast, fromA, `Invalid address prefix: ${decoded.prefix}`))
+      }
+      const address = yield* ParseResult.decode(FromBytes)(decoded.bytes)
+      // Prefix must agree with the network in the header (testnet -> addr_test)
+      const expectedPrefix = address.networkId === 0 ? "addr_test" : "addr"
+      if (decoded.prefix !== expectedPrefix) {
+        return yield* ParseResult.fail(
+          new ParseResult.Type(ast, fromA, `Prefix ${decoded.prefix} does not match network ${address.networkId}`)
+        )
+      }
+      return address
     })
 }).annotations({
   identifier: "AddressStructure.FromBech32",

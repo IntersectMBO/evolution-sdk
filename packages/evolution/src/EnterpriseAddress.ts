@@ -63,13 +63,20 @@ export const FromBytes = Schema.transformOrFail(
 
         return yield* ParseResult.succeed(result)
       }),
-    decode: (_, __, ___, fromA) =>
+    decode: (_, __, ast, fromA) =>
       Eff.gen(function* () {
         const header = fromA[0]
         // Extract network ID from the lower 4 bits
         const networkId = header & 0b00001111
         // Extract address type from the upper 4 bits (bits 4-7)
         const addressType = header >> 4
+
+        // Enterprise addresses are CIP-19 header types 6-7
+        if (addressType !== 0b0110 && addressType !== 0b0111) {
+          return yield* ParseResult.fail(
+            new ParseResult.Type(ast, fromA, `Invalid enterprise address type: ${addressType}`)
+          )
+        }
 
         // Script payment
         const isPaymentKey = (addressType & 0b0001) === 0
