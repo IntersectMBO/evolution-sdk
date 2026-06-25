@@ -23,6 +23,7 @@ import * as Redeemers from "../../../Redeemers.js"
 import type * as RewardAccount from "../../../RewardAccount.js"
 import * as CoreScript from "../../../Script.js"
 import * as ScriptDataHash from "../../../ScriptDataHash.js"
+import * as ScriptHash from "../../../ScriptHash.js"
 import * as ScriptRef from "../../../ScriptRef.js"
 import * as Time from "../../../Time.js"
 import * as Transaction from "../../../Transaction.js"
@@ -33,6 +34,7 @@ import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
 import * as TxOut from "../../../TxOut.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import * as VKey from "../../../VKey.js"
+import type * as VotingProcedures from "../../../VotingProcedures.js"
 import * as Withdrawals from "../../../Withdrawals.js"
 import {
   BuildOptionsTag,
@@ -263,6 +265,99 @@ export const makeTxOutput = (params: {
  * @category assembly
  */
 export const buildTransactionInputs = CoreUTxO.toInputs
+
+/**
+ * Resolve the script hash (as hex) backing a script-controlled voter, or `undefined`
+ * for key-hash voters.
+ */
+const voterScriptHashHex = (voter: VotingProcedures.Voter): string | undefined => {
+  switch (voter._tag) {
+    case "ConstitutionalCommitteeVoter":
+      return voter.credential._tag === "ScriptHash" ? ScriptHash.toHex(voter.credential) : undefined
+    case "DRepVoter":
+      return voter.drep._tag === "ScriptHashDRep" ? ScriptHash.toHex(voter.drep.scriptHash) : undefined
+    case "StakePoolVoter":
+      return undefined
+  }
+}
+
+/**
+ * Validate redeemer requirements for governance voters, distinguishing native-script
+ * voters (satisfied by vkey witnesses) from Plutus-script voters (which require a redeemer).
+ *
+ * @since 2.0.0
+ * @category validation
+ */
+export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(
+  function* () {
+    const stateRef = yield* TxContext
+    const state = yield* Ref.get(stateRef)
+
+    if (!state.votingProcedures || state.votingProcedures.procedures.size === 0) {
+      return
+    }
+
+    // Resolve whether the script for a given hash is native.
+    const isNativeScript = (scriptHashHex: string): boolean | undefined => {
+      const attached = state.scripts.get(scriptHashHex)
+      if (attached) return attached._tag === "NativeScript"
+
+      for (const ref of state.referenceInputs) {
+        if (ref.scriptRef && ScriptHash.toHex(ScriptHash.fromScript(ref.scriptRef)) === scriptHashHex) {
+          return ref.scriptRef._tag === "NativeScript"
+        }
+      }
+      return undefined
+    }
+
+    const plutusVotersMissingRedeemer: Array<string> = []
+    const nativeVoterRedeemerKeys: Array<string> = []
+
+    for (const voter of state.votingProcedures.procedures.keys()) {
+      const scriptHashHex = voterScriptHashHex(voter)
+      if (scriptHashHex === undefined) continue 
+
+      const voterKey = voterToKey(voter)
+      const hasRedeemer = state.redeemers.has(voterKey) || state.deferredRedeemers.has(voterKey)
+      const native = isNativeScript(scriptHashHex)
+
+      if (native === true) {
+        if (hasRedeemer) nativeVoterRedeemerKeys.push(voterKey)
+      } else {
+        if (!hasRedeemer) plutusVotersMissingRedeemer.push(voterKey)
+      }
+    }
+
+    if (plutusVotersMissingRedeemer.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Redeemer required for ${plutusVotersMissingRedeemer.length} Plutus-script voter(s): ` +
+            `${plutusVotersMissingRedeemer.join(", ")}. ` +
+            `Native-script voters do not need a redeemer — attach the native script via .attachScript() ` +
+            `(or provide it through a reference input) so it can be classified correctly.`,
+          cause: plutusVotersMissingRedeemer
+        })
+      )
+    }
+
+    if (nativeVoterRedeemerKeys.length > 0) {
+      yield* Effect.logWarning(
+        `[Vote] Ignoring redeemer(s) supplied for native-script voter(s): ${nativeVoterRedeemerKeys.join(", ")}. ` +
+          `Native scripts are satisfied by vkey witnesses, not redeemers.`
+      )
+      yield* Ref.update(stateRef, (s) => {
+        const redeemers = new Map(s.redeemers)
+        const deferredRedeemers = new Map(s.deferredRedeemers)
+        for (const key of nativeVoterRedeemerKeys) {
+          redeemers.delete(key)
+          deferredRedeemers.delete(key)
+        }
+        return { ...s, redeemers, deferredRedeemers }
+      })
+    }
+  }
+)
 
 /**
  * Assemble a Transaction from inputs, outputs, and calculated fee.

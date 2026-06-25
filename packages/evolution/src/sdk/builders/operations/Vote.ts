@@ -74,16 +74,6 @@ export const createVoteProgram = (params: VoteParams): Effect.Effect<void, Trans
       )
     }
 
-    // 4. If script voters exist but no redeemer, fail
-    if (scriptVoters.size > 0 && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled voters",
-          cause: Array.from(scriptVoters)
-        })
-      )
-    }
-
     // 5. Update state: merge voting procedures and track redeemers
     yield* Ref.update(ctx, (state) => {
       // Merge voting procedures
