@@ -107,7 +107,12 @@ const createSigningClient = (
     signMessage: wallet.effect.signMessage,
     signTx: (txOrHex, context) => Signing.signWithAutoFetch(provider, wallet, txOrHex, context),
     signTxs: (txs, context) => Signing.signTxsWithAutoFetch(provider, wallet, txs, context),
-    getWalletUtxos: () => Effect.flatMap(wallet.effect.address(), (address) => provider.effect.getUtxos(address)),
+    // Prefer a CIP-30 wallet's own UTxOs (reflects its view, incl. just-submitted
+    // chained UTxOs); fall back to the provider for seed/private-key wallets.
+    getWalletUtxos: () =>
+      wallet.type === "api"
+        ? wallet.effect.getUtxos()
+        : Effect.flatMap(wallet.effect.address(), (address) => provider.effect.getUtxos(address)),
     getWalletDelegation: () =>
       Effect.flatMap(wallet.effect.rewardAddress(), (rewardAddress) => {
         if (!rewardAddress) {

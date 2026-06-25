@@ -136,6 +136,12 @@ export const resolveAvailableUtxos = (
 
   const wallet = config.wallet
   const provider = config.provider
+  // CIP-30 wallets expose their own UTxOs; prefer them so the build reflects the
+  // wallet's view (including UTxOs from transactions it just submitted/chained)
+  // and so no provider is required.
+  if (wallet !== undefined && wallet.type === "api") {
+    return wallet.effect.getUtxos()
+  }
   if (wallet !== undefined && provider !== undefined) {
     return Effect.flatMap(wallet.effect.address(), (address) => provider.effect.getUtxos(address))
   }
