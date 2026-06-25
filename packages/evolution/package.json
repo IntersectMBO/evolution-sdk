@@ -39,7 +39,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,mjs}\"",
     "test": "vitest run",
-    "docgen": "docgen",
+    "docgen": "rm -rf docs && docgen",
     "clean": "rm -rf dist .turbo docs"
   },
   "devDependencies": {
