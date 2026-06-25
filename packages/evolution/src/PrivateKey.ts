@@ -442,7 +442,8 @@ export namespace Either {
         // Calculate public key from scalar: publicKey = scalar * G
         // Apply modular reduction to ensure scalar is in valid range [0, curve.n)
         const scalarBigInt = mod(bytesToNumberLE(scalar), CURVE_ORDER)
-        const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+        // Constant-time multiply: the scalar is secret key material
+        const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
         const publicKey = publicKeyPoint.toBytes()
 
         // Calculate nonce: nonce = reduce(sha512(iv || message))

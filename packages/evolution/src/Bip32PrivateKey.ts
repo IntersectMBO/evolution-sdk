@@ -305,7 +305,8 @@ export namespace Either {
       } else {
         // 0x02 || publicKey || index
         const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
-        const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+        // Constant-time multiply: the scalar is secret key material
+        const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
         const publicKey = publicKeyPoint.toBytes()
         zInput = new Uint8Array(1 + 32 + 4)
         zInput.set(zTag, 0)
@@ -334,7 +335,8 @@ export namespace Either {
       } else {
         // 0x03 || publicKey || index (use parent public key)
         const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
-        const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+        // Constant-time multiply: the scalar is secret key material
+        const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
         const publicKey = publicKeyPoint.toBytes()
         ccInput = new Uint8Array(1 + 32 + 4)
         ccInput.set(ccTag, 0)
@@ -404,7 +406,8 @@ export namespace Either {
       const publicKeyBytes = yield* Effect.try({
         try: () => {
           const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
-          const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+          // Constant-time multiply: the scalar is secret key material
+          const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
           return publicKeyPoint.toBytes()
         },
         catch: (cause) => new Bip32PrivateKeyError({ message: "toPublicKey failed", cause })
@@ -427,7 +430,8 @@ export namespace Either {
       const publicKeyBytes = yield* Effect.try({
         try: () => {
           const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
-          const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+          // Constant-time multiply: the scalar is secret key material
+          const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
           return publicKeyPoint.toBytes()
         },
         catch: (cause) => new Bip32PrivateKeyError({ message: "to_128_xprv failed", cause })
@@ -455,7 +459,8 @@ export namespace Either {
       const derivedPK = yield* Effect.try({
         try: () => {
           const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
-          const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+          // Constant-time multiply: the scalar is secret key material
+          const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
           return publicKeyPoint.toBytes()
         },
         catch: (cause) => new Bip32PrivateKeyError({ message: "from_128_xprv failed", cause })
