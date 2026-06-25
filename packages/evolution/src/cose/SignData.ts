@@ -7,6 +7,7 @@
  * @category Sign Data
  */
 
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Equal, Schema } from "effect"
 
 import * as Bytes from "../Bytes.js"
@@ -93,7 +94,8 @@ export const signData = (addressHex: string, payload: Payload, privateKey: Priva
  * Verify a COSE_Sign1 signed message.
  *
  * Validates CIP-30 signatures by verifying:
- * - Payload matches signed data
+ * - Payload matches signed data (honoring the CIP-8 `hashed` flag: when set, the
+ *   signed payload is the blake2b-224 digest of the message)
  * - Address matches protected headers
  * - Algorithm is EdDSA
  * - Public key hash matches provided key hash
@@ -114,7 +116,20 @@ export const verifyData = (
 
     // Verify payload matches (allow empty payloads)
     if (coseSign1.payload === undefined) return false
-    if (!Bytes.equals(coseSign1.payload, payload)) return false
+    // Honor the CIP-8 "hashed" flag. cardano-message-signing writes it to the
+    // unprotected headers and, when set, signs the blake2b-224 digest of the
+    // message rather than the message itself. Match that so hashed messages from
+    // CIP-30 wallets verify against the original payload.
+    const hashedLabel = labelFromText("hashed")
+    let payloadHashed = false
+    for (const [label, value] of coseSign1.headers.unprotected.headers.entries()) {
+      if (Equal.equals(label, hashedLabel)) {
+        payloadHashed = value === true
+        break
+      }
+    }
+    const expectedPayload = payloadHashed ? blake2b(payload, { dkLen: 28 }) : payload
+    if (!Bytes.equals(coseSign1.payload, expectedPayload)) return false
 
     // Get protected headers
     const addressLabel = labelFromText("address")
