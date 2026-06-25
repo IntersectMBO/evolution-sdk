@@ -1,5 +1,27 @@
 # @evolution-sdk/evolution
 
+## 0.5.10
+
+### Patch Changes
+
+- [#424](https://github.com/IntersectMBO/evolution-sdk/pull/424) [`6e82a15`](https://github.com/IntersectMBO/evolution-sdk/commit/6e82a15ffb9f4e3374ec0a21f02918001dad4ab2) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Address parsing now validates the CIP-19 header type, not just the byte length. Previously `Address.fromHex` and `Address.fromBech32` chose between a base address and an enterprise address by length alone and never checked the header type nibble. A 29-byte reward (stake) address has the same length as an enterprise address, so it was accepted as an enterprise address with its stake credential silently used as the payment credential. `fromBech32` also ignored the bech32 prefix, so a `stake1...` string parsed as a payment address.
+
+  Parsing now requires header type 0–3 on the 57-byte base branch and 6–7 on the 29-byte enterprise branch, rejecting reward, pointer, Byron, and reserved types; the same check is applied in `BaseAddress.FromBytes` and `EnterpriseAddress.FromBytes`. `fromBech32` now requires an `addr`/`addr_test` prefix that agrees with the network in the header. Reward and stake addresses are handled by `RewardAccount`, not `Address`.
+
+- [#423](https://github.com/IntersectMBO/evolution-sdk/pull/423) [`02b7b7e`](https://github.com/IntersectMBO/evolution-sdk/commit/02b7b7e038462550b83d929bf1633d9ae829aaf2) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Key derivation and signing now use constant-time scalar multiplication for secret key material. Several call sites that derive a public key from a secret scalar used a variable-time base-point multiplication whose execution time depends on the secret, leaking information through a timing side channel. The affected paths were private-key public-key derivation, extended-key signing, verification-key derivation, and the BIP32 child derivation, public-key, and 128-byte export/import paths.
+
+  These sites now use the constant-time multiplication that was already in use for the per-signature nonce. Results are identical for valid keys, so derived public keys and signatures are unchanged; an all-zero scalar (only reachable from an invalid imported key) now raises an error instead of returning a degenerate point.
+
+- [#426](https://github.com/IntersectMBO/evolution-sdk/pull/426) [`4a3aa05`](https://github.com/IntersectMBO/evolution-sdk/commit/4a3aa0579252bccd81f85519be08aab8593f0ea1) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `COSE.SignData.verifyData` now honors the CIP-8 `hashed` flag. When a signer hashes a large message, the flag is set and the signed payload is the blake2b-224 digest of the message rather than the message itself. Verification previously ignored the flag and always compared the supplied payload to the signed bytes literally, so a hashed message from a wallet could never be verified against its original payload. Verification now reads the flag and, when set, compares the blake2b-224 digest of the supplied payload, matching the message-signing reference used by browser wallets.
+
+  The flag is intentionally left in the unprotected headers to preserve byte-for-byte compatibility with that reference, where the flag also lives in the unprotected map; `signData` output is unchanged.
+
+- [#427](https://github.com/IntersectMBO/evolution-sdk/pull/427) [`2700fd0`](https://github.com/IntersectMBO/evolution-sdk/commit/2700fd00cb2b92de710c2e0592ddf84a4c742eb0) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The seed/private-key wallet's `signMessage` now signs through a COSE_Sign1 structure instead of signing the caller's bytes directly. Previously it signed the raw payload with the same key and primitive used for transactions, so passing a 32-byte transaction body hash produced a valid transaction witness — making `signMessage` usable as a transaction-signing oracle. The signed bytes are now domain-separated by the COSE `Sig_structure` (the "Signature1" context plus the address in the protected headers), so they can never be a bare transaction witness. The result's `signature` is the COSE_Sign1, matching the format already returned by the CIP-30 wallet path.
+
+- [#422](https://github.com/IntersectMBO/evolution-sdk/pull/422) [`a13cb78`](https://github.com/IntersectMBO/evolution-sdk/commit/a13cb78a63196509fd8fe955f4330951512e4808) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `COSE.SignData.verifyData` now binds the signing key to the claimed address. Previously it checked the protected-header address and the public-key hash as two independent caller-supplied claims and never required the public key in the signed message to match the credential contained in the address. A signature produced by one key carrying a different address in its protected header would still verify, so address-based authentication and attestation flows could accept a proof from the wrong signer.
+
+  Verification now decodes the claimed address, derives its key-hash credential (the payment credential for base and enterprise addresses, the stake credential for reward addresses), and requires the embedded public key to hash to that credential. Addresses whose credential is a script hash are rejected, since a single Ed25519 key cannot satisfy a script credential. Genuine signatures whose key matches the address continue to verify unchanged.
+
 ## 0.5.9
 
 ### Patch Changes
