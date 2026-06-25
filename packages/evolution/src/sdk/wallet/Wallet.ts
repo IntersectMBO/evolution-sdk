@@ -194,6 +194,14 @@ export interface ApiWalletEffect extends ReadOnlyWalletEffect {
   readonly submitTx: (
     tx: Transaction.Transaction | string
   ) => Effect.Effect<TransactionHash.TransactionHash, WalletError>
+  /**
+   * Fetch the wallet's available UTxOs (CIP-30 `getUtxos`) parsed into typed UTxOs.
+   * Reflects the wallet's own view, including UTxOs created by transactions the wallet
+   * has submitted, which an external provider may not have indexed yet.
+   *
+   * @since 2.3.0
+   */
+  readonly getUtxos: () => Effect.Effect<ReadonlyArray<CoreUTxO.UTxO>, WalletError>
 }
 
 /**
