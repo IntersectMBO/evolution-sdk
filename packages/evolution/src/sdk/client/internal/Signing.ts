@@ -1,7 +1,8 @@
 import { Effect, Equal, ParseResult, Schema } from "effect"
 
+import * as CoreAddress from "../../../Address.js"
 import * as Bytes from "../../../Bytes.js"
-import * as Ed25519Signature from "../../../Ed25519Signature.js"
+import { SignData } from "../../../cose/index.js"
 import { runEffectPromise } from "../../../EffectRuntime.js"
 import * as KeyHash from "../../../KeyHash.js"
 import type * as NativeScripts from "../../../NativeScripts.js"
@@ -366,9 +367,17 @@ export const makeSigningWalletEffect = (
         const signingKey = useStakeKey
           ? PrivateKey.fromBech32(derivation.stakeKey!)
           : PrivateKey.fromBech32(derivation.paymentKey)
-        const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload
-        const signature = PrivateKey.sign(signingKey, bytes)
-        return { payload, signature: Ed25519Signature.toHex(signature) }
+        const addressHex =
+          typeof address === "string"
+            ? CoreRewardAccount.toHex(CoreRewardAccount.fromBech32(address))
+            : CoreAddress.toHex(address)
+        const payloadBytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload
+        // Domain-separate via COSE_Sign1: the Sig_structure ("Signature1" context
+        // plus the address in the protected headers) is what gets signed, so the
+        // bytes can never be a bare transaction-body hash / VKey witness. Return
+        // the COSE_Sign1 hex, matching the CIP-30 wallet path.
+        const signed = SignData.signData(addressHex, payloadBytes, signingKey)
+        return { payload, signature: Bytes.toHex(signed.signature) }
       })
   }
 
