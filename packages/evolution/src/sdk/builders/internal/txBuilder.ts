@@ -310,7 +310,7 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
       return undefined
     }
 
-    const plutusVotersMissingRedeemer: Array<string> = []
+    const votersMissingRedeemer: Array<string> = []
     const nativeVoterRedeemerKeys: Array<string> = []
 
     for (const voter of state.votingProcedures.procedures.keys()) {
@@ -324,19 +324,20 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
       if (native === true) {
         if (hasRedeemer) nativeVoterRedeemerKeys.push(voterKey)
       } else {
-        if (!hasRedeemer) plutusVotersMissingRedeemer.push(voterKey)
+        if (!hasRedeemer) votersMissingRedeemer.push(voterKey)
       }
     }
 
-    if (plutusVotersMissingRedeemer.length > 0) {
+    if (votersMissingRedeemer.length > 0) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message:
-            `Redeemer required for ${plutusVotersMissingRedeemer.length} Plutus-script voter(s): ` +
-            `${plutusVotersMissingRedeemer.join(", ")}. ` +
-            `Native-script voters do not need a redeemer. Attach the native script via .attachScript() ` +
-            `(or provide it through a reference input) so it can be classified correctly.`,
-          cause: plutusVotersMissingRedeemer
+            `Redeemer required for ${votersMissingRedeemer.length} non-native-script voter(s): ` +
+            `${votersMissingRedeemer.join(", ")}. ` +
+            `If a voter is a native (multisig) script, attach it via .attachScript() ` +
+            `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
+            `if it is a Plutus script, supply a redeemer.`,
+          cause: votersMissingRedeemer
         })
       )
     }
