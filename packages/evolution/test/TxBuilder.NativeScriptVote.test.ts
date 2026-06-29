@@ -90,7 +90,7 @@ describe("TxBuilder NativeScript Vote (native-script DRep)", () => {
       lovelace: 100_000_000n
     })
 
-    // attachScript intentionally placed AFTER vote — the redeemer requirement is resolved
+    // attachScript intentionally placed AFTER vote; the redeemer requirement is resolved
     // at build time, so call order must not matter.
     const signBuilder = await makeTxBuilder(baseConfig)
       .vote({ votingProcedures })
@@ -135,7 +135,7 @@ describe("TxBuilder NativeScript Vote (native-script DRep)", () => {
 
     const tx = await signBuilder.toTransaction()
     expect(tx.witnessSet.nativeScripts?.length ?? 0).toBeGreaterThan(0)
-    // The spurious redeemer must be pruned — native scripts use signatures, not redeemers.
+    // The spurious redeemer must be pruned; native scripts use signatures, not redeemers.
     expect(tx.witnessSet.redeemers).toBeUndefined()
     expect(tx.body.scriptDataHash).toBeUndefined()
   })

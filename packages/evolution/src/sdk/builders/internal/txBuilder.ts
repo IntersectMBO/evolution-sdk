@@ -334,7 +334,7 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
           message:
             `Redeemer required for ${plutusVotersMissingRedeemer.length} Plutus-script voter(s): ` +
             `${plutusVotersMissingRedeemer.join(", ")}. ` +
-            `Native-script voters do not need a redeemer — attach the native script via .attachScript() ` +
+            `Native-script voters do not need a redeemer. Attach the native script via .attachScript() ` +
             `(or provide it through a reference input) so it can be classified correctly.`,
           cause: plutusVotersMissingRedeemer
         })
