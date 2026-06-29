@@ -11,6 +11,7 @@ import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet } from "../src/sdk/client/index.js"
 import * as TransactionHash from "../src/TransactionHash.js"
+import * as CoreUTxO from "../src/UTxO.js"
 import * as VotingProcedures from "../src/VotingProcedures.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -162,5 +163,88 @@ describe("TxBuilder NativeScript Vote (native-script DRep)", () => {
           protocolParameters: PROTOCOL_PARAMS
         })
     ).rejects.toThrow(/[Rr]edeemer required/)
+  })
+
+  it("sizes the fee for the native script's threshold signers", async () => {
+    const { script, voter } = makeMultisigDRep()
+    const votingProcedures = VotingProcedures.singleVote(voter, govActionId, yesProcedure)
+    const walletUtxo = createCoreTestUtxo({
+      transactionId: "a".repeat(64),
+      index: 0n,
+      address: CHANGE_ADDRESS,
+      lovelace: 100_000_000n
+    })
+
+    const signBuilder = await makeTxBuilder(baseConfig)
+      .vote({ votingProcedures })
+      .attachScript({ script })
+      .build({
+        changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
+        availableUtxos: [walletUtxo],
+        protocolParameters: PROTOCOL_PARAMS
+      })
+
+    // Fee estimation uses fake witnesses; a 2-of-3 native DRep contributes 2 dummy
+    // vkey witnesses (its threshold) on top of the 1 wallet-input signer.
+    const fakeTx = await signBuilder.toTransactionWithFakeWitnesses()
+    expect(fakeTx.witnessSet.vkeyWitnesses?.length ?? 0).toBeGreaterThanOrEqual(3)
+  })
+
+  it("classifies a native voter whose script is provided via a reference input", async () => {
+    const { script, voter } = makeMultisigDRep()
+    const votingProcedures = VotingProcedures.singleVote(voter, govActionId, yesProcedure)
+    const walletUtxo = createCoreTestUtxo({
+      transactionId: "a".repeat(64),
+      index: 0n,
+      address: CHANGE_ADDRESS,
+      lovelace: 100_000_000n
+    })
+
+    // The native script is supplied via a reference input rather than .attachScript().
+    const refUtxo = new CoreUTxO.UTxO({
+      transactionId: TransactionHash.fromHex("b".repeat(64)),
+      index: 0n,
+      address: CoreAddress.fromBech32(CHANGE_ADDRESS),
+      assets: CoreAssets.fromLovelace(5_000_000n),
+      scriptRef: script
+    })
+
+    const signBuilder = await makeTxBuilder(baseConfig)
+      .vote({ votingProcedures })
+      .readFrom({ referenceInputs: [refUtxo] })
+      .build({
+        changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
+        availableUtxos: [walletUtxo],
+        protocolParameters: PROTOCOL_PARAMS
+      })
+
+    const tx = await signBuilder.toTransaction()
+    expect(tx.witnessSet.redeemers).toBeUndefined()
+    expect(tx.body.referenceInputs?.length ?? 0).toBeGreaterThan(0)
+  })
+
+  it("allows a native-script Constitutional Committee voter without a redeemer", async () => {
+    const { script, scriptHash } = makeMultisigDRep()
+    const voter = new VotingProcedures.ConstitutionalCommitteeVoter({ credential: scriptHash })
+    const votingProcedures = VotingProcedures.singleVote(voter, govActionId, yesProcedure)
+    const walletUtxo = createCoreTestUtxo({
+      transactionId: "a".repeat(64),
+      index: 0n,
+      address: CHANGE_ADDRESS,
+      lovelace: 100_000_000n
+    })
+
+    const signBuilder = await makeTxBuilder(baseConfig)
+      .vote({ votingProcedures })
+      .attachScript({ script })
+      .build({
+        changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
+        availableUtxos: [walletUtxo],
+        protocolParameters: PROTOCOL_PARAMS
+      })
+
+    const tx = await signBuilder.toTransaction()
+    expect(tx.witnessSet.nativeScripts?.length ?? 0).toBeGreaterThan(0)
+    expect(tx.witnessSet.redeemers).toBeUndefined()
   })
 })
