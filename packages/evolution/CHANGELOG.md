@@ -1,5 +1,15 @@
 # @evolution-sdk/evolution
 
+## 0.5.11
+
+### Patch Changes
+
+- [#430](https://github.com/IntersectMBO/evolution-sdk/pull/430) [`198a206`](https://github.com/IntersectMBO/evolution-sdk/commit/198a206a60232aa71e8621589493d7c334fd883e) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - CIP-30 wallets can now provide typed UTxOs directly, without going through a provider. The API wallet exposes `getUtxos()` returning parsed `UTxO` values, and a new `Codegen`-free helper `cip30UtxoFromCBORHex` converts a single CIP-30 UTxO (the CBOR of a `[transaction_input, transaction_output]` pair) into a `UTxO`. Previously the only built-in source of wallet UTxOs was the provider (`getWalletUtxos` resolved the address and queried `provider.getUtxos`), so consumers had to parse the wallet's CBOR themselves.
+
+  Transaction building and `getWalletUtxos` now prefer the wallet's own UTxOs when the wallet is a CIP-30 wallet, falling back to the provider for seed and private-key wallets. This reflects the wallet's own view, including UTxOs created by transactions it has just submitted, so chained transactions no longer wait for a provider to index them. A provider is still required for protocol parameters during build, since CIP-30 does not expose them.
+
+- [#432](https://github.com/IntersectMBO/evolution-sdk/pull/432) [`939c674`](https://github.com/IntersectMBO/evolution-sdk/commit/939c6745822802d37fd9091fbcc290d589c27d8d) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - `TxBuilder.vote()` no longer requires a Plutus redeemer for native-script (multisig) voters. A native-script DRep or constitutional-committee voter is satisfied by vkey witnesses, not a redeemer, so previously such a vote could not be built even though it is ledger-valid. The native-vs-Plutus distinction is now made at build time, once the voter's script is attached or referenced: a redeemer is required only for Plutus-script voters, and a redeemer supplied for a native-script voter is pruned with a warning. The fee continues to be sized for the script's threshold number of vkey witnesses.
+
 ## 0.5.10
 
 ### Patch Changes
