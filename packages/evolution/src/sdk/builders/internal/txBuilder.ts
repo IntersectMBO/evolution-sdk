@@ -342,7 +342,7 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
     }
 
     if (nativeVoterRedeemerKeys.length > 0) {
-      yield* Effect.logWarning(
+      yield* Effect.logDebug(
         `[Vote] Ignoring redeemer(s) supplied for native-script voter(s): ${nativeVoterRedeemerKeys.join(", ")}. ` +
           `Native scripts are satisfied by vkey witnesses, not redeemers.`
       )
