@@ -91,6 +91,17 @@ export interface KoiosConfig {
 }
 
 /**
+ * Configuration for the Blockchain Applied (BCA) provider.
+ *
+ * @since 2.1.0
+ * @category model
+ */
+export interface BlockchainAppliedConfig {
+  readonly baseUrl: string
+  readonly token?: string
+}
+
+/**
  * Configuration for the Kupmios provider (Kupo + Ogmios).
  *
  * @since 2.1.0
@@ -156,6 +167,7 @@ export interface ClientAssembly {
   readonly withKoios: (config: KoiosConfig) => ReadClient
   readonly withKupmios: (config: KupmiosConfig) => ReadClient
   readonly withMaestro: (config: MaestroConfig) => ReadClient
+  readonly withBlockchainApplied: (config: BlockchainAppliedConfig) => ReadClient
   readonly withAddress: (address: string, rewardAddress?: string) => AddressClient
   readonly withSeed: (config: SeedWalletConfig) => OfflineSignerClient
   readonly withPrivateKey: (config: PrivateKeyWalletConfig) => OfflineSignerClient
@@ -190,6 +202,7 @@ export type AddressClient = EffectToPromiseAPI<AddressClientEffect> & {
   readonly withKoios: (config: KoiosConfig) => ReadOnlyClient
   readonly withKupmios: (config: KupmiosConfig) => ReadOnlyClient
   readonly withMaestro: (config: MaestroConfig) => ReadOnlyClient
+  readonly withBlockchainApplied: (config: BlockchainAppliedConfig) => ReadOnlyClient
   readonly effect: AddressClientEffect
 }
 
@@ -205,6 +218,7 @@ export type OfflineSignerClient = EffectToPromiseAPI<OfflineSignerClientEffect> 
   readonly withKoios: (config: KoiosConfig) => SigningClient
   readonly withKupmios: (config: KupmiosConfig) => SigningClient
   readonly withMaestro: (config: MaestroConfig) => SigningClient
+  readonly withBlockchainApplied: (config: BlockchainAppliedConfig) => SigningClient
   readonly effect: OfflineSignerClientEffect
 }
 
