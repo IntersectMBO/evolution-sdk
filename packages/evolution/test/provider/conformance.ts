@@ -17,7 +17,7 @@ import {
   preprodScriptAddress,
   preprodStakeAddress,
   preprodTxHash,
-  previewTxHash,
+  previewTxHash
 } from "./fixtures/constants.js"
 import { evalSample1, evalSample2, evalSample3, evalSample4 } from "./fixtures/evaluateTx.js"
 
@@ -126,9 +126,7 @@ export function registerConformanceTests(factory: () => Provider, options?: Conf
   })
 
   it("awaitTx rejects for preview-only tx on preprod", { timeout: 10_000 }, async () => {
-    await expect(provider.awaitTx(previewTxHash(), 1000, 5000)).rejects.toThrow(
-      "awaitTx failed"
-    )
+    await expect(provider.awaitTx(previewTxHash(), 1000, 5000)).rejects.toThrow("awaitTx failed")
   })
 
   // submitTx and evaluateTx require a valid signed CBOR tx — skipped until we have tx fixtures
