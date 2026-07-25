@@ -7,6 +7,8 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+# Keep this at 1.1.21 or newer. Earlier releases compared the CBOR container
+# representation (definite vs. indefinite) instead of the Plutus Data value.
 uplc = "1.1.21"
 wasm-bindgen = "0.2.93"
 js-sys = "0.3.70"

@@ -32,6 +32,41 @@ pub fn eval_phase_two_raw(
         false,
         |_| (),
     )
-    .map(|r| r.iter().map(|i| js_sys::Uint8Array::from(&i.0[..])).collect())
+    .map(|r| {
+        r.iter()
+            .map(|i| js_sys::Uint8Array::from(&i.0[..]))
+            .collect()
+    })
     .map_err(|e| e.to_string().into());
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Ordering;
+
+    #[test]
+    fn plutus_data_equality_ignores_cbor_container_encoding() {
+        let equivalent_encodings = [
+            // [1]
+            ([0x81, 0x01].as_slice(), [0x9f, 0x01, 0xff].as_slice()),
+            // {1: 2}
+            (
+                [0xa1, 0x01, 0x02].as_slice(),
+                [0xbf, 0x01, 0x02, 0xff].as_slice(),
+            ),
+            // Constr 0 [1]
+            (
+                [0xd8, 0x79, 0x81, 0x01].as_slice(),
+                [0xd8, 0x79, 0x9f, 0x01, 0xff].as_slice(),
+            ),
+        ];
+
+        for (definite, indefinite) in equivalent_encodings {
+            let definite = uplc::plutus_data(definite).expect("definite CBOR should decode");
+            let indefinite = uplc::plutus_data(indefinite).expect("indefinite CBOR should decode");
+
+            assert_eq!(definite, indefinite);
+            assert_eq!(definite.cmp(&indefinite), Ordering::Equal);
+        }
+    }
 }
