@@ -45,6 +45,31 @@ mod tests {
     use std::cmp::Ordering;
 
     #[test]
+    fn plutus_data_regression_inputs_use_distinct_cbor_forms() {
+        let equivalent_encodings = [
+            // [1]
+            ([0x81, 0x01].as_slice(), [0x9f, 0x01, 0xff].as_slice()),
+            // {1: 2}
+            (
+                [0xa1, 0x01, 0x02].as_slice(),
+                [0xbf, 0x01, 0x02, 0xff].as_slice(),
+            ),
+            // Constr 0 [1]
+            (
+                [0xd8, 0x79, 0x81, 0x01].as_slice(),
+                [0xd8, 0x79, 0x9f, 0x01, 0xff].as_slice(),
+            ),
+        ];
+
+        for (definite, indefinite) in equivalent_encodings {
+            assert_ne!(
+                definite, indefinite,
+                "the regression case depends on different CBOR container encodings"
+            );
+        }
+    }
+
+    #[test]
     fn plutus_data_equality_ignores_cbor_container_encoding() {
         let equivalent_encodings = [
             // [1]
