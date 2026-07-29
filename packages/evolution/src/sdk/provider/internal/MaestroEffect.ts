@@ -190,7 +190,7 @@ export const getDelegation = (baseUrl: string, apiKey: string) => (rewardAddress
  */
 export const submitTx = (baseUrl: string, apiKey: string, turboSubmit?: boolean) => (tx: Transaction.Transaction) =>
   Effect.gen(function* () {
-    const endpoint = turboSubmit ? "/turbo/submit" : "/submit"
+    const endpoint = turboSubmit ? "/txmanager/turbosubmit" : "/txmanager"
 
     // Convert Transaction to CBOR bytes for submission
     const txBytes = Transaction.toCBORBytes(tx)

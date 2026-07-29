@@ -73,7 +73,7 @@ export class MaestroProvider implements Provider {
  * @category constructors
  */
 export const mainnet = (apiKey: string, turboSubmit: boolean = false): MaestroProvider =>
-  new MaestroProvider("https://api.maestro.org/v1", apiKey, turboSubmit)
+  new MaestroProvider("https://mainnet.gomaestro-api.org/v1", apiKey, turboSubmit)
 
 /**
  * Pre-configured Maestro provider for Cardano preprod testnet.
@@ -82,7 +82,7 @@ export const mainnet = (apiKey: string, turboSubmit: boolean = false): MaestroPr
  * @category constructors
  */
 export const preprod = (apiKey: string, turboSubmit: boolean = false): MaestroProvider =>
-  new MaestroProvider("https://preprod.api.maestro.org/v1", apiKey, turboSubmit)
+  new MaestroProvider("https://preprod.gomaestro-api.org/v1", apiKey, turboSubmit)
 
 /**
  * Pre-configured Maestro provider for Cardano preview testnet.
@@ -91,4 +91,4 @@ export const preprod = (apiKey: string, turboSubmit: boolean = false): MaestroPr
  * @category constructors
  */
 export const preview = (apiKey: string, turboSubmit: boolean = false): MaestroProvider =>
-  new MaestroProvider("https://preview.api.maestro.org/v1", apiKey, turboSubmit)
+  new MaestroProvider("https://preview.gomaestro-api.org/v1", apiKey, turboSubmit)
