@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/evolution",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "description": "A modern TypeScript SDK for Cardano blockchain development",
   "type": "module",
   "main": "./dist/index.js",

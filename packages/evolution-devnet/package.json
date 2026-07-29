@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/devnet",
-  "version": "3.0.12",
+  "version": "3.0.13",
   "description": "Local Cardano devnet for testing and development with Docker",
   "type": "module",
   "main": "./dist/index.js",

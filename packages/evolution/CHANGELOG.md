@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.5.12
+
+### Patch Changes
+
+- [#477](https://github.com/IntersectMBO/evolution-sdk/pull/477) [`2545221`](https://github.com/IntersectMBO/evolution-sdk/commit/2545221cb7980ba7bb47a1d294f2d53d21b1690f) Thanks [@hadelive](https://github.com/hadelive)! - Fix the Maestro provider host and transaction submission endpoint. Submission posted to `/submit` (or `/turbo/submit` with `turboSubmit`), but Maestro accepts transactions through its Transaction Manager API at `/txmanager` and `/txmanager/turbosubmit`, so every submit returned a 404. The pre-configured `mainnet`, `preprod`, and `preview` constructors also pointed at `*.api.maestro.org`, which does not serve the Cardano API; they now use `https://{network}.gomaestro-api.org/v1`, affecting every request the provider makes, not just submission.
+
 ## 0.5.11
 
 ### Patch Changes
