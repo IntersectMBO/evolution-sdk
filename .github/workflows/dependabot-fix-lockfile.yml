@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6.4.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Regenerate lockfile
         run: pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
