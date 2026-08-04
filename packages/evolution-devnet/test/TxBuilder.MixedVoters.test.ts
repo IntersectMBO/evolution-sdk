@@ -116,7 +116,6 @@ describe("TxBuilder Mixed Voters (Plutus + native DRep in one vote tx)", () => {
       bytes: Bytes.fromHex(loadValidator("governance_voting.always_yes_drep.publish"))
     })
     const plutusScriptHash = ScriptHash.fromScript(plutusScript)
-    const plutusDRepCredential = new ScriptHash.ScriptHash({ hash: plutusScriptHash.hash })
     const plutusRedeemer = Data.constr(0n, [Data.int(1n)])
 
     // Native-script DRep (2-of-2 multisig of pkh0 + pkh1)
@@ -125,7 +124,6 @@ describe("TxBuilder Mixed Voters (Plutus + native DRep in one vote tx)", () => {
       NativeScripts.makeScriptPubKey(pkh1.hash).script
     ])
     const nativeScriptHash = ScriptHash.fromScript(nativeScript)
-    const nativeDRepCredential = new ScriptHash.ScriptHash({ hash: nativeScriptHash.hash })
 
     // Register stake (required for proposal submission).
     const stakeRegTx = await client0
@@ -142,7 +140,7 @@ describe("TxBuilder Mixed Voters (Plutus + native DRep in one vote tx)", () => {
     const plutusDRepRegTx = await client0
       .newTx()
       .registerDRep({
-        drepCredential: plutusDRepCredential,
+        drepCredential: plutusScriptHash,
         anchor: makeAnchor("https://example.com/plutus-drep.json"),
         redeemer: plutusRedeemer
       })
@@ -158,7 +156,7 @@ describe("TxBuilder Mixed Voters (Plutus + native DRep in one vote tx)", () => {
     const nativeRegSignBuilder = await client0
       .newTx()
       .registerDRep({
-        drepCredential: nativeDRepCredential,
+        drepCredential: nativeScriptHash,
         anchor: makeAnchor("https://example.com/native-drep.json")
       })
       .attachScript({ script: nativeScript })

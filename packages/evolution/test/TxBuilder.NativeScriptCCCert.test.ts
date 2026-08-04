@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import * as CoreAddress from "../src/Address.js"
 import * as Data from "../src/Data.js"
+import * as KeyHash from "../src/KeyHash.js"
 import * as NativeScripts from "../src/NativeScripts.js"
 import * as ScriptHash from "../src/ScriptHash.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
@@ -48,27 +49,29 @@ const makeFundedUtxos = (lovelace: bigint): Array<CoreUTxO.UTxO> => [
   })
 ]
 
-// A 2-of-3 native (multisig) script and the DRep credential it controls.
-const makeMultisigDRep = () => {
+// A 2-of-3 native (multisig) script as the committee cold credential, plus a
+// key-hash hot credential to authorize.
+const makeMultisigCommittee = () => {
   const keyHashes = [0xaa, 0xbb, 0xcc].map((b) => new Uint8Array(28).fill(b))
   const script = NativeScripts.makeScriptNOfK(
     2n,
     keyHashes.map((kh) => NativeScripts.makeScriptPubKey(kh).script)
   )
-  const scriptHash = ScriptHash.fromScript(script)
-  return { script, scriptHash, drepCredential: scriptHash }
+  const coldCredential = ScriptHash.fromScript(script)
+  const hotCredential = new KeyHash.KeyHash({ hash: new Uint8Array(28).fill(0x11) })
+  return { script, coldCredential, hotCredential }
 }
 
-describe("TxBuilder NativeScript DRep certificate (native-script DRep credential)", () => {
-  it("registers a native-script DRep with no redeemer", async () => {
-    const { drepCredential, script } = makeMultisigDRep()
+describe("TxBuilder NativeScript CC certificate (native-script committee cold credential)", () => {
+  it("authorizes a hot credential for a native-script cold credential with no redeemer", async () => {
+    const { coldCredential, hotCredential, script } = makeMultisigCommittee()
 
     const signBuilder = await makeTxBuilder(baseConfig)
-      .registerDRep({ drepCredential })
+      .authCommitteeHot({ coldCredential, hotCredential })
       .attachScript({ script })
       .build({
         changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
-        availableUtxos: makeFundedUtxos(503_000_000n),
+        availableUtxos: makeFundedUtxos(10_000_000n),
         fullProtocolParameters: FULL_PROTOCOL_PARAMS
       })
 
@@ -80,15 +83,15 @@ describe("TxBuilder NativeScript DRep certificate (native-script DRep credential
     expect(tx.body.certificates?.length ?? 0).toBeGreaterThan(0)
   })
 
-  it("classifies the native DRep when .attachScript() is called before .registerDRep() (order-independent)", async () => {
-    const { drepCredential, script } = makeMultisigDRep()
+  it("classifies the native cold credential when .attachScript() is called before .authCommitteeHot() (order-independent)", async () => {
+    const { coldCredential, hotCredential, script } = makeMultisigCommittee()
 
     const signBuilder = await makeTxBuilder(baseConfig)
       .attachScript({ script })
-      .registerDRep({ drepCredential })
+      .authCommitteeHot({ coldCredential, hotCredential })
       .build({
         changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
-        availableUtxos: makeFundedUtxos(503_000_000n),
+        availableUtxos: makeFundedUtxos(10_000_000n),
         fullProtocolParameters: FULL_PROTOCOL_PARAMS
       })
 
@@ -97,18 +100,19 @@ describe("TxBuilder NativeScript DRep certificate (native-script DRep credential
     expect(tx.witnessSet.redeemers).toBeUndefined()
   })
 
-  it("ignores a redeemer supplied for a native-script DRep registration (no redeemer emitted)", async () => {
-    const { drepCredential, script } = makeMultisigDRep()
+  it("ignores a redeemer supplied for a native-script hot-key authorization (no redeemer emitted)", async () => {
+    const { coldCredential, hotCredential, script } = makeMultisigCommittee()
 
     const signBuilder = await makeTxBuilder(baseConfig)
-      .registerDRep({
-        drepCredential,
+      .authCommitteeHot({
+        coldCredential,
+        hotCredential,
         redeemer: new Data.Constr({ index: 0n, fields: [] })
       })
       .attachScript({ script })
       .build({
         changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
-        availableUtxos: makeFundedUtxos(503_000_000n),
+        availableUtxos: makeFundedUtxos(10_000_000n),
         fullProtocolParameters: FULL_PROTOCOL_PARAMS
       })
 
@@ -118,15 +122,15 @@ describe("TxBuilder NativeScript DRep certificate (native-script DRep credential
     expect(tx.body.scriptDataHash).toBeUndefined()
   })
 
-  it("deregisters a native-script DRep with no redeemer", async () => {
-    const { drepCredential, script } = makeMultisigDRep()
+  it("resigns a native-script cold credential with no redeemer", async () => {
+    const { coldCredential, script } = makeMultisigCommittee()
 
     const signBuilder = await makeTxBuilder(baseConfig)
-      .deregisterDRep({ drepCredential })
+      .resignCommitteeCold({ coldCredential, anchor: null })
       .attachScript({ script })
       .build({
         changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
-        availableUtxos: makeFundedUtxos(2_000_000n),
+        availableUtxos: makeFundedUtxos(10_000_000n),
         fullProtocolParameters: FULL_PROTOCOL_PARAMS
       })
 
@@ -135,15 +139,30 @@ describe("TxBuilder NativeScript DRep certificate (native-script DRep credential
     expect(tx.witnessSet.redeemers).toBeUndefined()
   })
 
-  it("still rejects a Plutus-script DRep registration when no redeemer is provided", async () => {
-    const drepCredential = ScriptHash.fromHex("11".repeat(28))
+  it("still rejects a Plutus-script cold credential authorization when no redeemer is provided", async () => {
+    const coldCredential = ScriptHash.fromHex("11".repeat(28))
+    const hotCredential = new KeyHash.KeyHash({ hash: new Uint8Array(28).fill(0x22) })
 
     await expect(
       makeTxBuilder(baseConfig)
-        .registerDRep({ drepCredential })
+        .authCommitteeHot({ coldCredential, hotCredential })
         .build({
           changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
-          availableUtxos: makeFundedUtxos(503_000_000n),
+          availableUtxos: makeFundedUtxos(10_000_000n),
+          fullProtocolParameters: FULL_PROTOCOL_PARAMS
+        })
+    ).rejects.toThrow(/[Rr]edeemer required/)
+  })
+
+  it("still rejects a Plutus-script cold credential resignation when no redeemer is provided", async () => {
+    const coldCredential = ScriptHash.fromHex("22".repeat(28))
+
+    await expect(
+      makeTxBuilder(baseConfig)
+        .resignCommitteeCold({ coldCredential, anchor: null })
+        .build({
+          changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
+          availableUtxos: makeFundedUtxos(10_000_000n),
           fullProtocolParameters: FULL_PROTOCOL_PARAMS
         })
     ).rejects.toThrow(/[Rr]edeemer required/)

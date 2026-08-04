@@ -242,16 +242,7 @@ export const createAuthCommitteeHotProgram = (
   Effect.gen(function* () {
     const ctx = yield* TxContext
 
-    // Check if script-controlled
     const isScriptControlled = params.coldCredential._tag === "ScriptHash"
-
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled cold credential authorization"
-        })
-      )
-    }
 
     // Create AuthCommitteeHotCert certificate
     const certificate = new Certificate.AuthCommitteeHotCert({
@@ -314,16 +305,7 @@ export const createResignCommitteeColdProgram = (
   Effect.gen(function* () {
     const ctx = yield* TxContext
 
-    // Check if script-controlled
     const isScriptControlled = params.coldCredential._tag === "ScriptHash"
-
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled cold credential resignation"
-        })
-      )
-    }
 
     // Create ResignCommitteeColdCert certificate
     const certificate = new Certificate.ResignCommitteeColdCert({

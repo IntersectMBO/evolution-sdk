@@ -282,16 +282,23 @@ const voterScriptHashHex = (voter: VotingProcedures.Voter): string | undefined =
 }
 
 /**
- * Resolve the DRep credential hash (as hex) for the DRep lifecycle certificates when controlled by a script, or `undefined`
- * for key-hash credentials and non-DRep certificates.
+ * Resolve the governing credential hash (as hex) for certificates whose authorization
+ * can be script-controlled: the DRep lifecycle certificates (DRep credential) and the
+ * constitutional committee certificates (cold credential). Returns `undefined` for
+ * key-hash credentials and other certificate types.
  */
-const drepCertScriptHashHex = (certificate: Certificate.Certificate): string | undefined => {
+const certScriptHashHex = (certificate: Certificate.Certificate): string | undefined => {
   switch (certificate._tag) {
     case "RegDrepCert":
     case "UpdateDrepCert":
     case "UnregDrepCert":
       return certificate.drepCredential._tag === "ScriptHash"
         ? Bytes.toHex(certificate.drepCredential.hash)
+        : undefined
+    case "AuthCommitteeHotCert":
+    case "ResignCommitteeColdCert":
+      return certificate.committeeColdCredential._tag === "ScriptHash"
+        ? Bytes.toHex(certificate.committeeColdCredential.hash)
         : undefined
     default:
       return undefined
@@ -387,9 +394,11 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
 )
 
 /**
- * Validate redeemer requirements for the DRep lifecycle certificates
- * (registration / update / deregistration), distinguishing native-script DRep
- * credentials from Plutus-script credentials.
+ * Validate redeemer requirements for script-controlled certificates: the DRep
+ * lifecycle certificates (registration / update / deregistration) and the
+ * constitutional committee certificates (hot-key authorization / cold-key
+ * resignation), distinguishing native-script credentials from Plutus-script
+ * credentials.
  *
  * @since 2.0.0
  * @category validation
@@ -409,7 +418,7 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
     const nativeCertRedeemerKeys: Array<string> = []
 
     for (const certificate of state.certificates) {
-      const scriptHashHex = drepCertScriptHashHex(certificate)
+      const scriptHashHex = certScriptHashHex(certificate)
       if (scriptHashHex === undefined) continue
 
       const certKey = `cert:${scriptHashHex}`
@@ -427,9 +436,9 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
       return yield* Effect.fail(
         new TransactionBuilderError({
           message:
-            `Redeemer required for ${certsMissingRedeemer.length} non-native-script DRep certificate(s): ` +
+            `Redeemer required for ${certsMissingRedeemer.length} non-native-script certificate(s): ` +
             `${certsMissingRedeemer.join(", ")}. ` +
-            `If the DRep is a native (multisig) script, attach it via .attachScript() ` +
+            `If the certificate's credential is a native (multisig) script, attach it via .attachScript() ` +
             `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
             `if it is a Plutus script, supply a redeemer.`,
           cause: certsMissingRedeemer
@@ -439,7 +448,7 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
 
     if (nativeCertRedeemerKeys.length > 0) {
       yield* Effect.logDebug(
-        `[Cert] Ignoring redeemer(s) supplied for native-script DRep certificate(s): ${nativeCertRedeemerKeys.join(", ")}. ` +
+        `[Cert] Ignoring redeemer(s) supplied for native-script certificate(s): ${nativeCertRedeemerKeys.join(", ")}. ` +
           `Native scripts are satisfied by vkey witnesses, not redeemers.`
       )
       yield* Ref.update(stateRef, (s) => {
