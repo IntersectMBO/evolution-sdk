@@ -6,7 +6,6 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev --turbo",
-    "start": "next start",
     "copy-evolution-docs": "tsx scripts/copy-evolution-docs.ts",
     "prebuild": "pnpm run copy-evolution-docs",
     "postinstall": "fumadocs-mdx"
