@@ -109,7 +109,7 @@ importers:
         version: link:../packages/evolution
       '@icons-pack/react-simple-icons':
         specifier: ^13.8.0
-        version: 13.13.0(react@19.2.8)
+        version: 13.15.1(react@19.2.8)
       '@orama/orama':
         specifier: ^3.1.11
         version: 3.1.18
@@ -1119,9 +1119,8 @@ packages:
   '@iconify/utils@3.1.4':
     resolution: {integrity: sha512-b1S7B1k9ohZ+iNTi2ATxbRYG9fTrJmUT0rc46bvVnNxqNRGW7dyo/vRREwyniI5IRN2RSJHDcm+s3BjWrSAjHw==}
 
-  '@icons-pack/react-simple-icons@13.13.0':
-    resolution: {integrity: sha512-B5HhQMIpcSH4z8IZ8HFhD59CboHceKYMpPC9kAwGyKntvPdyJJv26DLu4Z1wAjcCLyrJhf11tMhiQGom9Rxb9g==}
-    engines: {node: '>=24', pnpm: '>=10'}
+  '@icons-pack/react-simple-icons@13.15.1':
+    resolution: {integrity: sha512-S35E7vJlJzMeoqjwwI7ZmQUJ2W+2KspnB6bc49KdoDGwp5mCgAy9L3sscfWMewQSMgBdPU8KWWwpSGq5DJyAFw==}
     peerDependencies:
       react: ^16.13 || ^17 || ^18 || ^19
 
@@ -7565,7 +7564,7 @@ snapshots:
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
 
-  '@icons-pack/react-simple-icons@13.13.0(react@19.2.8)':
+  '@icons-pack/react-simple-icons@13.15.1(react@19.2.8)':
     dependencies:
       react: 19.2.8
 
