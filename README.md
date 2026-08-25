@@ -207,7 +207,7 @@ Evolution SDK provides **125+ core modules** plus SDK utilities, organized into 
 
 ```bash
 # Clone the repository
-git clone https://github.com/no-witness-labs/evolution-sdk.git
+git clone https://github.com/IntersectMBO/evolution-sdk.git
 cd evolution-sdk
 
 # Enter Nix development shell (optional but recommended)

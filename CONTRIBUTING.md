@@ -53,7 +53,7 @@ pnpm turbo dev
 
 ## Reporting Bugs
 
-We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/no-witness-labs/evolution-sdk/issues/new).
+We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/IntersectMBO/evolution-sdk/issues/new).
 
 **Great Bug Reports** tend to have:
 
