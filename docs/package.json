@@ -14,7 +14,6 @@
     "@evolution-sdk/devnet": "workspace:*",
     "@evolution-sdk/evolution": "workspace:*",
     "@icons-pack/react-simple-icons": "^13.8.0",
-    "@orama/orama": "^3.1.11",
     "@stackblitz/sdk": "^1.11.0",
     "fumadocs-core": "16.14.5",
     "fumadocs-mdx": "15.3.0",
