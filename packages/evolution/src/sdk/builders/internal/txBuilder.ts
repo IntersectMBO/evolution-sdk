@@ -282,6 +282,49 @@ const voterScriptHashHex = (voter: VotingProcedures.Voter): string | undefined =
 }
 
 /**
+ * Resolve the governing credential hash (as hex) for certificates whose authorization
+ * can be script-controlled: the DRep lifecycle certificates (DRep credential) and the
+ * constitutional committee certificates (cold credential). Returns `undefined` for
+ * key-hash credentials and other certificate types.
+ */
+const certScriptHashHex = (certificate: Certificate.Certificate): string | undefined => {
+  switch (certificate._tag) {
+    case "RegDrepCert":
+    case "UpdateDrepCert":
+    case "UnregDrepCert":
+      return certificate.drepCredential._tag === "ScriptHash"
+        ? Bytes.toHex(certificate.drepCredential.hash)
+        : undefined
+    case "AuthCommitteeHotCert":
+    case "ResignCommitteeColdCert":
+      return certificate.committeeColdCredential._tag === "ScriptHash"
+        ? Bytes.toHex(certificate.committeeColdCredential.hash)
+        : undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Build a resolver that reports whether the script behind a given hash is a native
+ * script. Looks at scripts attached via `.attachScript()` first, then any reference
+ * inputs carrying a script. Returns `undefined` when the script cannot be classified.
+ */
+const makeIsNativeScript =
+  (state: { scripts: ReadonlyMap<string, CoreScript.Script>; referenceInputs: ReadonlyArray<CoreUTxO.UTxO> }) =>
+  (scriptHashHex: string): boolean | undefined => {
+    const attached = state.scripts.get(scriptHashHex)
+    if (attached) return attached._tag === "NativeScript"
+
+    for (const ref of state.referenceInputs) {
+      if (ref.scriptRef && ScriptHash.toHex(ScriptHash.fromScript(ref.scriptRef)) === scriptHashHex) {
+        return ref.scriptRef._tag === "NativeScript"
+      }
+    }
+    return undefined
+  }
+
+/**
  * Validate redeemer requirements for governance voters, distinguishing native-script
  * voters (satisfied by vkey witnesses) from Plutus-script voters (which require a redeemer).
  *
@@ -298,17 +341,7 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
     }
 
     // Resolve whether the script for a given hash is native.
-    const isNativeScript = (scriptHashHex: string): boolean | undefined => {
-      const attached = state.scripts.get(scriptHashHex)
-      if (attached) return attached._tag === "NativeScript"
-
-      for (const ref of state.referenceInputs) {
-        if (ref.scriptRef && ScriptHash.toHex(ScriptHash.fromScript(ref.scriptRef)) === scriptHashHex) {
-          return ref.scriptRef._tag === "NativeScript"
-        }
-      }
-      return undefined
-    }
+    const isNativeScript = makeIsNativeScript(state)
 
     const votersMissingRedeemer: Array<string> = []
     const nativeVoterRedeemerKeys: Array<string> = []
@@ -351,6 +384,77 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
         const redeemers = new Map(s.redeemers)
         const deferredRedeemers = new Map(s.deferredRedeemers)
         for (const key of nativeVoterRedeemerKeys) {
+          redeemers.delete(key)
+          deferredRedeemers.delete(key)
+        }
+        return { ...s, redeemers, deferredRedeemers }
+      })
+    }
+  }
+)
+
+/**
+ * Validate redeemer requirements for script-controlled certificates: the DRep
+ * lifecycle certificates (registration / update / deregistration) and the
+ * constitutional committee certificates (hot-key authorization / cold-key
+ * resignation), distinguishing native-script credentials from Plutus-script
+ * credentials.
+ *
+ * @since 2.0.0
+ * @category validation
+ */
+export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(
+  function* () {
+    const stateRef = yield* TxContext
+    const state = yield* Ref.get(stateRef)
+
+    if (state.certificates.length === 0) {
+      return
+    }
+
+    const isNativeScript = makeIsNativeScript(state)
+
+    const certsMissingRedeemer: Array<string> = []
+    const nativeCertRedeemerKeys: Array<string> = []
+
+    for (const certificate of state.certificates) {
+      const scriptHashHex = certScriptHashHex(certificate)
+      if (scriptHashHex === undefined) continue
+
+      const certKey = `cert:${scriptHashHex}`
+      const hasRedeemer = state.redeemers.has(certKey) || state.deferredRedeemers.has(certKey)
+      const native = isNativeScript(scriptHashHex)
+
+      if (native === true) {
+        if (hasRedeemer) nativeCertRedeemerKeys.push(certKey)
+      } else {
+        if (!hasRedeemer) certsMissingRedeemer.push(certKey)
+      }
+    }
+
+    if (certsMissingRedeemer.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Redeemer required for ${certsMissingRedeemer.length} non-native-script certificate(s): ` +
+            `${certsMissingRedeemer.join(", ")}. ` +
+            `If the certificate's credential is a native (multisig) script, attach it via .attachScript() ` +
+            `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
+            `if it is a Plutus script, supply a redeemer.`,
+          cause: certsMissingRedeemer
+        })
+      )
+    }
+
+    if (nativeCertRedeemerKeys.length > 0) {
+      yield* Effect.logDebug(
+        `[Cert] Ignoring redeemer(s) supplied for native-script certificate(s): ${nativeCertRedeemerKeys.join(", ")}. ` +
+          `Native scripts are satisfied by vkey witnesses, not redeemers.`
+      )
+      yield* Ref.update(stateRef, (s) => {
+        const redeemers = new Map(s.redeemers)
+        const deferredRedeemers = new Map(s.deferredRedeemers)
+        for (const key of nativeCertRedeemerKeys) {
           redeemers.delete(key)
           deferredRedeemers.delete(key)
         }

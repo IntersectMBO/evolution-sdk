@@ -40,14 +40,6 @@ export const createRegisterDRepProgram = (
 
     const isScriptControlled = params.drepCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled DRep credential registration"
-        })
-      )
-    }
-
     if (!fullParams) {
       return yield* Effect.fail(
         new TransactionBuilderError({ message: "Provider required to fetch protocol parameters for DRep registration" })
@@ -115,17 +107,7 @@ export const createUpdateDRepProgram = (
 ): Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag> =>
   Effect.gen(function* () {
     const ctx = yield* TxContext
-
-    // Check if script-controlled
     const isScriptControlled = params.drepCredential._tag === "ScriptHash"
-
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled DRep credential update"
-        })
-      )
-    }
 
     // Create UpdateDrepCert certificate
     const certificate = new Certificate.UpdateDrepCert({
@@ -187,14 +169,6 @@ export const createDeregisterDRepProgram = (
     const fullParams = yield* FullProtocolParametersTag
 
     const isScriptControlled = params.drepCredential._tag === "ScriptHash"
-
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled DRep credential deregistration"
-        })
-      )
-    }
 
     if (!fullParams) {
       return yield* Effect.fail(
@@ -268,16 +242,7 @@ export const createAuthCommitteeHotProgram = (
   Effect.gen(function* () {
     const ctx = yield* TxContext
 
-    // Check if script-controlled
     const isScriptControlled = params.coldCredential._tag === "ScriptHash"
-
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled cold credential authorization"
-        })
-      )
-    }
 
     // Create AuthCommitteeHotCert certificate
     const certificate = new Certificate.AuthCommitteeHotCert({
@@ -340,16 +305,7 @@ export const createResignCommitteeColdProgram = (
   Effect.gen(function* () {
     const ctx = yield* TxContext
 
-    // Check if script-controlled
     const isScriptControlled = params.coldCredential._tag === "ScriptHash"
-
-    if (isScriptControlled && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled cold credential resignation"
-        })
-      )
-    }
 
     // Create ResignCommitteeColdCert certificate
     const certificate = new Certificate.ResignCommitteeColdCert({

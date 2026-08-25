@@ -167,6 +167,7 @@ export const makeBuild = (
     yield* Effect.all(programs, { concurrency: "unbounded" })
 
     yield* TxBuilderImpl.validateVoterRedeemers
+    yield* TxBuilderImpl.validateCertRedeemers
 
     const { transaction, txWithFakeWitnesses } = yield* phaseStateMachine
 
