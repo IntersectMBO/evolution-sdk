@@ -1,5 +1,15 @@
 # @evolution-sdk/evolution
 
+## 0.5.13
+
+### Patch Changes
+
+- [#519](https://github.com/IntersectMBO/evolution-sdk/pull/519) [`5d4ef7c`](https://github.com/IntersectMBO/evolution-sdk/commit/5d4ef7c581bf06beacd087b643bd00e1a8019ef6) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Look assets up by structural equality in `MultiAsset` and compare quantities directly in `Value.geq`. `getAsset`, `hasAsset`, `getAssetsByPolicy`, and `MultiAsset.subtract` read the map with `Map.get`, which compares `PolicyId` and `AssetName` by reference. Keys decoded from CBOR are fresh instances, so every lookup against decoded data missed: `getAsset` returned `undefined` for an asset that was present, `hasAsset` returned `false`, `getAssetsByPolicy` returned an empty array, and `subtract` returned the minuend unchanged instead of reducing it. `Value.geq` inferred sufficiency from `subtract` not throwing, so it reported that a value covered an amount it did not hold. These functions now match keys the way `addAsset` already did, and `geq` compares the coin and each requested quantity directly.
+
+- [#494](https://github.com/IntersectMBO/evolution-sdk/pull/494) [`2b6825f`](https://github.com/IntersectMBO/evolution-sdk/commit/2b6825ffaab4d37b5631708a1f60c10272444a1d) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - `TxBuilder` no longer requires a Plutus redeemer to authorize a hot credential or resign a native-script (multisig) constitutional committee cold credential. A CC certificate whose cold credential is a native script is authorized by vkey witnesses, not a redeemer, so previously `.authCommitteeHot()` and `.resignCommitteeCold()` could not build these ledger-valid certificates. Mirroring the DRep certificate fix, the native-vs-Plutus distinction is made at build time once the cold credential's script is attached via `.attachScript()` (or supplied through a reference input): a redeemer is required only for Plutus-script cold credentials, and a redeemer mistakenly supplied for a native-script cold credential is pruned from the transaction.
+
+- [#494](https://github.com/IntersectMBO/evolution-sdk/pull/494) [`2b6825f`](https://github.com/IntersectMBO/evolution-sdk/commit/2b6825ffaab4d37b5631708a1f60c10272444a1d) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - `TxBuilder` no longer requires a Plutus redeemer to register, update, or deregister a native-script (multisig) DRep. A script-controlled DRep certificate whose script is native is authorized by vkey witnesses, not a redeemer, so previously these certificates could not be built even though they are ledger-valid. Mirroring the native-script vote fix, the native-vs-Plutus distinction is now made at build time, once the DRep's script is attached via `.attachScript()` (or supplied through a reference input): a redeemer is required only for Plutus-script DRep credentials, and a redeemer mistakenly supplied for a native-script DRep certificate is pruned from the transaction.
+
 ## 0.5.12
 
 ### Patch Changes
