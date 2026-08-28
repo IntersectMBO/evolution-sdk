@@ -244,12 +244,51 @@ export const TxInfoSchema = Schema.Struct({
       })
     )
   ),
-  //TODO: add Schema.Struct
   // https://preprod.koios.rest/#post-/tx_info
-  voting_procedures: Schema.Array(Schema.Object),
-  //TODO: add Schema.Struct
+  voting_procedures: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        proposal_tx_hash: Schema.String,
+        proposal_index: Schema.Number,
+        voter_role: Schema.Literal("ConstitutionalCommittee", "DRep", "SPO"),
+        voter: Schema.String,
+        voter_hex: Schema.String,
+        vote: Schema.Literal("Yes", "No", "Abstain")
+      })
+    )
+  ),
   // https://preprod.koios.rest/#post-/tx_info
-  proposal_procedures: Schema.Array(Schema.Object)
+  proposal_procedures: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        index: Schema.Number,
+        type: Schema.Literal(
+          "ParameterChange",
+          "HardForkInitiation",
+          "TreasuryWithdrawals",
+          "NoConfidence",
+          "NewCommittee",
+          "NewConstitution",
+          "InfoAction"
+        ),
+        description: Schema.Object,
+        deposit: Schema.String,
+        return_address: Schema.String,
+        expiration: Schema.NullOr(Schema.Number),
+        meta_url: Schema.NullOr(Schema.String),
+        meta_hash: Schema.NullOr(Schema.String),
+        withdrawal: Schema.NullOr(
+          Schema.Array(
+            Schema.Struct({
+              stake_address: Schema.String,
+              amount: Schema.String
+            })
+          )
+        ),
+        param_proposal: Schema.NullOr(Schema.Object)
+      })
+    )
+  )
 })
 
 export interface TxInfo extends Schema.Schema.Type<typeof TxInfoSchema> {}
