@@ -33,6 +33,7 @@ const createAddressClient = (chain: Chain, wallet: Wallet.ReadOnlyWallet): Addre
   withKoios: (config) => createReadOnlyClient(chain, Providers.koios(config), wallet),
   withKupmios: (config) => createReadOnlyClient(chain, Providers.kupmios(config), wallet),
   withMaestro: (config) => createReadOnlyClient(chain, Providers.maestro(config), wallet),
+  withBlockchainApplied: (config) => createReadOnlyClient(chain, Providers.blockchainApplied(config), wallet),
   effect: wallet.effect satisfies AddressClientEffect
 })
 
@@ -58,6 +59,7 @@ const createOfflineSignerClient = (chain: Chain, wallet: Signing.ResolvedSignerW
     withKoios: (config) => createSigningClient(chain, Providers.koios(config), wallet),
     withKupmios: (config) => createSigningClient(chain, Providers.kupmios(config), wallet),
     withMaestro: (config) => createSigningClient(chain, Providers.maestro(config), wallet),
+    withBlockchainApplied: (config) => createSigningClient(chain, Providers.blockchainApplied(config), wallet),
     effect: effectInterface
   }
 }
@@ -141,7 +143,8 @@ const createSigningClient = (
 const createReadClient = (chain: Chain, provider: Provider.Provider): ReadClient => ({
   ...provider,
   chain,
-  withAddress: (address, rewardAddress) => createReadOnlyClient(chain, provider, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
+  withAddress: (address, rewardAddress) =>
+    createReadOnlyClient(chain, provider, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
   withSeed: (config) => createSigningClient(chain, provider, Wallets.seedWallet(config)(chain)),
   withPrivateKey: (config) => createSigningClient(chain, provider, Wallets.privateKeyWallet(config)(chain)),
   withCip30: (api) => createSigningClient(chain, provider, Wallets.cip30Wallet(api)(chain)),
@@ -155,7 +158,9 @@ export const client = (chain: Chain = mainnet): ClientAssembly => ({
   withKoios: (config) => createReadClient(chain, Providers.koios(config)),
   withKupmios: (config) => createReadClient(chain, Providers.kupmios(config)),
   withMaestro: (config) => createReadClient(chain, Providers.maestro(config)),
-  withAddress: (address, rewardAddress) => createAddressClient(chain, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
+  withBlockchainApplied: (config) => createReadClient(chain, Providers.blockchainApplied(config)),
+  withAddress: (address, rewardAddress) =>
+    createAddressClient(chain, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
   withSeed: (config) => createOfflineSignerClient(chain, Wallets.seedWallet(config)(chain)),
   withPrivateKey: (config) => createOfflineSignerClient(chain, Wallets.privateKeyWallet(config)(chain)),
   withCip30: (api) => createOfflineSignerClient(chain, Wallets.cip30Wallet(api)(chain))

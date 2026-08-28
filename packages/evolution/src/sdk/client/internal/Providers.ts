@@ -1,9 +1,10 @@
+import * as BlockchainApplied from "../../provider/BlockchainApplied.js"
 import * as Blockfrost from "../../provider/Blockfrost.js"
 import * as Koios from "../../provider/Koios.js"
 import * as Kupmios from "../../provider/Kupmios.js"
 import * as Maestro from "../../provider/Maestro.js"
 import type { Provider } from "../../provider/Provider.js"
-import type { BlockfrostConfig, KoiosConfig, KupmiosConfig, MaestroConfig } from "../Client.js"
+import type { BlockchainAppliedConfig, BlockfrostConfig, KoiosConfig, KupmiosConfig, MaestroConfig } from "../Client.js"
 
 // ── Blockfrost ────────────────────────────────────────────────────────────────
 export const blockfrost = (config: BlockfrostConfig): Provider => Blockfrost.custom(config.baseUrl, config.projectId)
@@ -18,3 +19,7 @@ export const kupmios = (config: KupmiosConfig): Provider =>
 // ── Maestro ───────────────────────────────────────────────────────────────────
 export const maestro = (config: MaestroConfig): Provider =>
   new Maestro.MaestroProvider(config.baseUrl, config.apiKey, config.turboSubmit)
+
+// ── Blockchain Applied ───────────────────────────────────────────────────────
+export const blockchainApplied = (config: BlockchainAppliedConfig): Provider =>
+  BlockchainApplied.custom(config.baseUrl, config.token)
