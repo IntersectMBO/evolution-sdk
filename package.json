@@ -8,6 +8,7 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "check": "tsc -b tsconfig.json",
     "type-check": "turbo type-check",
     "type-check-recursive": "pnpm --recursive --filter \"./packages/**/*\" exec tsc -b tsconfig.json",
     "lint": "turbo lint",

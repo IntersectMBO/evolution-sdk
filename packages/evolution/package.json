@@ -36,7 +36,8 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json && babel dist --plugins annotate-pure-calls --out-dir dist --source-maps",
     "dev": "tsc -b tsconfig.build.json --watch",
-    "type-check": "tsc --noEmit",
+    "check": "tsc -b tsconfig.json",
+    "type-check": "tsc -b tsconfig.src.json",
     "lint": "eslint \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,mjs}\"",
     "test": "vitest run",
     "docgen": "rm -rf docs && docgen",
