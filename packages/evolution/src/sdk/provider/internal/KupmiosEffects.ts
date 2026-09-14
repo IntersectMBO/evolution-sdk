@@ -98,7 +98,7 @@ const retrieveDatumEffect =
         const pattern = `${kupoUrl}/datums/${datum_hash}`
         const schema = Kupo.DatumSchema
         return yield* pipe(
-          HttpUtils.getLossless(pattern, schema, kupoHeader),
+          HttpUtils.get(pattern, schema, kupoHeader),
           Effect.flatMap(Effect.fromNullable),
           Effect.map((result) => {
             // Parse the datum hex string to PlutusData
@@ -125,7 +125,7 @@ const getScriptEffect =
         const pattern = `${kupoUrl}/scripts/${script_hash}`
         const schema = Kupo.ScriptSchema
         return yield* pipe(
-          HttpUtils.getLossless(pattern, schema, kupoHeader),
+          HttpUtils.get(pattern, schema, kupoHeader),
           Effect.flatMap(Effect.fromNullable),
           Effect.retry(Schedule.compose(Schedule.exponential(50), Schedule.recurs(5))),
           Effect.timeout(5_000),
@@ -201,7 +201,7 @@ export const getProtocolParametersEffect = Effect.fn("getProtocolParameters")(fu
 
   const schema = Ogmios.JSONRPCSchema(Ogmios.ProtocolParametersSchema)
   const { result } = yield* pipe(
-    HttpUtils.postJsonLossless(ogmiosUrl, data, schema, headers?.ogmiosHeader),
+    HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
     Effect.timeout(TIMEOUT),
     Effect.catchAll(wrapError("getProtocolParameters")),
     Effect.provide(FetchHttpClient.layer)
@@ -318,7 +318,7 @@ export const submitTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Rec
     )
 
     const { result } = yield* pipe(
-      HttpUtils.postJsonLossless(ogmiosUrl, data, schema, headers?.ogmiosHeader),
+      HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
       Effect.timeout(TIMEOUT),
       Effect.catchAll((cause) => {
         // TODO: This is a workaround to extract meaningful error messages from Ogmios.
@@ -423,7 +423,7 @@ export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<s
     })
 
     const result = yield* pipe(
-      HttpUtils.getLossless(pattern, schema, headers?.kupoHeader),
+      HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.provide(FetchHttpClient.layer),
       Effect.repeat({
         schedule: Schedule.exponential(checkInterval),
@@ -471,7 +471,7 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
     const pattern = `${kupoUrl}/datums/${datumHashHex}`
     const schema = Kupo.DatumSchema
     const result = yield* pipe(
-      HttpUtils.getLossless(pattern, schema, headers?.kupoHeader),
+      HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.flatMap(Effect.fromNullable),

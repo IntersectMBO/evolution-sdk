@@ -136,6 +136,86 @@ describe("Kupo inbound amounts (#454)", () => {
   })
 })
 
+describe("Ogmios protocol parameters", () => {
+  // Plutus cost models carry 2^63-1 as a sentinel. Protocol parameters are
+  // bounded and typed as numbers, so this request must not be parsed
+  // losslessly or the sentinel arrives as a bigint and the schema rejects it.
+  // 2^63-1, the value Conway Plutus cost models actually ship.
+  const COST_MODEL_SENTINEL = "9223372036854775807"
+  const ratio = "1/2"
+  const threshold = {
+    noConfidence: ratio,
+    constitutionalCommittee: { default: ratio, stateOfNoConfidence: ratio },
+    hardForkInitiation: ratio,
+    protocolParametersUpdate: { security: ratio }
+  }
+  const protocolParameters = {
+    minFeeCoefficient: 44,
+    minFeeReferenceScripts: { base: 15, range: 25600, multiplier: 1.2 },
+    maxReferenceScriptsSize: { bytes: 204800 },
+    stakePoolVotingThresholds: threshold,
+    delegateRepresentativeVotingThresholds: {
+      ...threshold,
+      constitution: ratio,
+      protocolParametersUpdate: {
+        network: ratio,
+        economic: ratio,
+        technical: ratio,
+        governance: ratio
+      },
+      treasuryWithdrawals: ratio
+    },
+    constitutionalCommitteeMaxTermLength: 146,
+    governanceActionLifetime: 6,
+    governanceActionDeposit: { ada: { lovelace: 100000000000 } },
+    delegateRepresentativeDeposit: { ada: { lovelace: 500000000 } },
+    delegateRepresentativeMaxIdleTime: 20,
+    minFeeConstant: { ada: { lovelace: 155381 } },
+    maxBlockBodySize: { bytes: 90112 },
+    maxBlockHeaderSize: { bytes: 1100 },
+    maxTransactionSize: { bytes: 16384 },
+    stakeCredentialDeposit: { ada: { lovelace: 2000000 } },
+    stakePoolDeposit: { ada: { lovelace: 500000000 } },
+    stakePoolRetirementEpochBound: 18,
+    desiredNumberOfStakePools: 500,
+    stakePoolPledgeInfluence: "3/10",
+    monetaryExpansion: "3/1000",
+    treasuryExpansion: "2/10",
+    minStakePoolCost: { ada: { lovelace: 170000000 } },
+    minUtxoDepositConstant: { ada: { lovelace: 0 } },
+    minUtxoDepositCoefficient: 4310,
+    plutusCostModels: {
+      "plutus:v1": [205665, 812, 1, 1],
+      "plutus:v2": [205665, 812, 1, 1],
+      // COST_MODEL_SENTINEL is spliced in as a bare integer below; writing it
+      // as a JS literal here would itself lose precision.
+      "plutus:v3": [205665, 812, "__SENTINEL__", 1]
+    },
+    scriptExecutionPrices: { memory: "577/10000", cpu: "721/10000000" },
+    maxExecutionUnitsPerTransaction: { memory: 14000000, cpu: 10000000000 },
+    maxExecutionUnitsPerBlock: { memory: 62000000, cpu: 20000000000 },
+    maxValueSize: { bytes: 5000 },
+    collateralPercentage: 150,
+    maxCollateralInputs: 3,
+    version: { major: 10, minor: 0 }
+  }
+
+  it("decodes cost models containing the 2^63-1 sentinel", async () => {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: null, result: protocolParameters }).replace(
+      '"__SENTINEL__"',
+      COST_MODEL_SENTINEL
+    )
+    stubFetch(body)
+
+    const params = await Effect.runPromise(
+      KupmiosEffects.getProtocolParametersEffect("http://ogmios.test")
+    )
+
+    expect(params.minFeeB).toBe(155381)
+    expect(params.keyDeposit).toBe(2_000_000n)
+  })
+})
+
 describe("Ogmios outbound amounts (#406)", () => {
   it("posts additionalUtxo amounts as exact unquoted integers", async () => {
     const sent = stubFetch('{"jsonrpc":"2.0","id":null,"result":[]}')
