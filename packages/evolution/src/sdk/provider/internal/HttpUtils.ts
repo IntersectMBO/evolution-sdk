@@ -2,6 +2,8 @@ import type { HttpClientResponse } from "@effect/platform"
 import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "@effect/platform"
 import { Effect, Schema } from "effect"
 
+import * as LosslessJson from "./LosslessJson.js"
+
 /**
  * Filter responses to only allow 2xx status codes, otherwise fail with ResponseError
  */
@@ -81,4 +83,36 @@ export const postUint8Array = <A, I>(
     // Try JSON first, fall back to plain text for endpoints that return unquoted strings (e.g. Dolos /tx/submit)
     const decoded = yield* filteredResponse.json.pipe(Effect.orElse(() => filteredResponse.text))
     return yield* Schema.decodeUnknown(schema)(decoded)
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+
+/** GET, parsing the response losslessly for endpoints that send uint64 amounts. */
+export const getLossless = <A, I, R>(url: string, schema: Schema.Schema<A, I, R>, headers?: Record<string, string>) =>
+  HttpClient.get(url, headers ? { headers } : undefined).pipe(
+    Effect.flatMap(filterStatusOk),
+    Effect.flatMap((response) => response.text),
+    Effect.map((text) => LosslessJson.parse(text)),
+    Effect.flatMap(Schema.decodeUnknown(schema)),
+    Effect.provide(FetchHttpClient.layer)
+  )
+
+/** POST, encoding the body and parsing the response losslessly so uint64 amounts survive. */
+export const postJsonLossless = <A, I, R>(
+  url: string,
+  body: unknown,
+  schema: Schema.Schema<A, I, R>,
+  headers?: Record<string, string>
+) =>
+  Effect.gen(function* () {
+    let request = HttpClientRequest.post(url)
+    request = HttpClientRequest.bodyText(request, LosslessJson.stringify(body), "application/json")
+    const finalHeaders = {
+      "Content-Type": "application/json",
+      ...(headers || {})
+    }
+    request = HttpClientRequest.setHeaders(request, finalHeaders)
+
+    const response = yield* HttpClient.execute(request)
+    const filteredResponse = yield* filterStatusOk(response)
+    const text = yield* filteredResponse.text
+    return yield* Schema.decodeUnknown(schema)(LosslessJson.parse(text))
   }).pipe(Effect.provide(FetchHttpClient.layer))

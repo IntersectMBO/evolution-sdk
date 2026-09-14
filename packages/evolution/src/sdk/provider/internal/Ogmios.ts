@@ -12,6 +12,7 @@ import * as PolicyId from "../../../PolicyId.js"
 import type * as CoreScript from "../../../Script.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as CoreUTxO from "../../../UTxO.js"
+import { AmountSchema } from "./LosslessJson.js"
 
 export const JSONRPCSchema = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   Schema.Struct({
@@ -23,6 +24,12 @@ export const JSONRPCSchema = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
 
 const LovelaceAsset = Schema.Struct({
   lovelace: Schema.Number
+})
+
+// Reward and deposit balances are uint64. Protocol parameters keep
+// `LovelaceAsset`: those are bounded, and `ProtocolParameters` wants numbers.
+const LovelaceAmount = Schema.Struct({
+  lovelace: AmountSchema
 })
 
 const TupleNumberFromString = Schema.compose(Schema.split("/"), Schema.Array(Schema.NumberFromString))
@@ -115,8 +122,8 @@ export const Delegation = Schema.Array(
     from: Schema.String,
     credential: Schema.String,
     stakePool: Schema.optional(Schema.Struct({ id: Schema.String })),
-    rewards: Schema.Struct({ ada: Schema.Struct({ lovelace: Schema.Number }) }),
-    deposit: Schema.Struct({ ada: Schema.Struct({ lovelace: Schema.Number }) })
+    rewards: Schema.Struct({ ada: LovelaceAmount }),
+    deposit: Schema.Struct({ ada: LovelaceAmount })
   })
 )
 
@@ -125,10 +132,10 @@ type Script = {
   cbor: string
 }
 
-export type OgmiosAssets = Record<string, Record<string, number>>
+export type OgmiosAssets = Record<string, Record<string, bigint>>
 
 export type Value = {
-  ada: { lovelace: number }
+  ada: { lovelace: bigint }
 } & OgmiosAssets
 
 export type OgmiosUTxO = {
@@ -186,7 +193,7 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
         }
         for (const [assetName, quantity] of assetMap.entries()) {
           const assetNameHex = AssetName.toHex(assetName)
-          newAssets[policyIdHex][assetNameHex || ""] = Number(quantity)
+          newAssets[policyIdHex][assetNameHex || ""] = quantity
         }
       }
     }
@@ -213,7 +220,7 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
       index: Number(utxo.index),
       address: CoreAddress.toBech32(utxo.address),
       value: {
-        ada: { lovelace: Number(utxo.assets.lovelace) },
+        ada: { lovelace: utxo.assets.lovelace },
         ...toOgmiosAssets(utxo.assets)
       },
       ...toOgmiosDatum(utxo.datumOption),

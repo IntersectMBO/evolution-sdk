@@ -1,0 +1,5 @@
+---
+"@evolution-sdk/evolution": patch
+---
+
+Preserve 64-bit amounts in the Kupo, Ogmios and Blockfrost providers. Cardano lovelace and native-token quantities are uint64, but a JS number is exact only to 2^53-1, so any amount above that was silently rounded: Kupo decoded unquoted JSON integers through `JSON.parse` before the schema could see them (#454), and the Ogmios and Blockfrost evaluate paths converted internal bigints back through `Number()` when serializing the additional UTxO set (#406, #455). A corrupted amount produced wrong evaluation inputs and, for high-supply tokens, a transaction the node rejects. A new internal lossless JSON codec decodes integers beyond the safe range as bigint and writes them back as bare numeric literals — the unquoted form these endpoints require — and the affected provider requests now use it end to end. Maestro was already correct: it sends additional UTxOs as CBOR and decodes amounts as strings. No public API change.
