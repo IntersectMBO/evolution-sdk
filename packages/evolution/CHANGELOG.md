@@ -1,5 +1,13 @@
 # @evolution-sdk/evolution
 
+## 0.5.14
+
+### Patch Changes
+
+- [#532](https://github.com/IntersectMBO/evolution-sdk/pull/532) [`0099194`](https://github.com/IntersectMBO/evolution-sdk/commit/0099194f70f8696c964bedd58b869a67f2acf4ae) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - Remove three dependencies the published package never imports. `@effect/platform-node` was declared but is not referenced anywhere in the package; because it pins `@effect/cluster`, `@effect/rpc` and `@effect/sql` as peer dependencies, every consumer auto-installed that entire subtree along with `@effect/experimental`, `@effect/workflow`, `@effect/platform-node-shared`, and `@parcel/watcher` with its thirteen prebuilt native binaries. `bip39` is used only by one test and moves to `devDependencies`; `@scure/bip39` remains the runtime implementation. `@types/bip39` is a deprecated stub whose own npm metadata states that `bip39` ships its own type definitions. A fresh install of `@evolution-sdk/evolution` now resolves 23 packages instead of 55, and 72 MB instead of 89 MB, with no source or public API change.
+
+- [#544](https://github.com/IntersectMBO/evolution-sdk/pull/544) [`0167cf9`](https://github.com/IntersectMBO/evolution-sdk/commit/0167cf91381eea2c2f33db5ab1396a66b4dbe2da) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Koios `getUtxosByOutRef`, which failed for outputs of transactions that ran Plutus scripts and returned outputs from only one transaction when the refs spanned several. It now queries `/utxo_info` with the requested refs instead of decoding whole transactions from `/tx_info`.
+
 ## 0.5.13
 
 ### Patch Changes
