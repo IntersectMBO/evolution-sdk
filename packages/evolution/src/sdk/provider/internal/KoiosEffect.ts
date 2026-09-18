@@ -159,48 +159,38 @@ export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string)
 export const getUtxosByOutRef =
   (baseUrl: string, token?: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
     Effect.gen(function* () {
-      const url = `${baseUrl}/tx_info`
+      const url = `${baseUrl}/utxo_info`
       const body = {
-        _tx_hashes: [...new Set(inputs.map((input) => TransactionHash.toHex(input.transactionId)))],
-        _assets: true,
-        _scripts: true
+        _utxo_refs: [
+          ...new Set(inputs.map((input) => `${TransactionHash.toHex(input.transactionId)}#${input.index}`))
+        ],
+        _extended: true
       }
       const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
 
-      const [result] = yield* pipe(
-        HttpUtils.postJson(url, body, Schema.Array(_Koios.TxInfoSchema), bearerToken),
+      const results = yield* pipe(
+        HttpUtils.postJson(url, body, Schema.Array(_Koios.CredentialUTxOSchema), bearerToken),
         Effect.provide(FetchHttpClient.layer),
         Effect.timeout(10_000),
         Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
 
-      if (result) {
-        const utxos = result.outputs.map((koiosInputOutput: _Koios.InputOutput) =>
-          _Koios.toUTxO(
-            {
-              tx_hash: koiosInputOutput.tx_hash,
-              tx_index: koiosInputOutput.tx_index,
-              block_time: 0,
-              block_height: result.block_height,
-              value: koiosInputOutput.value,
-              datum_hash: koiosInputOutput.datum_hash,
-              inline_datum: koiosInputOutput.inline_datum,
-              reference_script: koiosInputOutput.reference_script,
-              asset_list: koiosInputOutput.asset_list
-            } satisfies _Koios.UTxO,
-            koiosInputOutput.payment_addr.bech32
-          )
+      return results.map((u) =>
+        _Koios.toUTxO(
+          {
+            tx_hash: u.tx_hash,
+            tx_index: u.tx_index,
+            block_time: 0,
+            block_height: null,
+            value: u.value,
+            datum_hash: u.datum_hash,
+            inline_datum: u.inline_datum,
+            reference_script: u.reference_script,
+            asset_list: u.asset_list
+          },
+          u.address
         )
-        return utxos.filter((utxo) =>
-          inputs.some(
-            (input) =>
-              TransactionHash.toHex(utxo.transactionId) === TransactionHash.toHex(input.transactionId) &&
-              Number(utxo.index) === Number(input.index)
-          )
-        )
-      } else {
-        return []
-      }
+      )
     })
 
 export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress: CoreRewardAddress.RewardAddress) =>
