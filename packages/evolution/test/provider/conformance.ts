@@ -7,7 +7,9 @@ import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import { type Provider } from "../../src/sdk/provider/Provider.js"
 import * as Transaction from "../../src/Transaction.js"
 import * as TransactionHash from "../../src/TransactionHash.js"
+import * as TransactionInput from "../../src/TransactionInput.js"
 import * as AssetsUnit from "../../src/Unit.js"
+import * as UTxO from "../../src/UTxO.js"
 import {
   PREPROD_SCRIPT_ADDRESS_BECH32,
   PREPROD_UNIT,
@@ -102,6 +104,19 @@ export function registerConformanceTests(factory: () => Provider, options?: Conf
         u.index === outRef.index
     )
     expect(match).toBeDefined()
+  })
+
+  it("getUtxosByOutRef across transactions, including a Plutus transaction output", async () => {
+    // The oracle UTxO is created by a transaction that runs a Plutus script
+    const oracle = await provider.getUtxoByUnit(PREPROD_UNIT)
+    const refs = [
+      preprodOutRef(),
+      new TransactionInput.TransactionInput({ transactionId: oracle.transactionId, index: oracle.index })
+    ]
+    const utxos = await provider.getUtxosByOutRef(refs)
+    expect(utxos.map(UTxO.toOutRefString).sort()).toEqual(
+      refs.map((ref) => `${TransactionHash.toHex(ref.transactionId)}#${ref.index}`).sort()
+    )
   })
 
   it("getDelegation", async () => {
