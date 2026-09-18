@@ -320,7 +320,7 @@ export const evaluateTx =
       const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
 
       const { result } = yield* pipe(
-        HttpUtils.postJson(url, body, schema, bearerToken),
+        HttpUtils.postJsonLossless(url, body, schema, bearerToken),
         Effect.provide(FetchHttpClient.layer),
         Effect.timeout(10_000),
         Effect.catchAll(wrapError("evaluateTx"))

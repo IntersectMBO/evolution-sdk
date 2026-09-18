@@ -1,8 +1,11 @@
 import { Schema as S } from "effect"
 
+import { AmountSchema } from "./LosslessJson.js"
+
+// Kupo sends lovelace and asset quantities as unquoted uint64 JSON integers.
 export const ValueSchema = S.Struct({
-  coins: S.Number,
-  assets: S.Record({ key: S.String, value: S.Number })
+  coins: AmountSchema,
+  assets: S.Record({ key: S.String, value: AmountSchema })
 })
 export interface Value extends S.Schema.Type<typeof ValueSchema> {}
 
@@ -46,8 +49,8 @@ export const DelegationSchema = S.NullOr(
     key: S.String,
     value: S.Struct({
       delegate: S.Struct({ id: S.String }),
-      rewards: S.Struct({ ada: S.Struct({ lovelace: S.Number }) }),
-      deposit: S.Struct({ ada: S.Struct({ lovelace: S.Number }) })
+      rewards: S.Struct({ ada: S.Struct({ lovelace: AmountSchema }) }),
+      deposit: S.Struct({ ada: S.Struct({ lovelace: AmountSchema }) })
     })
   })
 )

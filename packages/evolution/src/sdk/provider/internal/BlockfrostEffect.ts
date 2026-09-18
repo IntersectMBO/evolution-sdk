@@ -84,18 +84,20 @@ const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Cr
   return Credential.toBech32(addressOrCredential)
 }
 
+// Amounts stay bigint: the evaluate endpoint takes the Ogmios-style shape, and
+// postJsonLossless writes them as unquoted JSON integers rather than strings.
 const toBlockfrostValue = (assets: CoreUTxO.UTxO["assets"]): Record<string, unknown> => {
   const value: Record<string, unknown> = {
-    coins: Number(assets.lovelace)
+    coins: assets.lovelace
   }
 
   if (assets.multiAsset) {
     for (const [policyId, assetMap] of assets.multiAsset.map.entries()) {
       const policyIdHex = Bytes.toHex(policyId.hash)
-      const assetRecord: Record<string, number> = {}
+      const assetRecord: Record<string, bigint> = {}
 
       for (const [assetName, quantity] of assetMap.entries()) {
-        assetRecord[AssetName.toHex(assetName)] = Number(quantity)
+        assetRecord[AssetName.toHex(assetName)] = quantity
       }
 
       if (Object.keys(assetRecord).length > 0) {
@@ -725,7 +727,7 @@ export const evaluateTx =
     }
 
     return withRateLimit(
-      HttpUtils.postJson(
+      HttpUtils.postJsonLossless(
         `${baseUrl}/utils/txs/evaluate/utxos`,
         payload,
         Blockfrost.JsonwspOgmiosEvaluationResponse,

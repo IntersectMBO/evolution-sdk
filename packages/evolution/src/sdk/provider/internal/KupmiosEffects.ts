@@ -76,13 +76,13 @@ const toProtocolParameters = (result: Ogmios.ProtocolParameters): Provider.Proto
 }
 
 const toAssets = (value: Kupo.UTxO["value"]): CoreAssets.Assets => {
-  let assets = CoreAssets.fromLovelace(BigInt(value.coins))
+  let assets = CoreAssets.fromLovelace(value.coins)
   for (const unit of Object.keys(value.assets)) {
     const cleanUnit = unit.replace(".", "")
     // Parse policyId (first 56 chars) and assetName (rest)
     const policyIdHex = cleanUnit.slice(0, 56)
     const assetNameHex = cleanUnit.slice(56)
-    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, BigInt(value.assets[unit]))
+    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, value.assets[unit])
   }
   return assets
 }
@@ -222,7 +222,7 @@ export const getUtxosEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
 
     const schema = Schema.Array(Kupo.UTxOSchema)
     const utxos = yield* pipe(
-      HttpUtils.get(pattern, schema, headers?.kupoHeader),
+      HttpUtils.getLossless(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("getUtxos")),
@@ -242,7 +242,7 @@ export const getUtxoByUnitEffect = (kupoUrl: string, headers?: { kupoHeader?: Re
 
     const schema = Schema.Array(Kupo.UTxOSchema)
     const utxos = yield* pipe(
-      HttpUtils.get(pattern, schema, headers?.kupoHeader),
+      HttpUtils.getLossless(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("getUtxoByUnit")),
@@ -278,7 +278,7 @@ export const getUtxosByOutRefEffect = (kupoUrl: string, headers?: { kupoHeader?:
     const toUtxos = kupmiosUtxosToUtxos(kupoUrl, headers?.kupoHeader)
     const program = Effect.forEach(queryHashes, (txHash) =>
       pipe(
-        HttpUtils.get(mkPattern(txHash), schema, headers?.kupoHeader),
+        HttpUtils.getLossless(mkPattern(txHash), schema, headers?.kupoHeader),
         Effect.flatMap((u) => toUtxos(u)),
         Effect.timeout(TIMEOUT),
         Effect.catchAll(wrapError("getUtxosByOutRef"))
@@ -359,7 +359,7 @@ export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?:
     const schema = Schema.Array(Kupo.UTxOSchema)
     const toUtxos = kupmiosUtxosToUtxos(kupoUrl, headers?.kupoHeader)
     const utxos = yield* pipe(
-      HttpUtils.get(pattern, schema, headers?.kupoHeader),
+      HttpUtils.getLossless(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("getUtxosWithUnit")),
@@ -387,7 +387,7 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
 
     // Perform the request and handle the response
     const { result } = yield* pipe(
-      HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
+      HttpUtils.postJsonLossless(ogmiosUrl, data, schema, headers?.ogmiosHeader),
       Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("evaluateTx"))
@@ -448,7 +448,7 @@ export const getDelegationEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?
     }
     const schema = Ogmios.JSONRPCSchema(Ogmios.Delegation)
     const { result } = yield* pipe(
-      HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
+      HttpUtils.postJsonLossless(ogmiosUrl, data, schema, headers?.ogmiosHeader),
       Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("getDelegation"))
