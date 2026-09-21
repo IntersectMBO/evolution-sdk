@@ -74,7 +74,7 @@ export const parseProviderError = (error: unknown): Array<ScriptFailure> => {
         return responseErrorData
       }
 
-      // `description` on the old platform error, `message` on HttpResponseError
+      // The Ogmios body is embedded in whichever of these fields the error carries
       const detail = getStringProperty(cause, "description") ?? getStringProperty(cause, "message")
       if (detail !== undefined) {
         try {

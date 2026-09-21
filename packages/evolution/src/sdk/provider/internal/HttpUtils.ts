@@ -30,8 +30,7 @@ export type HttpError = HttpRequestError | HttpResponseError
 
 const sendRequest = (method: string, url: string, init: RequestInit): Effect.Effect<Response, HttpRequestError> =>
   Effect.tryPromise({
-    // The signal aborts the in-flight request when the fiber is interrupted,
-    // so callers wrapping these effects in Effect.timeout release the connection
+    // Aborts the in-flight request on interruption, so Effect.timeout releases the connection
     try: (signal) => fetch(url, { ...init, method, signal }),
     catch: (cause) => new HttpRequestError({ method, url, message: `${method} ${url} failed`, cause })
   })
@@ -129,8 +128,7 @@ export const postUint8Array = <A, I>(
   sendRequest("POST", url, {
     // Callers may override the content type
     headers: { "Content-Type": "application/cbor", ...headers },
-    // BodyInit excludes views backed by SharedArrayBuffer, which Uint8Array's
-    // default ArrayBufferLike admits; transaction bytes are never shared
+    // BodyInit excludes SharedArrayBuffer-backed views; transaction bytes are never shared
     body: body as BodyInit
   }).pipe(
     Effect.flatMap((response) => readOkBody("POST", url, response)),

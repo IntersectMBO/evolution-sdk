@@ -1,9 +1,6 @@
 /**
- * Unit tests for the fetch-based HTTP helpers shared by every provider.
- *
- * These run offline: `fetch` is stubbed, so they cover the request shape and the
- * error mapping that `BlockfrostEffect.is404Error` and the provider error
- * wrappers depend on, without needing an API key.
+ * Unit tests for the HTTP helpers shared by every provider. `fetch` is stubbed,
+ * so these cover request shape and error mapping offline, without an API key.
  */
 import { Effect, Schema } from "effect"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -57,8 +54,7 @@ describe("HttpUtils.get", () => {
     expect(error).toBeInstanceOf(HttpUtils.HttpResponseError)
     const responseError = error as HttpUtils.HttpResponseError
     expect(responseError.status).toBe(404)
-    // Blockfrost maps 404 to "not found" via this status, and the message text is
-    // surfaced through ProviderError.cause
+    // Blockfrost keys its "not found" handling off this status
     expect(responseError.message).toBe("non 2xx status code : not found")
   })
 
@@ -72,8 +68,7 @@ describe("HttpUtils.get", () => {
   })
 
   it("aborts the in-flight request when the effect is interrupted", async () => {
-    // Providers wrap these calls in Effect.timeout; without a signal the socket
-    // would stay open until the server answered
+    // Providers wrap these in Effect.timeout; without a signal the socket stays open
     let captured: AbortSignal | undefined
     const fetchMock = vi.fn((_url: string, init: RequestInit) => {
       captured = init.signal ?? undefined

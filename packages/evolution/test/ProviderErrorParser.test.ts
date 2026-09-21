@@ -1,8 +1,6 @@
 /**
- * The evaluation phase mines Ogmios validator failures out of whatever the
- * provider threw, by reaching into the error by field name. That couples it to
- * the HTTP layer's error shape, so it is worth pinning down here rather than
- * only in the devnet suite.
+ * The evaluation phase reaches into the provider error by field name to find
+ * Ogmios validator failures, coupling it to the HTTP layer's error shape.
  */
 import { describe, expect, it } from "vitest"
 
@@ -47,7 +45,7 @@ describe("parseProviderError", () => {
     })
   })
 
-  it("still reads the legacy `description` field", () => {
+  it("reads the body from a `description` field", () => {
     const failures = parseProviderError({
       cause: { description: `non 2xx status code : ${JSON.stringify(ogmiosBody)}` }
     })
