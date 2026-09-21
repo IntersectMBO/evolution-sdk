@@ -1,4 +1,3 @@
-import { FetchHttpClient } from "@effect/platform"
 import { Effect, pipe, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
@@ -40,10 +39,8 @@ export const getProtocolParameters = (baseUrl: string, token?: string) =>
     const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
     const [result] = yield* pipe(
       HttpUtils.get(url, schema, bearerToken),
-      // Allows for dependency injection and easier testing
       Effect.timeout(10_000),
-      Effect.catchAll(wrapError("getProtocolParameters")),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getProtocolParameters"))
     )
 
     return {
@@ -117,7 +114,6 @@ export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string)
 
       return pipe(
         HttpUtils.get(url, Schema.Array(_Koios.AssetAddressSchema), bearerToken),
-        Effect.provide(FetchHttpClient.layer),
         Effect.flatMap((addresses) =>
           addresses.length === 0
             ? Effect.fail(new Provider.ProviderError({ cause: "Unit not found", message: "Unit not found" }))
@@ -170,7 +166,6 @@ export const getUtxosByOutRef =
 
       const results = yield* pipe(
         HttpUtils.postJson(url, body, Schema.Array(_Koios.CredentialUTxOSchema), bearerToken),
-        Effect.provide(FetchHttpClient.layer),
         Effect.timeout(10_000),
         Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
@@ -203,7 +198,6 @@ export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress
 
     const result = yield* pipe(
       HttpUtils.postJson(url, body, Schema.Array(_Koios.AccountInfoSchema), bearerToken),
-      Effect.provide(FetchHttpClient.layer),
       Effect.flatMap((result) =>
         result.length === 0
           ? Effect.fail(
@@ -235,7 +229,6 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
 
     const result = yield* pipe(
       HttpUtils.postJson(url, body, Schema.Array(_Koios.DatumInfo), bearerToken),
-      Effect.provide(FetchHttpClient.layer),
       Effect.flatMap((result) =>
         result.length === 0
           ? Effect.fail(
@@ -266,7 +259,6 @@ export const awaitTx =
 
       const result = yield* pipe(
         HttpUtils.postJson(url, body, Schema.Array(_Koios.TxInfoSchema), bearerToken),
-        Effect.provide(FetchHttpClient.layer),
         Effect.repeat({
           schedule: Schedule.exponential(checkInterval),
           until: (result) => result.length > 0
@@ -289,7 +281,6 @@ export const submitTx = (baseUrl: string, token?: string) => (tx: Transaction.Tr
 
     const result = yield* pipe(
       HttpUtils.postUint8Array(url, txCborBytes, _Koios.TxHashSchema, bearerToken),
-      Effect.provide(FetchHttpClient.layer),
       Effect.timeout(10_000),
       Effect.catchAll(wrapError("submitTx"))
     )
@@ -321,7 +312,6 @@ export const evaluateTx =
 
       const { result } = yield* pipe(
         HttpUtils.postJson(url, body, schema, bearerToken),
-        Effect.provide(FetchHttpClient.layer),
         Effect.timeout(10_000),
         Effect.catchAll(wrapError("evaluateTx"))
       )

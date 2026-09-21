@@ -74,10 +74,11 @@ export const parseProviderError = (error: unknown): Array<ScriptFailure> => {
         return responseErrorData
       }
 
-      const description = getStringProperty(cause, "description")
-      if (description !== undefined) {
+      // `description` on the old platform error, `message` on HttpResponseError
+      const detail = getStringProperty(cause, "description") ?? getStringProperty(cause, "message")
+      if (detail !== undefined) {
         try {
-          const match = description.match(/\{.*\}/s)
+          const match = detail.match(/\{.*\}/s)
           if (match !== null) {
             const parsed = JSON.parse(match[0])
             const parsedError = getRecordProperty(parsed, "error")
