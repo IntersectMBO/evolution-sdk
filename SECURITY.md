@@ -13,17 +13,17 @@ how we will respond to and remediate such reports.
 
 ### Reporting a Vulnerability
 
-If you discover a security vulnerability in xxxx, we encourage you to
+If you discover a security vulnerability in evolution-sdk, we encourage you to
 responsibly disclose it to us. To report a vulnerability, please use
 the [private reporting form on
-GitHub](https://github.com/input-output-hk/mithril/security/advisories/new)
+GitHub](https://github.com/IntersectMBO/evolution-sdk/security/advisories/new)
 to draft a new _Security advisory_.
 
 Please include as much details as needed to clearly qualify the issue:
 
 - A description of the vulnerability and its potential impact.
 - Steps to reproduce the vulnerability.
-- The version of `xxxx` package where the vulnerability exists.
+- The version of `evolution-sdk` package where the vulnerability exists.
 - Any relevant proof-of-concept or exploit code (if applicable).
 
 ### Processing Vulnerability
@@ -89,18 +89,18 @@ report security vulnerabilities to us.
 
 ## Contact Information
 
-To report a security vulnerability, please use [GitHub
-form]((add project github form for your project)). Should you experience any issues reporting via GitHub or have other questions, Please contact [Security](security@intersectmbo.org).
+To report a security vulnerability, please use [[GitHub
+form]](https://github.com/IntersectMBO/evolution-sdk/security/advisories/new). Should you experience any issues reporting via GitHub or have other questions, Please contact [Security](security@intersectmbo.org).
 
 ## Revision of Policy
 
 This Security Vulnerability Disclosure Policy may be updated or
 revised as necessary. Please check the latest version of this policy
-on the [xxxx repository]((add link for your project)).
+on the [[Open-Source-Office repository]](https://github.com/IntersectMBO/Open-Source-Office/security/advisories/new).
 
 ## Conclusion
 
-The xxxx project greatly appreciates the assistance of the security
+The Evolution SDK project greatly appreciates the assistance of the security
 community in helping us maintain the security of our software while
 upholding the highest standards of privacy. Together, we can work to
 identify and address vulnerabilities, ensuring a safer and more secure
