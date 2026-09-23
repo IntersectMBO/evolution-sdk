@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Cardano open source project (xxx) is committed to ensuring the security of
+The Cardano open source project Evolution SDK is committed to ensuring the security of
 its software and the privacy of its users. We value the contributions
 of the security community in helping us identify and address
 vulnerabilities in our code. This Security Vulnerability Disclosure
@@ -89,14 +89,14 @@ report security vulnerabilities to us.
 
 ## Contact Information
 
-To report a security vulnerability, please use [[GitHub
-form]](https://github.com/IntersectMBO/evolution-sdk/security/advisories/new). Should you experience any issues reporting via GitHub or have other questions, Please contact [Security](security@intersectmbo.org).
+To report a security vulnerability, please use [GitHub
+form](https://github.com/IntersectMBO/evolution-sdk/security/advisories/new). Should you experience any issues reporting via GitHub or have other questions, Please contact [Security](security@intersectmbo.org).
 
 ## Revision of Policy
 
 This Security Vulnerability Disclosure Policy may be updated or
 revised as necessary. Please check the latest version of this policy
-on the [[Open-Source-Office repository]](https://github.com/IntersectMBO/Open-Source-Office/security/advisories/new).
+on the [Open-Source-Office repository](https://github.com/IntersectMBO/Open-Source-Office/security/advisories/new).
 
 ## Conclusion
 
