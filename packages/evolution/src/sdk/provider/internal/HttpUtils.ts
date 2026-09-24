@@ -82,6 +82,16 @@ const parseJson = (
       })
   })
 
+/**
+ * Set caller headers over a default content type. Header names are case-insensitive,
+ * so a caller's `content-type` replaces the default instead of being joined to it
+ */
+const withContentType = (contentType: string, headers?: Record<string, string>): Headers => {
+  const merged = new Headers({ "Content-Type": contentType })
+  for (const [name, value] of Object.entries(headers ?? {})) merged.set(name, value)
+  return merged
+}
+
 const requestJson = <A, I, R>(
   method: string,
   url: string,
@@ -111,8 +121,7 @@ export const postJson = <A, I, R>(
   headers?: Record<string, string>
 ) =>
   requestJson("POST", url, schema, {
-    // Callers may override the content type
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: withContentType("application/json", headers),
     body: JSON.stringify(body)
   })
 
@@ -126,8 +135,7 @@ export const postUint8Array = <A, I>(
   headers?: Record<string, string>
 ) =>
   sendRequest("POST", url, {
-    // Callers may override the content type
-    headers: { "Content-Type": "application/cbor", ...headers },
+    headers: withContentType("application/cbor", headers),
     // BodyInit excludes SharedArrayBuffer-backed views; transaction bytes are never shared
     body: body as BodyInit
   }).pipe(

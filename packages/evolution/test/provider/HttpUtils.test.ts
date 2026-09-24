@@ -21,7 +21,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 const lastInit = (fetchMock: ReturnType<typeof stubFetch>) =>
   (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
 
-const lastHeaders = (fetchMock: ReturnType<typeof stubFetch>) => lastInit(fetchMock).headers as Record<string, string>
+const lastHeaders = (fetchMock: ReturnType<typeof stubFetch>) => new Headers(lastInit(fetchMock).headers)
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -43,7 +43,7 @@ describe("HttpUtils.get", () => {
 
     await Effect.runPromise(HttpUtils.get("https://example.test/point", PointSchema, { Authorization: "Bearer t" }))
 
-    expect(lastHeaders(fetchMock)).toMatchObject({ Authorization: "Bearer t" })
+    expect(lastHeaders(fetchMock).get("Authorization")).toBe("Bearer t")
   })
 
   it("fails with HttpResponseError carrying the status and body on non-2xx", async () => {
@@ -106,7 +106,7 @@ describe("HttpUtils.postJson", () => {
     expect(result).toEqual({ slot: 7 })
     expect(lastInit(fetchMock).method).toBe("POST")
     expect(lastInit(fetchMock).body).toBe(JSON.stringify({ _addresses: ["addr"] }))
-    expect(lastHeaders(fetchMock)["Content-Type"]).toBe("application/json")
+    expect(lastHeaders(fetchMock).get("Content-Type")).toBe("application/json")
   })
 
   it("lets caller headers override the content type", async () => {
@@ -116,7 +116,17 @@ describe("HttpUtils.postJson", () => {
       HttpUtils.postJson("https://example.test/query", {}, PointSchema, { "Content-Type": "application/custom" })
     )
 
-    expect(lastHeaders(fetchMock)["Content-Type"]).toBe("application/custom")
+    expect(lastHeaders(fetchMock).get("Content-Type")).toBe("application/custom")
+  })
+
+  it("replaces the content type when the caller spells it in lowercase", async () => {
+    const fetchMock = stubFetch(jsonResponse({ slot: 7 }))
+
+    await Effect.runPromise(
+      HttpUtils.postJson("https://example.test/query", {}, PointSchema, { "content-type": "application/custom" })
+    )
+
+    expect(lastHeaders(fetchMock).get("Content-Type")).toBe("application/custom")
   })
 })
 
@@ -131,7 +141,7 @@ describe("HttpUtils.postUint8Array", () => {
     )
 
     expect(result).toBe("abc123")
-    expect(lastHeaders(fetchMock)["Content-Type"]).toBe("application/cbor")
+    expect(lastHeaders(fetchMock).get("Content-Type")).toBe("application/cbor")
     expect(lastInit(fetchMock).body).toBe(bytes)
   })
 
