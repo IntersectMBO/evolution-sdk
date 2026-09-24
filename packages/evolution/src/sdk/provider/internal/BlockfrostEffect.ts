@@ -3,7 +3,6 @@
  * Internal module implementing all provider operations using Effect pattern
  */
 
-import { HttpClientError } from "@effect/platform"
 import { Effect, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
@@ -66,8 +65,8 @@ const wrapError = (operation: string) => (cause: unknown) =>
  * Check if an error is a 404 Not Found response
  */
 const is404Error = (error: unknown): boolean => {
-  if (error instanceof HttpClientError.ResponseError) {
-    return error.response.status === 404
+  if (error instanceof HttpUtils.HttpResponseError) {
+    return error.status === 404
   }
   return false
 }

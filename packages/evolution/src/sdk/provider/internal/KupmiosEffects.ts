@@ -1,4 +1,3 @@
-import { FetchHttpClient } from "@effect/platform"
 import { Array as _Array, Effect, pipe, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
@@ -203,8 +202,7 @@ export const getProtocolParametersEffect = Effect.fn("getProtocolParameters")(fu
   const { result } = yield* pipe(
     HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
     Effect.timeout(TIMEOUT),
-    Effect.catchAll(wrapError("getProtocolParameters")),
-    Effect.provide(FetchHttpClient.layer)
+    Effect.catchAll(wrapError("getProtocolParameters"))
   )
   return toProtocolParameters(result)
 })
@@ -225,8 +223,7 @@ export const getUtxosEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll(wrapError("getUtxos")),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getUtxos"))
     )
     return utxos
   })
@@ -245,8 +242,7 @@ export const getUtxoByUnitEffect = (kupoUrl: string, headers?: { kupoHeader?: Re
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll(wrapError("getUtxoByUnit")),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getUtxoByUnit"))
     )
 
     if (utxos.length > 1) {
@@ -284,7 +280,7 @@ export const getUtxosByOutRefEffect = (kupoUrl: string, headers?: { kupoHeader?:
         Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
     )
-    const utxos: Array<Array<CoreUTxO.UTxO>> = yield* pipe(program, Effect.provide(FetchHttpClient.layer))
+    const utxos: Array<Array<CoreUTxO.UTxO>> = yield* program
 
     return _Array
       .flatten(utxos)
@@ -334,8 +330,7 @@ export const submitTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Rec
               ? String((cause as { description: unknown }).description)
               : "Kupmios submitTx failed"
         return Effect.fail(new Provider.ProviderError({ cause, message: `Kupmios submitTx failed: ${errorMessage}` }))
-      }),
-      Effect.provide(FetchHttpClient.layer)
+      })
     )
 
     // Parse and return the transaction hash
@@ -362,8 +357,7 @@ export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?:
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll(wrapError("getUtxosWithUnit")),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
     return utxos
   })
@@ -388,7 +382,6 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
     // Perform the request and handle the response
     const { result } = yield* pipe(
       HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("evaluateTx"))
     )
@@ -424,7 +417,6 @@ export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<s
 
     const result = yield* pipe(
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.repeat({
         schedule: Schedule.exponential(checkInterval),
         until: (result) => result.length > 0
@@ -449,7 +441,6 @@ export const getDelegationEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?
     const schema = Ogmios.JSONRPCSchema(Ogmios.Delegation)
     const { result } = yield* pipe(
       HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("getDelegation"))
     )
@@ -472,7 +463,6 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
     const schema = Kupo.DatumSchema
     const result = yield* pipe(
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.flatMap(Effect.fromNullable),
       Effect.catchAll(wrapError("getDatum"))

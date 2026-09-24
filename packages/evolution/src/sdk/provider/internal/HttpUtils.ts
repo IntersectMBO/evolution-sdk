@@ -1,38 +1,115 @@
-import type { HttpClientResponse } from "@effect/platform"
-import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "@effect/platform"
-import { Effect, Schema } from "effect"
+import { Data, Effect, Schema } from "effect"
+import type { ParseError } from "effect/ParseResult"
 
 /**
- * Filter responses to only allow 2xx status codes, otherwise fail with ResponseError
+ * Raised when a request never produced a response (network failure, DNS, abort)
  */
-export const filterStatusOk = (
-  self: HttpClientResponse.HttpClientResponse
-): Effect.Effect<HttpClientResponse.HttpClientResponse, HttpClientError.ResponseError> =>
-  self.status >= 200 && self.status < 300
-    ? Effect.succeed(self)
-    : self.text.pipe(
-        Effect.flatMap((text) =>
-          Effect.fail(
-            new HttpClientError.ResponseError({
-              response: self,
-              request: self.request,
-              reason: "StatusCode",
-              description: `non 2xx status code : ${text}`
+export class HttpRequestError extends Data.TaggedError("HttpRequestError")<{
+  readonly method: string
+  readonly url: string
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
+/**
+ * Raised when a response came back but is unusable: a non-2xx status code, or a
+ * body that could not be read or parsed
+ */
+export class HttpResponseError extends Data.TaggedError("HttpResponseError")<{
+  readonly method: string
+  readonly url: string
+  readonly status: number
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
+/**
+ * Any failure raised by this module
+ */
+export type HttpError = HttpRequestError | HttpResponseError
+
+const sendRequest = (method: string, url: string, init: RequestInit): Effect.Effect<Response, HttpRequestError> =>
+  Effect.tryPromise({
+    // Aborts the in-flight request on interruption, so Effect.timeout releases the connection
+    try: (signal) => fetch(url, { ...init, method, signal }),
+    catch: (cause) => new HttpRequestError({ method, url, message: `${method} ${url} failed`, cause })
+  })
+
+/**
+ * Read the response body as text, failing on non-2xx status codes
+ */
+const readOkBody = (method: string, url: string, response: Response): Effect.Effect<string, HttpResponseError> =>
+  Effect.tryPromise({
+    try: () => response.text(),
+    catch: (cause) =>
+      new HttpResponseError({
+        method,
+        url,
+        status: response.status,
+        message: "failed to read response body",
+        cause
+      })
+  }).pipe(
+    Effect.flatMap((text) =>
+      response.ok
+        ? Effect.succeed(text)
+        : Effect.fail(
+            new HttpResponseError({
+              method,
+              url,
+              status: response.status,
+              message: `non 2xx status code : ${text}`
             })
           )
-        )
-      )
+    )
+  )
+
+const parseJson = (
+  method: string,
+  url: string,
+  status: number,
+  text: string
+): Effect.Effect<unknown, HttpResponseError> =>
+  Effect.try({
+    try: () => JSON.parse(text) as unknown,
+    catch: (cause) =>
+      new HttpResponseError({
+        method,
+        url,
+        status,
+        message: "failed to parse response as JSON",
+        cause
+      })
+  })
+
+/**
+ * Set caller headers over a default content type. Header names are case-insensitive,
+ * so a caller's `content-type` replaces the default instead of being joined to it
+ */
+const withContentType = (contentType: string, headers?: Record<string, string>): Headers => {
+  const merged = new Headers({ "Content-Type": contentType })
+  for (const [name, value] of Object.entries(headers ?? {})) merged.set(name, value)
+  return merged
+}
+
+const requestJson = <A, I, R>(
+  method: string,
+  url: string,
+  schema: Schema.Schema<A, I, R>,
+  init: RequestInit
+): Effect.Effect<A, HttpError | ParseError, R> =>
+  sendRequest(method, url, init).pipe(
+    Effect.flatMap((response) =>
+      readOkBody(method, url, response).pipe(Effect.flatMap((text) => parseJson(method, url, response.status, text)))
+    ),
+    Effect.flatMap(Schema.decodeUnknown(schema))
+  )
 
 /**
  * Performs a GET request and decodes the response using the provided schema
  */
 export const get = <A, I, R>(url: string, schema: Schema.Schema<A, I, R>, headers?: Record<string, string>) =>
-  HttpClient.get(url, headers ? { headers } : undefined).pipe(
-    Effect.flatMap(filterStatusOk),
-    Effect.flatMap((response) => response.json),
-    Effect.flatMap(Schema.decodeUnknown(schema)),
-    Effect.provide(FetchHttpClient.layer)
-  )
+  requestJson("GET", url, schema, headers ? { headers } : {})
 
 /**
  * Performs a POST request with JSON body and decodes the response using the provided schema
@@ -43,20 +120,10 @@ export const postJson = <A, I, R>(
   schema: Schema.Schema<A, I, R>,
   headers?: Record<string, string>
 ) =>
-  Effect.gen(function* () {
-    let request = HttpClientRequest.post(url)
-    request = yield* HttpClientRequest.bodyJson(request, body)
-    const finalHeaders = {
-      "Content-Type": "application/json",
-      ...(headers || {})
-    }
-    request = HttpClientRequest.setHeaders(request, finalHeaders)
-
-    const response = yield* HttpClient.execute(request)
-    const filteredResponse = yield* filterStatusOk(response)
-    const json = yield* filteredResponse.json
-    return yield* Schema.decodeUnknown(schema)(json)
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  requestJson("POST", url, schema, {
+    headers: withContentType("application/json", headers),
+    body: JSON.stringify(body)
+  })
 
 /**
  * Performs a POST request with Uint8Array body and decodes the response using the provided schema
@@ -67,18 +134,19 @@ export const postUint8Array = <A, I>(
   schema: Schema.Schema<A, I>,
   headers?: Record<string, string>
 ) =>
-  Effect.gen(function* () {
-    let request = HttpClientRequest.post(url)
-    // Set body with content-type
-    request = HttpClientRequest.bodyUint8Array(request, body, "application/cbor")
-    // Set additional headers AFTER body (so they don't get overridden)
-    if (headers) {
-      request = HttpClientRequest.setHeaders(request, headers)
-    }
-
-    const response = yield* HttpClient.execute(request)
-    const filteredResponse = yield* filterStatusOk(response)
+  sendRequest("POST", url, {
+    headers: withContentType("application/cbor", headers),
+    // BodyInit excludes SharedArrayBuffer-backed views; transaction bytes are never shared
+    body: body as BodyInit
+  }).pipe(
+    Effect.flatMap((response) => readOkBody("POST", url, response)),
     // Try JSON first, fall back to plain text for endpoints that return unquoted strings (e.g. Dolos /tx/submit)
-    const decoded = yield* filteredResponse.json.pipe(Effect.orElse(() => filteredResponse.text))
-    return yield* Schema.decodeUnknown(schema)(decoded)
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+    Effect.map((text): unknown => {
+      try {
+        return JSON.parse(text)
+      } catch {
+        return text
+      }
+    }),
+    Effect.flatMap(Schema.decodeUnknown(schema))
+  )

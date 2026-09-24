@@ -1,5 +1,3 @@
-import type { HttpBody, HttpClientError } from "@effect/platform"
-import { FetchHttpClient } from "@effect/platform"
 import { Effect, pipe, Schema } from "effect"
 import type { ParseError } from "effect/ParseResult"
 
@@ -359,19 +357,14 @@ export const getUtxosEffect = (
   baseUrl: string,
   address: string,
   headers: Record<string, string> | undefined
-): Effect.Effect<
-  Array<CoreUTxO.UTxO>,
-  string | HttpBody.HttpBodyError | HttpClientError.HttpClientError | ParseError,
-  never
-> => {
+): Effect.Effect<Array<CoreUTxO.UTxO>, string | HttpUtils.HttpError | ParseError, never> => {
   const url = `${baseUrl}/address_info`
   const body = {
     _addresses: [address]
   }
   const result = pipe(
     HttpUtils.postJson(url, body, AddressInfoSchema, headers),
-    Effect.map(([result]) => (result ? result.utxo_set.map((koiosUtxo) => toUTxO(koiosUtxo, result.address)) : [])),
-    Effect.provide(FetchHttpClient.layer)
+    Effect.map(([result]) => (result ? result.utxo_set.map((koiosUtxo) => toUTxO(koiosUtxo, result.address)) : []))
   )
   return result
 }
@@ -380,11 +373,7 @@ export const getCredentialUtxosEffect = (
   baseUrl: string,
   credentialHash: string,
   headers: Record<string, string> | undefined
-): Effect.Effect<
-  Array<CoreUTxO.UTxO>,
-  string | HttpBody.HttpBodyError | HttpClientError.HttpClientError | ParseError,
-  never
-> => {
+): Effect.Effect<Array<CoreUTxO.UTxO>, string | HttpUtils.HttpError | ParseError, never> => {
   const url = `${baseUrl}/credential_utxos`
   const body = {
     _payment_credentials: [credentialHash],
@@ -407,8 +396,7 @@ export const getCredentialUtxosEffect = (
         },
         u.address
       ))
-    ),
-    Effect.provide(FetchHttpClient.layer)
+    )
   )
   return result
 }
