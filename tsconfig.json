@@ -1,5 +1,24 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": [],
-  "references": [{ "path": "packages/evolution/tsconfig.json" }]
+  "references": [{ "path": "tsconfig.build.json" }],
+  "include": [
+    "./packages/*/test/**/*.ts",
+    "./packages/*/test/**/*.json"
+  ],
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "paths": {
+      "@evolution-sdk/evolution": ["./packages/evolution/src/index.ts"],
+      "@evolution-sdk/evolution/*": ["./packages/evolution/src/*/index.ts", "./packages/evolution/src/*.ts"],
+      "@evolution-sdk/devnet": ["./packages/evolution-devnet/src/index.ts"],
+      "@evolution-sdk/devnet/*": ["./packages/evolution-devnet/src/*/index.ts", "./packages/evolution-devnet/src/*.ts"],
+      "@evolution-sdk/aiken-uplc": ["./packages/aiken-uplc/src/index.node.ts"],
+      "@evolution-sdk/aiken-uplc/*": ["./packages/aiken-uplc/src/*/index.ts", "./packages/aiken-uplc/src/*.ts"],
+      "@evolution-sdk/scalus-uplc": ["./packages/scalus-uplc/src/index.node.ts"],
+      "@evolution-sdk/scalus-uplc/*": ["./packages/scalus-uplc/src/*/index.ts", "./packages/scalus-uplc/src/*.ts"]
+    }
+  }
 }
