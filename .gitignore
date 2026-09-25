@@ -23,5 +23,6 @@ CLAUDE.md
 AGENTS.md
 
 # Local env overrides — never commit API keys
+**/*.local
 .env.local
 .env.test.local

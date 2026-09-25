@@ -126,11 +126,22 @@ const txHash = await sdk
   .then(tx => tx.submit());
 ```
 
+Or with the Blockchain Applied (BCA) provider:
+
+```typescript
+const sdk = client(preprod)
+  .withBlockchainApplied({
+    baseUrl: "https://api.blockchain-applied.com/api_preprod/v1",
+    token: "your_bca_token"
+  })
+  .withCip30(walletApi);
+```
+
 ### Key Concepts
 
 - **Client Assembly**: Start with `client(chain)` and add capabilities with `.withX(...)`
 - **Wallet Capability**: Connect a CIP-30 wallet with `.withCip30(walletApi)`
-- **Provider Capability**: Add Blockfrost, Maestro, Kupmios, or Koios with `.withBlockfrost(...)` and the related methods
+- **Provider Capability**: Add Blockfrost, Maestro, Kupmios, Koios, or Blockchain Applied with `.withBlockfrost(...)` and the related methods
 - **Transaction Building**: Chain operations like `payToAddress()`, `collectFrom()`, etc.
 - **Signing & Submission**: Build → Sign → Submit pipeline
 
