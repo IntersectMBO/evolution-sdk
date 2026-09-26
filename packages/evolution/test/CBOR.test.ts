@@ -269,6 +269,66 @@ describe("CBOR Implementation Tests", () => {
   })
 
   describe("CBOR Deterministic Encoding", () => {
+    it.each([
+      { name: "canonical", options: CBOR.CANONICAL_OPTIONS },
+      { name: "custom sorted maps", options: { ...CBOR.CML_DEFAULT_OPTIONS, sortMapKeys: true } }
+    ])("sorts equal-length encoded keys bytewise in $name mode", ({ options }) => {
+      const forward = new Map<CBOR.CBOR, CBOR.CBOR>([
+        [new Uint8Array([0, 1]), 10n],
+        [new Uint8Array([0, 2]), 20n]
+      ])
+      const reverse = new Map([...forward].reverse())
+      const expected = "a24200010a42000214"
+      expect(CBOR.toCBORHex(forward, options)).toBe(expected)
+      expect(CBOR.toCBORHex(reverse, options)).toBe(expected)
+    })
+
+    it("sorts equal-length text keys independently of insertion order", () => {
+      expect(
+        CBOR.toCBORHex(
+          new Map([
+            ["b", 2n],
+            ["a", 1n]
+          ]),
+          CBOR.CANONICAL_OPTIONS
+        )
+      ).toBe("a2616101616202")
+    })
+
+    it("preserves length-first ordering before applying the bytewise tie-break", () => {
+      const value = new Map<CBOR.CBOR, CBOR.CBOR>([
+        [24n, 1n],
+        [-1n, 2n],
+        [0n, 3n]
+      ])
+      expect(CBOR.toCBORHex(value, CBOR.CANONICAL_OPTIONS)).toBe("a300032002181801")
+    })
+
+    it("sorts nested policy and asset-name maps", () => {
+      const lowerPolicy = new Uint8Array(28).fill(0x11)
+      const higherPolicy = new Uint8Array(28).fill(0x22)
+      const value = new Map([
+        [
+          higherPolicy,
+          new Map([
+            [new Uint8Array([0xbb]), 2n],
+            [new Uint8Array([0xaa]), 1n]
+          ])
+        ],
+        [lowerPolicy, new Map([[new Uint8Array(), 3n]])]
+      ])
+      expect(CBOR.toCBORHex(value, CBOR.CANONICAL_OPTIONS)).toBe(
+        `a2581c${"11".repeat(28)}a14003581c${"22".repeat(28)}a241aa0141bb02`
+      )
+    })
+
+    it("preserves default insertion order and explicitly captured CBOR formats", () => {
+      const hex = "a2616202616101"
+      const decoded = CBOR.fromCBORHexWithFormat(hex)
+      expect(CBOR.toCBORHex(decoded.value)).toBe(hex)
+      expect(CBOR.toCBORHexWithFormat(decoded.value, decoded.format)).toBe(hex)
+    })
+
     it("should produce deterministic CBOR encoding", () => {
       const testData = [42n, "deadbeef", [1n, 2n], new Map([[1n, "cafe"]]), new Uint8Array([0x42, 0xca, 0xfe])]
 
