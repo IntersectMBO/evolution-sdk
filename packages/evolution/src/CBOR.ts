@@ -1388,7 +1388,16 @@ const encodeMapEntriesSync = (pairs: Array<[CBOR, CBOR]>, options: CodecOptions,
       encodedKey: internalEncodeSync(key, options),
       encodedValue: internalEncodeSync(val, options)
     }))
-    encodedPairs.sort((a, b) => a.encodedKey.length - b.encodedKey.length)
+    encodedPairs.sort((a, b) => {
+      const lengthDifference = a.encodedKey.length - b.encodedKey.length
+      if (lengthDifference !== 0) return lengthDifference
+      // Equal-length keys still need bytewise ordering, e.g. token policy IDs.
+      for (let i = 0; i < a.encodedKey.length; i++) {
+        const byteDifference = a.encodedKey[i] - b.encodedKey[i]
+        if (byteDifference !== 0) return byteDifference
+      }
+      return 0
+    })
   } else {
     encodedPairs = new Array(length)
     for (let i = 0; i < length; i++) {
