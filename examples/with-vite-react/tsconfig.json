@@ -13,11 +13,12 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
 
     /* Linting */
     "strict": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src", "server", "vite.config.ts"]
 }

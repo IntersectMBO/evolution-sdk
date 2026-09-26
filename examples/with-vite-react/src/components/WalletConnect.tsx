@@ -2,10 +2,12 @@ import { useCardano } from "@cardano-foundation/cardano-connect-with-wallet"
 import { NetworkType } from "@cardano-foundation/cardano-connect-with-wallet-core"
 import { useState } from "react"
 
+import { isMainnet } from "../config"
+
 export default function WalletConnect() {
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  const network = import.meta.env.MODE === "development" ? NetworkType.TESTNET : NetworkType.MAINNET
+  const network = isMainnet ? NetworkType.MAINNET : NetworkType.TESTNET
 
   const { accountBalance, connect, disconnect, installedExtensions, isConnected, stakeAddress } = useCardano({
     limitNetwork: network
