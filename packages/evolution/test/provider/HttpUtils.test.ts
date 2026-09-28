@@ -58,13 +58,12 @@ describe("HttpUtils.get", () => {
     expect(responseError.message).toBe("non 2xx status code : not found")
   })
 
-  it("fails with HttpResponseError when a 2xx body is not JSON", async () => {
+  it("fails with a ParseError when a 2xx body is not JSON", async () => {
     stubFetch(new Response("<html>maintenance</html>", { status: 200 }))
 
     const error = await Effect.runPromise(Effect.flip(HttpUtils.get("https://example.test/point", PointSchema)))
 
-    expect(error).toBeInstanceOf(HttpUtils.HttpResponseError)
-    expect((error as HttpUtils.HttpResponseError).message).toBe("failed to parse response as JSON")
+    expect(error._tag).toBe("ParseError")
   })
 
   it("aborts the in-flight request when the effect is interrupted", async () => {

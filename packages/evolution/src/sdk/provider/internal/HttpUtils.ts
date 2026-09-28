@@ -13,7 +13,8 @@ export class HttpRequestError extends Data.TaggedError("HttpRequestError")<{
 
 /**
  * Raised when a response came back but is unusable: a non-2xx status code, or a
- * body that could not be read or parsed
+ * body that could not be read. A body that is not the expected JSON fails decoding
+ * with a ParseError instead
  */
 export class HttpResponseError extends Data.TaggedError("HttpResponseError")<{
   readonly method: string
@@ -84,25 +85,6 @@ const numberAsText = (_key: string, value: unknown, context?: { readonly source?
  */
 const Json = Schema.parseJson({ reviver: numberAsText })
 
-const parseJson = (
-  method: string,
-  url: string,
-  status: number,
-  text: string
-): Effect.Effect<unknown, HttpResponseError> =>
-  Schema.decodeUnknown(Json)(text).pipe(
-    Effect.mapError(
-      (cause) =>
-        new HttpResponseError({
-          method,
-          url,
-          status,
-          message: "failed to parse response as JSON",
-          cause
-        })
-    )
-  )
-
 /**
  * Set caller headers over a default content type. Header names are case-insensitive,
  * so a caller's `content-type` replaces the default instead of being joined to it
@@ -120,10 +102,8 @@ const requestJson = <A, I, R>(
   init: RequestInit
 ): Effect.Effect<A, HttpError | ParseError, R> =>
   sendRequest(method, url, init).pipe(
-    Effect.flatMap((response) =>
-      readOkBody(method, url, response).pipe(Effect.flatMap((text) => parseJson(method, url, response.status, text)))
-    ),
-    Effect.flatMap(Schema.decodeUnknown(schema))
+    Effect.flatMap((response) => readOkBody(method, url, response)),
+    Effect.flatMap(Schema.decodeUnknown(Schema.compose(Json, schema)))
   )
 
 /**
