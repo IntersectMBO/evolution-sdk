@@ -83,7 +83,8 @@ export const AssetSchema = Schema.Struct({
   policy_id: Schema.String,
   asset_name: Schema.NullOr(Schema.String),
   fingerprint: Schema.String,
-  decimals: Schema.BigInt,
+  // /address_info falls back to 0; /credential_utxos and /utxo_info pass null through
+  decimals: Schema.NullOr(Schema.BigInt),
   quantity: Schema.BigInt
 })
 

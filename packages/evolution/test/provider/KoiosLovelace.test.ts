@@ -290,6 +290,23 @@ describe("Koios integers past 2^53", () => {
     expect(utxo!.assets.lovelace).toBe(45000000000000001n)
   })
 
+  it("decodes an asset whose decimals Koios sends as null", async () => {
+    // utxo_info passes asset_info_cache.decimals through without a fallback
+    const [expected] = parsed("utxo_info")
+    const policyId = "c13ddf298a5d25aff2933695987912b4f1748bdf0df8e4b5d85f2360"
+    const assetName = "50524550524f445f4f5241434c45"
+    const asset = `{"decimals": null, "quantity": "1", "policy_id": "${policyId}", "asset_name": "${assetName}", "fingerprint": "asset1"}`
+    stubKoios({ utxo_info: fixture("utxo_info", "string").replace('"asset_list": []', `"asset_list": [${asset}]`) })
+    const input = new TransactionInput.TransactionInput({
+      transactionId: TransactionHash.fromHex(expected.tx_hash),
+      index: BigInt(expected.tx_index)
+    })
+
+    const [utxo] = await Effect.runPromise(KoiosEffect.getUtxosByOutRef(BASE_URL)([input]))
+
+    expect(CoreAssets.getByUnit(utxo!.assets, `${policyId}${assetName}`)).toBe(1n)
+  })
+
   it("decodes a bare UTxO value by credential exactly", async () => {
     stubKoios({ credential_utxos: withBare(fixture("utxo_info", "numeric"), "value", "45000000000000001") })
     const [expected] = parsed("utxo_info")
