@@ -20,32 +20,34 @@ import { ProviderError } from "../Provider.js"
  * Blockfrost protocol parameters response schema
  */
 export const BlockfrostProtocolParameters = Schema.Struct({
-  min_fee_a: Schema.Number,
-  min_fee_b: Schema.Number,
-  pool_deposit: Schema.String,
-  key_deposit: Schema.String,
-  min_utxo: Schema.optional(Schema.String),
-  max_tx_size: Schema.Number,
-  max_val_size: Schema.optional(Schema.String),
-  utxo_cost_per_word: Schema.optional(Schema.String),
-  cost_models: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-  cost_models_raw: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.Array(Schema.Number) })
+  min_fee_a: Schema.BigInt,
+  min_fee_b: Schema.BigInt,
+  pool_deposit: Schema.BigInt,
+  key_deposit: Schema.BigInt,
+  min_utxo: Schema.optional(Schema.BigInt),
+  max_tx_size: Schema.BigInt,
+  max_val_size: Schema.optional(Schema.BigInt),
+  utxo_cost_per_word: Schema.optional(Schema.BigInt),
+  cost_models: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.Record({ key: Schema.String, value: Schema.BigInt }) })
   ),
-  price_mem: Schema.optional(Schema.Number),
-  price_step: Schema.optional(Schema.Number),
-  max_tx_ex_mem: Schema.optional(Schema.String),
-  max_tx_ex_steps: Schema.optional(Schema.String),
-  max_block_ex_mem: Schema.optional(Schema.String),
-  max_block_ex_steps: Schema.optional(Schema.String),
-  max_block_size: Schema.Number,
-  collateral_percent: Schema.optional(Schema.Number),
-  max_collateral_inputs: Schema.optional(Schema.Number),
-  coins_per_utxo_size: Schema.optional(Schema.String),
-  min_fee_ref_script_cost_per_byte: Schema.optional(Schema.Number),
+  cost_models_raw: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.Array(Schema.BigInt) })
+  ),
+  price_mem: Schema.optional(Schema.NumberFromString),
+  price_step: Schema.optional(Schema.NumberFromString),
+  max_tx_ex_mem: Schema.optional(Schema.BigInt),
+  max_tx_ex_steps: Schema.optional(Schema.BigInt),
+  max_block_ex_mem: Schema.optional(Schema.BigInt),
+  max_block_ex_steps: Schema.optional(Schema.BigInt),
+  max_block_size: Schema.BigInt,
+  collateral_percent: Schema.optional(Schema.BigInt),
+  max_collateral_inputs: Schema.optional(Schema.BigInt),
+  coins_per_utxo_size: Schema.optional(Schema.BigInt),
+  min_fee_ref_script_cost_per_byte: Schema.optional(Schema.NumberFromString),
   // Conway era governance parameters
-  drep_deposit: Schema.optional(Schema.String),
-  gov_action_deposit: Schema.optional(Schema.String)
+  drep_deposit: Schema.optional(Schema.BigInt),
+  gov_action_deposit: Schema.optional(Schema.BigInt)
 })
 
 export type BlockfrostProtocolParameters = Schema.Schema.Type<typeof BlockfrostProtocolParameters>
@@ -55,7 +57,7 @@ export type BlockfrostProtocolParameters = Schema.Schema.Type<typeof BlockfrostP
  */
 export const BlockfrostAmount = Schema.Struct({
   unit: Schema.String,
-  quantity: Schema.String
+  quantity: Schema.BigInt
 })
 
 export type BlockfrostAmount = Schema.Schema.Type<typeof BlockfrostAmount>
@@ -66,8 +68,8 @@ export type BlockfrostAmount = Schema.Schema.Type<typeof BlockfrostAmount>
 export const BlockfrostUTxO = Schema.Struct({
   address: Schema.String,
   tx_hash: Schema.String,
-  tx_index: Schema.Number,
-  output_index: Schema.Number,
+  tx_index: Schema.BigInt,
+  output_index: Schema.BigInt,
   amount: Schema.Array(BlockfrostAmount),
   block: Schema.String,
   data_hash: Schema.NullOr(Schema.String),
@@ -84,14 +86,14 @@ export type BlockfrostUTxO = Schema.Schema.Type<typeof BlockfrostUTxO>
 export const BlockfrostDelegation = Schema.Struct({
   stake_address: Schema.String,
   active: Schema.Boolean,
-  active_epoch: Schema.NullOr(Schema.Number),
+  active_epoch: Schema.NullOr(Schema.BigInt),
   pool_id: Schema.NullOr(Schema.String),
-  controlled_amount: Schema.String,
-  rewards_sum: Schema.String,
-  withdrawals_sum: Schema.String,
-  reserves_sum: Schema.String,
-  treasury_sum: Schema.String,
-  withdrawable_amount: Schema.String,
+  controlled_amount: Schema.BigInt,
+  rewards_sum: Schema.BigInt,
+  withdrawals_sum: Schema.BigInt,
+  reserves_sum: Schema.BigInt,
+  treasury_sum: Schema.BigInt,
+  withdrawable_amount: Schema.BigInt,
   drep_id: Schema.NullOr(Schema.String)
 })
 
@@ -102,7 +104,7 @@ export type BlockfrostDelegation = Schema.Schema.Type<typeof BlockfrostDelegatio
  */
 export const BlockfrostAssetAddress = Schema.Struct({
   address: Schema.String,
-  quantity: Schema.String
+  quantity: Schema.BigInt
 })
 
 export type BlockfrostAssetAddress = Schema.Schema.Type<typeof BlockfrostAssetAddress>
@@ -114,7 +116,7 @@ export type BlockfrostAssetAddress = Schema.Schema.Type<typeof BlockfrostAssetAd
 export const BlockfrostTxUtxoOutput = Schema.Struct({
   address: Schema.String,
   amount: Schema.Array(BlockfrostAmount),
-  output_index: Schema.Number,
+  output_index: Schema.BigInt,
   data_hash: Schema.NullOr(Schema.String),
   inline_datum: Schema.NullOr(Schema.String),
   reference_script_hash: Schema.NullOr(Schema.String),
@@ -167,8 +169,8 @@ export const JsonwspOgmiosEvaluationResponse = Schema.Struct({
       Schema.Record({
         key: Schema.String, // "spend:0", "mint:1", etc.
         value: Schema.Struct({
-          memory: Schema.Number,
-          steps: Schema.Number
+          memory: Schema.BigInt,
+          steps: Schema.BigInt
         })
       })
     ),
@@ -195,30 +197,30 @@ const costModelFromBlockfrost = (
   lang: "PlutusV1" | "PlutusV2" | "PlutusV3"
 ): Record<string, number> => {
   const raw = params.cost_models_raw?.[lang]
-  if (raw) return Object.fromEntries(raw.map((v, i) => [i.toString(), v]))
-  return (params.cost_models?.[lang] as Record<string, number>) ?? {}
+  if (raw) return Object.fromEntries(raw.map((v, i) => [i.toString(), Number(v)]))
+  return Object.fromEntries(Object.entries(params.cost_models?.[lang] ?? {}).map(([k, v]) => [k, Number(v)]))
 }
 
 export const transformProtocolParameters = (
   blockfrostParams: BlockfrostProtocolParameters
 ): Provider.ProtocolParameters => {
   return {
-    minFeeA: blockfrostParams.min_fee_a,
-    minFeeB: blockfrostParams.min_fee_b,
-    poolDeposit: BigInt(blockfrostParams.pool_deposit),
-    keyDeposit: BigInt(blockfrostParams.key_deposit),
-    maxTxSize: blockfrostParams.max_tx_size,
-    maxValSize: blockfrostParams.max_val_size ? Number(blockfrostParams.max_val_size) : 0,
+    minFeeA: Number(blockfrostParams.min_fee_a),
+    minFeeB: Number(blockfrostParams.min_fee_b),
+    poolDeposit: blockfrostParams.pool_deposit,
+    keyDeposit: blockfrostParams.key_deposit,
+    maxTxSize: Number(blockfrostParams.max_tx_size),
+    maxValSize: Number(blockfrostParams.max_val_size ?? 0n),
     priceMem: blockfrostParams.price_mem || 0,
     priceStep: blockfrostParams.price_step || 0,
-    maxTxExMem: blockfrostParams.max_tx_ex_mem ? BigInt(blockfrostParams.max_tx_ex_mem) : 0n,
-    maxTxExSteps: blockfrostParams.max_tx_ex_steps ? BigInt(blockfrostParams.max_tx_ex_steps) : 0n,
-    coinsPerUtxoByte: blockfrostParams.coins_per_utxo_size ? BigInt(blockfrostParams.coins_per_utxo_size) : 0n,
-    collateralPercentage: blockfrostParams.collateral_percent || 0,
-    maxCollateralInputs: blockfrostParams.max_collateral_inputs || 0,
+    maxTxExMem: blockfrostParams.max_tx_ex_mem ?? 0n,
+    maxTxExSteps: blockfrostParams.max_tx_ex_steps ?? 0n,
+    coinsPerUtxoByte: blockfrostParams.coins_per_utxo_size ?? 0n,
+    collateralPercentage: Number(blockfrostParams.collateral_percent ?? 0n),
+    maxCollateralInputs: Number(blockfrostParams.max_collateral_inputs ?? 0n),
     minFeeRefScriptCostPerByte: blockfrostParams.min_fee_ref_script_cost_per_byte || 0,
-    drepDeposit: blockfrostParams.drep_deposit ? BigInt(blockfrostParams.drep_deposit) : 0n,
-    govActionDeposit: blockfrostParams.gov_action_deposit ? BigInt(blockfrostParams.gov_action_deposit) : 0n,
+    drepDeposit: blockfrostParams.drep_deposit ?? 0n,
+    govActionDeposit: blockfrostParams.gov_action_deposit ?? 0n,
     costModels: {
       PlutusV1: costModelFromBlockfrost(blockfrostParams, "PlutusV1"),
       PlutusV2: costModelFromBlockfrost(blockfrostParams, "PlutusV2"),
@@ -236,9 +238,9 @@ export const transformAmounts = (amounts: ReadonlyArray<BlockfrostAmount>): Core
 
   for (const amount of amounts) {
     if (amount.unit === "lovelace") {
-      lovelace = BigInt(amount.quantity)
+      lovelace = amount.quantity
     } else {
-      multiAssetEntries.push([amount.unit, BigInt(amount.quantity)])
+      multiAssetEntries.push([amount.unit, amount.quantity])
     }
   }
 
@@ -261,11 +263,11 @@ export const transformAmounts = (amounts: ReadonlyArray<BlockfrostAmount>): Core
  */
 export const transformDelegation = (blockfrostDelegation: BlockfrostDelegation): Provider.Delegation => {
   if (!blockfrostDelegation.pool_id) {
-    return { poolId: null, rewards: BigInt(blockfrostDelegation.withdrawable_amount) }
+    return { poolId: null, rewards: blockfrostDelegation.withdrawable_amount }
   }
 
   const poolId = Schema.decodeSync(PoolKeyHash.FromBech32)(blockfrostDelegation.pool_id)
-  return { poolId, rewards: BigInt(blockfrostDelegation.withdrawable_amount) }
+  return { poolId, rewards: blockfrostDelegation.withdrawable_amount }
 }
 
 /**
@@ -331,8 +333,8 @@ export const transformJsonwspOgmiosEvaluationResult = (
 
     result.push({
       ex_units: new Redeemer.ExUnits({
-        mem: BigInt(budget.memory),
-        steps: BigInt(budget.steps)
+        mem: budget.memory,
+        steps: budget.steps
       }),
       redeemer_index: index,
       redeemer_tag: tag as any
