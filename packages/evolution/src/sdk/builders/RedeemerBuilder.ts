@@ -101,26 +101,46 @@ export const isBatchBuilder = (arg: RedeemerArg): arg is BatchRedeemerBuilder =>
 /** @since 2.0.0 @category guards */
 export const isStaticData = (arg: RedeemerArg): arg is Data.Data => !isSelfFn(arg) && !isBatchBuilder(arg)
 
-/** @internal */
+/**
+ * A redeemer whose data is known when the transaction is built.
+ *
+ * @since 2.0.0
+ * @category types
+ */
 export interface StaticRedeemer {
   readonly _tag: "static"
   readonly data: Data.Data
 }
 
-/** @internal */
+/**
+ * A redeemer built per script input once its final index is known.
+ *
+ * @since 2.0.0
+ * @category types
+ */
 export interface SelfRedeemer {
   readonly _tag: "self"
   readonly fn: SelfRedeemerFn
 }
 
-/** @internal */
+/**
+ * A redeemer built once from several script inputs once their final indexes are known.
+ *
+ * @since 2.0.0
+ * @category types
+ */
 export interface BatchRedeemer {
   readonly _tag: "batch"
   readonly fn: BatchRedeemerFn
   readonly inputs: ReadonlyArray<UTxO.UTxO>
 }
 
-/** @internal */
+/**
+ * A redeemer whose data may depend on the final input indexes, resolved after coin selection.
+ *
+ * @since 2.0.0
+ * @category types
+ */
 export type DeferredRedeemer = StaticRedeemer | SelfRedeemer | BatchRedeemer
 
 /** @internal */

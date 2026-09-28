@@ -43,6 +43,11 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*", "docgen.json"],
       "outputs": ["docs/**"]
     },
+    "check:dts": {
+      "dependsOn": ["build"],
+      "inputs": ["$TURBO_DEFAULT$", "tsconfig.dts.json"],
+      "outputs": []
+    },
     "verify": {
       "dependsOn": ["^verify"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
