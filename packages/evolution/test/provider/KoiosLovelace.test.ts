@@ -290,6 +290,33 @@ describe("Koios integers past 2^53", () => {
     expect(utxo!.assets.lovelace).toBe(45000000000000001n)
   })
 
+  it("decodes a bare UTxO value by credential exactly", async () => {
+    stubKoios({ credential_utxos: withBare(fixture("utxo_info", "numeric"), "value", "45000000000000001") })
+    const [expected] = parsed("utxo_info")
+
+    const [utxo] = await Effect.runPromise(KoiosEffect.getUtxos(BASE_URL)(ScriptHash.fromHex(expected.payment_cred)))
+
+    expect(utxo!.assets.lovelace).toBe(45000000000000001n)
+  })
+
+  it("decodes a bare asset quantity exactly in the unit lookups", async () => {
+    const [info] = parsed("address_info")
+    const [asset] = info.utxo_set[1].asset_list
+    const unit = `${asset.policy_id}${asset.asset_name}`
+    stubKoios({
+      asset_addresses: withBare(fixture("asset_addresses", "numeric"), "quantity", "18446744073709551615"),
+      address_info: withQuantity("18446744073709551615")
+    })
+
+    const [withUnit] = await Effect.runPromise(
+      KoiosEffect.getUtxosWithUnit(BASE_URL)(CoreAddress.fromBech32(info.address), unit)
+    )
+    const byUnit = await Effect.runPromise(KoiosEffect.getUtxoByUnit(BASE_URL)(unit))
+
+    expect(CoreAssets.getByUnit(withUnit!.assets, unit)).toBe(18446744073709551615n)
+    expect(CoreAssets.getByUnit(byUnit.assets, unit)).toBe(18446744073709551615n)
+  })
+
   it("decodes bare available rewards exactly", async () => {
     stubKoios({
       account_info: withBare(fixture("account_info", "numeric"), "rewards_available", "45000000000000001")

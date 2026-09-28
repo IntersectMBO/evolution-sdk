@@ -92,7 +92,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const kupo = (quantity = "1") => ({
+// Every Kupo path reads this token quantity, a bare JSON number past 2^53
+const QUANTITY = 18446744073709551615n
+
+const kupo = (quantity = QUANTITY.toString()) => ({
   "/matches/": matches(quantity),
   [`/datums/${DATUM_HASH}`]: `{"datum":"${DATUM}"}`
 })
@@ -134,7 +137,7 @@ describe("Kupmios read paths", () => {
     expect(TransactionHash.toHex(utxo!.transactionId)).toBe(TX_HASH)
     expect(utxo!.index).toBe(0n)
     expect(utxo!.assets.lovelace).toBe(2000000n)
-    expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(1n)
+    expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(QUANTITY)
     expect(utxo!.datumOption?._tag).toBe("InlineDatum")
   })
 
@@ -148,6 +151,7 @@ describe("Kupmios read paths", () => {
     )
 
     expect(utxo!.assets.lovelace).toBe(2000000n)
+    expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(QUANTITY)
   })
 
   it("getUtxosWithUnit", async () => {
@@ -157,7 +161,7 @@ describe("Kupmios read paths", () => {
       KupmiosEffects.getUtxosWithUnitEffect(KUPO_URL)(CoreAddress.fromBech32(ADDRESS), UNIT)
     )
 
-    expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(1n)
+    expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(QUANTITY)
   })
 
   it("getUtxoByUnit", async () => {
@@ -166,6 +170,7 @@ describe("Kupmios read paths", () => {
     const utxo = await Effect.runPromise(KupmiosEffects.getUtxoByUnitEffect(KUPO_URL)(UNIT))
 
     expect(utxo.assets.lovelace).toBe(2000000n)
+    expect(CoreAssets.getByUnit(utxo.assets, UNIT)).toBe(QUANTITY)
   })
 
   it("getUtxosByOutRef", async () => {
@@ -175,6 +180,7 @@ describe("Kupmios read paths", () => {
     const [utxo] = await Effect.runPromise(KupmiosEffects.getUtxosByOutRefEffect(KUPO_URL)([input]))
 
     expect(utxo!.assets.lovelace).toBe(2000000n)
+    expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(QUANTITY)
   })
 
   it("awaitTx", async () => {
