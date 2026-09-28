@@ -1,0 +1,17 @@
+[
+  {
+    "stake_address": "stake_test1upxue2rk4tp0e3tp7l0nmfmj6ar7y9yvngzu0vn7fxs9ags2apttt",
+    "status": "registered",
+    "delegated_pool": "pool1mp96jpc2dtaruz0cazmljh03dev0969c4rq3wr6hnc4rjdxn8aw",
+    "delegated_drep": null,
+    "total_balance": "587402372462",
+    "utxo": "534420424006",
+    "rewards": "147911340884",
+    "withdrawals": "94929392428",
+    "rewards_available": "52981948456",
+    "deposit": "2000000",
+    "reserves": "0",
+    "treasury": "0",
+    "proposal_refund": "0"
+  }
+]

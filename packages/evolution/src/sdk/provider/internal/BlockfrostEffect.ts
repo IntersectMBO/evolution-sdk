@@ -172,7 +172,7 @@ const toBlockfrostAdditionalUtxoSet = (additionalUTxOs: Array<CoreUTxO.UTxO>) =>
 const BlockfrostScriptInfo = Schema.Struct({
   script_hash: Schema.String,
   type: Schema.String,
-  serialised_size: Schema.optional(Schema.Number)
+  serialised_size: Schema.optional(Schema.BigInt)
 })
 
 /**
@@ -335,7 +335,7 @@ export const getUtxos =
           const assets = Blockfrost.transformAmounts(utxo.amount)
           return new CoreUTxO.UTxO({
             transactionId,
-            index: BigInt(utxo.output_index),
+            index: utxo.output_index,
             address,
             assets,
             scriptRef,
@@ -431,7 +431,7 @@ export const getUtxosWithUnit =
 
           return new CoreUTxO.UTxO({
             transactionId,
-            index: BigInt(utxo.output_index),
+            index: utxo.output_index,
             address,
             assets,
             scriptRef,
@@ -527,7 +527,7 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
 
               return new CoreUTxO.UTxO({
                 transactionId,
-                index: BigInt(utxo.output_index),
+                index: utxo.output_index,
                 address: coreAddress,
                 assets,
                 scriptRef,
@@ -561,7 +561,7 @@ export const getUtxosByOutRef =
         )
       ).pipe(
         Effect.flatMap((txUtxos) => {
-          const matchingOutputs = txUtxos.outputs.filter((output) => output.output_index === Number(input.index))
+          const matchingOutputs = txUtxos.outputs.filter((output) => output.output_index === input.index)
 
           // For each output, fetch script and datum if needed
           return Effect.forEach(
@@ -593,7 +593,7 @@ export const getUtxosByOutRef =
 
                   return new CoreUTxO.UTxO({
                     transactionId,
-                    index: BigInt(output.output_index),
+                    index: output.output_index,
                     address,
                     assets,
                     scriptRef,

@@ -137,11 +137,11 @@ export const getUtxosByOutRef =
   (baseUrl: string, apiKey: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
     Effect.gen(function* () {
       // Group by tx_hash to minimize API calls
-      const byTxHash = new Map<string, Array<number>>()
+      const byTxHash = new Map<string, Array<bigint>>()
       for (const input of inputs) {
         const hash = TransactionHash.toHex(input.transactionId)
         const indices = byTxHash.get(hash) ?? []
-        indices.push(Number(input.index))
+        indices.push(input.index)
         byTxHash.set(hash, indices)
       }
 

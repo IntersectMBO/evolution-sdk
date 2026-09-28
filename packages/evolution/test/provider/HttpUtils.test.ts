@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as HttpUtils from "../../src/sdk/provider/internal/HttpUtils.js"
 
-const PointSchema = Schema.Struct({ slot: Schema.Number })
+const PointSchema = Schema.Struct({ slot: Schema.BigInt })
 
 const stubFetch = (response: Response | Promise<Response> | Error) => {
   const fetchMock = vi.fn(() => (response instanceof Error ? Promise.reject(response) : Promise.resolve(response)))
@@ -33,7 +33,7 @@ describe("HttpUtils.get", () => {
 
     const result = await Effect.runPromise(HttpUtils.get("https://example.test/point", PointSchema))
 
-    expect(result).toEqual({ slot: 42 })
+    expect(result).toEqual({ slot: 42n })
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://example.test/point")
     expect(lastInit(fetchMock).method).toBe("GET")
   })
@@ -58,13 +58,12 @@ describe("HttpUtils.get", () => {
     expect(responseError.message).toBe("non 2xx status code : not found")
   })
 
-  it("fails with HttpResponseError when a 2xx body is not JSON", async () => {
+  it("fails with a ParseError when a 2xx body is not JSON", async () => {
     stubFetch(new Response("<html>maintenance</html>", { status: 200 }))
 
     const error = await Effect.runPromise(Effect.flip(HttpUtils.get("https://example.test/point", PointSchema)))
 
-    expect(error).toBeInstanceOf(HttpUtils.HttpResponseError)
-    expect((error as HttpUtils.HttpResponseError).message).toBe("failed to parse response as JSON")
+    expect(error._tag).toBe("ParseError")
   })
 
   it("aborts the in-flight request when the effect is interrupted", async () => {
@@ -95,6 +94,36 @@ describe("HttpUtils.get", () => {
   })
 })
 
+describe("HttpUtils JSON numbers", () => {
+  const Numbers = Schema.Struct({
+    small: Schema.BigInt,
+    uint64: Schema.BigInt,
+    beyond: Schema.BigInt,
+    decimal: Schema.NumberFromString,
+    wholeDecimal: Schema.NumberFromString,
+    nested: Schema.Array(Schema.BigInt)
+  })
+
+  it("hands every number to the schema as the exact text the server wrote", async () => {
+    stubFetch(
+      new Response(
+        '{"small":3,"uint64":18446744073709551615,"beyond":18446744073709551616,"decimal":0.0577,"wholeDecimal":1,"nested":[9007199254740993]}'
+      )
+    )
+
+    const result = await Effect.runPromise(HttpUtils.get("https://example.test/numbers", Numbers))
+
+    expect(result).toEqual({
+      small: 3n,
+      uint64: 18446744073709551615n,
+      beyond: 18446744073709551616n,
+      decimal: 0.0577,
+      wholeDecimal: 1,
+      nested: [9007199254740993n]
+    })
+  })
+})
+
 describe("HttpUtils.postJson", () => {
   it("sends a JSON body with the JSON content type", async () => {
     const fetchMock = stubFetch(jsonResponse({ slot: 7 }))
@@ -103,7 +132,7 @@ describe("HttpUtils.postJson", () => {
       HttpUtils.postJson("https://example.test/query", { _addresses: ["addr"] }, PointSchema)
     )
 
-    expect(result).toEqual({ slot: 7 })
+    expect(result).toEqual({ slot: 7n })
     expect(lastInit(fetchMock).method).toBe("POST")
     expect(lastInit(fetchMock).body).toBe(JSON.stringify({ _addresses: ["addr"] }))
     expect(lastHeaders(fetchMock).get("Content-Type")).toBe("application/json")
