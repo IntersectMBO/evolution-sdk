@@ -1,7 +1,21 @@
 import { useCardano } from "@cardano-foundation/cardano-connect-with-wallet"
 import { NetworkType } from "@cardano-foundation/cardano-connect-with-wallet-core"
+import { Address, Client, Transaction, TransactionWitnessSet } from "@evolution-sdk/evolution"
 import { useState } from "react"
-import { Address, Assets, Client, mainnet, preprod, preview, TransactionHash } from "@evolution-sdk/evolution"
+
+import { chain, isMainnet, network } from "../config"
+
+// Calls the payment API in server/payments.ts and returns its JSON.
+async function post<T>(path: string, body: object): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status}).`)
+  return data as T
+}
 
 export default function TransactionBuilder() {
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -10,12 +24,8 @@ export default function TransactionBuilder() {
   const [recipientAddress, setRecipientAddress] = useState("")
   const [amount, setAmount] = useState("")
 
-  // Determine network from environment variable
-  const networkEnv = import.meta.env.VITE_NETWORK || "preprod"
-  const network = networkEnv === "mainnet" ? NetworkType.MAINNET : NetworkType.TESTNET
-
-  const { isConnected, enabledWallet } = useCardano({
-    limitNetwork: network
+  const { enabledWallet, isConnected } = useCardano({
+    limitNetwork: isMainnet ? NetworkType.MAINNET : NetworkType.TESTNET
   })
 
   const handleBuildTransaction = async () => {
@@ -46,25 +56,12 @@ export default function TransactionBuilder() {
         throw new Error("Failed to enable wallet")
       }
 
-      // Determine chain and provider
-      const blockfrostUrls = {
-        preprod: "https://cardano-preprod.blockfrost.io/api/v0",
-        preview: "https://cardano-preview.blockfrost.io/api/v0",
-        mainnet: "https://cardano-mainnet.blockfrost.io/api/v0"
-      } as const
+      // The browser client has no provider: it reads the wallet and signs.
+      const client = Client.make(chain).withCip30(api)
 
-      const chainPresets = { preprod, preview, mainnet }
-      const chain = chainPresets[networkEnv as keyof typeof chainPresets] ?? preprod
-
-      const txClient = Client.make(chain)
-        .withBlockfrost({
-          baseUrl: blockfrostUrls[networkEnv as keyof typeof blockfrostUrls] ?? blockfrostUrls.preprod,
-          projectId: import.meta.env.VITE_BLOCKFROST_PROJECT_ID || ""
-        })
-        .withCip30(api)
-
-      // Build transaction (convert ADA to lovelace: 1 ADA = 1,000,000 lovelace)
-      const lovelaceAmount = BigInt(Math.floor(amountLovelace * 1_000_000))
+      // Convert ADA to lovelace (1 ADA = 1,000,000 lovelace). Round, don't floor:
+      // 1.005 * 1e6 is 1004999.999... in floating point.
+      const lovelaceAmount = BigInt(Math.round(amountLovelace * 1_000_000))
 
       // Parse address - support both Bech32 (addr1...) and hex formats
       let parsedAddress: Address.Address
@@ -78,22 +75,20 @@ export default function TransactionBuilder() {
         }
       }
 
-      // Create assets
-      const assetsToSend = Assets.fromLovelace(lovelaceAmount)
+      // The server builds the transaction with the Blockfrost key.
+      const { txCbor } = await post<{ txCbor: string }>("/api/build-payment", {
+        from: Address.toBech32(await client.address()),
+        to: Address.toBech32(parsedAddress),
+        lovelace: lovelaceAmount.toString()
+      })
 
-      // Build, sign, and submit transaction
-      const tx = await txClient
-        .newTx()
-        .payToAddress({
-          address: parsedAddress,
-          assets: assetsToSend
-        })
-        .build()
+      // The wallet asks the user to approve and returns its signatures, which
+      // are added to the transaction before the server submits it.
+      const witnessSet = await client.signTx(txCbor)
+      const signedTxCbor = Transaction.addVKeyWitnessesHex(txCbor, TransactionWitnessSet.toCBORHex(witnessSet))
+      const { txHash: hash } = await post<{ txHash: string }>("/api/submit-tx", { signedTxCbor })
 
-      const signed = await tx.sign()
-      const hash = await signed.submit()
-
-      setTxHash(TransactionHash.toHex(hash))
+      setTxHash(hash)
       setRecipientAddress("")
       setAmount("")
     } catch (err) {
@@ -196,7 +191,7 @@ export default function TransactionBuilder() {
             <div className="px-3 py-2 font-mono text-xs text-zinc-300 break-all">{txHash}</div>
           </div>
           <a
-            href={`https://${networkEnv !== "mainnet" ? `${networkEnv}.` : ""}cardanoscan.io/transaction/${txHash}`}
+            href={`https://${isMainnet ? "" : `${network}.`}cardanoscan.io/transaction/${txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full text-center py-2 text-xs text-orange-400 hover:text-orange-300 transition-colors"
