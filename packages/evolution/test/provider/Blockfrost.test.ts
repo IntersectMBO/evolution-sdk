@@ -247,7 +247,7 @@ describe("Blockfrost UTxO queries", () => {
 
   it("getUtxosByOutRef picks the requested output", async () => {
     stubRoutes({
-      // /txs/{hash}/utxos, from the OpenAPI example
+      // /txs/{hash}/utxos, from the OpenAPI example plus an output_index past 2^53
       [`/txs/${TX_HASH}/utxos`]: `{
         "hash": "${TX_HASH}",
         "inputs": [{
@@ -284,6 +284,16 @@ describe("Blockfrost UTxO queries", () => {
             "collateral": false,
             "reference_script_hash": null,
             "consumed_by_tx": "66c29b56952f6085afac3b0632d781af78d020b080063bcfd6c54b8e2b8fed41"
+          },
+          {
+            "address": "${ADDRESS}",
+            "amount": [{ "unit": "lovelace", "quantity": "2" }],
+            "output_index": 9007199254740993,
+            "data_hash": null,
+            "inline_datum": null,
+            "collateral": false,
+            "reference_script_hash": null,
+            "consumed_by_tx": null
           }
         ]
       }`
