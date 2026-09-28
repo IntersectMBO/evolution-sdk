@@ -45,6 +45,9 @@ jobs:
       - name: 🏗 Build packages
         run: pnpm turbo run build
 
+      - name: 🔎 Type-check published declarations
+        run: pnpm turbo run check:dts
+
       - name: 🧪 Run tests
         run: pnpm turbo run test
 
