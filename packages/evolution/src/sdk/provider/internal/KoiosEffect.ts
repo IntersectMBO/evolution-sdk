@@ -258,7 +258,7 @@ export const awaitTx =
       const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
 
       const result = yield* pipe(
-        HttpUtils.postJson(url, body, Schema.Array(_Koios.TxInfoSchema), bearerToken),
+        HttpUtils.postJson(url, body, Schema.Array(_Koios.TxConfirmationSchema), bearerToken),
         Effect.repeat({
           schedule: Schedule.exponential(checkInterval),
           until: (result) => result.length > 0

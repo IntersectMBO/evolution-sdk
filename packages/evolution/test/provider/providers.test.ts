@@ -51,8 +51,8 @@ describe.skipIf(!process.env.KOIOS_ENABLED)("Koios", () => {
 
 // ── Koios preview: awaitTx with Haskell show string asset_list ────────────────
 // Opt-in via KOIOS_PREVIEW_ENABLED. The tx is confirmed on preview and Koios returns
-// a Haskell show string for the collateral output's asset_list. This test fails
-// without the InputOutputSchema fix.
+// a Haskell show string for the collateral output's asset_list. awaitTx decodes only
+// tx_hash, so that field must not affect it.
 describe.skipIf(!process.env.KOIOS_PREVIEW_ENABLED)("Koios (preview)", () => {
   it("awaitTx succeeds for tx with Haskell show string asset_list", { timeout: 200_000 }, async () => {
     const koios = new Koios(KOIOS_PREVIEW_URL)
