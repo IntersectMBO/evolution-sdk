@@ -1,5 +1,23 @@
 # @evolution-sdk/evolution
 
+## 0.5.15
+
+### Patch Changes
+
+- [#555](https://github.com/IntersectMBO/evolution-sdk/pull/555) [`e232196`](https://github.com/IntersectMBO/evolution-sdk/commit/e23219645cbdd3f2a3eeb08fffb811a7b0fbdfb7) Thanks [@yanggu0t](https://github.com/yanggu0t)! - Sort equal-length map keys bytewise in canonical CBOR encoding. Canonical mode and custom mode with `sortMapKeys: true` ordered map keys by encoded length only, so keys of the same length kept their insertion order. They now follow the length-first rule of RFC 8949 section 4.2.3, shorter keys first and equal lengths in bytewise order, which is the order the ledger and hardware wallets expect. The default encoding still keeps insertion order, and re-encoding with a captured format still reproduces the original bytes.
+
+- [#563](https://github.com/IntersectMBO/evolution-sdk/pull/563) [`96306a3`](https://github.com/IntersectMBO/evolution-sdk/commit/96306a3da64b893d1503ae78104cbc19bf64b7eb) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix the script data hash for transactions that use a PlutusV1 script together with a PlutusV2 or V3 script. The language views map put the PlutusV1 entry first, but the ledger sorts its keys shortest first. The V1 key is two bytes, while the V2 and V3 keys are one byte each. The node rejected such transactions before running any script. `CostModel.languageViewsEncoding` now encodes the map with canonical key order, and transactions with a single Plutus language keep the same hash.
+
+- [#558](https://github.com/IntersectMBO/evolution-sdk/pull/558) [`f0ac2d7`](https://github.com/IntersectMBO/evolution-sdk/commit/f0ac2d7a4a183c3db2585eba2f50a18698a01fff) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Read every integer in provider responses exactly, at any size. The HTTP helpers parsed response bodies with `JSON.parse`, which rounds any integer above 2^53, and the provider schemas mixed `number` and `bigint` for integer fields. The HTTP helpers now decode each body with one composed `Schema.parseJson` schema whose reviver hands every JSON number to the field schema as the text the server wrote. Every integer field in the Koios, Kupo, Ogmios, Blockfrost and Maestro response schemas decodes with `Schema.BigInt`, and decimal fields decode with `Schema.NumberFromString`.
+
+  - Koios lovelace fields decode whether Koios sends them as strings, as it does today, or as JSON numbers, as it will from v1.5 ([#539](https://github.com/IntersectMBO/evolution-sdk/issues/539)).
+  - Kupo token quantities above 2^53 are no longer rounded ([#454](https://github.com/IntersectMBO/evolution-sdk/issues/454)).
+  - `awaitTx` on Koios reads only the transaction hash from `/tx_info`.
+  - A response body that is not the expected JSON now fails with a `ParseError` instead of an `HttpResponseError`. Public provider methods still fail with `ProviderError` in both cases.
+  - This release keeps the public `Provider.ProtocolParameters` type as it was. Each provider converts the fields it declares as `number` at that boundary, and [#557](https://github.com/IntersectMBO/evolution-sdk/issues/557) tracks moving them to `bigint`.
+
+- [#560](https://github.com/IntersectMBO/evolution-sdk/pull/560) [`1134444`](https://github.com/IntersectMBO/evolution-sdk/commit/11344442281537af6eb15f0fb86f4fd8e03ad799) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Export the redeemer types that the public transaction builder state refers to. `DeferredRedeemerData` in `TransactionBuilder` referenced `DeferredRedeemer`, which the build stripped as internal, so consumers type-checking the published declarations with `skipLibCheck: false` got TS2305, and with `skipLibCheck: true` the field silently became `any`. `StaticRedeemer`, `SelfRedeemer`, `BatchRedeemer` and `DeferredRedeemer` are now public types in `RedeemerBuilder`. CI now type-checks the built declaration files before a release.
+
 ## 0.5.14
 
 ### Patch Changes
