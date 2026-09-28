@@ -53,10 +53,10 @@ jobs:
         uses: changesets/action@v2.1.2
         with:
           # This uses our custom publish script that builds before publishing
-          publish: pnpm changeset-publish
-          title: "ci(changesets): version packages"
-          commit: "ci(changesets): version packages"
-          createGithubReleases: true
+          publish-script: pnpm changeset-publish
+          pr-title: "ci(changesets): version packages"
+          commit-message: "ci(changesets): version packages"
+          create-github-releases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
