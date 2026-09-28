@@ -209,8 +209,8 @@ importers:
         specifier: ^4.1.7
         version: 4.3.3
       '@types/node':
-        specifier: ^25.7.0
-        version: 25.9.4
+        specifier: ^26.4.1
+        version: 26.4.1
       '@types/react':
         specifier: ^19.2.14
         version: 19.3.0
