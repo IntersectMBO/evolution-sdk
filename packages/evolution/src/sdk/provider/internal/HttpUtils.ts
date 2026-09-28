@@ -1,4 +1,4 @@
-import { Data, Effect, Schema } from "effect"
+import { Data, Effect, Either, Schema } from "effect"
 import type { ParseError } from "effect/ParseResult"
 
 /**
@@ -64,23 +64,44 @@ const readOkBody = (method: string, url: string, response: Response): Effect.Eff
     )
   )
 
+/**
+ * `JSON.parse` reviver that hands every number to the schema as the exact text the server
+ * wrote, so integer fields decode with `Schema.BigInt` at any size and decimal fields with
+ * `Schema.NumberFromString`. Where the runtime gives no source text, `String(value)` is still
+ * exact for safe integers and decimals; only an integer past 2^53 cannot be recovered
+ */
+const numberAsText = (_key: string, value: unknown, context?: { readonly source?: string }): unknown => {
+  if (typeof value !== "number") return value
+  if (context?.source !== undefined) return context.source
+  if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    throw new SyntaxError(`cannot read ${value} exactly on this runtime`)
+  }
+  return String(value)
+}
+
+/**
+ * JSON text to a value in which every number is its exact source text
+ */
+const Json = Schema.parseJson({ reviver: numberAsText })
+
 const parseJson = (
   method: string,
   url: string,
   status: number,
   text: string
 ): Effect.Effect<unknown, HttpResponseError> =>
-  Effect.try({
-    try: () => JSON.parse(text) as unknown,
-    catch: (cause) =>
-      new HttpResponseError({
-        method,
-        url,
-        status,
-        message: "failed to parse response as JSON",
-        cause
-      })
-  })
+  Schema.decodeUnknown(Json)(text).pipe(
+    Effect.mapError(
+      (cause) =>
+        new HttpResponseError({
+          method,
+          url,
+          status,
+          message: "failed to parse response as JSON",
+          cause
+        })
+    )
+  )
 
 /**
  * Set caller headers over a default content type. Header names are case-insensitive,
@@ -141,12 +162,6 @@ export const postUint8Array = <A, I>(
   }).pipe(
     Effect.flatMap((response) => readOkBody("POST", url, response)),
     // Try JSON first, fall back to plain text for endpoints that return unquoted strings (e.g. Dolos /tx/submit)
-    Effect.map((text): unknown => {
-      try {
-        return JSON.parse(text)
-      } catch {
-        return text
-      }
-    }),
+    Effect.map((text): unknown => Either.getOrElse(Schema.decodeUnknownEither(Json)(text), () => text)),
     Effect.flatMap(Schema.decodeUnknown(schema))
   )
