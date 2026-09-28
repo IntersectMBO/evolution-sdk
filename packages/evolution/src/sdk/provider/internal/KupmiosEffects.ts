@@ -44,44 +44,44 @@ const wrapError = (operation: string) => (cause: unknown) =>
 // Internal utility functions (not exported)
 const toProtocolParameters = (result: Ogmios.ProtocolParameters): Provider.ProtocolParameters => {
   return {
-    minFeeA: result.minFeeCoefficient,
-    minFeeB: result.minFeeConstant.ada.lovelace,
-    maxTxSize: result.maxTransactionSize.bytes,
-    maxValSize: result.maxValueSize.bytes,
-    keyDeposit: BigInt(result.stakeCredentialDeposit.ada.lovelace),
-    poolDeposit: BigInt(result.stakePoolDeposit.ada.lovelace),
-    drepDeposit: BigInt(result.delegateRepresentativeDeposit.ada.lovelace),
-    govActionDeposit: BigInt(result.governanceActionDeposit.ada.lovelace),
+    minFeeA: Number(result.minFeeCoefficient),
+    minFeeB: Number(result.minFeeConstant.ada.lovelace),
+    maxTxSize: Number(result.maxTransactionSize.bytes),
+    maxValSize: Number(result.maxValueSize.bytes),
+    keyDeposit: result.stakeCredentialDeposit.ada.lovelace,
+    poolDeposit: result.stakePoolDeposit.ada.lovelace,
+    drepDeposit: result.delegateRepresentativeDeposit.ada.lovelace,
+    govActionDeposit: result.governanceActionDeposit.ada.lovelace,
     priceMem: result.scriptExecutionPrices.memory[0] / result.scriptExecutionPrices.memory[1],
     priceStep: result.scriptExecutionPrices.cpu[0] / result.scriptExecutionPrices.cpu[1],
-    maxTxExMem: BigInt(result.maxExecutionUnitsPerTransaction.memory),
-    maxTxExSteps: BigInt(result.maxExecutionUnitsPerTransaction.cpu),
-    coinsPerUtxoByte: BigInt(result.minUtxoDepositCoefficient),
-    collateralPercentage: result.collateralPercentage,
-    maxCollateralInputs: result.maxCollateralInputs,
+    maxTxExMem: result.maxExecutionUnitsPerTransaction.memory,
+    maxTxExSteps: result.maxExecutionUnitsPerTransaction.cpu,
+    coinsPerUtxoByte: result.minUtxoDepositCoefficient,
+    collateralPercentage: Number(result.collateralPercentage),
+    maxCollateralInputs: Number(result.maxCollateralInputs),
     minFeeRefScriptCostPerByte: result.minFeeReferenceScripts.base,
     costModels: {
       PlutusV1: Object.fromEntries(
-        result.plutusCostModels["plutus:v1"].map((value, index) => [index.toString(), value])
+        result.plutusCostModels["plutus:v1"].map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV2: Object.fromEntries(
-        result.plutusCostModels["plutus:v2"].map((value, index) => [index.toString(), value])
+        result.plutusCostModels["plutus:v2"].map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV3: Object.fromEntries(
-        result.plutusCostModels["plutus:v3"].map((value, index) => [index.toString(), value])
+        result.plutusCostModels["plutus:v3"].map((value, index) => [index.toString(), Number(value)])
       )
     }
   }
 }
 
 const toAssets = (value: Kupo.UTxO["value"]): CoreAssets.Assets => {
-  let assets = CoreAssets.fromLovelace(BigInt(value.coins))
+  let assets = CoreAssets.fromLovelace(value.coins)
   for (const unit of Object.keys(value.assets)) {
     const cleanUnit = unit.replace(".", "")
     // Parse policyId (first 56 chars) and assetName (rest)
     const policyIdHex = cleanUnit.slice(0, 56)
     const assetNameHex = cleanUnit.slice(56)
-    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, BigInt(value.assets[unit]))
+    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, value.assets[unit])
   }
   return assets
 }
@@ -173,7 +173,7 @@ const kupmiosUtxosToUtxos =
             const address = CoreAddress.fromBech32(utxo.address)
             return new CoreUTxO.UTxO({
               transactionId,
-              index: BigInt(utxo.output_index),
+              index: utxo.output_index,
               address,
               assets: toAssets(utxo.value),
               datumOption,
@@ -386,7 +386,7 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
       Effect.catchAll(wrapError("evaluateTx"))
     )
 
-    const evalRedeemers: Array<EvalRedeemer> = (result as Array<any>).map((item: any) => {
+    const evalRedeemers: Array<EvalRedeemer> = result.map((item) => {
       // Map Ogmios terminology to Core terminology
       const purpose = item.validator.purpose as string
       let tag: Redeemer.RedeemerTag
@@ -396,10 +396,10 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
 
       return {
         ex_units: new Redeemer.ExUnits({
-          mem: BigInt(item.budget.memory),
-          steps: BigInt(item.budget.cpu)
+          mem: item.budget.memory,
+          steps: item.budget.cpu
         }),
-        redeemer_index: item.validator.index,
+        redeemer_index: Number(item.validator.index),
         redeemer_tag: tag
       }
     })
@@ -452,7 +452,7 @@ export const getDelegationEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?
             Effect.mapError((cause) => new Provider.ProviderError({ cause, message: "Kupmios getDelegation failed" }))
           )
         : null,
-      rewards: BigInt(delegation?.rewards?.ada?.lovelace ?? 0)
+      rewards: delegation?.rewards?.ada?.lovelace ?? 0n
     }
   })
 

@@ -44,26 +44,32 @@ export const getProtocolParameters = (baseUrl: string, token?: string) =>
     )
 
     return {
-      minFeeA: result.min_fee_a,
-      minFeeB: result.min_fee_b,
-      maxTxSize: result.max_tx_size,
-      maxValSize: result.max_val_size,
+      minFeeA: Number(result.min_fee_a),
+      minFeeB: Number(result.min_fee_b),
+      maxTxSize: Number(result.max_tx_size),
+      maxValSize: Number(result.max_val_size),
       keyDeposit: result.key_deposit,
       poolDeposit: result.pool_deposit,
-      drepDeposit: BigInt(result.drep_deposit),
-      govActionDeposit: BigInt(result.gov_action_deposit),
+      drepDeposit: result.drep_deposit,
+      govActionDeposit: result.gov_action_deposit,
       priceMem: result.price_mem,
       priceStep: result.price_step,
       maxTxExMem: result.max_tx_ex_mem,
       maxTxExSteps: result.max_tx_ex_steps,
       coinsPerUtxoByte: result.coins_per_utxo_size,
-      collateralPercentage: result.collateral_percent,
-      maxCollateralInputs: result.max_collateral_inputs,
+      collateralPercentage: Number(result.collateral_percent),
+      maxCollateralInputs: Number(result.max_collateral_inputs),
       minFeeRefScriptCostPerByte: result.min_fee_ref_script_cost_per_byte,
       costModels: {
-        PlutusV1: Object.fromEntries(result.cost_models.PlutusV1.map((value, index) => [index.toString(), value])),
-        PlutusV2: Object.fromEntries(result.cost_models.PlutusV2.map((value, index) => [index.toString(), value])),
-        PlutusV3: Object.fromEntries(result.cost_models.PlutusV3.map((value, index) => [index.toString(), value]))
+        PlutusV1: Object.fromEntries(
+          result.cost_models.PlutusV1.map((value, index) => [index.toString(), Number(value)])
+        ),
+        PlutusV2: Object.fromEntries(
+          result.cost_models.PlutusV2.map((value, index) => [index.toString(), Number(value)])
+        ),
+        PlutusV3: Object.fromEntries(
+          result.cost_models.PlutusV3.map((value, index) => [index.toString(), Number(value)])
+        )
       }
     }
   })
@@ -175,7 +181,7 @@ export const getUtxosByOutRef =
           {
             tx_hash: u.tx_hash,
             tx_index: u.tx_index,
-            block_time: 0,
+            block_time: 0n,
             block_height: null,
             value: u.value,
             datum_hash: u.datum_hash,
@@ -214,7 +220,7 @@ export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress
 
     return {
       poolId: result.delegated_pool ? Schema.decodeSync(PoolKeyHash.FromBech32)(result.delegated_pool) : null,
-      rewards: BigInt(result.rewards_available)
+      rewards: result.rewards_available
     } satisfies Provider.Delegation
   })
 
@@ -326,10 +332,10 @@ export const evaluateTx =
 
         return {
           ex_units: new Redeemer.ExUnits({
-            mem: BigInt(item.budget.memory),
-            steps: BigInt(item.budget.cpu)
+            mem: item.budget.memory,
+            steps: item.budget.cpu
           }),
-          redeemer_index: item.validator.index,
+          redeemer_index: Number(item.validator.index),
           redeemer_tag: tag
         }
       })
