@@ -343,6 +343,7 @@ export const languageViewsEncoding = (costModels: CostModels): Uint8Array => {
     }
   }
 
-  // Encode as canonical CBOR map
-  return CBOR.internalEncodeSync(mapEntries, CBOR.CML_DEFAULT_OPTIONS)
+  // The ledger sorts language view keys shortest first, then bytewise (`shortLex` in
+  // cardano-ledger `encodeLangViews`), so the 2-byte V1 key comes after the 1-byte V2 and V3 keys
+  return CBOR.internalEncodeSync(mapEntries, CBOR.CANONICAL_OPTIONS)
 }
