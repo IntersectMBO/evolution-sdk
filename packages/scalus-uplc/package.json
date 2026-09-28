@@ -1,6 +1,6 @@
 {
   "name": "@evolution-sdk/scalus-uplc",
-  "version": "2.0.14",
+  "version": "2.0.15",
   "description": "Scalus UPLC evaluator adapter for Evolution SDK",
   "type": "module",
   "main": "./dist/index.js",
