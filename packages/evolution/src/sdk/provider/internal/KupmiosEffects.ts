@@ -366,7 +366,7 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
   Effect.fn("evaluateTx")(function* (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) {
     const txCborHex = Transaction.toCBORHex(tx)
     // Prepare request data
-    const data = {
+    const data: Ogmios.EvaluateTransaction = {
       jsonrpc: "2.0",
       method: "evaluateTransaction",
       params: {
@@ -381,7 +381,8 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
 
     // Perform the request and handle the response
     const { result } = yield* pipe(
-      HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
+      Schema.encode(Ogmios.EvaluateTransactionSchema)(data),
+      Effect.flatMap((body) => HttpUtils.postJson(ogmiosUrl, body, schema, headers?.ogmiosHeader)),
       Effect.timeout(TIMEOUT),
       Effect.catchAll(wrapError("evaluateTx"))
     )
