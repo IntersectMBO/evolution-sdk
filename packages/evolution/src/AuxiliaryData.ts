@@ -644,11 +644,18 @@ export const toCBORHex = (data: AuxiliaryData, options: CBOR.CodecOptions = CBOR
 /**
  * Compute hash of auxiliary data (tag 259) per ledger rules.
  *
+ * Pass the same codec options used to serialize the transaction's auxiliary
+ * data. Set the resulting body commitment before signing; changing encoding
+ * afterward can invalidate the commitment and existing signatures.
+ *
  * @since 2.0.0
  * @category hashing
  */
-export const toHash = (aux: AuxiliaryData): AuxiliaryDataHash.AuxiliaryDataHash => {
-  const bytes = toCBORBytes(aux)
+export const toHash = (
+  aux: AuxiliaryData,
+  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+): AuxiliaryDataHash.AuxiliaryDataHash => {
+  const bytes = toCBORBytes(aux, options)
   const digest = blake2b(bytes, { dkLen: 32 })
   return new AuxiliaryDataHash.AuxiliaryDataHash({ bytes: digest })
 }
