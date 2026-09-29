@@ -12,7 +12,7 @@ A simple React application demonstrating how to use the Evolution SDK with Vite.
 
 ## Prerequisites
 
-- Node.js 20.19+ and pnpm
+- Node.js 22.12+ (24 LTS recommended) and pnpm
 - A Cardano wallet browser extension (e.g., Nami, Eternl, Flint)
 - A Blockfrost API key (get one free at [blockfrost.io](https://blockfrost.io))
 
