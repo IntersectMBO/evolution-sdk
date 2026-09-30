@@ -88,17 +88,17 @@ const Json = Schema.parseJson({ reviver: numberAsText })
 const rawJSON: unknown = Reflect.get(JSON, "rawJSON")
 
 /**
- * A uint64 amount, encoded as a raw JSON integer so `JSON.stringify` writes it exactly
+ * A uint64 amount, written as a raw JSON integer
  */
 export const BigIntFromJsonNumber = Schema.transformOrFail(
-  Schema.Union(Schema.Number, Schema.Object),
+  Schema.Union(Schema.String, Schema.Object),
   Schema.BigIntFromSelf,
   {
     strict: true,
     decode: (value, _, ast) =>
-      typeof value === "number" && Number.isSafeInteger(value)
+      typeof value === "string" && /^-?\d+$/.test(value)
         ? ParseResult.succeed(BigInt(value))
-        : ParseResult.fail(new ParseResult.Type(ast, value, "expected a safe integer")),
+        : ParseResult.fail(new ParseResult.Type(ast, value, "expected integer digits")),
     encode: (value, _, ast) =>
       typeof rawJSON === "function"
         ? ParseResult.succeed(rawJSON(value.toString()))

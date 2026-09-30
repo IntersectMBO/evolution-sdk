@@ -188,13 +188,13 @@ export type JsonwspOgmiosEvaluationResponse = Schema.Schema.Type<typeof JsonwspO
 
 const Amount = HttpUtils.BigIntFromJsonNumber
 
-export const EvaluationValue = Schema.Struct(
-  { coins: Amount },
-  Schema.Record({
-    key: Schema.String,
-    value: Schema.Union(Amount, Schema.Record({ key: Schema.String, value: Amount }))
-  })
-)
+/**
+ * Ogmios v5 value, which Blockfrost evaluates against by default
+ */
+export const EvaluationValue = Schema.Struct({
+  coins: Amount,
+  assets: Schema.optional(Schema.Record({ key: Schema.String, value: Amount }))
+})
 
 export type EvaluationValue = Schema.Schema.Type<typeof EvaluationValue>
 
@@ -205,7 +205,7 @@ export const EvaluateUtxosRequest = Schema.Struct({
   cbor: Schema.String,
   additionalUtxoSet: Schema.Array(
     Schema.Tuple(
-      Schema.Struct({ txId: Schema.String, index: Schema.Number }),
+      Schema.Struct({ txId: Schema.String, index: HttpUtils.BigIntFromJsonNumber }),
       Schema.Struct({
         address: Schema.String,
         value: EvaluationValue,

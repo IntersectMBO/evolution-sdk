@@ -84,24 +84,20 @@ const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Cr
 }
 
 const toBlockfrostValue = (assets: CoreUTxO.UTxO["assets"]): Blockfrost.EvaluationValue => {
-  const policies: Record<string, Record<string, bigint>> = {}
+  const units: Record<string, bigint> = {}
 
   if (assets.multiAsset) {
     for (const [policyId, assetMap] of assets.multiAsset.map.entries()) {
       const policyIdHex = Bytes.toHex(policyId.hash)
-      const assetRecord: Record<string, bigint> = {}
 
       for (const [assetName, quantity] of assetMap.entries()) {
-        assetRecord[AssetName.toHex(assetName)] = quantity
-      }
-
-      if (Object.keys(assetRecord).length > 0) {
-        policies[policyIdHex] = assetRecord
+        const assetNameHex = AssetName.toHex(assetName)
+        units[assetNameHex ? `${policyIdHex}.${assetNameHex}` : policyIdHex] = quantity
       }
     }
   }
 
-  return { coins: assets.lovelace, ...policies }
+  return Object.keys(units).length > 0 ? { coins: assets.lovelace, assets: units } : { coins: assets.lovelace }
 }
 
 const toBlockfrostDatum = (
@@ -148,7 +144,7 @@ const toBlockfrostAdditionalUtxoSet = (
   additionalUTxOs.map((utxo) => [
     {
       txId: TransactionHash.toHex(utxo.transactionId),
-      index: Number(utxo.index)
+      index: utxo.index
     },
     {
       address: CoreAddress.toBech32(utxo.address),

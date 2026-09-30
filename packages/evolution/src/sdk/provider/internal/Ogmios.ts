@@ -129,7 +129,7 @@ const Value = Schema.Struct({ ada: Schema.Struct({ lovelace: Amount }) }, Assets
 
 export const UTxOSchema = Schema.Struct({
   transaction: Schema.Struct({ id: Schema.String }),
-  index: Schema.Number,
+  index: HttpUtils.BigIntFromJsonNumber,
   address: Schema.String,
   value: Value,
   datumHash: Schema.optional(Schema.String),
@@ -227,7 +227,7 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
       transaction: {
         id: TransactionHash.toHex(utxo.transactionId)
       },
-      index: Number(utxo.index),
+      index: utxo.index,
       address: CoreAddress.toBech32(utxo.address),
       value: {
         ada: { lovelace: utxo.assets.lovelace },
