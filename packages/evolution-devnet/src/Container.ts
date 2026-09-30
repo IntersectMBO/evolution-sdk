@@ -1,5 +1,5 @@
 import Docker from "dockerode"
-import { Data, Effect } from "effect"
+import { Data, Effect, Schedule } from "effect"
 import { PassThrough } from "stream"
 
 import * as Config from "./Config.js"
@@ -16,6 +16,10 @@ export interface Container {
   readonly name: string
 }
 
+// Docker daemon rejects concurrent container starts under load; retry transient
+// failures with exponential backoff so parallel test forks don't fail-fast.
+const startRetrySchedule = Schedule.exponential("500 millis").pipe(Schedule.compose(Schedule.recurs(3)))
+
 /**
  * Start a specific devnet container.
  *
@@ -31,7 +35,7 @@ export const startEffect = (container: Container): Effect.Effect<void, Container
         message: "Check if ports are available and Docker has sufficient resources.",
         cause
       })
-  })
+  }).pipe(Effect.retry(startRetrySchedule))
 
 /**
  * Start a specific devnet container, throws on error.

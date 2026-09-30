@@ -2,8 +2,10 @@
   "title": "Governance",
   "pages": [
     "index",
-    "actions",
+    "drep-registration",
+    "vote-delegation",
     "voting",
-    "proposals"
+    "proposals",
+    "committee"
   ]
 }

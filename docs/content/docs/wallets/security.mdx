@@ -11,12 +11,15 @@ Complete security guide covering essential rules, environment setup, common mist
 
 ### Never Do
 
-Never hardcode private keys or mnemonics in your source code. This exposes them to anyone with access to your repository. Never commit keys to version control, even in environment files. Never log secrets to console or logging systems. Never expose keys in frontend code where they can be bundled into client-side JavaScript. Never share wallet instances across user requests, as this creates a shared wallet that all users would access.
+<Callout type="error">
+**Never** hardcode private keys or mnemonics in source code. **Never** commit keys to version control. **Never** log secrets. **Never** expose keys in frontend bundles. **Never** share wallet instances across user requests.
+</Callout>
+
+These practices expose credentials to anyone with repository access, leak secrets to logging systems, bundle keys into client-side JavaScript, or create shared wallets that all users access.
 
 ```typescript
 // Error: Hardcoded credentials exposed in source
-const badWalletConfig = {
-  type: "seed",
+const badSeedConfig = {
   mnemonic: "abandon abandon abandon..." // Exposed in code (DON'T DO THIS)
 };
 ```
@@ -35,17 +38,14 @@ logger.debug({ mnemonic: process.env.MNEMONIC });
 
 ```typescript
 // Error: Keys bundled to client
-const badConfig = {
-  wallet: {
-    type: "private-key",
-    bech32PrivateKey: process.env.PRIVATE_KEY! // Bundled to client (DON'T DO THIS)
-  }
+const badPrivateKeyConfig = {
+  paymentKey: process.env.PRIVATE_KEY! // Bundled to client (DON'T DO THIS)
 };
 ```
 
 ```typescript
 // Error: Shared wallet across all users
-const globalWalletConfig = { type: "seed", mnemonic: process.env.MNEMONIC! };
+const globalWalletConfig = { mnemonic: process.env.MNEMONIC! };
 
 // Avoid creating a single global wallet instance that signs on behalf of all users.
 // Instead, create per-request or per-user signing flows and store keys in a vault.
@@ -58,7 +58,6 @@ Always use environment variables for configuration in development and staging. A
 ```typescript
 // Load wallet config from environment (do not create client here in wallet docs)
 const walletConfig = {
-  type: "seed",
   mnemonic: process.env.MNEMONIC!
 };
 ```
@@ -79,7 +78,6 @@ async function getPrivateKey(): Promise<string> {
 ```typescript
 // Backend: read-only wallet config (no private keys)
 const readOnlyWalletConfig = {
-  type: "read-only",
   address: userAddress
 };
 
@@ -141,7 +139,7 @@ if (!process.env.MNEMONIC) {
   throw new Error("MNEMONIC not set in environment");
 }
 
-const walletConfig = { type: "seed", mnemonic: process.env.MNEMONIC };
+const walletConfig = { mnemonic: process.env.MNEMONIC };
 ```
 
 ### Development
@@ -162,7 +160,6 @@ BLOCKFROST_PROJECT_ID=preprodxxxxxxxxxxxx
 const providerConfig = {
   network: process.env.NETWORK as "preprod" | "mainnet",
   provider: {
-    type: "blockfrost",
     baseUrl: process.env.NETWORK === "preprod"
       ? "https://cardano-preprod.blockfrost.io/api/v0"
       : "https://cardano-mainnet.blockfrost.io/api/v0",
@@ -170,7 +167,7 @@ const providerConfig = {
   }
 };
 
-const walletConfig = { type: "seed", mnemonic: process.env.MNEMONIC! };
+const walletConfig = { mnemonic: process.env.MNEMONIC! };
 ```
 
 ### Staging
@@ -201,7 +198,7 @@ async function loadMnemonicFromVault() {
   const mnemonic = response.SecretString!;
 
   // Return wallet configuration; combine with provider in the clients docs
-  return { type: "seed", mnemonic } as const;
+  return { mnemonic } as const;
 }
 ```
 
@@ -213,7 +210,7 @@ async function loadMnemonicFromVault() {
 
 ```typescript
 // Error: API keys exposed to browser
-const badProviderConfig = { type: "blockfrost", projectId: "mainnetxxxxxxxxxxxx" };
+const badBlockfrostConfig = { projectId: "mainnetxxxxxxxxxxxx" };
 
 // Do not include provider configs or keys in frontend bundles.
 ```
@@ -223,8 +220,8 @@ const badProviderConfig = { type: "blockfrost", projectId: "mainnetxxxxxxxxxxxx"
 ```typescript
 // Frontend: no provider (use walletApi directly for signing)
 // Backend: create a read-only wallet config and combine with provider in clients docs
-const backendProviderConfig = { type: "blockfrost", projectId: process.env.BLOCKFROST_PROJECT_ID! };
-const readOnlyWalletConfig = { type: "read-only", address: userAddress };
+const backendProviderConfig = { projectId: process.env.BLOCKFROST_PROJECT_ID! };
+const readOnlyWalletConfig = { address: userAddress };
 ```
 
 ### Wrong: Building Transactions on Frontend
@@ -275,8 +272,8 @@ const address = await client.address();
 
 ```typescript
 // Account configs
-const mainAccount = { type: "seed", mnemonic: process.env.MNEMONIC!, accountIndex: 0 };
-const payoutAccount = { type: "seed", mnemonic: process.env.MNEMONIC!, accountIndex: 1 };
+const mainAccount = { mnemonic: process.env.MNEMONIC!, accountIndex: 0 };
+const payoutAccount = { mnemonic: process.env.MNEMONIC!, accountIndex: 1 };
 
 // Pass these wallet configs to your client factory in the clients docs.
 ```
@@ -350,7 +347,7 @@ Use private key wallets for automated operations. Store keys in vault solutions 
 
 ## Next Steps
 
-- **[Patterns](/docs/wallets/patterns)** - Frontend/backend architecture
+- **[Client Architecture](/docs/clients/architecture)** - Frontend/backend patterns
 - **[API Wallets](/docs/wallets/api-wallet)** - CIP-30 integration
 - **[Private Key](/docs/wallets/private-key)** - Vault integration
 - **[Seed Phrase](/docs/wallets/seed-phrase)** - Development wallets

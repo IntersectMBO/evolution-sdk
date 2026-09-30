@@ -8,10 +8,10 @@ import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Data from "../src/Data.js"
 import * as Redeemer from "../src/Redeemer.js"
+import * as Redeemers from "../src/Redeemers.js"
 import * as ScriptDataHash from "../src/ScriptDataHash.js"
 import * as TransactionBody from "../src/TransactionBody.js"
 import * as TransactionHash from "../src/TransactionHash.js"
-import * as UtilsHash from "../src/utils/Hash.js"
 
 // Local helper to hex-encode bytes for assertions
 const toHex = (bytes: Uint8Array): string =>
@@ -34,7 +34,7 @@ describe("UtilsHash helpers CML parity", () => {
   it("property: hashTransaction matches CML.hash_transaction", () => {
     FastCheck.assert(
       FastCheck.property(TransactionBody.arbitrary, (body) => {
-        const evolutionHash = UtilsHash.hashTransaction(body)
+        const evolutionHash = TransactionBody.toHash(body)
         const evolutionHex = TransactionHash.toHex(evolutionHash)
 
         const hex = TransactionBody.toCBORHex(body)
@@ -50,7 +50,7 @@ describe("UtilsHash helpers CML parity", () => {
   it("property: hashAuxiliaryData matches CML.hash_auxiliary_data", () => {
     FastCheck.assert(
       FastCheck.property(AuxiliaryData.arbitrary, (aux) => {
-        const evolutionHash = UtilsHash.hashAuxiliaryData(aux)
+        const evolutionHash = AuxiliaryData.toHash(aux)
         const evolutionHex = AuxiliaryDataHash.toHex(evolutionHash)
 
         const hex = AuxiliaryData.toCBORHex(aux)
@@ -66,7 +66,7 @@ describe("UtilsHash helpers CML parity", () => {
   it("property: Data.hashData matches CML.hash_plutus_data", () => {
     FastCheck.assert(
       FastCheck.property(Data.arbitrary, (datum) => {
-        const evolutionHash = Data.hashData(datum)
+        const evolutionHash = Data.toDatumHash(datum)
         const evolutionBytes = evolutionHash.hash
 
         const hex = Data.toCBORHex(datum)
@@ -83,7 +83,7 @@ describe("UtilsHash helpers CML parity", () => {
     FastCheck.assert(
       FastCheck.property(redeemersArb, (redeemers) => {
         const expected = sumExUnits(redeemers)
-        const actualExUnits = UtilsHash.computeTotalExUnits(redeemers)
+        const actualExUnits = Redeemer.totalExUnits(redeemers)
         expect(actualExUnits.mem).toBe(expected.mem)
         expect(actualExUnits.steps).toBe(expected.steps)
       })
@@ -105,8 +105,15 @@ describe("UtilsHash helpers CML parity", () => {
 
     FastCheck.assert(
       FastCheck.property(redeemersArb, datumsOptArb, smallCostModels, (redeemers, datums, costModels) => {
-        // Evolution
-        const evolution = UtilsHash.hashScriptData(redeemers, costModels, datums)
+        // CML 6.2 writes the PlutusV1 language view first, against the ledger's key order, so it is
+        // not an oracle when V1 is combined with V2 or V3; the ledger-order tests below cover that
+        FastCheck.pre(
+          costModels.PlutusV1.costs.length === 0 ||
+            (costModels.PlutusV2.costs.length === 0 && costModels.PlutusV3.costs.length === 0)
+        )
+        // Evolution — use RedeemerArray (CML uses array format)
+        const redeemerArray = new Redeemers.RedeemerArray({ value: [...redeemers] })
+        const evolution = Redeemers.toScriptDataHash(redeemerArray, costModels, datums)
         const evolutionHex = ScriptDataHash.toHex(evolution)
 
         // Build CML inputs from Evolution CBOR encodings
@@ -179,6 +186,57 @@ describe("UtilsHash helpers CML parity", () => {
     expect(toHex(bytes)).toBe(expected)
   })
 
+  it("languageViewsEncoding: V1 with V2 and V3 follows the ledger key order", () => {
+    // cardano-ledger `encodeLangViews` sorts keys with `shortLex`: the 1-byte V2 and V3 keys
+    // (01, 02) come before the 2-byte V1 key (41 00)
+    const cms = new CostModel.CostModels({
+      PlutusV1: new CostModel.CostModel({ costs: Array.from({ length: 166 }, () => 0n) }),
+      PlutusV2: new CostModel.CostModel({ costs: Array.from({ length: 175 }, () => 0n) }),
+      PlutusV3: new CostModel.CostModel({ costs: Array.from({ length: 251 }, () => 0n) })
+    })
+
+    const expected =
+      "a3" + // map(3)
+      "01" + "98af" + "00".repeat(175) + // V2: uint 1, definite array(175)
+      "02" + "98fb" + "00".repeat(251) + // V3: uint 2, definite array(251)
+      "4100" + "58a8" + "9f" + "00".repeat(166) + "ff" // V1: bytes 00, bytes(168) wrapping an indefinite array
+
+    expect(toHex(CostModel.languageViewsEncoding(cms))).toBe(expected)
+  })
+
+  it("property: languageViewsEncoding orders every language combination like the ledger", () => {
+    const costs = FastCheck.array(FastCheck.bigInt({ min: -1000n, max: 1000n }), { maxLength: 4 })
+    const empty = new CostModel.CostModel({ costs: [] })
+
+    FastCheck.assert(
+      FastCheck.property(costs, costs, costs, (v1, v2, v3) => {
+        const only = (lang: "PlutusV1" | "PlutusV2" | "PlutusV3", c: ReadonlyArray<bigint>) =>
+          new CostModel.CostModels({
+            PlutusV1: lang === "PlutusV1" ? new CostModel.CostModel({ costs: [...c] }) : empty,
+            PlutusV2: lang === "PlutusV2" ? new CostModel.CostModel({ costs: [...c] }) : empty,
+            PlutusV3: lang === "PlutusV3" ? new CostModel.CostModel({ costs: [...c] }) : empty
+          })
+        // Each present language as its single-entry map without the a1 header, in ledger order: V2, V3, V1
+        const entries = (
+          [
+            ["PlutusV2", v2],
+            ["PlutusV3", v3],
+            ["PlutusV1", v1]
+          ] as const
+        )
+          .filter(([, c]) => c.length > 0)
+          .map(([lang, c]) => toHex(CostModel.languageViewsEncoding(only(lang, c))).slice(2))
+        const all = new CostModel.CostModels({
+          PlutusV1: new CostModel.CostModel({ costs: v1 }),
+          PlutusV2: new CostModel.CostModel({ costs: v2 }),
+          PlutusV3: new CostModel.CostModel({ costs: v3 })
+        })
+
+        expect(toHex(CostModel.languageViewsEncoding(all))).toBe((0xa0 + entries.length).toString(16) + entries.join(""))
+      })
+    )
+  })
+
   it("hashScriptData: deterministic V1 all-zero language views parity with CML (no redeemers, no datums)", () => {
     const cms = new CostModel.CostModels({
       PlutusV1: new CostModel.CostModel({ costs: Array.from({ length: 166 }, () => 0n) }),
@@ -186,8 +244,8 @@ describe("UtilsHash helpers CML parity", () => {
       PlutusV3: new CostModel.CostModel({ costs: [] })
     })
 
-    const redeemers: ReadonlyArray<Redeemer.Redeemer> = []
-    const evolution = UtilsHash.hashScriptData(redeemers, cms)
+    const redeemers = new Redeemers.RedeemerArray({ value: [] })
+    const evolution = Redeemers.toScriptDataHash(redeemers, cms)
     const evolutionHex = ScriptDataHash.toHex(evolution)
 
     // Build CML inputs
@@ -199,7 +257,7 @@ describe("UtilsHash helpers CML parity", () => {
   })
 
   it("special case parity: redeemers=[], datums non-empty", () => {
-    const redeemers: ReadonlyArray<Redeemer.Redeemer> = []
+    const redeemers = new Redeemers.RedeemerArray({ value: [] })
     const datums: ReadonlyArray<Data.Data> = [Data.fromCBORHex("d87980")] // Constr(0,[])
     const costModels = new CostModel.CostModels({
       PlutusV1: new CostModel.CostModel({ costs: [] }),
@@ -207,7 +265,7 @@ describe("UtilsHash helpers CML parity", () => {
       PlutusV3: new CostModel.CostModel({ costs: [] })
     })
 
-    const evolutionHex = ScriptDataHash.toHex(UtilsHash.hashScriptData(redeemers, costModels, datums))
+    const evolutionHex = ScriptDataHash.toHex(Redeemers.toScriptDataHash(redeemers, costModels, datums))
 
     const list = CML.PlutusDataList.new()
     list.add(CML.PlutusData.from_cbor_hex("d87980"))

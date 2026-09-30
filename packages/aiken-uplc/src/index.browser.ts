@@ -1,10 +1,13 @@
 /**
  * Browser entry point - uses bundler WASM target
  *
+ * Bundlers (Webpack, Vite) handle the `.wasm` import automatically via
+ * `--target bundler` output. No explicit init() call needed.
+ *
  * @packageDocumentation
  */
 
-import * as wasmModule from "./browser/aiken_uplc.js"
+import * as wasmModule from "./bundler/aiken_uplc.js"
 import { makeEvaluator } from "./Evaluator.js"
 
 /**

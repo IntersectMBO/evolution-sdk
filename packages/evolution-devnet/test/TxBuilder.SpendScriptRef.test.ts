@@ -7,14 +7,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as Data from "@evolution-sdk/evolution/Data"
 import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 
 const CoreAssets = Cardano.Assets
 
@@ -37,24 +36,20 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
   const makeScriptAddress = (): CoreAddress.Address =>
     CoreAddress.Address.make({ networkId: 0, paymentCredential: alwaysSucceedScriptHash })
 
-  const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1454",
-        ogmiosUrl: "http://localhost:1346"
-      },
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+  const createTestClient = () => {
+    if (!devnetCluster) throw new Error("Cluster not initialized")
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
+  }
 
   beforeAll(async () => {
     expect(ScriptHash.toHex(alwaysSucceedScriptHash)).toBe(ALWAYS_SUCCEED_HASH)
 
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
 
     const testAddress = await testClient.address()
     const testAddressHex = CoreAddress.toHex(testAddress)
@@ -71,10 +66,9 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "spend-scriptref-test",
-      ports: { node: 6011, submit: 9011 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1454, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1346, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)
@@ -135,7 +129,7 @@ describe("TxBuilder Spend ScriptRef (Devnet Submit)", () => {
 
       const spendTx = await spendSignBuilder.toTransaction()
       expect(spendTx.body.scriptDataHash).toBeDefined()
-      expect(spendTx.witnessSet.redeemers?.length).toBe(1)
+      expect(spendTx.witnessSet.redeemers?.size).toBe(1)
 
       const spendTxHash = await (await spendSignBuilder.sign()).submit()
 

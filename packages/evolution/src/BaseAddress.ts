@@ -69,6 +69,10 @@ export const FromBytes = Schema.transformOrFail(
         const networkId = header & 0b00001111
         // Extract address type from the upper 4 bits (bits 4-7)
         const addressType = header >> 4
+        // Base addresses are CIP-19 header types 0-3
+        if (addressType > 0b0011) {
+          return yield* ParseResult.fail(new ParseResult.Type(ast, fromA, `Invalid base address type: ${addressType}`))
+        }
         // Script payment, Script stake
         const isPaymentKey = (addressType & 0b0001) === 0
         const paymentCredential: Credential.Credential = isPaymentKey

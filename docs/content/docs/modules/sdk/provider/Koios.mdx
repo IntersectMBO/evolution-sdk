@@ -1,6 +1,6 @@
 ---
 title: sdk/provider/Koios.ts
-nav_order: 159
+nav_order: 154
 parent: Modules
 ---
 
@@ -12,7 +12,7 @@ parent: Modules
 
 - [constructors](#constructors)
   - [Koios (class)](#koios-class)
-    - [Effect (property)](#effect-property)
+    - [effect (property)](#effect-property)
     - [getProtocolParameters (property)](#getprotocolparameters-property)
     - [getUtxos (property)](#getutxos-property)
     - [getUtxosWithUnit (property)](#getutxoswithunit-property)
@@ -44,12 +44,12 @@ export declare class Koios {
 
 Added in v2.0.0
 
-### Effect (property)
+### effect (property)
 
 **Signature**
 
 ```ts
-readonly Effect: ProviderEffect
+readonly effect: ProviderEffect
 ```
 
 ### getProtocolParameters (property)
@@ -116,8 +116,11 @@ getDatum: (datumHash: Parameters<Provider["getDatum"]>[0]) => Promise<Data>
 **Signature**
 
 ```ts
-awaitTx: (txHash: Parameters<Provider["awaitTx"]>[0], checkInterval?: Parameters<Provider["awaitTx"]>[1]) =>
-  Promise<boolean>
+awaitTx: (
+  txHash: Parameters<Provider["awaitTx"]>[0],
+  checkInterval?: Parameters<Provider["awaitTx"]>[1],
+  timeout?: Parameters<Provider["awaitTx"]>[2]
+) => Promise<boolean>
 ```
 
 ### submitTx (property)

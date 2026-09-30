@@ -10,12 +10,121 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as CoreAssets from "../../../Assets.js"
+import type * as Certificate from "../../../Certificate.js"
+import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
 import { mintToAssets } from "../operations/Mint.js"
+import type { PhaseResult } from "../TransactionBuilder.js"
 import { BuildOptionsTag, PhaseContextTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
-import type { PhaseResult } from "./Phases.js"
-import { calculateCertificateBalance, calculateProposalDeposits, calculateWithdrawals } from "./utils.js"
+
+/**
+ * Calculate certificate deposits and refunds from a list of certificates.
+ *
+ * Certificates with deposits (money OUT):
+ * - RegCert: Stake registration deposit
+ * - RegDrepCert: DRep registration deposit
+ * - RegPoolCert: Pool registration deposit (PoolRegistration)
+ * - StakeRegDelegCert: Combined stake registration + delegation deposit
+ * - VoteRegDelegCert: Combined vote registration + delegation deposit
+ * - StakeVoteRegDelegCert: Combined stake + vote registration + delegation deposit
+ *
+ * Certificates with refunds (money IN):
+ * - UnregCert: Stake deregistration refund
+ * - UnregDrepCert: DRep deregistration refund
+ * - PoolRetirement: Pool retirement (no refund in Conway era; pool deposits are burned)
+ *
+ * @since 2.0.0
+ * @category utilities
+ */
+export const calculateCertificateBalance = (
+  certificates: ReadonlyArray<Certificate.Certificate>,
+  poolDeposits: ReadonlyMap<string, bigint>
+): { deposits: bigint; refunds: bigint } =>
+  certificates.reduce(
+    (acc, cert) => {
+      switch (cert._tag) {
+        // Registration certificates with deposits (money goes OUT)
+        case "RegCert":
+        case "RegDrepCert":
+        case "StakeRegDelegCert":
+        case "VoteRegDelegCert":
+        case "StakeVoteRegDelegCert":
+          acc.deposits += cert.coin
+          break
+
+        // Deregistration certificates with refunds (money comes IN)
+        case "UnregCert":
+        case "UnregDrepCert":
+          acc.refunds += cert.coin
+          break
+
+        // Pool registration - deposit tracked in state
+        case "PoolRegistration": {
+          const operatorHex = PoolKeyHash.toHex(cert.poolParams.operator)
+          const deposit = poolDeposits.get(operatorHex)
+          if (deposit !== undefined) {
+            acc.deposits += deposit
+          }
+          break
+        }
+
+        // Pool retirement - no refund in Conway era (deposit is not refunded)
+        // Pool deposits are burned upon retirement
+        case "PoolRetirement":
+          // No refund for pool retirement in Conway
+          break
+
+        // Delegation certificates with no deposit/refund
+        case "StakeRegistration":
+        case "StakeDeregistration":
+        case "StakeDelegation":
+        case "VoteDelegCert":
+        case "StakeVoteDelegCert":
+        case "AuthCommitteeHotCert":
+        case "ResignCommitteeColdCert":
+        case "UpdateDrepCert":
+          // No deposit or refund
+          break
+      }
+      return acc
+    },
+    { deposits: 0n, refunds: 0n }
+  )
+
+/**
+ * Calculate total withdrawal amount from a map of reward accounts to withdrawal amounts.
+ *
+ * @since 2.0.0
+ * @category utilities
+ */
+export const calculateWithdrawals = (withdrawals: ReadonlyMap<unknown, bigint>): bigint => {
+  let total = 0n
+  for (const amount of withdrawals.values()) {
+    total += amount
+  }
+  return total
+}
+
+/**
+ * Calculate total proposal deposits from proposal procedures.
+ *
+ * Each proposal requires a deposit (govActionDeposit) which is tracked in the
+ * ProposalProcedure structure. This deposit is deducted from transaction inputs
+ * during balancing.
+ *
+ * @since 2.0.0
+ * @category utilities
+ */
+export const calculateProposalDeposits = (
+  proposalProcedures: { readonly procedures: ReadonlyArray<{ readonly deposit: bigint }> } | undefined
+): bigint => {
+  if (!proposalProcedures || proposalProcedures.procedures.length === 0) {
+    return 0n
+  }
+
+  return proposalProcedures.procedures.reduce((total, procedure) => total + procedure.deposit, 0n)
+}
 
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)

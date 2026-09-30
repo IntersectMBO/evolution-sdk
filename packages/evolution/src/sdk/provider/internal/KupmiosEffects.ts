@@ -1,11 +1,9 @@
-import { FetchHttpClient } from "@effect/platform"
 import { Array as _Array, Effect, pipe, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
-import * as CoreAssets from "../../../Assets/index.js"
-import * as AssetsUnit from "../../../Assets/Unit.js"
+import * as CoreAssets from "../../../Assets.js"
 import * as Bytes from "../../../Bytes.js"
-import type * as Credential from "../../../Credential.js"
+import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
@@ -15,12 +13,14 @@ import * as PlutusV1 from "../../../PlutusV1.js"
 import * as PlutusV2 from "../../../PlutusV2.js"
 import * as PlutusV3 from "../../../PlutusV3.js"
 import * as PolicyId from "../../../PolicyId.js"
+import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
 import type * as CoreRewardAddress from "../../../RewardAddress.js"
 import type * as CoreScript from "../../../Script.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
+import * as AssetsUnit from "../../../Unit.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import * as Provider from "../Provider.js"
@@ -30,47 +30,58 @@ import * as Ogmios from "./Ogmios.js"
 
 const TIMEOUT = 10_000
 
+/**
+ * Wrap errors into ProviderError
+ */
+const wrapError = (operation: string) => (cause: unknown) =>
+  Effect.fail(
+    new Provider.ProviderError({
+      message: `Kupmios ${operation} failed`,
+      cause
+    })
+  )
+
 // Internal utility functions (not exported)
 const toProtocolParameters = (result: Ogmios.ProtocolParameters): Provider.ProtocolParameters => {
   return {
-    minFeeA: result.minFeeCoefficient,
-    minFeeB: result.minFeeConstant.ada.lovelace,
-    maxTxSize: result.maxTransactionSize.bytes,
-    maxValSize: result.maxValueSize.bytes,
-    keyDeposit: BigInt(result.stakeCredentialDeposit.ada.lovelace),
-    poolDeposit: BigInt(result.stakePoolDeposit.ada.lovelace),
-    drepDeposit: BigInt(result.delegateRepresentativeDeposit.ada.lovelace),
-    govActionDeposit: BigInt(result.governanceActionDeposit.ada.lovelace),
+    minFeeA: Number(result.minFeeCoefficient),
+    minFeeB: Number(result.minFeeConstant.ada.lovelace),
+    maxTxSize: Number(result.maxTransactionSize.bytes),
+    maxValSize: Number(result.maxValueSize.bytes),
+    keyDeposit: result.stakeCredentialDeposit.ada.lovelace,
+    poolDeposit: result.stakePoolDeposit.ada.lovelace,
+    drepDeposit: result.delegateRepresentativeDeposit.ada.lovelace,
+    govActionDeposit: result.governanceActionDeposit.ada.lovelace,
     priceMem: result.scriptExecutionPrices.memory[0] / result.scriptExecutionPrices.memory[1],
     priceStep: result.scriptExecutionPrices.cpu[0] / result.scriptExecutionPrices.cpu[1],
-    maxTxExMem: BigInt(result.maxExecutionUnitsPerTransaction.memory),
-    maxTxExSteps: BigInt(result.maxExecutionUnitsPerTransaction.cpu),
-    coinsPerUtxoByte: BigInt(result.minUtxoDepositCoefficient),
-    collateralPercentage: result.collateralPercentage,
-    maxCollateralInputs: result.maxCollateralInputs,
+    maxTxExMem: result.maxExecutionUnitsPerTransaction.memory,
+    maxTxExSteps: result.maxExecutionUnitsPerTransaction.cpu,
+    coinsPerUtxoByte: result.minUtxoDepositCoefficient,
+    collateralPercentage: Number(result.collateralPercentage),
+    maxCollateralInputs: Number(result.maxCollateralInputs),
     minFeeRefScriptCostPerByte: result.minFeeReferenceScripts.base,
     costModels: {
       PlutusV1: Object.fromEntries(
-        result.plutusCostModels["plutus:v1"].map((value, index) => [index.toString(), value])
+        result.plutusCostModels["plutus:v1"].map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV2: Object.fromEntries(
-        result.plutusCostModels["plutus:v2"].map((value, index) => [index.toString(), value])
+        result.plutusCostModels["plutus:v2"].map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV3: Object.fromEntries(
-        result.plutusCostModels["plutus:v3"].map((value, index) => [index.toString(), value])
+        result.plutusCostModels["plutus:v3"].map((value, index) => [index.toString(), Number(value)])
       )
     }
   }
 }
 
 const toAssets = (value: Kupo.UTxO["value"]): CoreAssets.Assets => {
-  let assets = CoreAssets.fromLovelace(BigInt(value.coins))
+  let assets = CoreAssets.fromLovelace(value.coins)
   for (const unit of Object.keys(value.assets)) {
     const cleanUnit = unit.replace(".", "")
     // Parse policyId (first 56 chars) and assetName (rest)
     const policyIdHex = cleanUnit.slice(0, 56)
     const assetNameHex = cleanUnit.slice(56)
-    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, BigInt(value.assets[unit]))
+    assets = CoreAssets.addByHex(assets, policyIdHex, assetNameHex, value.assets[unit])
   }
   return assets
 }
@@ -95,7 +106,7 @@ const retrieveDatumEffect =
           }),
           Effect.retry(Schedule.compose(Schedule.exponential(50), Schedule.recurs(5))),
           Effect.timeout(5_000),
-          Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to retrieve datum" }))
+          Effect.catchAll(wrapError("retrieveDatum"))
         )
       } else if (datum_type === "hash" && datum_hash) {
         const hashBytes = Bytes.fromHex(datum_hash)
@@ -142,7 +153,7 @@ const getScriptEffect =
                 throw new Error(`Unknown script language: ${language}`)
             }
           }),
-          Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get script" }))
+          Effect.catchAll(wrapError("getScript"))
         )
       } else return undefined
     })
@@ -162,7 +173,7 @@ const kupmiosUtxosToUtxos =
             const address = CoreAddress.fromBech32(utxo.address)
             return new CoreUTxO.UTxO({
               transactionId,
-              index: BigInt(utxo.output_index),
+              index: utxo.output_index,
               address,
               assets: toAssets(utxo.value),
               datumOption,
@@ -191,8 +202,7 @@ export const getProtocolParametersEffect = Effect.fn("getProtocolParameters")(fu
   const { result } = yield* pipe(
     HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
     Effect.timeout(TIMEOUT),
-    Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get protocol parameters" })),
-    Effect.provide(FetchHttpClient.layer)
+    Effect.catchAll(wrapError("getProtocolParameters"))
   )
   return toProtocolParameters(result)
 })
@@ -204,7 +214,7 @@ export const getUtxosEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
       const addressStr = CoreAddress.toBech32(addressOrCredential)
       pattern = `${kupoUrl}/matches/${addressStr}?unspent`
     } else {
-      pattern = `${kupoUrl}/matches/${addressOrCredential.hash}/*?unspent`
+      pattern = `${kupoUrl}/matches/${Credential.toBech32(addressOrCredential)}/*?unspent`
     }
     const toUtxos = kupmiosUtxosToUtxos(kupoUrl, headers?.kupoHeader)
 
@@ -213,8 +223,7 @@ export const getUtxosEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get UTxOs" })),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getUtxos"))
     )
     return utxos
   })
@@ -233,8 +242,7 @@ export const getUtxoByUnitEffect = (kupoUrl: string, headers?: { kupoHeader?: Re
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get UTxO by unit" })),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getUtxoByUnit"))
     )
 
     if (utxos.length > 1) {
@@ -269,10 +277,10 @@ export const getUtxosByOutRefEffect = (kupoUrl: string, headers?: { kupoHeader?:
         HttpUtils.get(mkPattern(txHash), schema, headers?.kupoHeader),
         Effect.flatMap((u) => toUtxos(u)),
         Effect.timeout(TIMEOUT),
-        Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get UTxOs by OutRef" }))
+        Effect.catchAll(wrapError("getUtxosByOutRef"))
       )
     )
-    const utxos: Array<Array<CoreUTxO.UTxO>> = yield* pipe(program, Effect.provide(FetchHttpClient.layer))
+    const utxos: Array<Array<CoreUTxO.UTxO>> = yield* program
 
     return _Array
       .flatten(utxos)
@@ -320,10 +328,9 @@ export const submitTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: Rec
             ? cause.message
             : typeof cause === "object" && cause !== null && "description" in cause
               ? String((cause as { description: unknown }).description)
-              : "Failed to submit transaction"
-        return Effect.fail(new Provider.ProviderError({ cause, message: errorMessage }))
-      }),
-      Effect.provide(FetchHttpClient.layer)
+              : "Kupmios submitTx failed"
+        return Effect.fail(new Provider.ProviderError({ cause, message: `Kupmios submitTx failed: ${errorMessage}` }))
+      })
     )
 
     // Parse and return the transaction hash
@@ -335,8 +342,10 @@ export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?:
     addressOrCredential: CoreAddress.Address | Credential.Credential,
     unit: string
   ) {
-    const isAddress = addressOrCredential instanceof CoreAddress.Address
-    const queryPredicate = isAddress ? CoreAddress.toBech32(addressOrCredential) : addressOrCredential.hash
+    const isAddress = !("hash" in addressOrCredential)
+    const queryPredicate = isAddress
+      ? CoreAddress.toBech32(addressOrCredential)
+      : Credential.toBech32(addressOrCredential)
     const { assetName, policyId } = AssetsUnit.fromUnit(unit)
     const policyIdHex = PolicyId.toHex(policyId)
     const assetNameHex = assetName ? Bytes.toHex(assetName.bytes) : undefined
@@ -348,8 +357,7 @@ export const getUtxosWithUnitEffect = (kupoUrl: string, headers?: { kupoHeader?:
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
       Effect.flatMap((u) => toUtxos(u)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get UTxOs with unit" })),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
     return utxos
   })
@@ -358,7 +366,7 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
   Effect.fn("evaluateTx")(function* (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) {
     const txCborHex = Transaction.toCBORHex(tx)
     // Prepare request data
-    const data = {
+    const data: Ogmios.EvaluateTransaction = {
       jsonrpc: "2.0",
       method: "evaluateTransaction",
       params: {
@@ -373,13 +381,13 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
 
     // Perform the request and handle the response
     const { result } = yield* pipe(
-      HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
-      Effect.provide(FetchHttpClient.layer),
+      Schema.encode(Ogmios.EvaluateTransactionSchema)(data),
+      Effect.flatMap((body) => HttpUtils.postJson(ogmiosUrl, body, schema, headers?.ogmiosHeader)),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to evaluate transaction" }))
+      Effect.catchAll(wrapError("evaluateTx"))
     )
 
-    const evalRedeemers: Array<EvalRedeemer> = (result as Array<any>).map((item: any) => {
+    const evalRedeemers: Array<EvalRedeemer> = result.map((item) => {
       // Map Ogmios terminology to Core terminology
       const purpose = item.validator.purpose as string
       let tag: Redeemer.RedeemerTag
@@ -389,10 +397,10 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
 
       return {
         ex_units: new Redeemer.ExUnits({
-          mem: BigInt(item.budget.memory),
-          steps: BigInt(item.budget.cpu)
+          mem: item.budget.memory,
+          steps: item.budget.cpu
         }),
-        redeemer_index: item.validator.index,
+        redeemer_index: Number(item.validator.index),
         redeemer_tag: tag
       }
     })
@@ -401,7 +409,7 @@ export const evaluateTxEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?: R
   })
 
 export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<string, string> }) =>
-  Effect.fn("awaitTx")(function* (txHash: TransactionHash.TransactionHash, checkInterval = 5000) {
+  Effect.fn("awaitTx")(function* (txHash: TransactionHash.TransactionHash, checkInterval = 5000, timeout = 160_000) {
     const txHashHex = TransactionHash.toHex(txHash)
     const pattern = `${kupoUrl}/matches/*@${txHashHex}?unspent`
     const schema = Schema.Array(Kupo.UTxOSchema).annotations({
@@ -410,13 +418,14 @@ export const awaitTxEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<s
 
     const result = yield* pipe(
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.repeat({
         schedule: Schedule.exponential(checkInterval),
         until: (result) => result.length > 0
       }),
-      Effect.timeout(160_000),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to await transaction" })),
+      Effect.timeout(timeout),
+      Effect.catchAllCause((cause) =>
+        Effect.fail(new Provider.ProviderError({ cause, message: "Kupmios awaitTx failed" }))
+      ),
       Effect.as(true)
     )
     return result
@@ -433,15 +442,18 @@ export const getDelegationEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?
     const schema = Ogmios.JSONRPCSchema(Ogmios.Delegation)
     const { result } = yield* pipe(
       HttpUtils.postJson(ogmiosUrl, data, schema, headers?.ogmiosHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get delegation" }))
+      Effect.catchAll(wrapError("getDelegation"))
     )
-    const delegation = result ? (Object.values(result)[0] as any) : null
+    const delegation = result?.[0] ?? null
 
     return {
-      poolId: delegation?.delegate?.id || null,
-      rewards: BigInt(delegation?.rewards?.ada?.lovelace || 0)
+      poolId: delegation?.stakePool?.id
+        ? yield* Schema.decode(PoolKeyHash.FromBech32)(delegation.stakePool.id).pipe(
+            Effect.mapError((cause) => new Provider.ProviderError({ cause, message: "Kupmios getDelegation failed" }))
+          )
+        : null,
+      rewards: delegation?.rewards?.ada?.lovelace ?? 0n
     }
   })
 
@@ -452,10 +464,9 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
     const schema = Kupo.DatumSchema
     const result = yield* pipe(
       HttpUtils.get(pattern, schema, headers?.kupoHeader),
-      Effect.provide(FetchHttpClient.layer),
       Effect.timeout(TIMEOUT),
       Effect.flatMap(Effect.fromNullable),
-      Effect.catchAll((cause) => new Provider.ProviderError({ cause, message: "Failed to get datum" }))
+      Effect.catchAll(wrapError("getDatum"))
     )
     return Schema.decodeSync(PlutusData.FromCBORHex())(result.datum)
   })

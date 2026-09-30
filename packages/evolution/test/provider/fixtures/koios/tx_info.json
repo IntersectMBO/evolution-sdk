@@ -1,0 +1,64 @@
+[
+  {
+    "tx_hash": "23f94840ca94f7bb0a5a2b28e5b6a77e61d0414c7427e03d6c4d57b13d5e49b4",
+    "block_hash": "d25ac5572bedeba724d8c8178a5b6dcf95b75992970dab7145403cfbc44f9809",
+    "block_height": 2108842,
+    "epoch_no": 134,
+    "epoch_slot": 239781,
+    "absolute_slot": 56486181,
+    "tx_timestamp": 1712169381,
+    "tx_block_index": 0,
+    "tx_size": 526,
+    "total_output": "5460579732",
+    "fee": "178569",
+    "treasury_donation": "0",
+    "deposit": "0",
+    "invalid_before": null,
+    "invalid_after": null,
+    "collateral_inputs": [],
+    "collateral_output": null,
+    "reference_inputs": [],
+    "inputs": [],
+    "outputs": [
+      {
+        "value": "5458579732",
+        "tx_hash": "23f94840ca94f7bb0a5a2b28e5b6a77e61d0414c7427e03d6c4d57b13d5e49b4",
+        "tx_index": 1,
+        "asset_list": [],
+        "datum_hash": null,
+        "stake_addr": null,
+        "inline_datum": null,
+        "payment_addr": {
+          "cred": "c0359ebb7d0688d79064bd118c99c8b87b5853e3af59245bb97e84d2",
+          "bech32": "addr_test1vrqrt84m05rg34usvj73rryeezu8kkznuwh4jfzmh9lgf5swrdhze"
+        },
+        "reference_script": null
+      },
+      {
+        "value": "2000000",
+        "tx_hash": "23f94840ca94f7bb0a5a2b28e5b6a77e61d0414c7427e03d6c4d57b13d5e49b4",
+        "tx_index": 0,
+        "asset_list": [],
+        "datum_hash": "facfe6aa45fa8023a97a3f13afb823f3966313533f6d68821e65d8431b5a4918",
+        "stake_addr": null,
+        "inline_datum": {
+          "bytes": null,
+          "value": null
+        },
+        "payment_addr": {
+          "cred": "bdc22da682cd9aceed5fd48914789fc98c94abc79fed8b40cb8c4314",
+          "bech32": "addr_test1wz7uytdxstxe4nhdtl2gj9rcnlyce99tc707mz6qewxyx9qac0urr"
+        },
+        "reference_script": null
+      }
+    ],
+    "withdrawals": [],
+    "assets_minted": [],
+    "metadata": null,
+    "certificates": [],
+    "native_scripts": [],
+    "plutus_contracts": [],
+    "voting_procedures": [],
+    "proposal_procedures": []
+  }
+]

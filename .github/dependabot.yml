@@ -1,0 +1,147 @@
+# Dependabot configuration for evolution-sdk
+# Docs: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+version: 2
+
+updates:
+  # ------------------------------------------------------------
+  # npm / pnpm ecosystem (auto-detected from pnpm-lock.yaml)
+  # ------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    versioning-strategy: "increase-if-necessary"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+    # Supply-chain defense: wait before adopting brand-new releases
+    # Security updates bypass cooldown automatically
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+      semver-minor-days: 3
+      semver-patch-days: 1
+
+    # Groups — ORDER MATTERS (first match wins)
+    # Narrow/risky patterns first, broad/tooling catch-alls last
+    groups:
+      # --- Never auto-merge: core runtime & crypto ---
+      effect-ecosystem:
+        patterns:
+          - "effect"
+          - "@effect/*"
+
+      noble-scure-crypto:
+        patterns:
+          - "@noble/*"
+          - "@scure/*"
+          - "bip39"
+          - "@types/bip39"
+
+      cardano-ecosystem:
+        patterns:
+          - "@dcspark/*"
+          - "@emurgo/*"
+          - "@cardano-foundation/*"
+          - "scalus"
+
+      # --- Auto-mergeable: tooling groups ---
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-*"
+          - "@typescript-eslint/*"
+
+      babel:
+        patterns:
+          - "@babel/*"
+          - "babel-plugin-*"
+
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+
+      turbo:
+        patterns:
+          - "turbo"
+          - "@turbo/*"
+
+      typescript:
+        patterns:
+          - "typescript"
+          - "@types/*"
+        exclude-patterns:
+          - "@types/bip39"
+          - "@types/dockerode"
+          - "@types/react"
+          - "@types/react-dom"
+
+      changesets:
+        patterns:
+          - "@changesets/*"
+
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@vitejs/plugin-react"
+
+      docs-tooling:
+        patterns:
+          - "fumadocs*"
+          - "shiki"
+          - "@shikijs/*"
+          - "twoslash"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "postcss"
+          - "autoprefixer"
+          - "next-themes"
+          - "lucide-react"
+          - "mermaid"
+          - "@orama/*"
+          - "next"
+          - "@next/*"
+
+      # Catch-all for remaining devDependencies — patch + minor only
+      # (any dep not matched above that's a devDep)
+      misc-devdeps-patch-minor:
+        dependency-type: "development"
+        update-types:
+          - "patch"
+          - "minor"
+
+  # ------------------------------------------------------------
+  # GitHub Actions — keep workflow actions up to date
+  # ------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"

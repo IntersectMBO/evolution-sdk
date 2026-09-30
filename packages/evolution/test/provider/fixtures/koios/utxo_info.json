@@ -1,0 +1,18 @@
+[
+  {
+    "tx_hash": "708cde0e74986ea1f5a9621dc9fc4c0042d83833fa708b7e2fa66f120af72331",
+    "tx_index": 6,
+    "address": "addr_test1wz7uytdxstxe4nhdtl2gj9rcnlyce99tc707mz6qewxyx9qac0urr",
+    "value": "1300003",
+    "stake_address": null,
+    "payment_cred": "bdc22da682cd9aceed5fd48914789fc98c94abc79fed8b40cb8c4314",
+    "epoch_no": 168,
+    "block_height": 2714125,
+    "block_time": 1727005648,
+    "datum_hash": null,
+    "inline_datum": null,
+    "reference_script": null,
+    "asset_list": [],
+    "is_spent": false
+  }
+]

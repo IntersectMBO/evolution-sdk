@@ -9,10 +9,9 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as KeyHash from "@evolution-sdk/evolution/KeyHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 
 describe("TxBuilder addSigner (Devnet Submit)", () => {
@@ -25,29 +24,16 @@ describe("TxBuilder addSigner (Devnet Submit)", () => {
 
   const createTestClient = (accountIndex: number = 0) => {
     if (!devnetCluster) throw new Error("Cluster not initialized")
-    const slotConfig = Cluster.getSlotConfig(devnetCluster)
-    return createClient({
-      network: 0,
-      slotConfig,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1449",
-        ogmiosUrl: "http://localhost:1344"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
   }
 
   beforeAll(async () => {
-    const tempClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" }
-    })
+    const tempClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0, addressType: "Base" })
 
     const testAddress = await tempClient.address()
     const testAddressHex = Address.toHex(testAddress)
@@ -64,10 +50,9 @@ describe("TxBuilder addSigner (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "addsigner-test",
-      ports: { node: 6007, submit: 9008 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1449, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1344, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

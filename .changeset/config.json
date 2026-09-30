@@ -1,7 +1,7 @@
 {
   "changelog": [
     "@changesets/changelog-github",
-    { "repo": "no-witness-labs/evolution-sdk" }
+    { "repo": "IntersectMBO/evolution-sdk" }
   ],
   "commit": false,
   "fixed": [],

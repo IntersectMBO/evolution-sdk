@@ -1,9 +1,9 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
-import { generateTypeScript } from "../src/blueprint/codegen.js"
-import { createCodegenConfig } from "../src/blueprint/codegen-config.js"
-import { PlutusBlueprint } from "../src/blueprint/types.js"
+import { generateTypeScript } from "../src/blueprint/Codegen.js"
+import { createCodegenConfig } from "../src/blueprint/CodegenConfig.js"
+import { PlutusBlueprint } from "../src/blueprint/Types.js"
 import blueprintJson from "./spec/plutus.json"
 
 describe("Blueprint", () => {
@@ -104,6 +104,40 @@ describe("Blueprint", () => {
       expect(reDecoded.preamble.title).toBe(decoded.preamble.title)
       expect(reDecoded.validators.length).toBe(decoded.validators.length)
       expect(Object.keys(reDecoded.definitions).length).toBe(Object.keys(decoded.definitions).length)
+    })
+  })
+
+  describe("Codegen - Recursive Types", () => {
+    it("should parse multisig/MultiSig and its linked List definition", () => {
+      const result = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)
+
+      // Aiken encodes List<MultiSig> as a separate List$multisig/MultiSig definition
+      expect(result.definitions["multisig/MultiSig"]).toBeDefined()
+      expect(result.definitions["List$multisig/MultiSig"]).toBeDefined()
+    })
+
+    it("List$multisig/MultiSig items should $ref back to multisig~1MultiSig", () => {
+      const result = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)
+
+      const listDef = result.definitions["List$multisig/MultiSig"] as {
+        dataType: string
+        items: { $ref: string }
+      }
+      expect(listDef.dataType).toBe("list")
+      expect(listDef.items.$ref).toBe("#/definitions/multisig~1MultiSig")
+    })
+
+    it("should emit Schema.suspend for the recursive list item without double-wrapping", () => {
+      const blueprint = Schema.decodeUnknownSync(PlutusBlueprint)(blueprintJson)
+      const config = createCodegenConfig()
+      const code = generateTypeScript(blueprint, config)
+
+      // Recursive $ref must use a typed thunk with Data.Constr — no untyped () => form
+      expect(code).toContain("Schema.suspend((): Schema.Schema<")
+      expect(code).toContain("Data.Constr")
+
+      // Must not double-wrap: Schema.suspend inside Schema.suspend
+      expect(code).not.toContain("Schema.suspend((): Schema.Schema<Schema.suspend")
     })
   })
 

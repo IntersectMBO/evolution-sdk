@@ -10,11 +10,11 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
-import type { BuildOptionsTag, TransactionBuilderError } from "../TransactionBuilder.js"
+import * as CoreAssets from "../../../Assets.js"
+import * as CoreUTxO from "../../../UTxO.js"
+import { calculateFeeIteratively, calculateReferenceScriptFee } from "../internal/txBuilder.js"
+import type { BuildOptionsTag, PhaseResult , TransactionBuilderError} from "../TransactionBuilder.js"
 import { PhaseContextTag, ProtocolParametersTag, TxContext } from "../TransactionBuilder.js"
-import { buildTransactionInputs, calculateFeeIteratively, calculateReferenceScriptFee } from "../TxBuilderImpl.js"
-import type { PhaseResult } from "./Phases.js"
 
 /**
  * Fee Calculation Phase
@@ -67,7 +67,7 @@ export const executeFeeCalculation = (): Effect.Effect<
     const baseOutputs = state.outputs
 
     // Step 2: Build transaction inputs
-    const inputs = yield* buildTransactionInputs(selectedUtxos)
+    const inputs = CoreUTxO.toInputs(selectedUtxos)
 
     // Step 3: Combine base outputs + change outputs
     yield* Effect.logDebug(

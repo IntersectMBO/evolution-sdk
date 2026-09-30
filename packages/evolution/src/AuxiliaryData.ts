@@ -1,5 +1,7 @@
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as AuxiliaryDataHash from "./AuxiliaryDataHash.js"
 import * as CBOR from "./CBOR.js"
 import * as Metadata from "./Metadata.js"
 import * as NativeScripts from "./NativeScripts.js"
@@ -638,3 +640,22 @@ export const toCBORBytes = (data: AuxiliaryData, options: CBOR.CodecOptions = CB
  */
 export const toCBORHex = (data: AuxiliaryData, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORHex(options))(data)
+
+/**
+ * Compute hash of auxiliary data (tag 259) per ledger rules.
+ *
+ * Pass the same codec options used to serialize the transaction's auxiliary
+ * data. Set the resulting body commitment before signing; changing encoding
+ * afterward can invalidate the commitment and existing signatures.
+ *
+ * @since 2.0.0
+ * @category hashing
+ */
+export const toHash = (
+  aux: AuxiliaryData,
+  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+): AuxiliaryDataHash.AuxiliaryDataHash => {
+  const bytes = toCBORBytes(aux, options)
+  const digest = blake2b(bytes, { dkLen: 32 })
+  return new AuxiliaryDataHash.AuxiliaryDataHash({ bytes: digest })
+}

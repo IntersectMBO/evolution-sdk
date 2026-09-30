@@ -9,9 +9,8 @@ import { Effect, Ref } from "effect"
 
 import type * as GovernanceAction from "../../../GovernanceAction.js"
 import * as VotingProcedures from "../../../VotingProcedures.js"
-import { voterToKey } from "../phases/utils.js"
 import * as RedeemerBuilder from "../RedeemerBuilder.js"
-import { TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
+import { TransactionBuilderError, TxContext, voterToKey } from "../TransactionBuilder.js"
 import type { VoteParams } from "./Operations.js"
 
 /**
@@ -72,16 +71,6 @@ export const createVoteProgram = (params: VoteParams): Effect.Effect<void, Trans
     if (params.redeemer && scriptVoters.size === 0) {
       yield* Effect.logWarning(
         "[Vote] Redeemer provided but no script-controlled voters found. Redeemer will be ignored."
-      )
-    }
-
-    // 4. If script voters exist but no redeemer, fail
-    if (scriptVoters.size > 0 && !params.redeemer) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message: "Redeemer required for script-controlled voters",
-          cause: Array.from(scriptVoters)
-        })
       )
     }
 

@@ -1,6 +1,6 @@
 ---
 title: sdk/provider/Blockfrost.ts
-nav_order: 158
+nav_order: 153
 parent: Modules
 ---
 
@@ -12,7 +12,7 @@ parent: Modules
 
 - [constructors](#constructors)
   - [BlockfrostProvider (class)](#blockfrostprovider-class)
-    - [Effect (property)](#effect-property)
+    - [effect (property)](#effect-property)
     - [baseUrl (property)](#baseurl-property)
     - [projectId (property)](#projectid-property)
     - [getProtocolParameters (property)](#getprotocolparameters-property)
@@ -50,12 +50,12 @@ export declare class BlockfrostProvider {
 
 Added in v2.0.0
 
-### Effect (property)
+### effect (property)
 
 **Signature**
 
 ```ts
-readonly Effect: ProviderEffect
+readonly effect: ProviderEffect
 ```
 
 ### baseUrl (property)
@@ -138,8 +138,11 @@ getDatum: (datumHash: Parameters<Provider["getDatum"]>[0]) => Promise<Data>
 **Signature**
 
 ```ts
-awaitTx: (txHash: Parameters<Provider["awaitTx"]>[0], checkInterval?: Parameters<Provider["awaitTx"]>[1]) =>
-  Promise<boolean>
+awaitTx: (
+  txHash: Parameters<Provider["awaitTx"]>[0],
+  checkInterval?: Parameters<Provider["awaitTx"]>[1],
+  timeout?: Parameters<Provider["awaitTx"]>[2]
+) => Promise<boolean>
 ```
 
 ### submitTx (property)

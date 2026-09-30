@@ -1,5 +1,6 @@
 import { Effect as Eff, FastCheck, ParseResult, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as KeyHash from "./KeyHash.js"
 import * as ScriptHash from "./ScriptHash.js"
@@ -26,6 +27,30 @@ export type CredentialEncoded = typeof Credential.Encoded
 
 export const makeKeyHash = (hash: Uint8Array): Credential => new KeyHash.KeyHash({ hash })
 export const makeScriptHash = (hash: Uint8Array): Credential => new ScriptHash.ScriptHash({ hash })
+
+/**
+ * Convert a Credential to a hex string of its hash.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toHex = (credential: Credential): string => Bytes.toHex(credential.hash)
+
+/**
+ * Convert a Credential to a bech32 string.
+ * Uses CIP-0005 prefixes: `addr_vkh` for KeyHash, `script` for ScriptHash.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toBech32 = (credential: Credential): string => {
+  switch (credential._tag) {
+    case "KeyHash":
+      return KeyHash.toBech32(credential)
+    case "ScriptHash":
+      return ScriptHash.toBech32(credential)
+  }
+}
 
 /**
  * Check if the given value is a valid Credential

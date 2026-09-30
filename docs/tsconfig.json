@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "target": "ESNext",
     "lib": [
       "dom",
@@ -20,8 +19,14 @@
     "jsx": "react-jsx",
     "incremental": true,
     "paths": {
-      "@/.source": [
-        "./.source/index.ts"
+      "@evolution-sdk/evolution": [
+        "../packages/evolution/dist/index.d.ts"
+      ],
+      "@evolution-sdk/evolution/*": [
+        "../packages/evolution/dist/*"
+      ],
+      "@/.source/server": [
+        "./.source/server.ts"
       ],
       "@/*": [
         "./*"

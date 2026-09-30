@@ -7,19 +7,27 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
-import { TxContext } from "../TransactionBuilder.js"
-import { makeTxOutput } from "../TxBuilderImpl.js"
+import * as CoreAssets from "../../../Assets.js"
+import { calculateMinimumUtxoLovelace, makeTxOutput } from "../internal/txBuilder.js"
+import type { TransactionBuilderError } from "../TransactionBuilder.js"
+import { BuildOptionsTag, ProtocolParametersTag, TxContext } from "../TransactionBuilder.js"
 import type { PayToAddressParams } from "./Operations.js"
 
 /**
  * Creates a ProgramStep for payToAddress operation.
  * Creates a UTxO output and tracks assets for balancing.
  *
+ * When `autoMinUtxo` is enabled (via build options or per-call override),
+ * the output lovelace is automatically bumped up to the protocol minimum
+ * if the specified amount is below it. When disabled (the default), the
+ * specified lovelace is used as-is.
+ *
  * Implementation:
- * 1. Creates UTxO output from parameters using helper
- * 2. Adds output to state.outputs array
- * 3. Updates totalOutputAssets for balancing
+ * 1. Resolves autoMinUtxo from per-call override or build options (default: off)
+ * 2. When enabled, calculates minimum lovelace and uses the higher of specified/required
+ * 3. Creates the UTxO output with the effective assets
+ * 4. Adds output to state.outputs array
+ * 5. Updates totalOutputAssets for balancing
  *
  * @since 2.0.0
  * @category programs
@@ -27,19 +35,42 @@ import type { PayToAddressParams } from "./Operations.js"
 export const createPayToAddressProgram = (params: PayToAddressParams) =>
   Effect.gen(function* () {
     const ctx = yield* TxContext
+    const buildOptions = yield* BuildOptionsTag
+    const shouldBump = params.autoMinUtxo ?? buildOptions.autoMinUtxo ?? false
 
-    // 1. Create Core TransactionOutput from params
-    const output = yield* makeTxOutput({
+    let effectiveAssets = params.assets
+
+    if (shouldBump) {
+      const protocolParams = yield* ProtocolParametersTag
+
+      const minLovelace = yield* calculateMinimumUtxoLovelace({
+        address: params.address,
+        assets: params.assets,
+        datum: params.datum,
+        scriptRef: params.script,
+        coinsPerUtxoByte: protocolParams.coinsPerUtxoByte
+      })
+
+      const specifiedLovelace = CoreAssets.lovelaceOf(params.assets)
+      if (specifiedLovelace < minLovelace) {
+        effectiveAssets = CoreAssets.withLovelace(params.assets, minLovelace)
+      }
+    }
+
+    const output = makeTxOutput({
       address: params.address,
-      assets: params.assets,
+      assets: effectiveAssets,
       datum: params.datum,
-      scriptRef: params.script // Script is now directly compatible with UTxO.scriptRef
+      scriptRef: params.script
     })
 
-    // 2. Add output to state
     yield* Ref.update(ctx, (state) => ({
       ...state,
       outputs: [...state.outputs, output],
-      totalOutputAssets: CoreAssets.merge(state.totalOutputAssets, params.assets)
+      totalOutputAssets: CoreAssets.merge(state.totalOutputAssets, effectiveAssets)
     }))
-  })
+  }) satisfies Effect.Effect<
+    void,
+    TransactionBuilderError,
+    ProtocolParametersTag | TxContext | BuildOptionsTag
+  >

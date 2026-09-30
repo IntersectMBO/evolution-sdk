@@ -2,8 +2,8 @@ import * as CSL from "@emurgo/cardano-message-signing-nodejs"
 import { FastCheck } from "effect"
 import { describe, expect, it } from "vitest"
 
+import { COSEKey, COSESign1, Header, Label, Utils } from "../src/cose/index.js"
 import * as Ed25519Signature from "../src/Ed25519Signature.js"
-import { COSEKey, COSESign1, Header, Label, Utils } from "../src/message-signing/index.js"
 import * as PrivateKey from "../src/PrivateKey.js"
 import * as VKey from "../src/VKey.js"
 

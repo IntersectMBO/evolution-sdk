@@ -1,8 +1,9 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as CoreAddress from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -60,7 +61,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         })
       ]
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -134,7 +135,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         createCoreTestUtxo({ transactionId: "e".repeat(64), index: 0, address: CHANGE_ADDRESS, lovelace: 100_000n })
       ]
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -201,7 +202,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -239,7 +240,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -279,7 +280,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       })
       const initialUtxo = new CoreUTxO.UTxO({ ...initialUtxoBase, assets: initialAssets })
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -314,7 +315,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         lovelace: 350_000n
       })
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),
@@ -351,7 +352,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
         lovelace: 350_000n
       })
 
-      const builder = makeTxBuilder({})
+      const builder = makeTxBuilder({ chain: mainnet })
         .collectFrom({ inputs: [initialUtxo] })
         .payToAddress({
           address: CoreAddress.fromBech32(DESTINATION_ADDRESS),

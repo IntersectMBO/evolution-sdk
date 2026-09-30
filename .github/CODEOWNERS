@@ -1,18 +1,18 @@
 # Global owners
-* @no-witness-labs
+* @solidsnakedev
 
 # Evolution SDK core
-/packages/evolution/ @no-witness-labs
+/packages/evolution/ @solidsnakedev
 
 # Documentation
-/docs/ @no-witness-labs
-/README.md @no-witness-labs
+/docs/ @solidsnakedev
+/README.md @solidsnakedev
 
 # CI/CD and GitHub configuration
-/.github/ @no-witness-labs
-/.changeset/ @no-witness-labs
+/.github/ @solidsnakedev
+/.changeset/ @solidsnakedev
 
 # Package configuration
-/package.json @no-witness-labs
-/turbo.json @no-witness-labs
-/tsconfig*.json @no-witness-labs
+/package.json @solidsnakedev
+/turbo.json @solidsnakedev
+/tsconfig*.json @solidsnakedev

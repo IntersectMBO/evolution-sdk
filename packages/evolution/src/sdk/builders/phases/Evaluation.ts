@@ -17,22 +17,22 @@ import * as PolicyId from "../../../PolicyId.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type * as Provider from "../../provider/Provider.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
+import { assembleTransaction } from "../internal/txBuilder.js"
 import type { IndexedInput } from "../RedeemerBuilder.js"
 import {
   BuildOptionsTag,
   type DeferredRedeemerData,
   type EvaluationContext,
   EvaluationError,
+  FullProtocolParametersTag,
   PhaseContextTag,
+  type PhaseResult,
   type RedeemerData,
   type ScriptFailure,
   TransactionBuilderError,
-  TxBuilderConfigTag,
-  TxContext
-} from "../TransactionBuilder.js"
-import { assembleTransaction, buildTransactionInputs } from "../TxBuilderImpl.js"
-import type { PhaseResult } from "./Phases.js"
-import { voterToKey } from "./utils.js"
+  type TxBuilderConfigTag,
+  TxContext,
+  voterToKey} from "../TransactionBuilder.js"
 
 /**
  * Convert ProtocolParameters cost models to CostModels core type for evaluation.
@@ -162,8 +162,11 @@ const resolveDeferredRedeemers = (
         const utxo = refToUtxo.get(key)
 
         if (index === undefined || !utxo) {
-          yield* Effect.logWarning(`[Evaluation] Could not resolve self redeemer for ${key} - UTxO not in transaction`)
-          continue
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Self redeemer for ${key} could not be resolved: UTxO is not present in the transaction inputs`
+            })
+          )
         }
 
         const indexedInput: IndexedInput = { index, utxo }
@@ -196,8 +199,11 @@ const resolveDeferredRedeemers = (
         }
 
         if (batchInputs.length === 0) {
-          yield* Effect.logWarning(`[Evaluation] Batch redeemer for ${key} has no resolved inputs`)
-          continue
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Batch redeemer for ${key} has no resolved inputs: none of the specified UTxOs are present in the transaction`
+            })
+          )
         }
 
         // Sort by index for consistent ordering
@@ -254,7 +260,7 @@ const resolveDeferredRedeemers = (
 export const executeEvaluation = (): Effect.Effect<
   PhaseResult,
   TransactionBuilderError,
-  BuildOptionsTag | TxContext | PhaseContextTag | TxBuilderConfigTag
+  BuildOptionsTag | FullProtocolParametersTag | TxContext | PhaseContextTag | TxBuilderConfigTag
 > =>
   Effect.gen(function* () {
     yield* Effect.logDebug("[Evaluation] Starting UPLC evaluation")
@@ -262,9 +268,9 @@ export const executeEvaluation = (): Effect.Effect<
     // Step 1: Get contexts
     const ctx = yield* TxContext
     const buildOptions = yield* BuildOptionsTag
+    const fullParamsOrUndefined = yield* FullProtocolParametersTag
     const buildCtxRef = yield* PhaseContextTag
     const buildCtx = yield* Ref.get(buildCtxRef)
-    const config = yield* TxBuilderConfigTag
     const state = yield* Ref.get(ctx)
 
     // Step 2: Get evaluator from BuildOptions or fail
@@ -283,26 +289,15 @@ export const executeEvaluation = (): Effect.Effect<
       )
     }
 
-    // Step 2.5: Fetch full protocol parameters (needed for cost models and execution limits)
-    if (!config.provider) {
+    if (!fullParamsOrUndefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
-          message:
-            "Script evaluation requires a provider to fetch full protocol parameters (cost models, execution limits)",
+          message: "Provider required to fetch protocol parameters for script evaluation",
           cause: { redeemerCount: state.redeemers.size }
         })
       )
     }
-
-    const fullProtocolParams = yield* config.provider.Effect.getProtocolParameters().pipe(
-      Effect.mapError(
-        (providerError) =>
-          new TransactionBuilderError({
-            message: `Failed to fetch full protocol parameters for evaluation: ${providerError.message}`,
-            cause: providerError
-          })
-      )
-    )
+    const fullProtocolParams = fullParamsOrUndefined
 
     // Step 3: Check if there are redeemers to evaluate (resolved or deferred)
     const hasResolvedRedeemers = state.redeemers.size > 0
@@ -457,7 +452,7 @@ export const executeEvaluation = (): Effect.Effect<
       }
     }
 
-    const inputs = yield* buildTransactionInputs(sortedUtxos)
+    const inputs = CoreUTxO.toInputs(sortedUtxos)
     const allOutputs = [...updatedState.outputs, ...buildCtx.changeOutputs]
     const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
 
@@ -559,10 +554,11 @@ export const executeEvaluation = (): Effect.Effect<
         // For spend redeemers, map input index to UTxO reference
         const utxoRef = inputIndexMapping.get(evalRedeemer.redeemer_index)
         if (!utxoRef) {
-          yield* Effect.logWarning(
-            `[Evaluation] Could not map input index ${evalRedeemer.redeemer_index} to UTxO reference`
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned spend result at index ${evalRedeemer.redeemer_index} but no UTxO exists at that position in the transaction`
+            })
           )
-          continue
         }
 
         const redeemer = evaluatedRedeemers.get(utxoRef)
@@ -578,14 +574,21 @@ export const executeEvaluation = (): Effect.Effect<
               `mem=${evalRedeemer.ex_units.mem}, steps=${evalRedeemer.ex_units.steps}`
           )
         } else {
-          yield* Effect.logWarning(`[Evaluation] No redeemer found in state for UTxO ${utxoRef}`)
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned spend result for ${utxoRef} but no redeemer exists in builder state for that UTxO`
+            })
+          )
         }
       } else if (evalRedeemer.redeemer_tag === "mint") {
         // For mint redeemers, map mint index to policy ID hex
         const policyIdHex = mintIndexMapping.get(evalRedeemer.redeemer_index)
         if (!policyIdHex) {
-          yield* Effect.logWarning(`[Evaluation] Could not map mint index ${evalRedeemer.redeemer_index} to policy ID`)
-          continue
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned mint result at index ${evalRedeemer.redeemer_index} but no policy exists at that position in the transaction`
+            })
+          )
         }
 
         const redeemer = evaluatedRedeemers.get(policyIdHex)
@@ -601,14 +604,21 @@ export const executeEvaluation = (): Effect.Effect<
               `mem=${evalRedeemer.ex_units.mem}, steps=${evalRedeemer.ex_units.steps}`
           )
         } else {
-          yield* Effect.logWarning(`[Evaluation] No redeemer found in state for policy ${policyIdHex}`)
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned mint result for policy ${policyIdHex} but no redeemer exists in builder state for that policy`
+            })
+          )
         }
       } else if (evalRedeemer.redeemer_tag === "cert") {
         // For certificate redeemers, map index to credential key
         const certKey = certIndexMapping.get(evalRedeemer.redeemer_index)
         if (!certKey) {
-          yield* Effect.logWarning(`[Evaluation] Could not map cert index ${evalRedeemer.redeemer_index} to credential`)
-          continue
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned cert result at index ${evalRedeemer.redeemer_index} but no certificate exists at that position in the transaction`
+            })
+          )
         }
 
         const redeemer = evaluatedRedeemers.get(certKey)
@@ -624,16 +634,21 @@ export const executeEvaluation = (): Effect.Effect<
               `mem=${evalRedeemer.ex_units.mem}, steps=${evalRedeemer.ex_units.steps}`
           )
         } else {
-          yield* Effect.logWarning(`[Evaluation] No redeemer found in state for cert ${certKey}`)
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned cert result for ${certKey} but no redeemer exists in builder state for that credential`
+            })
+          )
         }
       } else if (evalRedeemer.redeemer_tag === "reward") {
         // For withdrawal redeemers, map index to credential key
         const rewardKey = withdrawalIndexMapping.get(evalRedeemer.redeemer_index)
         if (!rewardKey) {
-          yield* Effect.logWarning(
-            `[Evaluation] Could not map withdrawal index ${evalRedeemer.redeemer_index} to credential`
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned reward result at index ${evalRedeemer.redeemer_index} but no withdrawal exists at that position in the transaction`
+            })
           )
-          continue
         }
 
         const redeemer = evaluatedRedeemers.get(rewardKey)
@@ -649,14 +664,21 @@ export const executeEvaluation = (): Effect.Effect<
               `mem=${evalRedeemer.ex_units.mem}, steps=${evalRedeemer.ex_units.steps}`
           )
         } else {
-          yield* Effect.logWarning(`[Evaluation] No redeemer found in state for withdrawal ${rewardKey}`)
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned reward result for ${rewardKey} but no redeemer exists in builder state for that withdrawal`
+            })
+          )
         }
       } else if (evalRedeemer.redeemer_tag === "vote") {
         // For vote redeemers, map index to voter key
         const voterKey = voteIndexMapping.get(evalRedeemer.redeemer_index)
         if (!voterKey) {
-          yield* Effect.logWarning(`[Evaluation] Could not map vote index ${evalRedeemer.redeemer_index} to voter`)
-          continue
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned vote result at index ${evalRedeemer.redeemer_index} but no voter exists at that position in the transaction`
+            })
+          )
         }
 
         const redeemer = evaluatedRedeemers.get(voterKey)
@@ -675,12 +697,20 @@ export const executeEvaluation = (): Effect.Effect<
               `mem=${evalRedeemer.ex_units.mem}, steps=${evalRedeemer.ex_units.steps}`
           )
         } else {
-          yield* Effect.logWarning(`[Evaluation] No redeemer found in state for vote ${voterKey}`)
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned vote result for ${voterKey} but no redeemer exists in builder state for that voter`
+            })
+          )
         }
       } else {
-        // Unknown redeemer type
-        yield* Effect.logWarning(
-          `[Evaluation] Unknown redeemer type ${evalRedeemer.redeemer_tag} not yet supported for matching`
+        // Unknown redeemer type returned by the evaluator — fail immediately.
+        // Silently ignoring this would leave the redeemer at exUnits = 0, which
+        // looks "unevaluated" to Balance and triggers an infinite retry loop.
+        return yield* Effect.fail(
+          new TransactionBuilderError({
+            message: `Evaluator returned unknown redeemer tag "${evalRedeemer.redeemer_tag}" at index ${evalRedeemer.redeemer_index}. This is likely a provider bug or an unsupported evaluator format.`
+          })
         )
       }
     }

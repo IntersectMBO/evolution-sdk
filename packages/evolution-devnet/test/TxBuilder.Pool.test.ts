@@ -7,6 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
+import type { Cardano } from "@evolution-sdk/evolution"
+import { Client, preprod } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Bytes32 from "@evolution-sdk/evolution/Bytes32"
 import type * as EpochNo from "@evolution-sdk/evolution/EpochNo"
@@ -16,7 +18,6 @@ import * as PoolKeyHash from "@evolution-sdk/evolution/PoolKeyHash"
 import * as PoolMetadata from "@evolution-sdk/evolution/PoolMetadata"
 import * as PoolParams from "@evolution-sdk/evolution/PoolParams"
 import * as RewardAccount from "@evolution-sdk/evolution/RewardAccount"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as SingleHostAddr from "@evolution-sdk/evolution/SingleHostAddr"
 import * as UnitInterval from "@evolution-sdk/evolution/UnitInterval"
 import * as Url from "@evolution-sdk/evolution/Url"
@@ -30,29 +31,20 @@ describe("TxBuilder Pool Operations", () => {
   const TEST_MNEMONIC =
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
-  const createTestClient = (accountIndex: number = 0) =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1453",
-        ogmiosUrl: "http://localhost:1343"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+  const createTestClient = (accountIndex: number = 0) => {
+    if (!devnetCluster) throw new Error("Cluster not initialized")
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
+  }
 
   beforeAll(async () => {
     // Create clients for pool tests
     const accounts = [0, 1].map((accountIndex) =>
-      createClient({
-        network: 0,
-        wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
-      })
+      Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
     )
 
     const addresses = await Promise.all(accounts.map((client) => client.address()))
@@ -83,10 +75,9 @@ describe("TxBuilder Pool Operations", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "pool-ops-test",
-      ports: { node: 6006, submit: 9007 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1453, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1343, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

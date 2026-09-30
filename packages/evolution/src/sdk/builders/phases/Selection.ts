@@ -10,21 +10,14 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as CoreAssets from "../../../Assets.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type { CoinSelectionAlgorithm, CoinSelectionFunction } from "../CoinSelection.js"
 import { largestFirstSelection } from "../CoinSelection.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
 import { negatedMintAssets } from "../operations/Mint.js"
-import {
-  AvailableUtxosTag,
-  BuildOptionsTag,
-  PhaseContextTag,
-  TransactionBuilderError,
-  TxContext
-} from "../TransactionBuilder.js"
-import { calculateTotalAssets } from "../TxBuilderImpl.js"
-import type { PhaseResult } from "./Phases.js"
+import type { PhaseResult } from "../TransactionBuilder.js"
+import { AvailableUtxosTag, BuildOptionsTag, PhaseContextTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
 
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
@@ -107,7 +100,7 @@ const addUtxosToState = (selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>): Effect.Ef
     }
 
     // Calculate total assets from selected UTxOs
-    const additionalAssets = calculateTotalAssets(selectedUtxos)
+    const additionalAssets = CoreUTxO.totalAssets(selectedUtxos)
 
     // Update state with new UTxOs and input assets
     const state = yield* Ref.get(ctx)

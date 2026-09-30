@@ -19,23 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           # This makes Actions fetch all Git history so that Changesets can generate changelogs with the correct commits
           fetch-depth: 0
 
       - name: 📦 Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
 
       - name: ⎔ Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org/'
 
-      - name: 📦 Update npm to latest (required for trusted publishing)
-        run: npm install -g npm@latest
+      # npm 12 rejects the --no-git-checks flag that changesets passes when publishing
+      # a pnpm workspace, so pin to the 11.x line (>= 11.5.1 is required for trusted publishing)
+      - name: 📦 Update npm (required for trusted publishing)
+        run: npm install -g npm@11
 
       - name: 📦 Install dependencies
         run: pnpm install --frozen-lockfile
@@ -43,19 +45,21 @@ jobs:
       - name: 🏗 Build packages
         run: pnpm turbo run build
 
+      - name: 🔎 Type-check published declarations
+        run: pnpm turbo run check:dts
+
       - name: 🧪 Run tests
         run: pnpm turbo run test
 
       - name: 🦋 Create Release Pull Request or Publish to npm
         id: changesets
-        uses: changesets/action@v1
-        continue-on-error: true
+        uses: changesets/action@v2.1.2
         with:
           # This uses our custom publish script that builds before publishing
-          publish: pnpm changeset-publish
-          title: "ci(changesets): version packages"
-          commit: "ci(changesets): version packages"
-          createGithubReleases: true
+          publish-script: pnpm changeset-publish
+          pr-title: "ci(changesets): version packages"
+          commit-message: "ci(changesets): version packages"
+          create-github-releases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true

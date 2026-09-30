@@ -137,7 +137,8 @@ export const fromPrivateKey = (privateKey: PrivateKey.PrivateKey): VKey => {
     const scalar = privateKeyBytes.slice(0, 32)
     // Apply modular reduction to ensure scalar is in valid range [0, curve.n)
     const scalarBigInt = mod(bytesToNumberLE(scalar), ed25519.Point.Fn.ORDER)
-    const publicKeyPoint = ed25519.Point.BASE.multiplyUnsafe(scalarBigInt)
+    // Constant-time multiply: the scalar is secret key material
+    const publicKeyPoint = ed25519.Point.BASE.multiply(scalarBigInt)
     publicKeyBytes = publicKeyPoint.toBytes()
   } else {
     // Standard 32-byte Ed25519 private key: derive public key

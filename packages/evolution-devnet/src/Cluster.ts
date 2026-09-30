@@ -2,6 +2,7 @@ import { NodeStream } from "@effect/platform-node"
 import Docker from "dockerode"
 import { Data, Effect, Stream } from "effect"
 import * as fs from "fs"
+import { createServer } from "net"
 import * as os from "os"
 import * as path from "path"
 
@@ -20,9 +21,28 @@ export interface Cluster {
   readonly kupo?: Container.Container | undefined
   readonly ogmios?: Container.Container | undefined
   readonly networkName: string
+  /** Host ports assigned to each container. */
+  readonly ports: {
+    readonly node: number
+    readonly submit: number
+    readonly kupo?: number
+    readonly ogmios?: number
+  }
   /** The Shelley genesis config used by this cluster (needed for slot config) */
   readonly shelleyGenesis: Config.ShelleyGenesis
 }
+
+const findFreePort = (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.on("error", reject)
+    server.listen(0, () => {
+      const addr = server.address()
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0
+      server.close(() => resolve(port))
+    })
+  })
 
 /**
  * Internal utilities for cluster operations.
@@ -93,12 +113,25 @@ const writeConfigFiles = (config: Required<Config.DevNetConfig>) =>
  */
 export const makeEffect = (config: Config.DevNetConfig = {}): Effect.Effect<Cluster, ClusterError> =>
   Effect.gen(function* () {
+    const kupoEnabled = config.kupo?.enabled ?? Config.DEFAULT_DEVNET_CONFIG.kupo.enabled
+    const ogmiosEnabled = config.ogmios?.enabled ?? Config.DEFAULT_DEVNET_CONFIG.ogmios.enabled
+    const resolvedPorts = {
+      node: config.ports?.node ?? (yield* Effect.promise(() => findFreePort())),
+      submit: config.ports?.submit ?? (yield* Effect.promise(() => findFreePort())),
+      kupo: kupoEnabled
+        ? (config.kupo?.port ?? (yield* Effect.promise(() => findFreePort())))
+        : undefined,
+      ogmios: ogmiosEnabled
+        ? (config.ogmios?.port ?? (yield* Effect.promise(() => findFreePort())))
+        : undefined
+    }
+
     const fullConfig: Required<Config.DevNetConfig> = {
       clusterName: config.clusterName ?? Config.DEFAULT_DEVNET_CONFIG.clusterName,
       image: config.image ?? Config.DEFAULT_DEVNET_CONFIG.image,
       ports: {
-        ...Config.DEFAULT_DEVNET_CONFIG.ports,
-        ...config.ports
+        node: resolvedPorts.node,
+        submit: resolvedPorts.submit
       },
       networkMagic: config.networkMagic ?? Config.DEFAULT_DEVNET_CONFIG.networkMagic,
       nodeConfig: {
@@ -135,11 +168,13 @@ export const makeEffect = (config: Config.DevNetConfig = {}): Effect.Effect<Clus
       },
       kupo: {
         ...Config.DEFAULT_DEVNET_CONFIG.kupo,
-        ...config.kupo
+        ...config.kupo,
+        ...(resolvedPorts.kupo !== undefined ? { port: resolvedPorts.kupo } : {})
       },
       ogmios: {
         ...Config.DEFAULT_DEVNET_CONFIG.ogmios,
-        ...config.ogmios
+        ...config.ogmios,
+        ...(resolvedPorts.ogmios !== undefined ? { port: resolvedPorts.ogmios } : {})
       }
     }
 
@@ -291,6 +326,7 @@ export const makeEffect = (config: Config.DevNetConfig = {}): Effect.Effect<Clus
           }
         : undefined,
       networkName,
+      ports: resolvedPorts,
       shelleyGenesis: fullConfig.shelleyGenesis as Config.ShelleyGenesis
     }
   })
@@ -519,17 +555,20 @@ export interface SlotConfig {
  * @example
  * ```typescript
  * import * as Cluster from "@evolution-sdk/devnet/Cluster"
- * import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
+ * import { Client } from "@evolution-sdk/evolution"
  *
  * const cluster = await Cluster.make({ ... })
  * const slotConfig = Cluster.getSlotConfig(cluster)
  *
- * const client = createClient({
- *   network: 0,
- *   slotConfig,
- *   provider: { type: "kupmios", kupoUrl: "...", ogmiosUrl: "..." },
- *   wallet: { type: "seed", mnemonic: "..." }
+ * const sdk = Client.make({
+ *   id: 0,
+ *   name: "Devnet",
+ *   networkMagic: 42,
+ *   epochLength: 50,
+ *   slotConfig
  * })
+ *   .withKupmios({ kupoUrl: "...", ogmiosUrl: "..." })
+ *   .withSeed({ mnemonic: "..." })
  * ```
  *
  * @since 2.0.0
@@ -547,3 +586,31 @@ export const getSlotConfig = (cluster: Cluster): SlotConfig => {
     slotLength
   }
 }
+
+/**
+ * Build a `Chain` descriptor for a devnet cluster.
+ *
+ * Combines a testnet network id (0) with the cluster's actual slot timing,
+ * producing a value that can be passed directly to `client(chain)`.
+ *
+ * @example
+ * ```typescript
+ * import * as Cluster from "@evolution-sdk/devnet/Cluster"
+ * import { Client } from "@evolution-sdk/evolution"
+ *
+ * const cluster = await Cluster.make({ ... })
+ * const sdk = Client.make(Cluster.getChain(cluster))
+ *   .withKupmios({ kupoUrl: "...", ogmiosUrl: "..." })
+ *   .withSeed({ mnemonic: "..." })
+ * ```
+ *
+ * @since 2.1.0
+ * @category utilities
+ */
+export const getChain = (cluster: Cluster): { id: number; name: string; networkMagic: number; epochLength: number; slotConfig: SlotConfig } => ({
+  id: 0,
+  name: "Cardano Devnet",
+  networkMagic: 42,
+  epochLength: cluster.shelleyGenesis.epochLength,
+  slotConfig: getSlotConfig(cluster)
+})

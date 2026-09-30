@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -27,7 +28,7 @@ const NFT_POLICY = "c".repeat(56)
 const HOSKY_NAME_HEX = "484f534b59" // "HOSKY" in hex
 const NFT_NAME_HEX = "4e4654303031" // "NFT001" in hex
 
-const baseConfig: TxBuilderConfig = {}
+const baseConfig: TxBuilderConfig = { chain: mainnet }
 
 describe("TxBuilder SendAll", () => {
   describe("Basic SendAll Operation", () => {

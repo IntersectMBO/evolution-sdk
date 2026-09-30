@@ -2,13 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
-import { Cardano } from "@evolution-sdk/evolution"
+import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
 import * as CoreAddress from "@evolution-sdk/evolution/Address"
 import * as AssetName from "@evolution-sdk/evolution/AssetName"
 import * as NativeScripts from "@evolution-sdk/evolution/NativeScripts"
 import * as PolicyId from "@evolution-sdk/evolution/PolicyId"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as Text from "@evolution-sdk/evolution/Text"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 
@@ -29,26 +28,18 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
   const ASSET_NAME = "TestToken"
 
-  const createTestClient = () =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1443",
-        ogmiosUrl: "http://localhost:1338"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex: 0
-      }
-    })
+  const createTestClient = () => {
+    if (!devnetCluster) throw new Error("Cluster not initialized")
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster!.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster!.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
+  }
 
   beforeAll(async () => {
-    const testClient = createClient({
-      network: 0,
-      wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex: 0 }
-    })
+    const testClient = Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex: 0 })
 
     const testAddress = await testClient.address()
     const testAddressHex = CoreAddress.toHex(testAddress)
@@ -76,10 +67,9 @@ describe("TxBuilder Minting (Devnet Submit)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "client-minting-test",
-      ports: { node: 6001, submit: 9002 },
       shelleyGenesis: genesisConfig,
-      kupo: { enabled: true, port: 1443, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1338, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)

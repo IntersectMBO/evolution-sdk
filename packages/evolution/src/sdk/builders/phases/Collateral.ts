@@ -11,19 +11,14 @@
 
 import { Effect, Ref } from "effect"
 
-import * as CoreAssets from "../../../Assets/index.js"
+import * as CoreAssets from "../../../Assets.js"
 import * as TxOut from "../../../TxOut.js"
 import * as UTxO from "../../../UTxO.js"
 import {
-  AvailableUtxosTag,
-  BuildOptionsTag,
-  ChangeAddressTag,
-  ProtocolParametersTag,
-  TransactionBuilderError,
-  TxContext
-} from "../TransactionBuilder.js"
-import { calculateMinimumUtxoLovelace } from "../TxBuilderImpl.js"
-import type { PhaseResult } from "./Phases.js"
+  calculateMinimumUtxoLovelace
+} from "../internal/txBuilder.js"
+import type { PhaseResult } from "../TransactionBuilder.js"
+import { AvailableUtxosTag, BuildOptionsTag, ChangeAddressTag, ProtocolParametersTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
 
 // ============================================================================
 // Constants

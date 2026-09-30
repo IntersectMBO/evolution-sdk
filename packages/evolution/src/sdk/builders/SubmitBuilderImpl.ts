@@ -35,8 +35,8 @@ export const makeSubmitBuilder = (
       Effect.gen(function* () {
         yield* Effect.logDebug("Submitting transaction to provider")
 
-        // Submit via provider's Effect.submitTx (accepts Transaction directly)
-        const txHash = yield* provider.Effect.submitTx(signedTransaction).pipe(
+        // Submit via provider's effect.submitTx (accepts Transaction directly)
+        const txHash = yield* provider.effect.submitTx(signedTransaction).pipe(
           Effect.mapError(
             (providerError) =>
               new TransactionBuilderError({
@@ -53,7 +53,7 @@ export const makeSubmitBuilder = (
   }
 
   return {
-    Effect: submitEffect,
+    effect: submitEffect,
     submit: () => Effect.runPromise(submitEffect.submit()),
     witnessSet
   }

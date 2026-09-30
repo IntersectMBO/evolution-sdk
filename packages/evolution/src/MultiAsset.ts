@@ -52,6 +52,24 @@ const mapHash = <K, V>(map: Map<K, V>): number => {
 }
 
 /**
+ * Look a key up by structural equality.
+ *
+ * PolicyId and AssetName are classes, so `Map.get` compares them by reference and
+ * misses keys decoded separately from the ones being searched for.
+ *
+ * @since 2.0.0
+ * @category utilities
+ */
+const findByEquality = <K, V>(map: Map<K, V>, key: K): V | undefined => {
+  for (const [candidate, value] of map.entries()) {
+    if (Equal.equals(candidate, key)) {
+      return value
+    }
+  }
+  return undefined
+}
+
+/**
  * Schema for inner asset map (asset_name => bigint).
  *
  * This is a **base type** with no constraints. Values can be positive,
@@ -290,10 +308,9 @@ export const addAsset = (
  * @category transformation
  */
 export const getAsset = (multiAsset: MultiAsset, policyId: PolicyId.PolicyId, assetName: AssetName.AssetName) => {
-  const assetMap = multiAsset.map.get(policyId)
+  const assetMap = findByEquality(multiAsset.map, policyId)
   if (assetMap !== undefined) {
-    const amount = assetMap.get(assetName)
-    return amount !== undefined ? amount : undefined
+    return findByEquality(assetMap, assetName)
   }
   return undefined
 }
@@ -328,7 +345,7 @@ export const getPolicyIds = (multiAsset: MultiAsset): Array<PolicyId.PolicyId> =
  * @category transformation
  */
 export const getAssetsByPolicy = (multiAsset: MultiAsset, policyId: PolicyId.PolicyId) => {
-  const assetMap = multiAsset.map.get(policyId)
+  const assetMap = findByEquality(multiAsset.map, policyId)
   return assetMap !== undefined ? Array.from(assetMap.entries()) : []
 }
 
@@ -553,7 +570,7 @@ export const subtract = (a: MultiAsset, b: MultiAsset): MultiAsset => {
 
   // Start with all assets from a
   for (const [policyId, assetMapA] of a.map.entries()) {
-    const assetMapB = b.map.get(policyId)
+    const assetMapB = findByEquality(b.map, policyId)
 
     if (assetMapB === undefined) {
       // No assets to subtract for this policy, keep all
@@ -563,7 +580,7 @@ export const subtract = (a: MultiAsset, b: MultiAsset): MultiAsset => {
       const newAssetMap = new Map<AssetName.AssetName, bigint>()
 
       for (const [assetName, amountA] of assetMapA.entries()) {
-        const amountB = assetMapB.get(assetName)
+        const amountB = findByEquality(assetMapB, assetName)
 
         if (amountB === undefined) {
           // No amount to subtract, keep the original

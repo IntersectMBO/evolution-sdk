@@ -224,12 +224,25 @@ export const subtract = (a: Value, b: Value): Value => {
  * @category ordering
  */
 export const geq = (a: Value, b: Value): boolean => {
-  try {
-    subtract(a, b)
-    return true
-  } catch {
+  if (a.coin < b.coin) {
     return false
   }
+
+  if (b._tag === "OnlyCoin") {
+    return true
+  }
+
+  const held = a._tag === "OnlyCoin" ? undefined : a.assets
+  for (const [policyId, assetMap] of b.assets.map.entries()) {
+    for (const [assetName, wanted] of assetMap.entries()) {
+      const have = held === undefined ? undefined : MultiAsset.getAsset(held, policyId, assetName)
+      if (have === undefined || have < wanted) {
+        return false
+      }
+    }
+  }
+
+  return true
 }
 
 /**

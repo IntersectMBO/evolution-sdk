@@ -18,13 +18,13 @@ import { Effect } from "effect"
 
 import * as Script from "../../Script.js"
 import * as Transaction from "../../Transaction.js"
+import * as TransactionBody from "../../TransactionBody.js"
 import * as TransactionHash from "../../TransactionHash.js"
 import * as TransactionWitnessSet from "../../TransactionWitnessSet.js"
 import type * as TxOut from "../../TxOut.js"
-import { hashTransaction } from "../../utils/Hash.js"
 import * as CoreUTxO from "../../UTxO.js"
 import type * as Provider from "../provider/Provider.js"
-import type * as WalletNew from "../wallet/WalletNew.js"
+import type * as Wallet from "../wallet/Wallet.js"
 import type { SignBuilder, SignBuilderEffect } from "./SignBuilder.js"
 import { makeSubmitBuilder } from "./SubmitBuilderImpl.js"
 import { type ChainResult, TransactionBuilderError } from "./TransactionBuilder.js"
@@ -36,7 +36,7 @@ import { type ChainResult, TransactionBuilderError } from "./TransactionBuilder.
 /**
  * Wallet type - can be SigningWallet or ApiWallet (both have Effect.signTx)
  */
-type Wallet = WalletNew.SigningWallet | WalletNew.ApiWallet
+type SignerWallet = Wallet.SigningWallet | Wallet.ApiWallet
 
 /**
  * Create a SignBuilder instance for a built transaction.
@@ -51,7 +51,7 @@ export const makeSignBuilder = (params: {
   utxos: ReadonlyArray<CoreUTxO.UTxO>
   referenceUtxos: ReadonlyArray<CoreUTxO.UTxO>
   provider: Provider.Provider
-  wallet: Wallet
+  wallet: SignerWallet
   // Data for lazy chainResult computation
   outputs: ReadonlyArray<TxOut.TransactionOutput>
   availableUtxos: ReadonlyArray<CoreUTxO.UTxO>
@@ -74,7 +74,7 @@ export const makeSignBuilder = (params: {
     if (_chainResult) return _chainResult
 
     const consumed = utxos
-    const txHash = hashTransaction(transaction.body)
+    const txHash = TransactionBody.toHash(transaction.body)
 
     const created: Array<CoreUTxO.UTxO> = outputs.map(
       (output, index) =>
@@ -115,8 +115,8 @@ export const makeSignBuilder = (params: {
       Effect.gen(function* () {
         yield* Effect.logDebug("Starting transaction signing (delegating to wallet Effect)")
 
-        // Delegate to wallet's Effect.signTx with UTxO context
-        const walletWitnessSet = yield* wallet.Effect.signTx(transaction, { utxos, referenceUtxos }).pipe(
+        // Delegate to wallet's effect.signTx with UTxO context
+        const walletWitnessSet = yield* wallet.effect.signTx(transaction, { utxos, referenceUtxos }).pipe(
           Effect.mapError(
             (walletError) =>
               new TransactionBuilderError({
@@ -172,7 +172,7 @@ export const makeSignBuilder = (params: {
     signAndSubmit: () =>
       Effect.gen(function* () {
         const submitBuilder = yield* signEffect.sign()
-        return yield* submitBuilder.Effect.submit()
+        return yield* submitBuilder.effect.submit()
       }),
 
     /**
@@ -230,7 +230,7 @@ export const makeSignBuilder = (params: {
               plutusV2Scripts: [...(acc.plutusV2Scripts ?? []), ...(ws.plutusV2Scripts ?? [])],
               plutusV3Scripts: [...(acc.plutusV3Scripts ?? []), ...(ws.plutusV3Scripts ?? [])],
               plutusData: [...(acc.plutusData ?? []), ...(ws.plutusData ?? [])],
-              redeemers: [...(acc.redeemers ?? [])]
+              redeemers: acc.redeemers
             }),
           // Start from transaction's witness set (NOT empty) to preserve attached scripts
           new TransactionWitnessSet.TransactionWitnessSet({
@@ -241,7 +241,7 @@ export const makeSignBuilder = (params: {
             plutusV2Scripts: transaction.witnessSet.plutusV2Scripts ?? [],
             plutusV3Scripts: transaction.witnessSet.plutusV3Scripts ?? [],
             plutusData: transaction.witnessSet.plutusData ?? [],
-            redeemers: transaction.witnessSet.redeemers ?? []
+            redeemers: transaction.witnessSet.redeemers
           })
         )
 
@@ -277,8 +277,8 @@ export const makeSignBuilder = (params: {
         yield* Effect.logDebug("Creating partial signature (delegating to wallet Effect)")
         yield* Effect.logDebug(`[partialSign] referenceUtxos count: ${referenceUtxos.length}`)
 
-        // Delegate to wallet's Effect.signTx to get witness set
-        const witnessSet = yield* wallet.Effect.signTx(transaction, { utxos, referenceUtxos }).pipe(
+        // Delegate to wallet's effect.signTx to get witness set
+        const witnessSet = yield* wallet.effect.signTx(transaction, { utxos, referenceUtxos }).pipe(
           Effect.mapError(
             (walletError) =>
               new TransactionBuilderError({
@@ -308,7 +308,7 @@ export const makeSignBuilder = (params: {
   // ============================================================================
 
   return {
-    Effect: signEffect,
+    effect: signEffect,
     chainResult,
     sign: () => Effect.runPromise(signEffect.sign()),
     signAndSubmit: () => Effect.runPromise(signEffect.signAndSubmit()),

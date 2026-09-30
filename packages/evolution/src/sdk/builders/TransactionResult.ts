@@ -31,9 +31,6 @@ export interface TransactionResultBase {
    * This transaction has a complete body but no witness set (signatures).
    * Can be serialized to CBOR for external signing (hardware wallets, browser extensions, etc.)
    *
-   * @returns Promise resolving to the unsigned transaction
-   *
-   *
    * @since 2.0.0
    * @category accessors
    */
@@ -46,8 +43,6 @@ export interface TransactionResultBase {
    * calculate the final transaction size and fees. Useful for validating that
    * the calculated fee is sufficient for the final signed transaction.
    *
-   * @returns Promise resolving to the transaction with fake witnesses
-   *
    * @since 2.0.0
    * @category accessors
    */
@@ -58,9 +53,6 @@ export interface TransactionResultBase {
    *
    * This is the fee that was calculated during the build process based on
    * the transaction size (including fake witnesses) and protocol parameters.
-   *
-   * @returns Promise resolving to the transaction fee in lovelace
-   *
    *
    * @since 2.0.0
    * @category accessors
@@ -77,7 +69,7 @@ export interface TransactionResultBase {
    * @since 2.0.0
    * @category effects
    */
-  readonly Effect: {
+  readonly effect: {
     /**
      * Get the unsigned transaction as an Effect.
      *
@@ -122,7 +114,7 @@ export const makeTransactionResult = (params: {
 }): TransactionResultBase => {
   const { fee, transaction, transactionWithFakeWitnesses } = params
 
-  const resultEffect: TransactionResultBase["Effect"] = {
+  const resultEffect: TransactionResultBase["effect"] = {
     toTransaction: () => Effect.succeed(transaction),
     toTransactionWithFakeWitnesses: () => Effect.succeed(transactionWithFakeWitnesses),
     estimateFee: () => Effect.succeed(fee)
@@ -132,6 +124,6 @@ export const makeTransactionResult = (params: {
     toTransaction: () => Promise.resolve(transaction),
     toTransactionWithFakeWitnesses: () => Promise.resolve(transactionWithFakeWitnesses),
     estimateFee: () => Promise.resolve(fee),
-    Effect: resultEffect
+    effect: resultEffect
   }
 }

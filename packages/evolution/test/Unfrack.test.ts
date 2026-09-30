@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import type { UnfrackOptions } from "../src/sdk/builders/TransactionBuilder.js"
 import * as Unfrack from "../src/sdk/builders/Unfrack.js"
 

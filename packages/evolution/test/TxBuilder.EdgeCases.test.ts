@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -22,7 +23,7 @@ const TESTNET_ADDRESSES = [
 const CHANGE_ADDRESS = TESTNET_ADDRESSES[0]
 const RECEIVER_ADDRESS = TESTNET_ADDRESSES[1]
 
-const baseConfig: TxBuilderConfig = {}
+const baseConfig: TxBuilderConfig = { chain: mainnet }
 
 describe("TxBuilder P0 Edge Cases - Reselection Loop Boundaries", () => {
   it("hit max reselection attempts with insufficient funds", async () => {

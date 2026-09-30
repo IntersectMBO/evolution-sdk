@@ -2,7 +2,8 @@
   "title": "Testing",
   "pages": [
     "index",
-    "emulator",
-    "mocking"
+    "unit-tests",
+    "integration-tests",
+    "emulator"
   ]
 }

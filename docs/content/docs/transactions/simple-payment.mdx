@@ -14,21 +14,17 @@ This guide covers common payment patterns—from basic ADA transfers to payments
 The simplest transaction sends only lovelace (ADA's smallest unit). 1 ADA = 1,000,000 lovelace:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
+const client = Client.make(preprod)
+  .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
+  })
+  .withSeed({
     mnemonic: process.env.WALLET_MNEMONIC!,
     accountIndex: 0
-  }
-});
+  })
 
 // Send 2 ADA
 const tx = await client
@@ -37,11 +33,11 @@ const tx = await client
     address: Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"),
     assets: Assets.fromLovelace(2_000_000n)
   })
-  .build();
+  .build()
 
-const signed = await tx.sign();
-const hash = await signed.submit();
-console.log("Transaction hash:", hash);
+const signed = await tx.sign()
+const hash = await signed.submit()
+console.log("Transaction hash:", hash)
 ```
 
 ## Working with ADA Amounts
@@ -50,15 +46,15 @@ Use these common conversions for clarity:
 
 ```ts twoslash
 // Common ADA amounts in lovelace
-const oneADA = 1_000_000n;
-const halfADA = 500_000n;
-const tenADA = 10_000_000n;
+const oneADA = 1_000_000n
+const halfADA = 500_000n
+const tenADA = 10_000_000n
 
 // Calculate dynamically
-const amount = 2.5;
-const lovelace = BigInt(amount * 1_000_000);
+const amount = 2.5
+const lovelace = BigInt(amount * 1_000_000)
 
-console.log(lovelace); // 2500000n
+console.log(lovelace) // 2500000n
 ```
 
 ## Payments with Native Tokens
@@ -66,27 +62,23 @@ console.log(lovelace); // 2500000n
 Include native tokens (custom tokens or NFTs) alongside ADA. The `assets` object takes any asset by its policy ID + asset name:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: {
-    type: "blockfrost",
+const client = Client.make(preprod)
+  .withBlockfrost({
     baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
     projectId: process.env.BLOCKFROST_API_KEY!
-  },
-  wallet: {
-    type: "seed",
+  })
+  .withSeed({
     mnemonic: process.env.WALLET_MNEMONIC!,
     accountIndex: 0
-  }
-});
+  })
 
 // Send 2 ADA plus 100 tokens
-const policyId = "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1b0c9d8e7f6";
-const assetName = ""; // empty for fungible tokens
-let assets = Assets.fromLovelace(2_000_000n);
-assets = Assets.addByHex(assets, policyId, assetName, 100n);
+const policyId = "7edb7a2d9fbc4d2a68e4c9e9d3d7a5c8f2d1e9f8a7b6c5d4e3f2a1"
+const assetName = "" // empty for fungible tokens
+let assets = Assets.fromLovelace(2_000_000n)
+assets = Assets.addByHex(assets, policyId, assetName, 100n)
 
 const tx = await client
   .newTx()
@@ -94,10 +86,10 @@ const tx = await client
     address: Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"),
     assets
   })
-  .build();
+  .build()
 
-const signed = await tx.sign();
-await signed.submit();
+const signed = await tx.sign()
+await signed.submit()
 ```
 
 The policy ID + asset name is concatenated into a single hex string.
@@ -109,17 +101,15 @@ The policy ID + asset name is concatenated into a single hex string.
 Make your code more readable with descriptive variable names:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "", projectId: "" },
-  wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
-});
+const client = Client.make(preprod)
+  .withBlockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 // ---cut---
-const recipientAddress = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63");
-const paymentAmount = 5_000_000n;  // 5 ADA
+const recipientAddress = Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63")
+const paymentAmount = 5_000_000n // 5 ADA
 
 const tx = await client
   .newTx()
@@ -127,7 +117,7 @@ const tx = await client
     address: recipientAddress,
     assets: Assets.fromLovelace(paymentAmount)
   })
-  .build();
+  .build()
 ```
 
 ### Environment-Based Amounts
@@ -135,17 +125,15 @@ const tx = await client
 Adjust transaction values based on network or configuration:
 
 ```ts twoslash
-import { Address, Assets, createClient } from "@evolution-sdk/evolution";
+import { Address, Assets, preprod, Client } from "@evolution-sdk/evolution"
 
-const client = createClient({
-  network: "preprod",
-  provider: { type: "blockfrost", baseUrl: "", projectId: "" },
-  wallet: { type: "seed", mnemonic: "", accountIndex: 0 }
-});
+const client = Client.make(preprod)
+  .withBlockfrost({ baseUrl: "https://cardano-preprod.blockfrost.io/api/v0", projectId: process.env.BLOCKFROST_API_KEY! })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
 
 // ---cut---
-const isMainnet = process.env.NETWORK === "mainnet";
-const amount = isMainnet ? 5_000_000n : 1_000_000n;
+const isMainnet = process.env.NETWORK === "mainnet"
+const amount = isMainnet ? 5_000_000n : 1_000_000n
 
 const tx = await client
   .newTx()
@@ -153,7 +141,7 @@ const tx = await client
     address: Address.fromBech32("addr_test1vrm9x2dgvdau8vckj4duc89m638t8djmluqw5pdrFollw8qd9k63"),
     assets: Assets.fromLovelace(amount)
   })
-  .build();
+  .build()
 ```
 
 ## Best Practices

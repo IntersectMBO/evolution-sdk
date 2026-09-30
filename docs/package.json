@@ -1,12 +1,11 @@
 {
   "name": "docs",
-  "version": "0.0.28",
+  "version": "0.0.56",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "next build",
     "dev": "next dev --turbo",
-    "start": "next start",
     "copy-evolution-docs": "tsx scripts/copy-evolution-docs.ts",
     "prebuild": "pnpm run copy-evolution-docs",
     "postinstall": "fumadocs-mdx"
@@ -15,15 +14,14 @@
     "@evolution-sdk/devnet": "workspace:*",
     "@evolution-sdk/evolution": "workspace:*",
     "@icons-pack/react-simple-icons": "^13.8.0",
-    "@orama/orama": "^3.1.11",
     "@stackblitz/sdk": "^1.11.0",
-    "fumadocs-core": "16.0.8",
-    "fumadocs-mdx": "13.0.5",
+    "fumadocs-core": "16.15.4",
+    "fumadocs-mdx": "15.4.0",
     "fumadocs-twoslash": "^3.1.10",
-    "fumadocs-ui": "16.0.8",
-    "lucide-react": "^0.562.0",
+    "fumadocs-ui": "16.15.4",
+    "lucide-react": "^1.8.0",
     "mermaid": "^11.12.1",
-    "next": "16.0.1",
+    "next": "16.3.3",
     "next-themes": "^0.4.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -31,16 +29,17 @@
     "twoslash": "^0.3.4"
   },
   "devDependencies": {
-    "@shikijs/twoslash": "^3.14.0",
+    "@shikijs/twoslash": "^4.4.3",
     "@tailwindcss/postcss": "^4.1.12",
     "@types/mdx": "^2.0.13",
-    "@types/node": "24.3.0",
+    "@types/node": "26.4.1",
     "@types/react": "^19.1.11",
     "@types/react-dom": "^19.1.7",
     "baseline-browser-mapping": "^2.9.8",
+    "effect": "^3.21.1",
     "postcss": "^8.5.6",
-    "shiki": "^3.15.0",
+    "shiki": "^4.0.2",
     "tailwindcss": "^4.1.12",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   }
 }

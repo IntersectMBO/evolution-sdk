@@ -1,6 +1,6 @@
 import { Data } from "effect"
 
-import * as CoreAssets from "../../Assets/index.js"
+import * as CoreAssets from "../../Assets.js"
 import type * as UTxO from "../../UTxO.js"
 
 // ============================================================================

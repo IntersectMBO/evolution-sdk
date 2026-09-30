@@ -1,12 +1,12 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 import * as CML from "@dcspark/cardano-multiplatform-lib-nodejs"
 import * as M from "@emurgo/cardano-message-signing-nodejs"
 import { describe, expect, it } from "vitest"
 
+import * as Address from "../src/Address.js"
 import { fromHex, toHex } from "../src/Bytes.js"
+import { SignData } from "../src/cose/index.js"
 import * as KeyHash from "../src/KeyHash.js"
-import { SignData } from "../src/message-signing/index.js"
 import * as PrivateKey from "../src/PrivateKey.js"
 
 function signData(addressHex: string, payload: string, privateKey: string): { signature: string; key: string } {
@@ -52,8 +52,8 @@ export function verifyData(
   const cose1Address = (() => {
     try {
       return toHex(protectedHeaders.header(M.Label.new_text("address"))?.as_bytes()!)
-    } catch (_e) {
-      throw new Error("No address found in signature.")
+    } catch (cause) {
+      throw new Error("No address found in signature.", { cause })
     }
   })()
 
@@ -62,8 +62,8 @@ export function verifyData(
       const int = protectedHeaders.algorithm_id()?.as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Algorithm Id.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Algorithm Id.", { cause })
     }
   })()
 
@@ -72,8 +72,8 @@ export function verifyData(
       const int = key.algorithm_id()?.as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Algorithm Id.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Algorithm Id.", { cause })
     }
   })()
 
@@ -82,8 +82,8 @@ export function verifyData(
       const int = key.header(M.Label.new_int(M.Int.new_negative(M.BigNum.from_str("1"))))?.as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Curve.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Curve.", { cause })
     }
   })()
 
@@ -92,8 +92,8 @@ export function verifyData(
       const int = key.key_type().as_int()
       if (int?.is_positive()) return parseInt(int.as_positive()?.to_str()!)
       return parseInt(int?.as_negative()?.to_str()!)
-    } catch (_e) {
-      throw new Error("Failed to retrieve Key Type.")
+    } catch (cause) {
+      throw new Error("Failed to retrieve Key Type.", { cause })
     }
   })()
 
@@ -102,16 +102,16 @@ export function verifyData(
       return CML.PublicKey.from_bytes(
         key.header(M.Label.new_int(M.Int.new_negative(M.BigNum.from_str("2"))))?.as_bytes()!
       )
-    } catch (_e) {
-      throw new Error("No public key found.")
+    } catch (cause) {
+      throw new Error("No public key found.", { cause })
     }
   })()
 
   const cose1Payload = (() => {
     try {
       return toHex(cose1.payload()!)
-    } catch (_e) {
-      throw new Error("No payload found.")
+    } catch (cause) {
+      throw new Error("No payload found.", { cause })
     }
   })()
 
@@ -142,7 +142,9 @@ describe("SignData Parity with lucid-evolution", () => {
   const publicKey = PrivateKey.toPublicKey(privateKey)
   const keyHash = KeyHash.fromVKey(publicKey)
   const keyHashHex = KeyHash.toHex(keyHash)
-  const addressHex = keyHashHex
+  // Real enterprise address bound to the signer's key hash (verifyData enforces
+  // that the signing key matches the address's payment credential).
+  const addressHex = Address.toHex(new Address.Address({ networkId: 0, paymentCredential: keyHash }))
   const payload = new Uint8Array([1, 2, 3, 4, 5])
   const payloadHex = toHex(payload)
 
@@ -240,5 +242,38 @@ describe("SignData Parity with lucid-evolution", () => {
       key: toHex(ourSigned.key)
     }
     expect(verifyData(wrongKeyHash, keyHashHex, payloadHex, lucidFormat)).toBe(false)
+  })
+
+  it("verifies a hashed message produced by cardano-message-signing", () => {
+    const message = new TextEncoder().encode("a long message that a wallet chooses to hash before signing")
+
+    // Build a hashed COSE_Sign1 with the reference library: hash_payload sets the
+    // hashed flag in the unprotected headers and signs blake2b-224 of the message.
+    const protectedHeaders = M.HeaderMap.new()
+    protectedHeaders.set_algorithm_id(M.Label.from_algorithm_id(M.AlgorithmId.EdDSA))
+    protectedHeaders.set_header(M.Label.new_text("address"), M.CBORValue.new_bytes(fromHex(addressHex)))
+    const headers = M.Headers.new(M.ProtectedHeaderMap.new(protectedHeaders), M.HeaderMap.new())
+    const builder = M.COSESign1Builder.new(headers, message, false)
+    builder.hash_payload()
+    const toSign = builder.make_data_to_sign().to_bytes()
+    const priv = CML.PrivateKey.from_bech32(privateKeyBech32)
+    const coseSign1 = builder.build(priv.sign(toSign).to_raw_bytes())
+
+    const key = M.COSEKey.new(M.Label.from_key_type(M.KeyType.OKP))
+    key.set_algorithm_id(M.Label.from_algorithm_id(M.AlgorithmId.EdDSA))
+    key.set_header(M.Label.new_int(M.Int.new_negative(M.BigNum.from_str("1"))), M.CBORValue.new_int(M.Int.new_i32(6)))
+    key.set_header(
+      M.Label.new_int(M.Int.new_negative(M.BigNum.from_str("2"))),
+      M.CBORValue.new_bytes(priv.to_public().to_raw_bytes())
+    )
+
+    const ourFormat = { key: key.to_bytes(), signature: coseSign1.to_bytes() }
+
+    // verifyData honors the hashed flag and verifies against the original message
+    expect(SignData.verifyData(addressHex, keyHashHex, message, ourFormat)).toBe(true)
+    // a different preimage must fail
+    expect(SignData.verifyData(addressHex, keyHashHex, new TextEncoder().encode("different message"), ourFormat)).toBe(
+      false
+    )
   })
 })

@@ -1,0 +1,58 @@
+[
+  {
+    "address": "addr_test1wz7uytdxstxe4nhdtl2gj9rcnlyce99tc707mz6qewxyx9qac0urr",
+    "balance": "380091266",
+    "stake_address": null,
+    "script_address": true,
+    "utxo_set": [
+      {
+        "value": "1300003",
+        "tx_hash": "708cde0e74986ea1f5a9621dc9fc4c0042d83833fa708b7e2fa66f120af72331",
+        "tx_index": 6,
+        "asset_list": [],
+        "block_time": 1727005648,
+        "datum_hash": null,
+        "block_height": 2714125,
+        "inline_datum": null,
+        "reference_script": null
+      },
+      {
+        "value": "2000000",
+        "tx_hash": "23f94840ca94f7bb0a5a2b28e5b6a77e61d0414c7427e03d6c4d57b13d5e49b4",
+        "tx_index": 0,
+        "asset_list": [
+          {
+            "decimals": 0,
+            "quantity": "1",
+            "policy_id": "ec0f50624331d0df45f40ab0e6081e5f1ff577c5c4dc767079d4fe59",
+            "asset_name": "695553443230323430343033313833343534",
+            "fingerprint": "asset1vgtp6tcvtwk0mjlgg2apjz2dgk2y7p60aup42h"
+          }
+        ],
+        "block_time": 1712169381,
+        "datum_hash": "facfe6aa45fa8023a97a3f13afb823f3966313533f6d68821e65d8431b5a4918",
+        "block_height": 2108842,
+        "inline_datum": {
+          "bytes": "d8799fd8799f1a001a8ea5ff1b0000018ea6888e58ff",
+          "value": {
+            "fields": [
+              {
+                "fields": [
+                  {
+                    "int": 1740453
+                  }
+                ],
+                "constructor": 0
+              },
+              {
+                "int": 1712190951000
+              }
+            ],
+            "constructor": 0
+          }
+        },
+        "reference_script": null
+      }
+    ]
+  }
+]

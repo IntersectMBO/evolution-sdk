@@ -12,7 +12,7 @@ A simple React application demonstrating how to use the Evolution SDK with Vite.
 
 ## Prerequisites
 
-- Node.js 18+ and pnpm
+- Node.js 22.12+ (24 LTS recommended) and pnpm
 - A Cardano wallet browser extension (e.g., Nami, Eternl, Flint)
 - A Blockfrost API key (get one free at [blockfrost.io](https://blockfrost.io))
 
@@ -32,8 +32,9 @@ Then edit `.env` and configure your network and Blockfrost project ID:
 # Choose your network: "preprod", "preview", or "mainnet"
 VITE_NETWORK=preprod
 
-# Add your Blockfrost project ID for the selected network
-VITE_BLOCKFROST_PROJECT_ID=your_blockfrost_project_id_here
+# Add your Blockfrost project ID for the selected network.
+# Server-only: without the VITE_ prefix, Vite never puts it in the browser bundle.
+BLOCKFROST_PROJECT_ID=your_blockfrost_project_id_here
 ```
 
 **Network Options:**
@@ -72,6 +73,9 @@ The app will be available at `http://localhost:5173`
 
 ```
 with-vite-react/
+├── server/
+│   ├── payments.ts                # Payment API: builds and submits transactions
+│   └── index.ts                   # Production server: the built app plus the API
 ├── src/
 │   ├── components/
 │   │   ├── Main.tsx              # Main container component
@@ -101,39 +105,30 @@ with-vite-react/
 
 ## Evolution SDK Integration
 
-The app demonstrates how to use the Evolution SDK for building and submitting transactions:
+Vite exposes every `VITE_` variable to the browser, so the Blockfrost key stays on the server. The
+app follows the split in the Evolution SDK's wallet security guide: the server builds, the browser
+signs.
 
 ```typescript
-import { createClient } from "@evolution-sdk/evolution";
+// Browser (src/components/TransactionBuilder.tsx): no provider, only the CIP-30 wallet
+const client = Client.make(chain).withCip30(walletApi)
+const from = Address.toBech32(await client.address())
+const { txCbor } = await post("/api/build-payment", { from, to, lovelace })
+const witnessSet = await client.signTx(txCbor)
+const signedTxCbor = Transaction.addVKeyWitnessesHex(txCbor, TransactionWitnessSet.toCBORHex(witnessSet))
+const { txHash } = await post("/api/submit-tx", { signedTxCbor })
 
-// Create client with network
-const client = createClient("preprod")
-  .attachWallet({ type: "api", api: walletApi })
-  .attachProvider({
-    type: "blockfrost",
-    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
-    projectId: "your_project_id"
-  });
-
-// Build and submit transaction
-const txHash = await client
+// Server (server/payments.ts): the provider, with the key
+const tx = await Client.make(chain)
+  .withBlockfrost({ baseUrl, projectId: process.env.BLOCKFROST_PROJECT_ID })
+  .withAddress(from)
   .newTx()
-  .payToAddress({
-    address: recipientAddress,
-    assets: { lovelace: 5_000_000n }
-  })
+  .payToAddress({ address: Address.fromBech32(to), assets: Assets.fromLovelace(BigInt(lovelace)) })
   .build()
-  .then(tx => tx.sign())
-  .then(tx => tx.submit());
 ```
 
-### Key Concepts
-
-- **Client Creation**: Initialize with network ID (`"preprod"`, `"mainnet"`, etc.)
-- **Wallet Attachment**: Connect CIP-30 wallet API
-- **Provider Configuration**: Use Blockfrost, Maestro, Kupmios, or Koios
-- **Transaction Building**: Chain operations like `payToAddress()`, `collectFrom()`, etc.
-- **Signing & Submission**: Build → Sign → Submit pipeline
+`pnpm dev` serves the API from the Vite dev server. In production, `server/index.ts` serves it with
+the built app. The API is public, so add rate limiting or an origin check before deploying it.
 
 ## Development
 
@@ -141,15 +136,11 @@ const txHash = await client
 
 ```bash
 pnpm build
+pnpm start
 ```
 
-The built files will be in the `dist/` directory.
-
-### Preview Production Build
-
-```bash
-pnpm preview
-```
+`pnpm build` puts the app in `dist/` and the server in `dist-server/`. `pnpm start` serves both on
+port 3000 (set `PORT` to change it).
 
 ## Environment Configuration
 
@@ -157,7 +148,7 @@ The app uses environment variables to configure the network:
 
 ```env
 VITE_NETWORK=preprod          # Network to use
-VITE_BLOCKFROST_PROJECT_ID=... # Your Blockfrost API key
+BLOCKFROST_PROJECT_ID=...     # Your Blockfrost API key (server-only)
 ```
 
 ### Switching Networks
@@ -167,19 +158,19 @@ To switch between networks, update your `.env` file:
 **For Preprod Testnet (Development):**
 ```env
 VITE_NETWORK=preprod
-VITE_BLOCKFROST_PROJECT_ID=preprodXXXXXXXXXXXXXXXX
+BLOCKFROST_PROJECT_ID=preprodXXXXXXXXXXXXXXXX
 ```
 
 **For Preview Testnet (Testing):**
 ```env
 VITE_NETWORK=preview
-VITE_BLOCKFROST_PROJECT_ID=previewXXXXXXXXXXXXXXXX
+BLOCKFROST_PROJECT_ID=previewXXXXXXXXXXXXXXXX
 ```
 
 **For Mainnet (Production):**
 ```env
 VITE_NETWORK=mainnet
-VITE_BLOCKFROST_PROJECT_ID=mainnetXXXXXXXXXXXXXXXX
+BLOCKFROST_PROJECT_ID=mainnetXXXXXXXXXXXXXXXX
 ```
 
 Restart the dev server after changing the `.env` file.

@@ -7,6 +7,7 @@
     "redeemer-indexing",
     "script-evaluation",
     "unfrack-optimization",
+    "deferred-execution",
     "devnet",
     "provider-layer",
     "wallet-layer"

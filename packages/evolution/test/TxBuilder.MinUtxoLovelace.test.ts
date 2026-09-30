@@ -2,9 +2,9 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import * as Address from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import * as PlutusV3 from "../src/PlutusV3.js"
-import { calculateMinimumUtxoLovelace } from "../src/sdk/builders/TxBuilderImpl.js"
+import { calculateMinimumUtxoLovelace } from "../src/sdk/builders/internal/txBuilder.js"
 
 const TEST_ADDRESS = Address.fromBech32(
   "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"

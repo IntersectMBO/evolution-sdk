@@ -22,7 +22,6 @@ Derives keys from 24-word mnemonic phrase using BIP39/BIP44 standards.
 **Configuration**:
 ```typescript
 {
-  type: "seed",
   mnemonic: "fitness juice ankle...",
   accountIndex: 0
 }
@@ -43,8 +42,7 @@ Uses direct extended private key material without mnemonic derivation.
 **Configuration**:
 ```typescript
 {
-  type: "private-key",
-  key: "xprv..."
+  paymentKey: "xprv..."
 }
 ```
 
@@ -63,7 +61,6 @@ Delegates signing to external wallet applications via CIP-30 standard.
 **Configuration**:
 ```typescript
 {
-  type: "api",
   api: walletApi  // From window.cardano.{walletName}.enable()
 }
 ```
@@ -83,7 +80,6 @@ Observes an address without any signing capability.
 **Configuration**:
 ```typescript
 {
-  type: "read-only",
   address: "addr1...",
   rewardAddress: "stake1..."  // Optional
 }
@@ -106,15 +102,17 @@ Observes an address without any signing capability.
 
 ## Usage with Clients
 
-Wallets are configured when constructing clients, but the details of wiring a provider and submitting transactions belong in the clients documentation. A wallet page should only describe the wallet config shape and runtime responsibilities.
+Wallet configs are passed to capability methods like `.withSeed()`, `.withPrivateKey()`, `.withCip30()`, and `.withAddress()`. The details of wiring a provider and submitting transactions belong in the clients documentation.
 
-Example wallet configuration objects (pass these to your client factory—see the clients docs for wiring examples):
+In particular, `.withCip30()` gives you signing capability without provider-backed submission on its own. Frontend flows still rely on a provider-backed client or backend to broadcast the signed transaction.
+
+Example wallet configuration objects:
 
 ```typescript
-const seedWalletConfig = { type: "seed", mnemonic: "...", accountIndex: 0 };
-const privateKeyWalletConfig = { type: "private-key", paymentKey: "..." };
-const apiWalletConfig = { type: "api", api: walletApi };
-const readOnlyWalletConfig = { type: "read-only", address: "addr1..." };
+const seedWalletConfig = { mnemonic: "...", accountIndex: 0 };
+const privateKeyWalletConfig = { paymentKey: "..." };
+const apiWalletConfig = { api: walletApi };
+const readOnlyWalletConfig = { address: "addr1..." };
 ```
 
 See [Clients documentation](/docs/clients) for concrete examples that combine a provider and a wallet to build a client capable of querying and submitting transactions.
@@ -125,7 +123,7 @@ Each wallet type has different security implications:
 
 - **Seed Phrase**: Convenient but exposes mnemonic in code/memory
 - **Private Key**: Better for automation, requires vault (AWS Secrets Manager, HashiCorp Vault)
-- **API Wallet**: Highest security, user controls all operations
+- **API Wallet**: Highest security, user controls all signing approvals
 - **Read-Only**: No security risk (no keys)
 
 See [Security Best Practices](/docs/wallets/security) for detailed guidance.

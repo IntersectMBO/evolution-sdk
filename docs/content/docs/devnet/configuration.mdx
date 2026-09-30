@@ -22,24 +22,21 @@ The most common customization is funding specific addresses with ADA at genesis.
 Addresses must be provided in hexadecimal format. Convert Bech32 addresses using the Evolution SDK's address utilities:
 
 ```typescript twoslash
-import { Cluster, Config } from "@evolution-sdk/devnet";
-import { Address, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import {
+  Cluster,
+  Config } from "@evolution-sdk/devnet"
+import { Address,
+  TransactionHash,
+} from "@evolution-sdk/evolution"
 
-// Create a client to generate an address
-const client = createClient({
-  network: 0, // Network magic 0 for custom devnet
-  wallet: {
-    type: "seed",
-    mnemonic: "your twenty-four word mnemonic phrase here",
-    accountIndex: 0
-  }
-});
-
-// Get the address
-const address = await client.address();
+// Derive address from seed (synchronous, no network required)
+const address = Address.fromSeed("test test test test test test test test test test test test test test test test test test test test test test test sauce", {
+  accountIndex: 0,
+  networkId: 0 // testnet address format
+})
 
 // Convert to hex for genesis configuration
-const addressHex = Address.toHex(address);
+const addressHex = Address.toHex(address)
 
 // Create custom genesis with funded address
 const genesisConfig = {
@@ -49,16 +46,16 @@ const genesisConfig = {
   initialFunds: {
     [addressHex]: 1_000_000_000_000 // 1 million ADA (in lovelace)
   }
-} satisfies Config.ShelleyGenesis;
+} satisfies Config.ShelleyGenesis
 
 // Create cluster with custom genesis
 const cluster = await Cluster.make({
   clusterName: "funded-devnet",
   ports: { node: 3001, submit: 3002 },
   shelleyGenesis: genesisConfig
-});
+})
 
-await Cluster.start(cluster);
+await Cluster.start(cluster)
 ```
 
 The address now has 1 million ADA available from block 0. The funds appear as a single UTxO that can be queried and spent immediately.
@@ -70,45 +67,38 @@ Amounts are specified in lovelace (1 ADA = 1,000,000 lovelace). Use underscores 
 Fund multiple addresses by adding additional entries to `initialFunds`. Each address gets an independent genesis UTxO:
 
 ```typescript twoslash
-import { Cluster, Config } from "@evolution-sdk/devnet";
-import { Address, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import {
+  Cluster,
+  Config } from "@evolution-sdk/devnet"
+import { Address,
+  TransactionHash,
+} from "@evolution-sdk/evolution"
 
-const client1 = createClient({
-  network: 0,
-  wallet: {
-    type: "seed",
-    mnemonic: "your mnemonic here",
-    accountIndex: 0
-  }
-});
+const address1 = Address.toHex(Address.fromSeed("your mnemonic here", {
+  accountIndex: 0,
+  networkId: 0
+}))
 
-const client2 = createClient({
-  network: 0,
-  wallet: {
-    type: "seed",
-    mnemonic: "your mnemonic here",
-    accountIndex: 1 // Different account index = different address
-  }
-});
-
-const address1 = Address.toHex(await client1.address());
-const address2 = Address.toHex(await client2.address());
+const address2 = Address.toHex(Address.fromSeed("your mnemonic here", {
+  accountIndex: 1, // Different account index = different address
+  networkId: 0
+}))
 
 const genesisConfig = {
   ...Config.DEFAULT_SHELLEY_GENESIS,
   initialFunds: {
     [address1]: 500_000_000_000, // 500K ADA
-    [address2]: 300_000_000_000  // 300K ADA
+    [address2]: 300_000_000_000 // 300K ADA
   }
-} satisfies Config.ShelleyGenesis;
+} satisfies Config.ShelleyGenesis
 
 const cluster = await Cluster.make({
   clusterName: "multi-user-devnet",
   ports: { node: 3001, submit: 3002 },
   shelleyGenesis: genesisConfig
-});
+})
 
-await Cluster.start(cluster);
+await Cluster.start(cluster)
 ```
 
 This pattern enables testing multi-party protocols, delegation scenarios, and wallet interaction without complex transaction setup.
@@ -117,30 +107,32 @@ This pattern enables testing multi-party protocols, delegation scenarios, and wa
 
 After creating a genesis configuration, calculate the resulting UTxOs to verify addresses and amounts.
 
-**Important**: Genesis UTxOs do NOT appear in Kupo's index because Kupo reads chain events starting from block 1, while genesis UTxOs exist in block 0 (the genesis block itself). You must use `calculateUtxosFromConfig` to derive these UTxOs and provide them to your transaction builder via the `availableUtxos` parameter. After spending a genesis UTxO, the resulting outputs will be indexed normally by Kupo.
+<Callout type="warn">
+**Genesis UTxOs do NOT appear in Kupo's index** — Kupo reads from block 1, but genesis UTxOs are in block 0. Use `calculateUtxosFromConfig` to derive these UTxOs and pass them via `availableUtxos`. After spending a genesis UTxO, resulting outputs are indexed normally.
+</Callout>
 
 ```typescript twoslash
-import { Config, Genesis } from "@evolution-sdk/devnet";
-import { Address, TransactionHash } from "@evolution-sdk/evolution";
-declare const addressHex: string;
+import { Config, Genesis } from "@evolution-sdk/devnet"
+import { Address, TransactionHash } from "@evolution-sdk/evolution"
+declare const addressHex: string
 
 const genesisConfig = {
   ...Config.DEFAULT_SHELLEY_GENESIS,
   initialFunds: {
     [addressHex]: 1_000_000_000_000
   }
-} satisfies Config.ShelleyGenesis;
+} satisfies Config.ShelleyGenesis
 
 // Calculate UTxOs before starting the cluster
-const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig);
+const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
 
-console.log("Genesis UTxOs:", genesisUtxos.length);
-genesisUtxos.forEach(utxo => {
-  console.log("Address:", Address.toBech32(utxo.address));
-  console.log("Amount:", utxo.assets.lovelace, "lovelace");
-  console.log("TxHash:", TransactionHash.toHex(utxo.transactionId));
-  console.log("OutputIndex:", utxo.index);
-});
+console.log("Genesis UTxOs:", genesisUtxos.length)
+genesisUtxos.forEach((utxo) => {
+  console.log("Address:", Address.toBech32(utxo.address))
+  console.log("Amount:", utxo.assets.lovelace, "lovelace")
+  console.log("TxHash:", TransactionHash.toHex(utxo.transactionId))
+  console.log("OutputIndex:", utxo.index)
+})
 ```
 
 The calculation produces deterministic UTxOs based on the genesis configuration. Transaction hashes derive from genesis block data, ensuring consistency across cluster recreations.
@@ -154,12 +146,12 @@ The devnet runs on Conway era and uses three genesis files with distinct paramet
 The devnet package exports these types from `Config`:
 
 ```typescript twoslash
-import type { Config } from "@evolution-sdk/devnet";
+import type { Config } from "@evolution-sdk/devnet"
 
 // Use the exported types
-type ShelleyGenesis = Config.ShelleyGenesis;
-type AlonzoGenesis = Config.AlonzoGenesis;
-type ConwayGenesis = Config.ConwayGenesis;
+type ShelleyGenesis = Config.ShelleyGenesis
+type AlonzoGenesis = Config.AlonzoGenesis
+type ConwayGenesis = Config.ConwayGenesis
 
 // ShelleyGenesis.protocolParams contains:
 // - minFeeA, minFeeB: Transaction fees
@@ -186,53 +178,57 @@ type ConwayGenesis = Config.ConwayGenesis;
 Customize protocol parameters by modifying the appropriate genesis configuration:
 
 ```typescript twoslash
-import { Cluster, Config } from "@evolution-sdk/devnet";
-declare const addressHex: string;
+import { Cluster, Config } from "@evolution-sdk/devnet"
+declare const addressHex: string
 
 // Shelley genesis: fees and transaction limits
 const shelleyConfig: Partial<Config.ShelleyGenesis> = {
   ...Config.DEFAULT_SHELLEY_GENESIS,
   protocolParams: {
     ...Config.DEFAULT_SHELLEY_GENESIS.protocolParams,
-    minFeeA: 50,        // Transaction fee coefficient (default: 44)
-    minFeeB: 200000,    // Minimum fee constant (default: 155381)
-    maxTxSize: 32768    // Maximum transaction size in bytes (default: 16384)
+    minFeeA: 50, // Transaction fee coefficient (default: 44)
+    minFeeB: 200000, // Minimum fee constant (default: 155381)
+    maxTxSize: 32768 // Maximum transaction size in bytes (default: 16384)
   },
   initialFunds: {
     [addressHex]: 100_000_000_000
   }
-};
+}
 
 // Alonzo genesis: UTxO costs (Conway runtime uses this)
 const alonzoConfig: Partial<Config.AlonzoGenesis> = {
   ...Config.DEFAULT_ALONZO_GENESIS,
-  lovelacePerUTxOWord: 34482  // Conway converts to coinsPerUtxoByte (÷8 = 4310.25)
-};
+  lovelacePerUTxOWord: 34482 // Conway converts to coinsPerUtxoByte (÷8 = 4310.25)
+}
 
 const cluster = await Cluster.make({
   clusterName: "custom-protocol-devnet",
   ports: { node: 3001, submit: 3002 },
   shelleyGenesis: shelleyConfig,
   alonzoGenesis: alonzoConfig
-});
+})
 
-await Cluster.start(cluster);
+await Cluster.start(cluster)
 ```
 
 Common protocol parameter customizations:
 
 **ShelleyGenesis.protocolParams:**
+
 - **minFeeA / minFeeB**: Transaction fee coefficient and constant
 - **maxTxSize**: Maximum transaction size in bytes
 - **maxBlockBodySize**: Maximum block size in bytes
 - **keyDeposit / poolDeposit**: Stake credential and pool deposits
 
 **AlonzoGenesis:**
+
 - **lovelacePerUTxOWord**: UTxO cost. Conway runtime converts this to `coinsPerUtxoByte` (÷8). Default 34482 ≈ 4310 lovelace/byte
 - **collateralPercentage**: Collateral % for script transactions (default: 150)
 - **maxCollateralInputs**: Max collateral inputs (default: 3)
 
-**Important**: The devnet runs Conway era. At runtime, the node uses `coinsPerUtxoByte` (from Alonzo's `lovelacePerUTxOWord`), not Shelley's legacy `minUTxOValue`.
+<Callout type="info">
+The devnet runs Conway era. At runtime, the node uses `coinsPerUtxoByte` (from Alonzo's `lovelacePerUTxOWord`), not Shelley's legacy `minUTxOValue`.
+</Callout>
 
 See the exported types `Config.ShelleyGenesis`, `Config.AlonzoGenesis`, and `Config.ConwayGenesis` for complete definitions.
 
@@ -243,26 +239,26 @@ Control block production speed to match testing requirements. Fast blocks accele
 Adjust slot timing through genesis parameters:
 
 ```typescript twoslash
-import { Cluster, Config } from "@evolution-sdk/devnet";
-declare const addressHex: string;
+import { Cluster, Config } from "@evolution-sdk/devnet"
+declare const addressHex: string
 
 const genesisConfig = {
   ...Config.DEFAULT_SHELLEY_GENESIS,
-  slotLength: 0.02,        // 20ms per slot (very fast!)
-  epochLength: 50,          // 50 slots per epoch
-  activeSlotsCoeff: 1.0,    // Every slot produces a block
+  slotLength: 0.02, // 20ms per slot (very fast!)
+  epochLength: 50, // 50 slots per epoch
+  activeSlotsCoeff: 1.0, // Every slot produces a block
   initialFunds: {
     [addressHex]: 100_000_000_000
   }
-} satisfies Config.ShelleyGenesis;
+} satisfies Config.ShelleyGenesis
 
 const cluster = await Cluster.make({
   clusterName: "fast-devnet",
   ports: { node: 3001, submit: 3002 },
   shelleyGenesis: genesisConfig
-});
+})
 
-await Cluster.start(cluster);
+await Cluster.start(cluster)
 ```
 
 Timing parameters explained:
@@ -278,18 +274,18 @@ Fast block production (20ms slots, coefficient 1.0) provides near-instant transa
 Security parameters affect chain stability and rollback protection:
 
 ```typescript twoslash
-import { Config } from "@evolution-sdk/devnet";
-declare const addressHex: string;
+import { Config } from "@evolution-sdk/devnet"
+declare const addressHex: string
 
 const genesisConfig = {
   ...Config.DEFAULT_SHELLEY_GENESIS,
-  securityParam: 10,        // k parameter: rollback limit
-  maxKESEvolutions: 120,    // KES key evolution limit
-  slotsPerKESPeriod: 7200,  // Slots before KES evolution
+  securityParam: 10, // k parameter: rollback limit
+  maxKESEvolutions: 120, // KES key evolution limit
+  slotsPerKESPeriod: 7200, // Slots before KES evolution
   initialFunds: {
     [addressHex]: 100_000_000_000
   }
-} satisfies Config.ShelleyGenesis;
+} satisfies Config.ShelleyGenesis
 ```
 
 - **securityParam (k)**: Blocks before finality. Lower values (10) allow faster testing of chain reorganizations. Default 2160 matches mainnet.
@@ -303,59 +299,53 @@ Most applications can ignore these parameters and use defaults. Adjust only when
 Combining all customization options for a comprehensive devnet:
 
 ```typescript twoslash
-import { Cluster, Config, Genesis } from "@evolution-sdk/devnet";
-import { Address, TransactionHash, createClient } from "@evolution-sdk/evolution";
+import {
+  Cluster,
+  Config,
+  Genesis } from "@evolution-sdk/devnet"
+import { Address,
+  TransactionHash,
+} from "@evolution-sdk/evolution"
 
-// Generate funded addresses
-const wallet1 = createClient({
-  network: 0,
-  wallet: {
-    type: "seed",
-    mnemonic: "test wallet one mnemonic here",
-    accountIndex: 0
-  }
-});
+// Generate funded addresses (synchronous, no network required)
+const addr1 = Address.toHex(Address.fromSeed("test wallet one mnemonic here", {
+  accountIndex: 0,
+  networkId: 0
+}))
 
-const wallet2 = createClient({
-  network: 0,
-  wallet: {
-    type: "seed",
-    mnemonic: "test wallet two mnemonic here",
-    accountIndex: 0
-  }
-});
-
-const addr1 = Address.toHex(await wallet1.address());
-const addr2 = Address.toHex(await wallet2.address());
+const addr2 = Address.toHex(Address.fromSeed("test wallet two mnemonic here", {
+  accountIndex: 0,
+  networkId: 0
+}))
 
 // Custom genesis configuration
 const genesisConfig = {
   ...Config.DEFAULT_SHELLEY_GENESIS,
-  
+
   // Fast block production
-  slotLength: 0.05,      // 50ms slots
-  epochLength: 200,      // 200 slots (10 seconds) per epoch
+  slotLength: 0.05, // 50ms slots
+  epochLength: 200, // 200 slots (10 seconds) per epoch
   activeSlotsCoeff: 1.0, // Every slot produces a block
-  
+
   // Fund multiple addresses
   initialFunds: {
-    [addr1]: 5_000_000_000_000,  // 5M ADA for primary testing
-    [addr2]: 1_000_000_000_000   // 1M ADA for secondary scenarios
+    [addr1]: 5_000_000_000_000, // 5M ADA for primary testing
+    [addr2]: 1_000_000_000_000 // 1M ADA for secondary scenarios
   },
-  
+
   // Custom protocol parameters
   protocolParams: {
     ...Config.DEFAULT_SHELLEY_GENESIS.protocolParams,
-    minFeeA: 40,           // Lower fees for testing
+    minFeeA: 40, // Lower fees for testing
     minFeeB: 150000,
-    maxTxSize: 32768,      // Larger transactions allowed
+    maxTxSize: 32768, // Larger transactions allowed
     maxBlockBodySize: 131072 // Larger blocks for throughput
   },
-  
+
   // Faster key evolution for staking tests
   maxKESEvolutions: 60,
   slotsPerKESPeriod: 3600
-} satisfies Config.ShelleyGenesis;
+} satisfies Config.ShelleyGenesis
 
 // Create cluster with full services
 const cluster = await Cluster.make({
@@ -372,23 +362,23 @@ const cluster = await Cluster.make({
     port: 1337,
     logLevel: "info"
   }
-});
+})
 
 // Start the devnet
-await Cluster.start(cluster);
+await Cluster.start(cluster)
 
-console.log("Comprehensive devnet ready:");
-console.log("- Two funded addresses");
-console.log("- 50ms block time");
-console.log("- Custom protocol parameters");
-console.log("- Kupo and Ogmios enabled");
+console.log("Comprehensive devnet ready:")
+console.log("- Two funded addresses")
+console.log("- 50ms block time")
+console.log("- Custom protocol parameters")
+console.log("- Kupo and Ogmios enabled")
 
 // Calculate and verify genesis UTxOs
-const utxos = await Genesis.calculateUtxosFromConfig(genesisConfig);
-console.log(`\nGenesis UTxOs: ${utxos.length}`);
+const utxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
+console.log(`\nGenesis UTxOs: ${utxos.length}`)
 utxos.forEach((utxo, i) => {
-  console.log(`  Address ${i + 1}: ${utxo.assets.lovelace} lovelace`);
-});
+  console.log(`  Address ${i + 1}: ${utxo.assets.lovelace} lovelace`)
+})
 ```
 
 This configuration provides a fast, well-funded environment suitable for comprehensive integration testing.
@@ -398,6 +388,7 @@ This configuration provides a fast, well-funded environment suitable for compreh
 Common configuration patterns for different testing scenarios:
 
 **Rapid Testing** (instant confirmations):
+
 ```typescript
 {
   slotLength: 0.02,
@@ -407,6 +398,7 @@ Common configuration patterns for different testing scenarios:
 ```
 
 **Mainnet Simulation** (realistic timing):
+
 ```typescript
 {
   slotLength: 1.0,
@@ -416,6 +408,7 @@ Common configuration patterns for different testing scenarios:
 ```
 
 **High-Value Testing** (large initial funds):
+
 ```typescript
 {
   initialFunds: {
@@ -425,6 +418,7 @@ Common configuration patterns for different testing scenarios:
 ```
 
 **Fee Testing** (extreme fee conditions):
+
 ```typescript
 {
   protocolParams: {
@@ -436,6 +430,7 @@ Common configuration patterns for different testing scenarios:
 ```
 
 **Size Limit Testing** (constrained transactions):
+
 ```typescript
 {
   protocolParams: {
@@ -460,6 +455,6 @@ With custom genesis configuration, you can now:
 
 **Protocol parameter validation**: Some parameter combinations are invalid (e.g., `lovelacePerUTxOWord` too low in Alonzo genesis). Check cardano-node logs if startup fails.
 
-**Client network parameter**: Always use `network: 0` for devnet clients to create testnet-format addresses (addr_test...).
+**Address network**: Use `networkId: 0` in `Address.fromSeed()` for testnet-format addresses (`addr_test...`), or use `Cluster.getChain(cluster)` with `Client.make()` once the cluster is running.
 
 **Excessive funds**: While genesis supports arbitrary amounts, extremely large values may cause numeric overflow in some calculations. Stay under 45B ADA (total supply) per address.

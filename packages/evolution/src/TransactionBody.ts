@@ -1,3 +1,4 @@
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 import type { NonEmptyArray } from "effect/Array"
 
@@ -16,6 +17,7 @@ import * as ProposalProcedure from "./ProposalProcedure.js"
 import * as ProposalProcedures from "./ProposalProcedures.js"
 import * as RewardAccount from "./RewardAccount.js"
 import * as ScriptDataHash from "./ScriptDataHash.js"
+import * as TransactionHash from "./TransactionHash.js"
 import * as TransactionInput from "./TransactionInput.js"
 import * as TxOut from "./TxOut.js"
 import * as VotingProcedures from "./VotingProcedures.js"
@@ -191,7 +193,11 @@ const decodeAuxiliaryDataHash = ParseResult.decodeEither(AuxiliaryDataHash.FromB
 const decodeScriptDataHash = ParseResult.decodeEither(ScriptDataHash.FromBytes)
 const decodeKeyHash = ParseResult.decodeEither(KeyHash.FromBytes)
 
-const decodeInputs = ParseResult.decodeUnknownEither(CBOR.tag(258, Schema.Array(TransactionInput.FromCDDL)))
+const decodeTaggedInputs = ParseResult.decodeUnknownEither(CBOR.tag(258, Schema.Array(TransactionInput.FromCDDL)))
+const decodeUntaggedInputs = ParseResult.decodeUnknownEither(Schema.Array(TransactionInput.FromCDDL))
+
+const decodeTaggedCertificates = ParseResult.decodeUnknownEither(CBOR.tag(258, Schema.Array(Certificate.CDDLSchema)))
+const decodeUntaggedCertificates = ParseResult.decodeUnknownEither(Schema.Array(Certificate.CDDLSchema))
 
 /**
  * CDDL schema for TransactionBody struct structure.
@@ -199,10 +205,9 @@ const decodeInputs = ParseResult.decodeUnknownEither(CBOR.tag(258, Schema.Array(
  * @since 2.0.0
  * @category schemas
  */
-export const CDDLSchema = Schema.MapFromSelf({
-  key: CBOR.Integer,
-  value: CBOR.CBORSchema
-})
+export const CDDLSchema = Schema.declare(
+  (input: unknown): input is Map<bigint, CBOR.CBOR> => input instanceof Map
+).annotations({ identifier: "TransactionBody.CDDLSchema" })
 
 type CDDLSchema = typeof CDDLSchema.Type
 
@@ -235,13 +240,13 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       // Optional fields (assign directly when present)
       if (toA.ttl !== undefined) record.set(3n, toA.ttl)
 
-      if (toA.certificates) {
+      if (toA.certificates && toA.certificates.length > 0) {
         const len = toA.certificates.length
         const arr = new Array(len)
         for (let i = 0; i < len; i++) {
           arr[i] = yield* encodeCertificate(toA.certificates[i])
         }
-        record.set(4n, arr)
+        record.set(4n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
       }
 
       if (toA.withdrawals) {
@@ -315,10 +320,12 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
     }),
   decode: (fromA) =>
     E.gen(function* () {
-      // Required fields - access via helper
-      const inputsTag = fromA.get(0n)
-      const decodedInputs = yield* decodeInputs(inputsTag)
-      const inputs = decodedInputs.value
+      // Required fields - accept both tag-258 (Conway) and plain array (Babbage)
+      const inputsRaw = fromA.get(0n)
+      const taggedResult = decodeTaggedInputs(inputsRaw)
+      const inputs = E.isRight(taggedResult)
+        ? taggedResult.right.value
+        : yield* decodeUntaggedInputs(inputsRaw)
 
       // const inputsArray = inputsTag.value
       // const inputsLen = inputsArray.length
@@ -338,7 +345,17 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       // Optional fields - access as record properties
       const ttl = fromA.get(3n) as bigint | undefined
 
-      const certificatesArray = fromA.get(4n) as Array<typeof Certificate.CDDLSchema.Type>
+      // Accept both tag-258 (Conway) and plain array (Babbage) for certificates.
+      // Mirrors the `inputs` pattern above: try tagged first, fall back to
+      // untagged, and fail decoding if neither matches.
+      const certificatesRaw = fromA.get(4n)
+      let certificatesArray: ReadonlyArray<typeof Certificate.CDDLSchema.Type> | undefined
+      if (certificatesRaw !== undefined) {
+        const taggedCertsResult = decodeTaggedCertificates(certificatesRaw)
+        certificatesArray = E.isRight(taggedCertsResult)
+          ? taggedCertsResult.right.value
+          : yield* decodeUntaggedCertificates(certificatesRaw)
+      }
       let certificates: NonEmptyArray<Certificate.Certificate> | undefined
       if (certificatesArray) {
         const len = certificatesArray.length
@@ -371,14 +388,16 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       const scriptDataHashBytes = fromA.get(11n) as Uint8Array | undefined
       const scriptDataHash = scriptDataHashBytes ? yield* decodeScriptDataHash(scriptDataHashBytes) : undefined
 
-      const collateralInputsTag = fromA.get(13n) as
-        | {
-            _tag: "Tag"
-            tag: 258
-            value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
-          }
+      // Accept both tag-258 (Conway) and plain array (Babbage) for collateral inputs
+      const collateralInputsRaw = fromA.get(13n) as
+        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
+        | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
         | undefined
-      const collateralInputsArray = collateralInputsTag ? collateralInputsTag.value : undefined
+      const collateralInputsArray = collateralInputsRaw
+        ? (collateralInputsRaw as any)._tag === "Tag"
+          ? (collateralInputsRaw as any).value
+          : collateralInputsRaw
+        : undefined
       let collateralInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
       if (collateralInputsArray) {
         const len = collateralInputsArray.length
@@ -389,14 +408,16 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
         collateralInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
       }
 
-      const requiredSignersTag = fromA.get(14n) as
-        | {
-            _tag: "Tag"
-            tag: 258
-            value: ReadonlyArray<Uint8Array>
-          }
+      // Accept both tag-258 (Conway) and plain array (Babbage) for required signers
+      const requiredSignersRaw = fromA.get(14n) as
+        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<Uint8Array> }
+        | ReadonlyArray<Uint8Array>
         | undefined
-      const requiredSignersArray = requiredSignersTag ? requiredSignersTag.value : undefined
+      const requiredSignersArray = requiredSignersRaw
+        ? (requiredSignersRaw as any)._tag === "Tag"
+          ? (requiredSignersRaw as any).value
+          : requiredSignersRaw
+        : undefined
       let requiredSigners: NonEmptyArray<KeyHash.KeyHash> | undefined
       if (requiredSignersArray) {
         const len = requiredSignersArray.length
@@ -412,14 +433,16 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       const collateralReturn = collateralReturnData ? yield* decodeTxOutput(collateralReturnData) : undefined
       const totalCollateral = fromA.get(17n) as Coin.Coin | undefined
 
-      const referenceInputsTag = fromA.get(18n) as
-        | {
-            _tag: "Tag"
-            tag: 258
-            value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
-          }
+      // Accept both tag-258 (Conway) and plain array (Babbage) for reference inputs
+      const referenceInputsRaw = fromA.get(18n) as
+        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
+        | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
         | undefined
-      const referenceInputsArray = referenceInputsTag ? referenceInputsTag.value : undefined
+      const referenceInputsArray: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> | undefined = referenceInputsRaw
+        ? (referenceInputsRaw as any)._tag === "Tag"
+          ? (referenceInputsRaw as any).value
+          : referenceInputsRaw
+        : undefined
       let referenceInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
       if (referenceInputsArray) {
         const len = referenceInputsArray.length
@@ -431,15 +454,15 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       }
       const votingProceduresData = fromA.get(19n) as typeof VotingProcedures.CDDLSchema.Type | undefined
       const votingProcedures = votingProceduresData ? yield* decodeVotingProcedures(votingProceduresData) : undefined
-      const proposalProceduresTag = fromA.get(20n) as
-        | {
-            _tag: "Tag"
-            tag: 258
-            value: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>
-          }
+      // Accept both tag-258 (Conway) and plain array (Babbage) for proposal procedures
+      const proposalProceduresRaw = fromA.get(20n) as
+        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> }
+        | ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>
         | undefined
-      const proposalProceduresArray = proposalProceduresTag
-        ? (proposalProceduresTag.value as ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>)
+      const proposalProceduresArray: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> | undefined = proposalProceduresRaw
+        ? (proposalProceduresRaw as any)._tag === "Tag"
+          ? (proposalProceduresRaw as any).value
+          : proposalProceduresRaw
         : undefined
       const proposalProcedures = proposalProceduresArray
         ? new ProposalProcedures.ProposalProcedures({
@@ -449,7 +472,7 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
       const currentTreasuryValue = fromA.get(21n) as Coin.Coin | undefined
       const donation = fromA.get(22n) as Coin.Coin | undefined
 
-      return new TransactionBody(
+      const result = new TransactionBody(
         {
           inputs,
           outputs,
@@ -474,6 +497,7 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
         },
         { disableValidation: true }
       )
+      return result
     })
 })
 
@@ -543,6 +567,62 @@ export const toCBORBytes = (data: TransactionBody, options: CBOR.CodecOptions = 
 export const toCBORHex = (data: TransactionBody, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORHex(options))(data)
 
+/**
+ * Parse a TransactionBody from CBOR bytes and return the root format tree.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromCBORBytesWithFormat = (
+  bytes: Uint8Array
+): CBOR.DecodedWithFormat<TransactionBody> => {
+  const decoded = CBOR.fromCBORBytesWithFormat(bytes)
+  const value = Schema.decodeSync(FromCDDL)(decoded.value as Map<bigint, CBOR.CBOR>)
+  return { value, format: decoded.format }
+}
+
+/**
+ * Parse a TransactionBody from CBOR hex string and return the root format tree.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromCBORHexWithFormat = (
+  hex: string
+): CBOR.DecodedWithFormat<TransactionBody> => {
+  const decoded = CBOR.fromCBORHexWithFormat(hex)
+  const value = Schema.decodeSync(FromCDDL)(decoded.value as Map<bigint, CBOR.CBOR>)
+  return { value, format: decoded.format }
+}
+
+/**
+ * Convert a TransactionBody to CBOR bytes using an explicit root format tree.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const toCBORBytesWithFormat = (
+  data: TransactionBody,
+  format: CBOR.CBORFormat
+): Uint8Array => {
+  const cborMap = Schema.encodeSync(FromCDDL)(data)
+  return CBOR.toCBORBytesWithFormat(cborMap, format)
+}
+
+/**
+ * Convert a TransactionBody to CBOR hex string using an explicit root format tree.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const toCBORHexWithFormat = (
+  data: TransactionBody,
+  format: CBOR.CBORFormat
+): string => {
+  const cborMap = Schema.encodeSync(FromCDDL)(data)
+  return CBOR.toCBORHexWithFormat(cborMap, format)
+}
+
 // ============================================================================
 // FastCheck Arbitrary
 // ============================================================================
@@ -557,6 +637,29 @@ export const toCBORHex = (data: TransactionBody, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category arbitrary
  */
+/**
+ * Compute the transaction body hash (blake2b-256 over CBOR of body).
+ *
+ * @since 2.0.0
+ * @category hashing
+ */
+export const toHash = (body: TransactionBody): TransactionHash.TransactionHash => {
+  const bytes = toCBORBytes(body)
+  const digest = blake2b(bytes, { dkLen: 32 })
+  return new TransactionHash.TransactionHash({ hash: digest })
+}
+
+/**
+ * Compute the transaction body hash from raw CBOR bytes, preserving original encoding.
+ *
+ * @since 2.0.0
+ * @category hashing
+ */
+export const toHashFromBytes = (bodyBytes: Uint8Array): TransactionHash.TransactionHash => {
+  const digest = blake2b(bodyBytes, { dkLen: 32 })
+  return new TransactionHash.TransactionHash({ hash: digest })
+}
+
 export const arbitrary: FastCheck.Arbitrary<TransactionBody> =
   // First, generate core fields
   FastCheck.record({

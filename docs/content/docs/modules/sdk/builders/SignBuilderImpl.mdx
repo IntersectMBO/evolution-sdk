@@ -1,6 +1,6 @@
 ---
 title: sdk/builders/SignBuilderImpl.ts
-nav_order: 148
+nav_order: 144
 parent: Modules
 ---
 
@@ -45,7 +45,7 @@ export declare const makeSignBuilder: (params: {
   utxos: ReadonlyArray<CoreUTxO.UTxO>
   referenceUtxos: ReadonlyArray<CoreUTxO.UTxO>
   provider: Provider.Provider
-  wallet: Wallet
+  wallet: SignerWallet
   outputs: ReadonlyArray<TxOut.TransactionOutput>
   availableUtxos: ReadonlyArray<CoreUTxO.UTxO>
 }) => SignBuilder

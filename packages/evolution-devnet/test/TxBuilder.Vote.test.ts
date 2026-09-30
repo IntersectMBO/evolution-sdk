@@ -7,6 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Cluster from "@evolution-sdk/devnet/Cluster"
 import * as Config from "@evolution-sdk/devnet/Config"
 import * as Genesis from "@evolution-sdk/devnet/Genesis"
+import type { Cardano } from "@evolution-sdk/evolution"
+import { Client, preprod } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Anchor from "@evolution-sdk/evolution/Anchor"
 import * as Bytes32 from "@evolution-sdk/evolution/Bytes32"
@@ -17,7 +19,6 @@ import * as KeyHash from "@evolution-sdk/evolution/KeyHash"
 import * as ProtocolParamUpdate from "@evolution-sdk/evolution/ProtocolParamUpdate"
 import * as ProtocolVersion from "@evolution-sdk/evolution/ProtocolVersion"
 import * as RewardAccount from "@evolution-sdk/evolution/RewardAccount"
-import { createClient } from "@evolution-sdk/evolution/sdk/client/ClientImpl"
 import * as UnitInterval from "@evolution-sdk/evolution/UnitInterval"
 import * as Url from "@evolution-sdk/evolution/Url"
 import * as VotingProcedures from "@evolution-sdk/evolution/VotingProcedures"
@@ -31,29 +32,20 @@ describe("TxBuilder Vote Operations (script-free)", () => {
   const TEST_MNEMONIC =
     "test test test test test test test test test test test test test test test test test test test test test test test sauce"
 
-  const createTestClient = (accountIndex: number = 0) =>
-    createClient({
-      network: 0,
-      provider: {
-        type: "kupmios",
-        kupoUrl: "http://localhost:1453",
-        ogmiosUrl: "http://localhost:1343"
-      },
-      wallet: {
-        type: "seed",
-        mnemonic: TEST_MNEMONIC,
-        accountIndex,
-        addressType: "Base"
-      }
-    })
+  const createTestClient = (accountIndex: number = 0) => {
+    if (!devnetCluster) throw new Error("Cluster not initialized")
+    return Client.make(Cluster.getChain(devnetCluster))
+      .withKupmios({
+        kupoUrl: `http://localhost:${devnetCluster.ports.kupo}`,
+        ogmiosUrl: `http://localhost:${devnetCluster.ports.ogmios}`
+      })
+      .withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
+  }
 
   beforeAll(async () => {
     // Create clients for multiple test accounts
     const accounts = [0, 1, 2, 3].map((accountIndex) =>
-      createClient({
-        network: 0,
-        wallet: { type: "seed", mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" }
-      })
+      Client.make(preprod).withSeed({ mnemonic: TEST_MNEMONIC, accountIndex, addressType: "Base" })
     )
 
     const addresses = await Promise.all(accounts.map((client) => client.address()))
@@ -72,7 +64,9 @@ describe("TxBuilder Vote Operations (script-free)", () => {
       }
     }
 
-    conwayGenesis = Config.DEFAULT_CONWAY_GENESIS
+    // Bump govActionLifetime past the default 8 epochs so a slow CI run can finish
+    // propose → vote within the proposal's active window.
+    conwayGenesis = { ...Config.DEFAULT_CONWAY_GENESIS, govActionLifetime: 30 }
 
     const genesisUtxos = await Genesis.calculateUtxosFromConfig(genesisConfig)
 
@@ -83,11 +77,10 @@ describe("TxBuilder Vote Operations (script-free)", () => {
 
     devnetCluster = await Cluster.make({
       clusterName: "vote-test",
-      ports: { node: 6010, submit: 9010 },
       shelleyGenesis: genesisConfig,
       conwayGenesis,
-      kupo: { enabled: true, port: 1453, logLevel: "Info" },
-      ogmios: { enabled: true, port: 1343, logLevel: "info" }
+      kupo: { enabled: true, logLevel: "Info" },
+      ogmios: { enabled: true, logLevel: "info" }
     })
 
     await Cluster.start(devnetCluster)
@@ -265,12 +258,13 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for InfoAction vote")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({ drepCredential: voterAddress.paymentCredential, anchor: createAnchor("info-voter-drep.json") })
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue
@@ -343,7 +337,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for NoConfidenceAction vote")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({
           drepCredential: voterAddress.paymentCredential,
@@ -352,6 +346,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue
@@ -425,7 +420,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for HardForkInitiationAction vote")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({
           drepCredential: voterAddress.paymentCredential,
@@ -434,6 +429,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue
@@ -510,7 +506,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for TreasuryWithdrawalsAction vote")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({
           drepCredential: voterAddress.paymentCredential,
@@ -519,6 +515,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue
@@ -594,7 +591,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for UpdateCommitteeAction vote")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({
           drepCredential: voterAddress.paymentCredential,
@@ -603,6 +600,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue
@@ -685,7 +683,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found for NewConstitutionAction vote")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({
           drepCredential: voterAddress.paymentCredential,
@@ -694,6 +692,7 @@ describe("TxBuilder Vote Operations (script-free)", () => {
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue
@@ -772,12 +771,13 @@ describe("TxBuilder Vote Operations (script-free)", () => {
     if (!voterUtxo) throw new Error("Voter genesis UTxO not found")
 
     try {
-      await voterClient
+      const drepRegHash = await voterClient
         .newTx()
         .registerDRep({ drepCredential: voterAddress.paymentCredential, anchor: createAnchor("voter-drep.json") })
         .build({ availableUtxos: [voterUtxo] })
         .then((b) => b.sign())
         .then((b) => b.submit())
+      await voterClient.awaitTx(drepRegHash, 1000)
     } catch (err: any) {
       if (err.message?.includes("already known delegate representative") || err.message?.includes("re-register")) {
         // DRep already registered, continue

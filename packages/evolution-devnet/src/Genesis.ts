@@ -3,7 +3,7 @@ import * as AddressEras from "@evolution-sdk/evolution/AddressEras"
 import * as Assets from "@evolution-sdk/evolution/Assets"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import * as UTxO from "@evolution-sdk/evolution/UTxO"
-import { blake2b } from "@noble/hashes/blake2"
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Data, Effect } from "effect"
 
 import type * as Config from "./Config.js"

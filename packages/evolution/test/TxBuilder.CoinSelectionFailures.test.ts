@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest"
 
 import * as CoreAddress from "../src/Address.js"
-import * as CoreAssets from "../src/Assets/index.js"
+import * as CoreAssets from "../src/Assets.js"
 import type { TxBuilderConfig } from "../src/sdk/builders/TransactionBuilder.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { mainnet } from "../src/sdk/client/index.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -19,7 +20,7 @@ const CHANGE_ADDRESS =
 const RECEIVER_ADDRESS =
   "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
 
-const baseConfig: TxBuilderConfig = {}
+const baseConfig: TxBuilderConfig = { chain: mainnet }
 
 describe("Insufficient Lovelace", () => {
   it("should fail when total lovelace is less than payment amount", async () => {

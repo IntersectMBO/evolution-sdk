@@ -1,5 +1,315 @@
 # @evolution-sdk/evolution
 
+## 0.5.15
+
+### Patch Changes
+
+- [#555](https://github.com/IntersectMBO/evolution-sdk/pull/555) [`e232196`](https://github.com/IntersectMBO/evolution-sdk/commit/e23219645cbdd3f2a3eeb08fffb811a7b0fbdfb7) Thanks [@yanggu0t](https://github.com/yanggu0t)! - Sort equal-length map keys bytewise in canonical CBOR encoding. Canonical mode and custom mode with `sortMapKeys: true` ordered map keys by encoded length only, so keys of the same length kept their insertion order. They now follow the length-first rule of RFC 8949 section 4.2.3, shorter keys first and equal lengths in bytewise order, which is the order the ledger and hardware wallets expect. The default encoding still keeps insertion order, and re-encoding with a captured format still reproduces the original bytes.
+
+- [#563](https://github.com/IntersectMBO/evolution-sdk/pull/563) [`96306a3`](https://github.com/IntersectMBO/evolution-sdk/commit/96306a3da64b893d1503ae78104cbc19bf64b7eb) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix the script data hash for transactions that use a PlutusV1 script together with a PlutusV2 or V3 script. The language views map put the PlutusV1 entry first, but the ledger sorts its keys shortest first. The V1 key is two bytes, while the V2 and V3 keys are one byte each. The node rejected such transactions before running any script. `CostModel.languageViewsEncoding` now encodes the map with canonical key order, and transactions with a single Plutus language keep the same hash.
+
+- [#558](https://github.com/IntersectMBO/evolution-sdk/pull/558) [`f0ac2d7`](https://github.com/IntersectMBO/evolution-sdk/commit/f0ac2d7a4a183c3db2585eba2f50a18698a01fff) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Read every integer in provider responses exactly, at any size. The HTTP helpers parsed response bodies with `JSON.parse`, which rounds any integer above 2^53, and the provider schemas mixed `number` and `bigint` for integer fields. The HTTP helpers now decode each body with one composed `Schema.parseJson` schema whose reviver hands every JSON number to the field schema as the text the server wrote. Every integer field in the Koios, Kupo, Ogmios, Blockfrost and Maestro response schemas decodes with `Schema.BigInt`, and decimal fields decode with `Schema.NumberFromString`.
+
+  - Koios lovelace fields decode whether Koios sends them as strings, as it does today, or as JSON numbers, as it will from v1.5 ([#539](https://github.com/IntersectMBO/evolution-sdk/issues/539)).
+  - Kupo token quantities above 2^53 are no longer rounded ([#454](https://github.com/IntersectMBO/evolution-sdk/issues/454)).
+  - `awaitTx` on Koios reads only the transaction hash from `/tx_info`.
+  - A response body that is not the expected JSON now fails with a `ParseError` instead of an `HttpResponseError`. Public provider methods still fail with `ProviderError` in both cases.
+  - This release keeps the public `Provider.ProtocolParameters` type as it was. Each provider converts the fields it declares as `number` at that boundary, and [#557](https://github.com/IntersectMBO/evolution-sdk/issues/557) tracks moving them to `bigint`.
+
+- [#560](https://github.com/IntersectMBO/evolution-sdk/pull/560) [`1134444`](https://github.com/IntersectMBO/evolution-sdk/commit/11344442281537af6eb15f0fb86f4fd8e03ad799) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Export the redeemer types that the public transaction builder state refers to. `DeferredRedeemerData` in `TransactionBuilder` referenced `DeferredRedeemer`, which the build stripped as internal, so consumers type-checking the published declarations with `skipLibCheck: false` got TS2305, and with `skipLibCheck: true` the field silently became `any`. `StaticRedeemer`, `SelfRedeemer`, `BatchRedeemer` and `DeferredRedeemer` are now public types in `RedeemerBuilder`. CI now type-checks the built declaration files before a release.
+
+## 0.5.14
+
+### Patch Changes
+
+- [#548](https://github.com/IntersectMBO/evolution-sdk/pull/548) [`96c2c91`](https://github.com/IntersectMBO/evolution-sdk/commit/96c2c91acc4b5153b8ac10ddbd3ea2795364ab53) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - Remove the `@effect/platform` runtime dependency. The providers used it only as a fetch wrapper: three helpers in `HttpUtils.ts` built on `FetchHttpClient`, plus one error class in the Blockfrost error mapping. Those helpers are now written directly on the global `fetch`, which is available on every runtime the SDK supports, and the `Effect.provide(FetchHttpClient.layer)` wiring in the Koios and Kupmios internals is gone with it. Request and response handling is unchanged, including the `non 2xx status code : ...` failure message, the Blockfrost 404 mapping, and the JSON-with-plain-text-fallback used by submit endpoints that return an unquoted transaction hash. Failures now surface as `HttpRequestError` (no response) and `HttpResponseError` (non-2xx, or an unreadable body). Both are internal and the public provider methods still fail with `ProviderError`, so no signature changes, but the value carried in `ProviderError.cause` has a different shape: the old `ResponseError`'s `description` and `response` fields are replaced by `message` and `status`. Anything matching on those field names needs updating — in this package that was the evaluation phase's Ogmios failure parser, which now reads either name. Following on from the previous dependency cleanup, a fresh install of `@evolution-sdk/evolution` now resolves 10 packages instead of 23, and 48 MB instead of 72 MB.
+
+- [#532](https://github.com/IntersectMBO/evolution-sdk/pull/532) [`0099194`](https://github.com/IntersectMBO/evolution-sdk/commit/0099194f70f8696c964bedd58b869a67f2acf4ae) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - Remove three dependencies the published package never imports. `@effect/platform-node` was declared but is not referenced anywhere in the package; because it pins `@effect/cluster`, `@effect/rpc` and `@effect/sql` as peer dependencies, every consumer auto-installed that entire subtree along with `@effect/experimental`, `@effect/workflow`, `@effect/platform-node-shared`, and `@parcel/watcher` with its thirteen prebuilt native binaries. `bip39` is used only by one test and moves to `devDependencies`; `@scure/bip39` remains the runtime implementation. `@types/bip39` is a deprecated stub whose own npm metadata states that `bip39` ships its own type definitions. A fresh install of `@evolution-sdk/evolution` now resolves 23 packages instead of 55, and 72 MB instead of 89 MB, with no source or public API change.
+
+- [#544](https://github.com/IntersectMBO/evolution-sdk/pull/544) [`0167cf9`](https://github.com/IntersectMBO/evolution-sdk/commit/0167cf91381eea2c2f33db5ab1396a66b4dbe2da) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Koios `getUtxosByOutRef`, which failed for outputs of transactions that ran Plutus scripts and returned outputs from only one transaction when the refs spanned several. It now queries `/utxo_info` with the requested refs instead of decoding whole transactions from `/tx_info`.
+
+## 0.5.13
+
+### Patch Changes
+
+- [#519](https://github.com/IntersectMBO/evolution-sdk/pull/519) [`5d4ef7c`](https://github.com/IntersectMBO/evolution-sdk/commit/5d4ef7c581bf06beacd087b643bd00e1a8019ef6) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Look assets up by structural equality in `MultiAsset` and compare quantities directly in `Value.geq`. `getAsset`, `hasAsset`, `getAssetsByPolicy`, and `MultiAsset.subtract` read the map with `Map.get`, which compares `PolicyId` and `AssetName` by reference. Keys decoded from CBOR are fresh instances, so every lookup against decoded data missed: `getAsset` returned `undefined` for an asset that was present, `hasAsset` returned `false`, `getAssetsByPolicy` returned an empty array, and `subtract` returned the minuend unchanged instead of reducing it. `Value.geq` inferred sufficiency from `subtract` not throwing, so it reported that a value covered an amount it did not hold. These functions now match keys the way `addAsset` already did, and `geq` compares the coin and each requested quantity directly.
+
+- [#494](https://github.com/IntersectMBO/evolution-sdk/pull/494) [`2b6825f`](https://github.com/IntersectMBO/evolution-sdk/commit/2b6825ffaab4d37b5631708a1f60c10272444a1d) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - `TxBuilder` no longer requires a Plutus redeemer to authorize a hot credential or resign a native-script (multisig) constitutional committee cold credential. A CC certificate whose cold credential is a native script is authorized by vkey witnesses, not a redeemer, so previously `.authCommitteeHot()` and `.resignCommitteeCold()` could not build these ledger-valid certificates. Mirroring the DRep certificate fix, the native-vs-Plutus distinction is made at build time once the cold credential's script is attached via `.attachScript()` (or supplied through a reference input): a redeemer is required only for Plutus-script cold credentials, and a redeemer mistakenly supplied for a native-script cold credential is pruned from the transaction.
+
+- [#494](https://github.com/IntersectMBO/evolution-sdk/pull/494) [`2b6825f`](https://github.com/IntersectMBO/evolution-sdk/commit/2b6825ffaab4d37b5631708a1f60c10272444a1d) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - `TxBuilder` no longer requires a Plutus redeemer to register, update, or deregister a native-script (multisig) DRep. A script-controlled DRep certificate whose script is native is authorized by vkey witnesses, not a redeemer, so previously these certificates could not be built even though they are ledger-valid. Mirroring the native-script vote fix, the native-vs-Plutus distinction is now made at build time, once the DRep's script is attached via `.attachScript()` (or supplied through a reference input): a redeemer is required only for Plutus-script DRep credentials, and a redeemer mistakenly supplied for a native-script DRep certificate is pruned from the transaction.
+
+## 0.5.12
+
+### Patch Changes
+
+- [#477](https://github.com/IntersectMBO/evolution-sdk/pull/477) [`2545221`](https://github.com/IntersectMBO/evolution-sdk/commit/2545221cb7980ba7bb47a1d294f2d53d21b1690f) Thanks [@hadelive](https://github.com/hadelive)! - Fix the Maestro provider host and transaction submission endpoint. Submission posted to `/submit` (or `/turbo/submit` with `turboSubmit`), but Maestro accepts transactions through its Transaction Manager API at `/txmanager` and `/txmanager/turbosubmit`, so every submit returned a 404. The pre-configured `mainnet`, `preprod`, and `preview` constructors also pointed at `*.api.maestro.org`, which does not serve the Cardano API; they now use `https://{network}.gomaestro-api.org/v1`, affecting every request the provider makes, not just submission.
+
+## 0.5.11
+
+### Patch Changes
+
+- [#430](https://github.com/IntersectMBO/evolution-sdk/pull/430) [`198a206`](https://github.com/IntersectMBO/evolution-sdk/commit/198a206a60232aa71e8621589493d7c334fd883e) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - CIP-30 wallets can now provide typed UTxOs directly, without going through a provider. The API wallet exposes `getUtxos()` returning parsed `UTxO` values, and a new `Codegen`-free helper `cip30UtxoFromCBORHex` converts a single CIP-30 UTxO (the CBOR of a `[transaction_input, transaction_output]` pair) into a `UTxO`. Previously the only built-in source of wallet UTxOs was the provider (`getWalletUtxos` resolved the address and queried `provider.getUtxos`), so consumers had to parse the wallet's CBOR themselves.
+
+  Transaction building and `getWalletUtxos` now prefer the wallet's own UTxOs when the wallet is a CIP-30 wallet, falling back to the provider for seed and private-key wallets. This reflects the wallet's own view, including UTxOs created by transactions it has just submitted, so chained transactions no longer wait for a provider to index them. A provider is still required for protocol parameters during build, since CIP-30 does not expose them.
+
+- [#432](https://github.com/IntersectMBO/evolution-sdk/pull/432) [`939c674`](https://github.com/IntersectMBO/evolution-sdk/commit/939c6745822802d37fd9091fbcc290d589c27d8d) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - `TxBuilder.vote()` no longer requires a Plutus redeemer for native-script (multisig) voters. A native-script DRep or constitutional-committee voter is satisfied by vkey witnesses, not a redeemer, so previously such a vote could not be built even though it is ledger-valid. The native-vs-Plutus distinction is now made at build time, once the voter's script is attached or referenced: a redeemer is required only for Plutus-script voters, and a redeemer supplied for a native-script voter is pruned with a warning. The fee continues to be sized for the script's threshold number of vkey witnesses.
+
+## 0.5.10
+
+### Patch Changes
+
+- [#424](https://github.com/IntersectMBO/evolution-sdk/pull/424) [`6e82a15`](https://github.com/IntersectMBO/evolution-sdk/commit/6e82a15ffb9f4e3374ec0a21f02918001dad4ab2) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Address parsing now validates the CIP-19 header type, not just the byte length. Previously `Address.fromHex` and `Address.fromBech32` chose between a base address and an enterprise address by length alone and never checked the header type nibble. A 29-byte reward (stake) address has the same length as an enterprise address, so it was accepted as an enterprise address with its stake credential silently used as the payment credential. `fromBech32` also ignored the bech32 prefix, so a `stake1...` string parsed as a payment address.
+
+  Parsing now requires header type 0–3 on the 57-byte base branch and 6–7 on the 29-byte enterprise branch, rejecting reward, pointer, Byron, and reserved types; the same check is applied in `BaseAddress.FromBytes` and `EnterpriseAddress.FromBytes`. `fromBech32` now requires an `addr`/`addr_test` prefix that agrees with the network in the header. Reward and stake addresses are handled by `RewardAccount`, not `Address`.
+
+- [#423](https://github.com/IntersectMBO/evolution-sdk/pull/423) [`02b7b7e`](https://github.com/IntersectMBO/evolution-sdk/commit/02b7b7e038462550b83d929bf1633d9ae829aaf2) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Key derivation and signing now use constant-time scalar multiplication for secret key material. Several call sites that derive a public key from a secret scalar used a variable-time base-point multiplication whose execution time depends on the secret, leaking information through a timing side channel. The affected paths were private-key public-key derivation, extended-key signing, verification-key derivation, and the BIP32 child derivation, public-key, and 128-byte export/import paths.
+
+  These sites now use the constant-time multiplication that was already in use for the per-signature nonce. Results are identical for valid keys, so derived public keys and signatures are unchanged; an all-zero scalar (only reachable from an invalid imported key) now raises an error instead of returning a degenerate point.
+
+- [#426](https://github.com/IntersectMBO/evolution-sdk/pull/426) [`4a3aa05`](https://github.com/IntersectMBO/evolution-sdk/commit/4a3aa0579252bccd81f85519be08aab8593f0ea1) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `COSE.SignData.verifyData` now honors the CIP-8 `hashed` flag. When a signer hashes a large message, the flag is set and the signed payload is the blake2b-224 digest of the message rather than the message itself. Verification previously ignored the flag and always compared the supplied payload to the signed bytes literally, so a hashed message from a wallet could never be verified against its original payload. Verification now reads the flag and, when set, compares the blake2b-224 digest of the supplied payload, matching the message-signing reference used by browser wallets.
+
+  The flag is intentionally left in the unprotected headers to preserve byte-for-byte compatibility with that reference, where the flag also lives in the unprotected map; `signData` output is unchanged.
+
+- [#427](https://github.com/IntersectMBO/evolution-sdk/pull/427) [`2700fd0`](https://github.com/IntersectMBO/evolution-sdk/commit/2700fd00cb2b92de710c2e0592ddf84a4c742eb0) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The seed/private-key wallet's `signMessage` now signs through a COSE_Sign1 structure instead of signing the caller's bytes directly. Previously it signed the raw payload with the same key and primitive used for transactions, so passing a 32-byte transaction body hash produced a valid transaction witness — making `signMessage` usable as a transaction-signing oracle. The signed bytes are now domain-separated by the COSE `Sig_structure` (the "Signature1" context plus the address in the protected headers), so they can never be a bare transaction witness. The result's `signature` is the COSE_Sign1, matching the format already returned by the CIP-30 wallet path.
+
+- [#422](https://github.com/IntersectMBO/evolution-sdk/pull/422) [`a13cb78`](https://github.com/IntersectMBO/evolution-sdk/commit/a13cb78a63196509fd8fe955f4330951512e4808) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `COSE.SignData.verifyData` now binds the signing key to the claimed address. Previously it checked the protected-header address and the public-key hash as two independent caller-supplied claims and never required the public key in the signed message to match the credential contained in the address. A signature produced by one key carrying a different address in its protected header would still verify, so address-based authentication and attestation flows could accept a proof from the wrong signer.
+
+  Verification now decodes the claimed address, derives its key-hash credential (the payment credential for base and enterprise addresses, the stake credential for reward addresses), and requires the embedded public key to hash to that credential. Addresses whose credential is a script hash are rejected, since a single Ed25519 key cannot satisfy a script credential. Genuine signatures whose key matches the address continue to verify unchanged.
+
+## 0.5.9
+
+### Patch Changes
+
+- [#334](https://github.com/IntersectMBO/evolution-sdk/pull/334) [`e59b557`](https://github.com/IntersectMBO/evolution-sdk/commit/e59b557e86bbaae01b43a82a9619063e9f7cd2aa) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update lint compatibility for the ESLint JavaScript config 10 upgrade.
+
+## 0.5.8
+
+### Patch Changes
+
+- [#340](https://github.com/IntersectMBO/evolution-sdk/pull/340) [`3f98d9f`](https://github.com/IntersectMBO/evolution-sdk/commit/3f98d9fae5e2c9255700eca691521812c81f18da) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix collectFrom storing redeemers for native script UTxOs. When a redeemer was passed to collectFrom for a native script input, it was incorrectly treated as a Plutus spend, causing "associated script witness is missing" errors during evaluation.
+
+## 0.5.7
+
+### Patch Changes
+
+- [#320](https://github.com/IntersectMBO/evolution-sdk/pull/320) [`52dc09a`](https://github.com/IntersectMBO/evolution-sdk/commit/52dc09af57c7702bbab3e3aab18a71981d4ff856) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add opt-in `autoMinUtxo` to `BuildOptions` and `PayToAddressParams` for automatic minimum UTxO lovelace enforcement
+
+## 0.5.6
+
+### Patch Changes
+
+- [#310](https://github.com/IntersectMBO/evolution-sdk/pull/310) [`72160b7`](https://github.com/IntersectMBO/evolution-sdk/commit/72160b770c58e05b5b1bbad6ada166ebf7943e82) Thanks [@Mavis2103](https://github.com/Mavis2103)! - Add `fullProtocolParameters` to `BuildOptions` for providerless transaction builds
+
+- [#312](https://github.com/IntersectMBO/evolution-sdk/pull/312) [`a4404da`](https://github.com/IntersectMBO/evolution-sdk/commit/a4404daae38a354f019cdbc0805385c55e5c6aee) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add `registerStakeLegacy` and `deregisterStakeLegacy` builder methods for pre-Conway stake certificate support. These create `StakeRegistration` (CDDL tag 0) and `StakeDeregistration` (CDDL tag 1) certificates with no deposit, matching what most wallets use today. Both methods support script-controlled credentials with redeemers.
+
+## 0.5.5
+
+### Patch Changes
+
+- [#308](https://github.com/IntersectMBO/evolution-sdk/pull/308) [`0da877a`](https://github.com/IntersectMBO/evolution-sdk/commit/0da877a0c9a2147832affc83e15d85ec758dc23a) Thanks [@Mavis2103](https://github.com/Mavis2103)! - Replace instanceof checks with duck-typing for Address vs Credential discrimination in provider implementations
+
+## 0.5.4
+
+### Patch Changes
+
+- [#306](https://github.com/IntersectMBO/evolution-sdk/pull/306) [`73f9aaf`](https://github.com/IntersectMBO/evolution-sdk/commit/73f9aaf93798d80e24593e2d339f8b98efbd29be) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The provider now reads `cost_models_raw` from the `/epochs/latest/parameters` response instead of the legacy `cost_models` field. The legacy field uses alphabetically-keyed names and is truncated post-Plomin (297 entries vs 350 canonical for PlutusV3), which produces an incorrect `script_data_hash` and causes `ScriptIntegrityHashMismatch` on any transaction carrying Plutus scripts. Falls back to `cost_models` for older API deployments that don't serve `cost_models_raw`.
+
+- [#305](https://github.com/IntersectMBO/evolution-sdk/pull/305) [`032e545`](https://github.com/IntersectMBO/evolution-sdk/commit/032e54543d5798d4f154a59c733e59da02a99ffd) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Credential-based UTxO queries (`getUtxos` and `getUtxosWithUnit` with a `Credential` instead of an `Address`) now work across all providers that support them. Previously, passing a `Credential` to Blockfrost produced an invalid API path, and Koios silently rejected the query. Blockfrost now encodes credentials as CIP-5 bech32 (`addr_vkh`/`script` prefixes), and Koios routes credential queries to the `POST /credential_utxos` endpoint with hex-encoded payment credential hashes.
+  - Added `toBech32`/`fromBech32` to `KeyHash` (`addr_vkh` prefix) and `ScriptHash` (`script` prefix)
+  - Added `Credential.toHex` and `Credential.toBech32` convenience functions
+  - Fixed `BlockfrostEffect.getUtxosWithUnit` reading the address from `addressPath` instead of the response `utxo.address`
+
+## 0.5.3
+
+### Patch Changes
+
+- [#250](https://github.com/IntersectMBO/evolution-sdk/pull/250) [`10e5b44`](https://github.com/IntersectMBO/evolution-sdk/commit/10e5b44bb62055137278b9acc75660db3e3ef645) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fixed `getUtxos` and `getUtxosWithUnit` in the Kupmios provider producing invalid Kupo URLs when called with a `Credential` instead of an `Address`. The credential hash (a `Uint8Array`) was being interpolated directly into the URL pattern, resulting in a comma-separated list of byte values instead of the expected hex string. Both call sites now convert the hash to hex with `Bytes.toHex` before building the URL.
+
+## 0.5.2
+
+### Patch Changes
+
+- [#246](https://github.com/IntersectMBO/evolution-sdk/pull/246) [`61ed73e`](https://github.com/IntersectMBO/evolution-sdk/commit/61ed73e60bc00951755d3d0a9ee09b12cdbeb149) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add `Address.fromSeed()` for synchronous address derivation from a BIP-39 seed phrase. This enables deriving addresses without constructing a `Client` or `Chain` instance — useful for devnet genesis funding where the address must be known before the cluster starts.
+
+  The `Derivation` module now accepts a numeric `networkId` (0 = testnet, 1 = mainnet) instead of a `network` string (`"Mainnet" | "Testnet" | "Custom"`). The default changed from mainnet (1) to testnet (0). If you call `walletFromSeed`, `addressFromSeed`, `walletFromBip32`, or `walletFromPrivateKey` with the old `network` option, replace it with `networkId`:
+  - `network: "Mainnet"` → `networkId: 1`
+  - `network: "Testnet"` or `network: "Custom"` → `networkId: 0` (or omit, since 0 is the default)
+
+- [#242](https://github.com/IntersectMBO/evolution-sdk/pull/242) [`2b464f8`](https://github.com/IntersectMBO/evolution-sdk/commit/2b464f8b4a1c441ca9b1484b08593e867b040710) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add `signTxs` method to `SigningClient`, `OfflineSignerClient`, and all wallet types for batch transaction signing per CIP-103. For CIP-30 browser wallets, the implementation detects `api.cip103.signTxs`, `api.experimental.signTxs`, or direct `api.signTxs` and falls back to sequential `api.signTx` calls when no batch method is available. Seed and private key wallets delegate to per-transaction signing internally.
+  - `WalletApi` now accepts optional `cip103`, `experimental`, and direct `signTxs` properties
+  - `TransactionSignatureRequest` type exported from `Wallet` module
+  - `signTxsWithAutoFetch` aggregates reference inputs across all transactions in a single provider call
+
+## 0.5.1
+
+### Patch Changes
+
+- [#243](https://github.com/IntersectMBO/evolution-sdk/pull/243) [`7fa8430`](https://github.com/IntersectMBO/evolution-sdk/commit/7fa843040e994b1c496260c101176cd0de679b97) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Restore Certificate.ts as a self-contained module and fix docgen compatibility. Remove convenience re-exports from Time.ts and update stale `@example` import paths for the flat module structure.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#240](https://github.com/IntersectMBO/evolution-sdk/pull/240) [`04c705e`](https://github.com/IntersectMBO/evolution-sdk/commit/04c705ea8c04e19161eaf02e8544279485f48389) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Flatten module structure to eliminate webpack casing conflicts on case-insensitive filesystems. The wildcard export now maps PascalCase filenames directly — namespace name equals filename equals import path, removing the directory/namespace casing mismatch that caused dual module identifiers in webpack builds.
+
+  Modules previously nested in concept folders (address/, block/, transaction/, etc.) are now flat PascalCase files at the package root. Three subdirectories remain for separate domains with naming collisions: `plutus/` (on-chain script types), `cose/` (message signing protocol), and `blueprint/` (CIP-57 codegen). Deep imports into subdirectories are blocked.
+  - Concept-folder subpath imports like `@evolution-sdk/evolution/address` are removed. Use the root barrel (`import { Address } from "@evolution-sdk/evolution"`) or the wildcard (`import * as Address from "@evolution-sdk/evolution/Address"`).
+  - `MessageSigning` is renamed to `COSE` in the root barrel export.
+  - `./plutus`, `./cose`, and `./blueprint` are available as subpath imports with namespaced barrels.
+  - Blueprint barrel now uses `export * as` instead of `export *`.
+
+## 0.4.0
+
+### Minor Changes
+
+- [#231](https://github.com/IntersectMBO/evolution-sdk/pull/231) [`7b36dc1`](https://github.com/IntersectMBO/evolution-sdk/commit/7b36dc10b3ae2607a395e721376f1729b7983bb1) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Reorganize flat module structure into semantic concept folders.
+  - Move ~130 flat root-level files into 24 concept folders following Effect v4 conventions (camelCase folders, PascalCase files)
+  - New folders: `address/`, `assets/`, `block/`, `blueprint/`, `bytes/`, `certificate/`, `credential/`, `data/`, `encoding/`, `governance/`, `messageSigning/`, `metadata/`, `network/`, `numeric/`, `plutus/`, `primitives/`, `relay/`, `script/`, `staking/`, `time/`, `transaction/`, `uplc/`, `value/`
+  - Merge `datum/` into `data/` (DatumHash, DatumOption, InlineDatum alongside Data, TSchema, DataJson)
+  - Extract `certificate/` from `governance/` (StakeCertificates and PoolCertificates have zero governance dependencies)
+  - Move byte primitives (Bytes, Bytes4–448, BoundedBytes) from `primitives/` to `bytes/`
+  - Move numeric types (Numeric, Natural, NonZeroInt64, UnitInterval) from `primitives/` to `numeric/`
+  - Move CBOR and Codec from root to `encoding/`
+  - Dissolve `utils/` anti-pattern: move hash functions to input-type modules via `to` pattern (TransactionBody.toHash, Data.toDatumHash, etc.)
+  - Delete dead code: `Combinator.ts` (zero consumers, contained a bug), `FormatError.ts` (zero consumers), `NativeScriptsOLD.ts`, `Function.ts`
+  - Rename non-conforming folders: `Assets/` → `assets/`, `Time/` → `time/`, `message-signing/` → `messageSigning/`
+  - All public API exports preserved via barrel files and package.json exports map
+
+### Patch Changes
+
+- [#237](https://github.com/IntersectMBO/evolution-sdk/pull/237) [`c68507b`](https://github.com/IntersectMBO/evolution-sdk/commit/c68507b91ea7adfbfdae11ead52280f7cfd95305) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Conway-era transactions encode certificates as `#6.258([+ certificate])` (CBOR tag 258, a nonempty ordered set). TransactionBody deserialization now unwraps tag 258 when present on the certificates field (key 4), and serialization wraps the array in tag 258 so round-tripped bytes match the on-chain encoding.
+
+- [#236](https://github.com/IntersectMBO/evolution-sdk/pull/236) [`f0c7ea4`](https://github.com/IntersectMBO/evolution-sdk/commit/f0c7ea4254a2c9d96551df294ecf4535872e79e4) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `Transaction.fromCBORHex` and `Transaction.fromCBORBytes` now preserve the original CBOR encoding format (e.g. indefinite-length arrays) through round-trips. Previously, decoding via the default path normalised indefinite-length markers (`0x9f`) to definite-length (`0x81`), which silently broke `scriptDataHash` validation when the transaction contained non-canonical PlutusData in redeemers.
+
+  The fix caches the CBOR format tree in a WeakMap on decode and re-applies it on encode, making the default `fromCBOR → toCBOR` path lossless with no API surface change. `addVKeyWitnesses` transfers the cached format to the resulting transaction.
+
+- [#228](https://github.com/IntersectMBO/evolution-sdk/pull/228) [`a2310b0`](https://github.com/IntersectMBO/evolution-sdk/commit/a2310b0399377c69b3342182b9745c72d9bcd5bf) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Restructure transaction builder internals for maintainability.
+  - Extract monolithic `TxBuilderImpl.ts` into focused internal modules (`build.ts`, `ctx.ts`, `factory.ts`, `layers.ts`, `resolve.ts`, `state.ts`, `txBuilder.ts`)
+  - Rename internal modules from PascalCase to camelCase per Effect conventions
+  - Add `Address.isScript` predicate and `UTxO.totalAssets`/`UTxO.toInputs` utilities to core modules
+  - Remove unnecessary Effect wrappers from pure functions (`makeTxOutput`, `calculateTransactionSize`)
+  - Fix `Unfrack.ts` ScriptRef encoding to use `fromHexStrings` instead of `fromUnit`
+  - Fix `Stake.ts` withdraw to use dependency injection for `TxBuilderConfig`
+
+## 0.3.32
+
+### Patch Changes
+
+- [#227](https://github.com/IntersectMBO/evolution-sdk/pull/227) [`b5eca41`](https://github.com/IntersectMBO/evolution-sdk/commit/b5eca41b1ccd2ac4fe23be618b303a504f241bbd) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Restructured client internals and fixed several consistency issues in the promise-based API layer.
+
+  Signing logic has been extracted from `Wallets.ts` into a dedicated `internal/Signing.ts` module, and client assembly now lives in `internal/Client.ts`. The `WalletNew` module was renamed to `Wallet`; the legacy `ClientImpl` and `dual` modules were removed.
+
+  `runEffectPromise` no longer mutates error stack traces — the `cleanErrorChain` infrastructure was removed entirely. `Cause.squash` now throws the original error object unchanged, which means `instanceof` checks and `_tag` discrimination work correctly when consumers catch errors from promise-based methods.
+
+  All 19 `Effect.runPromise` call sites in the client layer were replaced with `runEffectPromise` so errors are consistently unwrapped across `readOnlyWallet`, `cip30Wallet`, `createOfflineSignerClient`, `createReadOnlyClient`, and `createSigningClient`.
+  - Provider method wiring in `SigningClient` now uses spread instead of manual `.bind()` calls
+  - `ProviderError.cause` is now optional, matching `WalletError` and `TransactionBuilderError`
+  - Removed `cause: null` sentinels from all error constructors
+
+- [#224](https://github.com/IntersectMBO/evolution-sdk/pull/224) [`7e87db9`](https://github.com/IntersectMBO/evolution-sdk/commit/7e87db9c5c0cd934fe070579528c4d139c8d6c7e) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Introduce composable client API with Chain, Providers, and Wallets modules. Fix signMessage returning vkey instead of signature, seedWallet ignoring paymentIndex/stakeIndex, redundant RewardAddress decode in getWalletDelegation, and dualify missing prototype-chain methods. Add chain property to ProviderOnlyClient and ApiWalletClient, remove MinimalClient.attach shortcut, and align ReadOnlyClient.newTx() signature with SigningClient.
+
+## 0.3.31
+
+### Patch Changes
+
+- [`16cb6fd`](https://github.com/IntersectMBO/evolution-sdk/commit/16cb6fd55670bb51f823469e52ac71cfb23b0d1f) Thanks [@hadelive](https://github.com/hadelive)! - fix: make min_utxo optional in Blockfrost protocol parameters schema
+
+## 0.3.30
+
+### Patch Changes
+
+- [#215](https://github.com/IntersectMBO/evolution-sdk/pull/215) [`19829c7`](https://github.com/IntersectMBO/evolution-sdk/commit/19829c7c6e1cd1ac3a33fb180e4482016791dcd5) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Blueprint codegen now supports recursive type schemas — Plutus types that reference themselves
+  directly or through an intermediate type (e.g. `MultiSig` containing a `List<MultiSig>` field).
+  Cyclic references are emitted as typed `Schema.suspend` thunks where the encoded type `I` is
+  inferred by recursively walking the blueprint definition graph rather than hardcoded to `Data.Constr`:
+  `list` → `readonly ItemEncoded[]`, `map` → `globalThis.Map<Data.Data, Data.Data>`,
+  `bytes` → `Uint8Array`, `integer` → `bigint`, `constructor` and union → `Data.Constr`,
+  `$ref` followed transitively up to depth 10. The previous hardcoded `Data.Constr` caused a
+  TypeScript invariance error for any recursive field referencing a list type.
+
+  Several other codegen correctness and API improvements ship in the same release:
+  - **Namespace emission ordering** — the group-by-namespace emitter is replaced by a streaming emitter
+    that walks a global topological sort and opens/closes namespace blocks on demand. TypeScript namespace
+    merging handles split declarations transparently. This fixes cases where a type was emitted before
+    its cross-namespace dependency (e.g. `Option.OfStakeCredential` appearing before `Cardano.Address.StakeCredential`).
+  - **Cyclic type emit pattern** — cyclic types now emit a `export type X = ...` / `export const X = ...`
+    pair with no outer `Schema.suspend` wrapper and no `as` cast. Only the inner field references that
+    close the cycle use typed thunks: `Schema.suspend((): Schema.Schema<T, I> => T)`.
+  - **`unionStyle` config** — `CodegenConfig` gains `unionStyle: "Variant" | "Struct" | "TaggedStruct"`
+    in place of the removed `forceVariant` and `useSuspend` fields. `Struct` emits
+    `TSchema.Struct({ Tag: TSchema.Struct({...}, { flatFields: true }) }, { flatInUnion: true })`,
+    `TaggedStruct` emits `TSchema.TaggedStruct("Tag", {...}, { flatInUnion: true })`,
+    and `Variant` emits `TSchema.Variant({ Tag: {...} })`.
+  - **Import hygiene** — generated files emit `import { Schema } from "@evolution-sdk/evolution"`
+    only when cyclic types are present, rather than always importing from `effect` directly.
+    `CodegenConfig.imports.effect` is replaced by `imports.schema`.
+
+## 0.3.29
+
+### Patch Changes
+
+- [#210](https://github.com/IntersectMBO/evolution-sdk/pull/210) [`03e4dea`](https://github.com/IntersectMBO/evolution-sdk/commit/03e4deaace5a98a2def15ebb088262160c77cd2c) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Blockfrost evaluateTx failing on multi-asset UTxOs by correcting the value format sent to the Ogmios endpoint. Standardize error handling across all providers with consistent catchAll + wrapError pattern. Add JSONWSP fault detection to Blockfrost evaluation responses. Accept both CBOR tag-258 and plain array encodings in TransactionBody decoding.
+
+## 0.3.28
+
+### Patch Changes
+
+- [#208](https://github.com/IntersectMBO/evolution-sdk/pull/208) [`76bbaa2`](https://github.com/IntersectMBO/evolution-sdk/commit/76bbaa2d1cebb40a52a037b23cd80f1fef20388d) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix Koios `getProtocolParameters` returning stale epoch data on preview by explicitly ordering `epoch_params` descending
+
+## 0.3.27
+
+### Patch Changes
+
+- [#203](https://github.com/IntersectMBO/evolution-sdk/pull/203) [`9701411`](https://github.com/IntersectMBO/evolution-sdk/commit/9701411a17a4a2ef4d9b6c3547d3314801ec616c) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix `awaitTx` failing with a `ParseError` when Koios returns `asset_list` as a Haskell show-formatted string on collateral outputs. Add configurable `timeout` parameter to `awaitTx` across all providers (Koios, Blockfrost, Maestro, Kupmios).
+
+- [#204](https://github.com/IntersectMBO/evolution-sdk/pull/204) [`78e8fd7`](https://github.com/IntersectMBO/evolution-sdk/commit/78e8fd756021c69cecd810d3a95ed34af721ce56) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Pass network to TxBuilder so testnet slot configs resolve correctly instead of always defaulting to Mainnet.
+
+## 0.3.26
+
+### Patch Changes
+
+- [#201](https://github.com/IntersectMBO/evolution-sdk/pull/201) [`619c52b`](https://github.com/IntersectMBO/evolution-sdk/commit/619c52bd843d45e3062cfe3a7a49438c181e45d7) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Script transactions with certificate or withdrawal redeemers evaluated via Blockfrost no longer spam warning logs or loop indefinitely. Blockfrost's Ogmios v5 JSONWSP format returns `"certificate:N"` and `"withdrawal:N"` as redeemer pointer keys; these are now normalized to the canonical `"cert"` and `"reward"` tags before evaluation matching. Unmatched redeemer tags from any evaluator now fail immediately instead of silently leaving ExUnits at zero.
+
+- [#200](https://github.com/IntersectMBO/evolution-sdk/pull/200) [`3685736`](https://github.com/IntersectMBO/evolution-sdk/commit/3685736ec8fb7b536d88d7ef4044846a8cebb52f) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Fix several provider mapping bugs that caused incorrect or missing data in `getDelegation`, `getDatum`, and `getUtxos` responses.
+
+  **Koios**
+  - `getDelegation`: was decoding the pool ID with `PoolKeyHash.FromHex` but Koios returns a bech32 `pool1…` string — switched to `PoolKeyHash.FromBech32`
+  - `getUtxos`: `datumOption` and `scriptRef` fields were never populated — all UTxOs returned `datumOption: null, scriptRef: null` regardless of on-chain state. Now correctly maps inline datums, datum hashes, and native/Plutus script references.
+
+  **Kupmios (Ogmios)**
+  - `getDelegation`: the Ogmios v6 response is an array, but the code was using `Object.values(result)[0]` which silently produced wrong data on some responses. Switched to `result[0]`. Also corrected the field path from `delegate.id` to `stakePool.id` to match the v6 schema, and decoded the bech32 pool ID through `Schema.decode(PoolKeyHash.FromBech32)` so the return type satisfies `Provider.Delegation`.
+
+  **Blockfrost**
+  - `getDatum`: was calling `/scripts/datum/{hash}` which returns only the data hash — should be `/scripts/datum/{hash}/cbor` to get the actual CBOR-encoded datum value. Switched endpoint and response schema to `BlockfrostDatumCbor`.
+
+## 0.3.25
+
+### Patch Changes
+
+- [#198](https://github.com/IntersectMBO/evolution-sdk/pull/198) [`24f1d59`](https://github.com/IntersectMBO/evolution-sdk/commit/24f1d59ee64dfb9ca0d2f73f8c5afe9b41a09816) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Filter out UTxOs with an empty `tx_hash` in Blockfrost `getUtxos` and `getUtxosWithUnit` to prevent a `ParseError` crash when providers like Dolos return malformed entries
+
+- [#183](https://github.com/IntersectMBO/evolution-sdk/pull/183) [`277df7b`](https://github.com/IntersectMBO/evolution-sdk/commit/277df7be130609c16a4e44c023de0bce637a4fd4) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Handle plain-text responses in `postUint8Array` for compatibility with backends that return unquoted strings from `POST /tx/submit`
+
+- [#192](https://github.com/IntersectMBO/evolution-sdk/pull/192) [`536eeb3`](https://github.com/IntersectMBO/evolution-sdk/commit/536eeb37ec734db2547da4fc597f5466dd94c12a) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `addVKeyWitnessesBytes` now uses the WithFormat round-trip to merge witnesses, preserving original CBOR encoding rather than performing manual byte surgery.
+
+## 0.3.24
+
+### Patch Changes
+
+- [#193](https://github.com/IntersectMBO/evolution-sdk/pull/193) [`37bd6fe`](https://github.com/IntersectMBO/evolution-sdk/commit/37bd6fe86eba7de12e7d77f072fe71f386ef7194) Thanks [@hadelive](https://github.com/hadelive)! - fix preserve original CBOR bytes when signing hex transactions
+
+## 0.3.23
+
+### Patch Changes
+
+- [#191](https://github.com/IntersectMBO/evolution-sdk/pull/191) [`2a0c360`](https://github.com/IntersectMBO/evolution-sdk/commit/2a0c3603fbb3405c3b1e0d6e51935f28ed035611) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Add CBOR encoding preservation for bit-perfect round-trip fidelity and redesign Redeemers as a discriminated union (RedeemerMap + RedeemerArray)
+
+## 0.3.22
+
+### Patch Changes
+
+- [#174](https://github.com/IntersectMBO/evolution-sdk/pull/174) [`a4fbd49`](https://github.com/IntersectMBO/evolution-sdk/commit/a4fbd49410b65a831d3d84091cfe11ba6b730ee8) Thanks [@hadelive](https://github.com/hadelive)! - byte-level vkey witness merging
+
 ## 0.3.21
 
 ### Patch Changes

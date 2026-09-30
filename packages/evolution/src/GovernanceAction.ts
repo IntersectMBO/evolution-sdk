@@ -3,8 +3,8 @@ import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema
 import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as Coin from "./Coin.js"
-import * as CommiteeColdCredential from "./CommitteeColdCredential.js"
-import * as Constituion from "./Constitution.js"
+import * as CommitteeColdCredential from "./CommitteeColdCredential.js"
+import * as Constitution from "./Constitution.js"
 import * as Credential from "./Credential.js"
 import * as EpochNo from "./EpochNo.js"
 import * as ProtocolParamUpdate from "./ProtocolParamUpdate.js"
@@ -572,9 +572,9 @@ export const NoConfidenceActionFromCDDL = Schema.transformOrFail(
  */
 export class UpdateCommitteeAction extends Schema.TaggedClass<UpdateCommitteeAction>()("UpdateCommitteeAction", {
   govActionId: Schema.NullOr(GovActionId), // gov_action_id / nil
-  membersToRemove: Schema.Array(CommiteeColdCredential.CommitteeColdCredential.Credential), // set<committee_cold_credential>
+  membersToRemove: Schema.Array(CommitteeColdCredential.CommitteeColdCredential.Credential), // set<committee_cold_credential>
   membersToAdd: Schema.Map({
-    key: CommiteeColdCredential.CommitteeColdCredential.Credential, // committee_cold_credential
+    key: CommitteeColdCredential.CommitteeColdCredential.Credential, // committee_cold_credential
     value: EpochNo.EpochNoSchema // epoch_no
   }),
   threshold: UnitInterval.UnitInterval
@@ -633,12 +633,12 @@ export const UpdateCommitteeActionCDDL = Schema.Tuple(
   Schema.NullOr(GovActionIdCDDL), // gov_action_id / nil
   // set<committee_cold_credential> = #6.258([* a0]) / [* a0]
   Schema.Union(
-    CBOR.tag(258, Schema.Array(CommiteeColdCredential.CommitteeColdCredential.CDDLSchema)),
-    Schema.Array(CommiteeColdCredential.CommitteeColdCredential.CDDLSchema)
+    CBOR.tag(258, Schema.Array(CommitteeColdCredential.CommitteeColdCredential.CDDLSchema)),
+    Schema.Array(CommitteeColdCredential.CommitteeColdCredential.CDDLSchema)
   ),
   // { * committee_cold_credential => epoch_no }
   Schema.MapFromSelf({
-    key: CommiteeColdCredential.CommitteeColdCredential.CDDLSchema,
+    key: CommitteeColdCredential.CommitteeColdCredential.CDDLSchema,
     value: EpochNo.CDDLSchema
   }),
   UnitInterval.CDDLSchema // unit_interval
@@ -661,20 +661,20 @@ export const UpdateCommitteeActionFromCDDL = Schema.transformOrFail(
           ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
           : null
         // Encode membersToRemove as tagged set (tag 258) per CDDL
-        const removeArr: Array<typeof CommiteeColdCredential.CommitteeColdCredential.CDDLSchema.Type> = []
+        const removeArr: Array<typeof CommitteeColdCredential.CommitteeColdCredential.CDDLSchema.Type> = []
         for (const cred of action.membersToRemove) {
-          const coldCred = yield* ParseResult.encode(CommiteeColdCredential.CommitteeColdCredential.FromCDDL)(cred)
+          const coldCred = yield* ParseResult.encode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(cred)
           removeArr.push(coldCred)
         }
         const membersToRemove = CBOR.Tag.make({ tag: 258, value: removeArr }, { disableValidation: true }) as any
 
         // Encode membersToAdd as map<committee_cold_credential => epoch_no>
         const membersToAdd = new Map<
-          typeof CommiteeColdCredential.CommitteeColdCredential.CDDLSchema.Type,
+          typeof CommitteeColdCredential.CommitteeColdCredential.CDDLSchema.Type,
           typeof EpochNo.CDDLSchema.Type
         >()
         for (const [coldCred, epoch] of action.membersToAdd) {
-          const coldCredBytes = yield* ParseResult.encode(CommiteeColdCredential.CommitteeColdCredential.FromCDDL)(
+          const coldCredBytes = yield* ParseResult.encode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(
             coldCred
           )
           const epochNo = yield* ParseResult.encode(EpochNo.FromCDDL)(epoch)
@@ -692,24 +692,24 @@ export const UpdateCommitteeActionFromCDDL = Schema.transformOrFail(
         const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
         const threshold = yield* ParseResult.decode(UnitInterval.FromCDDL)(thresholdCDDL)
         // Decode set into an array of credentials (accept tag 258 or plain array)
-        const membersToRemove: Array<typeof CommiteeColdCredential.CommitteeColdCredential.Credential.Type> = []
+        const membersToRemove: Array<typeof CommitteeColdCredential.CommitteeColdCredential.Credential.Type> = []
         const removeArr = CBOR.isTag(membersToRemoveCDDL)
           ? membersToRemoveCDDL.tag === 258
             ? (membersToRemoveCDDL.value as ReadonlyArray<any>)
             : []
           : (membersToRemoveCDDL as ReadonlyArray<any>)
         for (const coldCredCDDL of removeArr) {
-          const coldCred = yield* ParseResult.decode(CommiteeColdCredential.CommitteeColdCredential.FromCDDL)(
+          const coldCred = yield* ParseResult.decode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(
             coldCredCDDL
           )
           membersToRemove.push(coldCred)
         }
         const membersToAdd = new Map<
-          typeof CommiteeColdCredential.CommitteeColdCredential.Credential.Type,
+          typeof CommitteeColdCredential.CommitteeColdCredential.Credential.Type,
           EpochNo.EpochNo
         >()
         for (const [coldCredCDDL, epochNoCDDL] of membersToAddCDDL) {
-          const coldCred = yield* ParseResult.decode(CommiteeColdCredential.CommitteeColdCredential.FromCDDL)(
+          const coldCred = yield* ParseResult.decode(CommitteeColdCredential.CommitteeColdCredential.FromCDDL)(
             coldCredCDDL
           )
           const epoch = yield* ParseResult.decode(EpochNo.FromCDDL)(epochNoCDDL)
@@ -736,7 +736,7 @@ export const UpdateCommitteeActionFromCDDL = Schema.transformOrFail(
  */
 export class NewConstitutionAction extends Schema.TaggedClass<NewConstitutionAction>()("NewConstitutionAction", {
   govActionId: Schema.NullOr(GovActionId), // gov_action_id / nil
-  constitution: Constituion.Constitution // constitution as CBOR
+  constitution: Constitution.Constitution // constitution as CBOR
 }) {
   toJSON() {
     return {
@@ -779,7 +779,7 @@ export class NewConstitutionAction extends Schema.TaggedClass<NewConstitutionAct
 export const NewConstitutionActionCDDL = Schema.Tuple(
   Schema.Literal(5n), // action type
   Schema.NullOr(GovActionIdCDDL), // gov_action_id / nil
-  Constituion.CDDLSchema // constitution as CBOR
+  Constitution.CDDLSchema // constitution as CBOR
 )
 
 /**
@@ -798,7 +798,7 @@ export const NewConstitutionActionFromCDDL = Schema.transformOrFail(
         const govActionId = action.govActionId
           ? yield* ParseResult.encode(GovActionIdFromCDDL)(action.govActionId)
           : null
-        const constitution = yield* ParseResult.encode(Constituion.FromCDDL)(action.constitution)
+        const constitution = yield* ParseResult.encode(Constitution.FromCDDL)(action.constitution)
 
         // Return as CBOR tuple
         return [5n, govActionId, constitution] as const
@@ -807,7 +807,7 @@ export const NewConstitutionActionFromCDDL = Schema.transformOrFail(
       Eff.gen(function* () {
         const [, govActionIdCDDL, constitutionCDDL] = cddl
         const govActionId = govActionIdCDDL ? yield* ParseResult.decode(GovActionIdFromCDDL)(govActionIdCDDL) : null
-        const constitution = yield* ParseResult.decode(Constituion.FromCDDL)(constitutionCDDL)
+        const constitution = yield* ParseResult.decode(Constitution.FromCDDL)(constitutionCDDL)
 
         return new NewConstitutionAction({
           govActionId,
@@ -1033,7 +1033,7 @@ export const updateCommitteeArbitrary: FastCheck.Arbitrary<UpdateCommitteeAction
 
 export const newConstitutionArbitrary: FastCheck.Arbitrary<NewConstitutionAction> = FastCheck.tuple(
   FastCheck.option(govActionIdArbitrary, { nil: null }),
-  Constituion.arbitrary
+  Constitution.arbitrary
 ).map(([govActionId, constitution]) => new NewConstitutionAction({ govActionId, constitution }))
 
 export const arbitrary: FastCheck.Arbitrary<GovernanceAction> = FastCheck.oneof(
@@ -1096,11 +1096,11 @@ export const match = <R>(
     NoConfidenceAction: (govActionId: GovActionId | null) => R
     UpdateCommitteeAction: (
       govActionId: GovActionId | null,
-      membersToRemove: ReadonlyArray<typeof CommiteeColdCredential.CommitteeColdCredential.Credential.Type>,
-      membersToAdd: ReadonlyMap<typeof CommiteeColdCredential.CommitteeColdCredential.Credential.Type, EpochNo.EpochNo>,
+      membersToRemove: ReadonlyArray<typeof CommitteeColdCredential.CommitteeColdCredential.Credential.Type>,
+      membersToAdd: ReadonlyMap<typeof CommitteeColdCredential.CommitteeColdCredential.Credential.Type, EpochNo.EpochNo>,
       threshold: UnitInterval.UnitInterval
     ) => R
-    NewConstitutionAction: (govActionId: GovActionId | null, constitution: Constituion.Constitution) => R
+    NewConstitutionAction: (govActionId: GovActionId | null, constitution: Constitution.Constitution) => R
     InfoAction: () => R
   }
 ): R => {

@@ -508,13 +508,17 @@ const txHash = await submitBuilder.submit()
 ### Step 4: Full Migration (Week 9-12)
 ```typescript  
 // Complete Evolution SDK native implementation
-const client = createClient({ provider, wallet, network })
+const sdkClient = client(network)
+  .withBlockfrost(providerConfig)
+  .withCip30(walletApi)
 
-const chainResult = await client.newTx()
+const signBuilder = await sdkClient.newTx()
   .payToAddress(address, assets)
   .chain({ coinSelection: "largest-first" })
-  
-await client.submitTx(chainResult.transaction)
+  .build(options)
+
+const submitBuilder = await signBuilder.sign()
+await submitBuilder.submit()
 ```
 
 ---

@@ -1,5 +1,5 @@
 import { mnemonicToEntropy } from "@scure/bip39"
-import { wordlist as English } from "@scure/bip39/wordlists/english"
+import { wordlist as English } from "@scure/bip39/wordlists/english.js"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
@@ -41,11 +41,13 @@ export const walletFromSeed = (
     password?: string
     addressType?: "Base" | "Enterprise"
     accountIndex?: number
-    network?: "Mainnet" | "Testnet" | "Custom"
+    paymentIndex?: number
+    stakeIndex?: number
+    networkId?: number
   } = {}
 ): Effect.Effect<SeedDerivationResult, DerivationError | Bip32PrivateKey.Bip32PrivateKeyError> => {
   return Effect.gen(function* () {
-    const { accountIndex = 0, addressType = "Base", network = "Mainnet" } = options
+    const { accountIndex = 0, addressType = "Base", networkId = 0, paymentIndex = 0, stakeIndex = 0 } = options
     const entropy = yield* Effect.try({
       try: () => mnemonicToEntropy(seed, English),
       catch: (cause) => new DerivationError({ message: "Invalid seed phrase", cause })
@@ -53,18 +55,17 @@ export const walletFromSeed = (
     const rootXPrv = yield* Bip32PrivateKey.Either.fromBip39Entropy(entropy, options?.password ?? "")
     const paymentNode = yield* Bip32PrivateKey.Either.derive(
       rootXPrv,
-      Bip32PrivateKey.CardanoPath.paymentIndices(accountIndex, 0)
+      Bip32PrivateKey.CardanoPath.paymentIndices(accountIndex, paymentIndex)
     )
     const stakeNode = yield* Bip32PrivateKey.Either.derive(
       rootXPrv,
-      Bip32PrivateKey.CardanoPath.stakeIndices(accountIndex, 0)
+      Bip32PrivateKey.CardanoPath.stakeIndices(accountIndex, stakeIndex)
     )
     const paymentKey = Bip32PrivateKey.toPrivateKey(paymentNode)
     const stakeKey = Bip32PrivateKey.toPrivateKey(stakeNode)
 
     const paymentKeyHash = KeyHash.fromPrivateKey(paymentKey)
     const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
-    const networkId = network === "Mainnet" ? 1 : 0
 
     const address: CoreAddress.Address =
       addressType === "Base"
@@ -145,10 +146,10 @@ export function addressFromSeed(
     password?: string
     addressType?: "Base" | "Enterprise"
     accountIndex?: number
-    network?: "Mainnet" | "Testnet" | "Custom"
+    networkId?: number
   } = {}
 ): { address: CoreAddress.Address; rewardAddress: CoreRewardAddress.RewardAddress | undefined } {
-  const { accountIndex = 0, addressType = "Base", network = "Mainnet" } = options
+  const { accountIndex = 0, addressType = "Base", networkId = 0 } = options
   const entropy = mnemonicToEntropy(seed, English)
   const rootXPrv = Bip32PrivateKey.fromBip39Entropy(entropy, options?.password ?? "")
   const paymentNode = Bip32PrivateKey.derive(rootXPrv, Bip32PrivateKey.CardanoPath.paymentIndices(accountIndex, 0))
@@ -158,7 +159,6 @@ export function addressFromSeed(
 
   const paymentKeyHash = KeyHash.fromPrivateKey(paymentKey)
   const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
-  const networkId = network === "Mainnet" ? 1 : 0
 
   const address =
     addressType === "Base"
@@ -195,10 +195,10 @@ export function walletFromBip32(
   options: {
     addressType?: "Base" | "Enterprise"
     accountIndex?: number
-    network?: "Mainnet" | "Testnet" | "Custom"
+    networkId?: number
   } = {}
 ): SeedDerivationResult {
-  const { accountIndex = 0, addressType = "Base", network = "Mainnet" } = options
+  const { accountIndex = 0, addressType = "Base", networkId = 0 } = options
   const paymentNode = Bip32PrivateKey.derive(rootXPrv, Bip32PrivateKey.CardanoPath.paymentIndices(accountIndex, 0))
   const stakeNode = Bip32PrivateKey.derive(rootXPrv, Bip32PrivateKey.CardanoPath.stakeIndices(accountIndex, 0))
   const paymentKey = Bip32PrivateKey.toPrivateKey(paymentNode)
@@ -206,7 +206,6 @@ export function walletFromBip32(
 
   const paymentKeyHash = KeyHash.fromPrivateKey(paymentKey)
   const stakeKeyHash = KeyHash.fromPrivateKey(stakeKey)
-  const networkId = network === "Mainnet" ? 1 : 0
 
   const address: CoreAddress.Address =
     addressType === "Base"
@@ -263,11 +262,11 @@ export function walletFromPrivateKey(
   options: {
     stakeKeyBech32?: string
     addressType?: "Base" | "Enterprise"
-    network?: "Mainnet" | "Testnet" | "Custom"
+    networkId?: number
   } = {}
 ): Effect.Effect<SeedDerivationResult, DerivationError> {
   return Effect.gen(function* () {
-    const { stakeKeyBech32, addressType = stakeKeyBech32 ? "Base" : "Enterprise", network = "Mainnet" } = options
+    const { stakeKeyBech32, addressType = stakeKeyBech32 ? "Base" : "Enterprise", networkId = 0 } = options
 
     // Use the Effect-based Either API from PrivateKey module - can yield directly on Either
     const paymentKey = yield* Effect.mapError(
@@ -276,8 +275,6 @@ export function walletFromPrivateKey(
       (cause) => new DerivationError({ message: cause.message, cause })
     )
     const paymentKeyHash = KeyHash.fromPrivateKey(paymentKey)
-
-    const networkId = network === "Mainnet" ? 1 : 0
 
     let address: CoreAddress.Address
     let stakeKey: PrivateKey.PrivateKey | undefined
