@@ -1,0 +1,39 @@
+---
+title: Blueprint Codegen Guide
+description: A step-by-step guide to using the Blueprint module in the Evolution SDK
+---
+
+# Blueprint Codegen Guide
+
+The **Blueprint** module of the Evolution SDK provides a code generation pipeline that converts Plutus artifacts (like `plutus.json`) into strongly-typed TypeScript bindings. This allows developers to safely interact with compiled smart contracts in their applications.
+
+---
+
+## When To Use Blueprint
+
+Use Blueprint when:
+
+- You have compiled a smart contract using **Aiken**
+- You have generated a `plutus.json` file
+- You want type-safe contract bindings in TypeScript
+
+---
+
+## Workflow
+
+1. Write and compile your contract using **Aiken**
+2. Obtain the `plutus.json` artifact
+3. Run the **Blueprint codegen**
+4. Import the generated TypeScript files into your project
+
+---
+
+## Example Usage
+
+```ts
+import { generateBlueprint } from "@evolution-sdk/blueprint"
+
+generateBlueprint({
+  input: "./plutus.json",
+  output: "./src/generated"
+})
