@@ -1,13 +1,19 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
+import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets.js"
+import * as PlutusV3 from "../src/PlutusV3.js"
+import * as CoreScript from "../src/Script.js"
 import {
   calculateLeftoverAssets,
   calculateMinimumFee,
+  calculateReferenceScriptFee,
   tierRefScriptFee,
   validateTransactionBalance
 } from "../src/sdk/builders/internal/txBuilder.js"
+import * as TransactionHash from "../src/TransactionHash.js"
+import * as CoreUTxO from "../src/UTxO.js"
 
 // Test policy IDs (56 hex chars = 28 bytes each)
 const POLICY1 = "aa".repeat(28) // aaaa...aa (56 chars)
@@ -473,5 +479,47 @@ describe("TxBuilder Fee Calculation", () => {
       // floor(5,864,038.4) = 5,864,038
       expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 100_000)).toBe(5_864_038n)
     })
+  })
+
+  describe("calculateReferenceScriptFee size limit", () => {
+    // Conway ledger: totalRefScriptSize <= 200 * 1024 (ppMaxRefScriptSizePerTxG)
+    const ADDRESS = CoreAddress.fromBech32(
+      "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
+    )
+
+    // A PlutusV3 script whose serialized size, as the fee function counts it, is exactly `size`
+    const scriptOfSize = (size: number) => {
+      for (let length = size - 8; length <= size; length++) {
+        const script = new PlutusV3.PlutusV3({ bytes: new Uint8Array(length).fill(0xab) })
+        if (CoreScript.toCBOR(script).length === size) return script
+      }
+      throw new Error(`no script of size ${size}`)
+    }
+
+    const utxosTotalling = (total: number) =>
+      [51_200, 51_200, 51_200, total - 3 * 51_200].map(
+        (size, index) =>
+          new CoreUTxO.UTxO({
+            transactionId: TransactionHash.fromHex("a".repeat(64)),
+            index: BigInt(index),
+            address: ADDRESS,
+            assets: CoreAssets.fromLovelace(5_000_000n),
+            scriptRef: scriptOfSize(size)
+          })
+      )
+
+    it.effect("accepts exactly 204,800 bytes", () =>
+      Effect.gen(function* () {
+        const fee = yield* calculateReferenceScriptFee(utxosTotalling(204_800), 15)
+        expect(fee).toBeGreaterThan(0n)
+      })
+    )
+
+    it.effect("rejects 204,801 bytes", () =>
+      Effect.gen(function* () {
+        const result = yield* Effect.either(calculateReferenceScriptFee(utxosTotalling(204_801), 15))
+        expect(result._tag).toBe("Left")
+      })
+    )
   })
 })

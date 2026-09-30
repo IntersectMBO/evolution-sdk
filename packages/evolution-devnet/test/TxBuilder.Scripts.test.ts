@@ -934,7 +934,7 @@ describe("TxBuilder Script Handling", () => {
     expect(tx.body.fee).toBeGreaterThan(expectedMinRefScriptFee)
   })
 
-  it("should reject reference script exceeding 200KB maximum", async () => {
+  it("should reject reference scripts over the 204,800-byte maximum", async () => {
     // Create a script UTxO with a 250KB reference script (exceeds limit)
     const scriptSize = 250_000 // 250KB in bytes
     const scriptHex = "48".repeat(scriptSize)
@@ -959,14 +959,14 @@ describe("TxBuilder Script Handling", () => {
         assets: CoreAssets.fromLovelace(2_000_000n)
       })
 
-    // Should fail during build due to 200KB limit
+    // Should fail during build: the Conway limit is 200 * 1024 = 204,800 bytes
     await expect(
       builder.build({
         changeAddress: CoreAddress.fromBech32(CHANGE_ADDRESS),
         availableUtxos: [],
         protocolParameters: PROTOCOL_PARAMS
       })
-    ).rejects.toThrow(/exceeds maximum limit of 200,000 bytes/)
+    ).rejects.toThrow(/exceeds maximum limit of 204,800 bytes/)
   })
 
   it("should handle multiple reference inputs and sum their fees", async () => {
