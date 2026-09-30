@@ -12,6 +12,7 @@ import * as PolicyId from "../../../PolicyId.js"
 import type * as CoreScript from "../../../Script.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import type * as CoreUTxO from "../../../UTxO.js"
+import * as HttpUtils from "./HttpUtils.js"
 
 export const JSONRPCSchema = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   Schema.Struct({
@@ -120,26 +121,42 @@ export const Delegation = Schema.Array(
   })
 )
 
-type Script = {
-  language: "native" | "plutus:v1" | "plutus:v2" | "plutus:v3"
-  cbor: string
-}
+const Amount = HttpUtils.BigIntFromJsonNumber
 
-export type OgmiosAssets = Record<string, Record<string, number>>
+const Assets = Schema.Record({ key: Schema.String, value: Schema.Record({ key: Schema.String, value: Amount }) })
 
-export type Value = {
-  ada: { lovelace: number }
-} & OgmiosAssets
+const Value = Schema.Struct({ ada: Schema.Struct({ lovelace: Amount }) }, Assets)
 
-export type OgmiosUTxO = {
-  transaction: { id: string }
-  index: number
-  address: string
-  value: Value
-  datumHash?: string | undefined
-  datum?: string | undefined
-  script?: Script | undefined
-}
+export const UTxOSchema = Schema.Struct({
+  transaction: Schema.Struct({ id: Schema.String }),
+  index: HttpUtils.BigIntFromJsonNumber,
+  address: Schema.String,
+  value: Value,
+  datumHash: Schema.optional(Schema.String),
+  datum: Schema.optional(Schema.String),
+  script: Schema.optional(
+    Schema.Struct({
+      language: Schema.Literal("native", "plutus:v1", "plutus:v2", "plutus:v3"),
+      cbor: Schema.String
+    })
+  )
+})
+
+export type OgmiosAssets = Record<string, Record<string, bigint>>
+
+export type OgmiosUTxO = Schema.Schema.Type<typeof UTxOSchema>
+
+export const EvaluateTransactionSchema = Schema.Struct({
+  jsonrpc: Schema.Literal("2.0"),
+  method: Schema.Literal("evaluateTransaction"),
+  params: Schema.Struct({
+    transaction: Schema.Struct({ cbor: Schema.String }),
+    additionalUtxo: Schema.Array(UTxOSchema)
+  }),
+  id: Schema.Null
+})
+
+export type EvaluateTransaction = Schema.Schema.Type<typeof EvaluateTransactionSchema>
 
 export const RedeemerSchema = Schema.Struct({
   validator: Schema.Struct({
@@ -186,7 +203,7 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
         }
         for (const [assetName, quantity] of assetMap.entries()) {
           const assetNameHex = AssetName.toHex(assetName)
-          newAssets[policyIdHex][assetNameHex || ""] = Number(quantity)
+          newAssets[policyIdHex][assetNameHex || ""] = quantity
         }
       }
     }
@@ -210,10 +227,10 @@ export const toOgmiosUTxOs = (utxos: Array<CoreUTxO.UTxO> | undefined): Array<Og
       transaction: {
         id: TransactionHash.toHex(utxo.transactionId)
       },
-      index: Number(utxo.index),
+      index: utxo.index,
       address: CoreAddress.toBech32(utxo.address),
       value: {
-        ada: { lovelace: Number(utxo.assets.lovelace) },
+        ada: { lovelace: utxo.assets.lovelace },
         ...toOgmiosAssets(utxo.assets)
       },
       ...toOgmiosDatum(utxo.datumOption),

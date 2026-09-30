@@ -83,27 +83,21 @@ const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Cr
   return Credential.toBech32(addressOrCredential)
 }
 
-const toBlockfrostValue = (assets: CoreUTxO.UTxO["assets"]): Record<string, unknown> => {
-  const value: Record<string, unknown> = {
-    coins: Number(assets.lovelace)
-  }
+const toBlockfrostValue = (assets: CoreUTxO.UTxO["assets"]): Blockfrost.EvaluationValue => {
+  const units: Record<string, bigint> = {}
 
   if (assets.multiAsset) {
     for (const [policyId, assetMap] of assets.multiAsset.map.entries()) {
       const policyIdHex = Bytes.toHex(policyId.hash)
-      const assetRecord: Record<string, number> = {}
 
       for (const [assetName, quantity] of assetMap.entries()) {
-        assetRecord[AssetName.toHex(assetName)] = Number(quantity)
-      }
-
-      if (Object.keys(assetRecord).length > 0) {
-        value[policyIdHex] = assetRecord
+        const assetNameHex = AssetName.toHex(assetName)
+        units[assetNameHex ? `${policyIdHex}.${assetNameHex}` : policyIdHex] = quantity
       }
     }
   }
 
-  return value
+  return Object.keys(units).length > 0 ? { coins: assets.lovelace, assets: units } : { coins: assets.lovelace }
 }
 
 const toBlockfrostDatum = (
@@ -144,27 +138,21 @@ const toBlockfrostScript = (
   }
 }
 
-const toBlockfrostAdditionalUtxoSet = (additionalUTxOs: Array<CoreUTxO.UTxO>) =>
-  additionalUTxOs.map((utxo) => {
-    const txOut: Record<string, unknown> = {
+const toBlockfrostAdditionalUtxoSet = (
+  additionalUTxOs: Array<CoreUTxO.UTxO>
+): Blockfrost.EvaluateUtxosRequest["additionalUtxoSet"] =>
+  additionalUTxOs.map((utxo) => [
+    {
+      txId: TransactionHash.toHex(utxo.transactionId),
+      index: utxo.index
+    },
+    {
       address: CoreAddress.toBech32(utxo.address),
       value: toBlockfrostValue(utxo.assets),
-      ...toBlockfrostDatum(utxo.datumOption)
+      ...toBlockfrostDatum(utxo.datumOption),
+      script: toBlockfrostScript(utxo.scriptRef)
     }
-
-    const script = toBlockfrostScript(utxo.scriptRef)
-    if (script) {
-      txOut.script = script
-    }
-
-    return [
-      {
-        txId: TransactionHash.toHex(utxo.transactionId),
-        index: Number(utxo.index)
-      },
-      txOut
-    ]
-  })
+  ])
 
 /**
  * Blockfrost script info response schema
@@ -718,18 +706,21 @@ export const evaluateTx =
     const additionalUtxoSet =
       additionalUTxOs && additionalUTxOs.length > 0 ? toBlockfrostAdditionalUtxoSet(additionalUTxOs) : []
 
-    const payload = {
+    const payload: Blockfrost.EvaluateUtxosRequest = {
       cbor: txCborHex,
       additionalUtxoSet
     }
 
     return withRateLimit(
-      HttpUtils.postJson(
-        `${baseUrl}/utils/txs/evaluate/utxos`,
-        payload,
-        Blockfrost.JsonwspOgmiosEvaluationResponse,
-        headers
-      ).pipe(
+      Schema.encode(Blockfrost.EvaluateUtxosRequest)(payload).pipe(
+        Effect.flatMap((body) =>
+          HttpUtils.postJson(
+            `${baseUrl}/utils/txs/evaluate/utxos`,
+            body,
+            Blockfrost.JsonwspOgmiosEvaluationResponse,
+            headers
+          )
+        ),
         Effect.flatMap(Blockfrost.transformJsonwspOgmiosEvaluationResult),
         Effect.catchAll(wrapError("evaluateTx"))
       )

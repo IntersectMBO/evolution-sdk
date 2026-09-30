@@ -1,4 +1,4 @@
-import { Data, Effect, Either, Schema } from "effect"
+import { Data, Effect, Either, ParseResult, Schema } from "effect"
 import type { ParseError } from "effect/ParseResult"
 
 /**
@@ -84,6 +84,27 @@ const numberAsText = (_key: string, value: unknown, context?: { readonly source?
  * JSON text to a value in which every number is its exact source text
  */
 const Json = Schema.parseJson({ reviver: numberAsText })
+
+const rawJSON: unknown = Reflect.get(JSON, "rawJSON")
+
+/**
+ * A uint64 amount, written as a raw JSON integer
+ */
+export const BigIntFromJsonNumber = Schema.transformOrFail(
+  Schema.Union(Schema.String, Schema.Object),
+  Schema.BigIntFromSelf,
+  {
+    strict: true,
+    decode: (value, _, ast) =>
+      typeof value === "string" && /^-?\d+$/.test(value)
+        ? ParseResult.succeed(BigInt(value))
+        : ParseResult.fail(new ParseResult.Type(ast, value, "expected integer digits")),
+    encode: (value, _, ast) =>
+      typeof rawJSON === "function"
+        ? ParseResult.succeed(rawJSON(value.toString()))
+        : ParseResult.fail(new ParseResult.Type(ast, value, "this runtime cannot write integers past 2^53 exactly"))
+  }
+)
 
 /**
  * Set caller headers over a default content type. Header names are case-insensitive,

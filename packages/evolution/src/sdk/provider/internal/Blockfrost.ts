@@ -11,6 +11,7 @@ import * as Redeemer from "../../../Redeemer.js"
 import type { EvalRedeemer } from "../../EvalRedeemer.js"
 import type * as Provider from "../Provider.js"
 import { ProviderError } from "../Provider.js"
+import * as HttpUtils from "./HttpUtils.js"
 
 // ============================================================================
 // Blockfrost API Response Schemas
@@ -184,6 +185,39 @@ export const JsonwspOgmiosEvaluationResponse = Schema.Struct({
 })
 
 export type JsonwspOgmiosEvaluationResponse = Schema.Schema.Type<typeof JsonwspOgmiosEvaluationResponse>
+
+const Amount = HttpUtils.BigIntFromJsonNumber
+
+/**
+ * Ogmios v5 value, which Blockfrost evaluates against by default
+ */
+export const EvaluationValue = Schema.Struct({
+  coins: Amount,
+  assets: Schema.optional(Schema.Record({ key: Schema.String, value: Amount }))
+})
+
+export type EvaluationValue = Schema.Schema.Type<typeof EvaluationValue>
+
+/**
+ * Request body for the /utils/txs/evaluate/utxos endpoint
+ */
+export const EvaluateUtxosRequest = Schema.Struct({
+  cbor: Schema.String,
+  additionalUtxoSet: Schema.Array(
+    Schema.Tuple(
+      Schema.Struct({ txId: Schema.String, index: HttpUtils.BigIntFromJsonNumber }),
+      Schema.Struct({
+        address: Schema.String,
+        value: EvaluationValue,
+        datumHash: Schema.optional(Schema.String),
+        datum: Schema.optional(Schema.String),
+        script: Schema.optional(Schema.Unknown)
+      })
+    )
+  )
+})
+
+export type EvaluateUtxosRequest = Schema.Schema.Type<typeof EvaluateUtxosRequest>
 
 // ============================================================================
 // Transformation Functions

@@ -304,7 +304,7 @@ export const evaluateTx =
       const txCborHex = Transaction.toCBORHex(tx)
       const url = `${baseUrl}/ogmios`
       // Use Core UTxOs directly with Ogmios format
-      const body = {
+      const data: _Ogmios.EvaluateTransaction = {
         jsonrpc: "2.0",
         method: "evaluateTransaction",
         params: {
@@ -317,7 +317,8 @@ export const evaluateTx =
       const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
 
       const { result } = yield* pipe(
-        HttpUtils.postJson(url, body, schema, bearerToken),
+        Schema.encode(_Ogmios.EvaluateTransactionSchema)(data),
+        Effect.flatMap((body) => HttpUtils.postJson(url, body, schema, bearerToken)),
         Effect.timeout(10_000),
         Effect.catchAll(wrapError("evaluateTx"))
       )
