@@ -1,5 +1,15 @@
 # @evolution-sdk/evolution
 
+## 0.5.16
+
+### Patch Changes
+
+- [#566](https://github.com/IntersectMBO/evolution-sdk/pull/566) [`3f6e357`](https://github.com/IntersectMBO/evolution-sdk/commit/3f6e35725f79e301f55e84bc2c886f2c0c39503f) Thanks [@yanggu0t](https://github.com/yanggu0t)! - Add an optional codec options argument to `AuxiliaryData.toHash`. The function always hashed the default encoding. A caller that serialized a transaction with canonical or custom options therefore got an auxiliary data hash that did not match the auxiliary data in that transaction. It now hashes the encoding the given options produce, and without options it returns the same hash as before.
+
+- [#533](https://github.com/IntersectMBO/evolution-sdk/pull/533) [`f413154`](https://github.com/IntersectMBO/evolution-sdk/commit/f41315474634e8c3b2668f864bd7ffcd80e6e9f2) Thanks [@emmanuel-musau](https://github.com/emmanuel-musau)! - Send exact 64-bit amounts in the Ogmios, Koios and Blockfrost `evaluateTx` requests. The additional UTxO amounts were converted through `Number()`, which rounds anything above 2^53-1 ([#406](https://github.com/IntersectMBO/evolution-sdk/issues/406), [#455](https://github.com/IntersectMBO/evolution-sdk/issues/455)). The request bodies are now described with schemas whose amounts encode through `JSON.rawJSON` as exact unquoted integers. That needs Node 21+, Chrome 114, Firefox 135 or Safari 18.4; older runtimes fail such a request with a typed error instead of rounding. Blockfrost now also sends native assets under `assets`, the only place the Ogmios v5 evaluator it uses by default reads them, so tokens are no longer dropped from evaluation. The `Provider` interface is unchanged. Inside `sdk/provider/internal`, the Ogmios `OgmiosAssets` and `OgmiosUTxO` types now carry `bigint` amounts and a `bigint` index.
+
+- [#185](https://github.com/IntersectMBO/evolution-sdk/pull/185) [`e916b59`](https://github.com/IntersectMBO/evolution-sdk/commit/e916b5982550271ad7e3602a7a7858e613fdc006) Thanks [@danbaruka](https://github.com/danbaruka)! - The transaction builder rejected reference scripts totalling more than 200,000 bytes. The Conway ledger allows up to 204,800 bytes (200 × 1024), so transactions between the two limits failed to build although the node accepts them. The builder now uses 204,800.
+
 ## 0.5.15
 
 ### Patch Changes
