@@ -31,7 +31,7 @@ importers:
         version: 0.87.2
       '@effect/vitest':
         specifier: ^0.30.0
-        version: 0.30.0(effect@3.21.2)(vitest@4.1.11(@types/node@26.4.1)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))
+        version: 0.30.0(effect@3.22.2)(vitest@4.1.11(@types/node@26.4.1)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))
       '@eslint/compat':
         specifier: ^2.1.0
         version: 2.1.1(eslint@10.10.0(jiti@2.7.0))
@@ -173,7 +173,7 @@ importers:
         version: 2.11.21
       effect:
         specifier: ^3.21.1
-        version: 3.21.2
+        version: 3.22.2
       postcss:
         specifier: ^8.5.6
         version: 8.5.28
@@ -237,7 +237,7 @@ importers:
         version: link:../evolution
       effect:
         specifier: ^3.21.1
-        version: 3.21.2
+        version: 3.22.2
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -262,7 +262,7 @@ importers:
         version: 2.2.0
       effect:
         specifier: ^3.21.1
-        version: 3.21.2
+        version: 3.22.2
     devDependencies:
       '@dcspark/cardano-multiplatform-lib-nodejs':
         specifier: ^6.2.0
@@ -327,7 +327,7 @@ importers:
         version: link:../evolution
       effect:
         specifier: ^3.21.1
-        version: 3.21.2
+        version: 3.22.2
       scalus:
         specifier: ^0.17.0
         version: 0.17.0
@@ -3822,6 +3822,9 @@ packages:
   effect@3.21.2:
     resolution: {integrity: sha512-rXd2FGDM8KdjSIrc+mqEELo7ScW7xTVxEf1iInmPSpIde9/nyGuFM710cjTo7/EreGXiUX2MOonPpprbz2XHCg==}
 
+  effect@3.22.2:
+    resolution: {integrity: sha512-fm1CQXCs7GTMwpadZxwU5rnAb2bN6mbQpknq/pXBGCzSKkosNYb9k0wsoL0TfB10rSa5xOEZJjo77u/KLXSANg==}
+
   electron-to-chromium@1.5.433:
     resolution: {integrity: sha512-5lCAbyZBjtmUt/RAGHRqrL2q0oEFRThDAsZHHDn9XHa89Qw7gMYOeSicBTy+AHfvo0r6vwsZvqNJTQIQy1BLzA==}
 
@@ -7037,9 +7040,9 @@ snapshots:
       effect: 3.21.2
       uuid: 11.1.1
 
-  '@effect/vitest@0.30.0(effect@3.21.2)(vitest@4.1.11(@types/node@26.4.1)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))':
+  '@effect/vitest@0.30.0(effect@3.22.2)(vitest@4.1.11(@types/node@26.4.1)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))':
     dependencies:
-      effect: 3.21.2
+      effect: 3.22.2
       vitest: 4.1.11(@types/node@26.4.1)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
 
   '@effect/workflow@0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
@@ -9998,6 +10001,11 @@ snapshots:
   eastasianwidth@0.2.0: {}
 
   effect@3.21.2:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      fast-check: 3.23.2
+
+  effect@3.22.2:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
