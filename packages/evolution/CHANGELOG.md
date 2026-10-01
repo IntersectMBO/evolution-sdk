@@ -1,5 +1,11 @@
 # @evolution-sdk/evolution
 
+## 0.5.17
+
+### Patch Changes
+
+- [#506](https://github.com/IntersectMBO/evolution-sdk/pull/506) [`750b753`](https://github.com/IntersectMBO/evolution-sdk/commit/750b75329a91b2b08ddcb41976091b9c36beab55) Thanks [@dependabot](https://github.com/apps/dependabot)! - `Bech32.FromBytes` failed on strings longer than 90 characters, such as base addresses, when `@scure/base` 2.4 or later was installed. That version made `bech32.decodeToBytes` enforce the 90-character BIP-173 limit by default, and the SDK called it without a limit. It now passes no limit, as every other bech32 decode in the SDK already does.
+
 ## 0.5.16
 
 ### Patch Changes
