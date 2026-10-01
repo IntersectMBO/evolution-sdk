@@ -457,22 +457,24 @@ export const FromCDDL = Schema.transformOrFail(Schema.encodedSchema(CDDLSchema),
   strict: true,
   encode: (toA) =>
     Eff.gen(function* () {
-      // Convert Mint to raw Map data for CBOR encoding
-      const outerMap = new Map() as Map<Uint8Array, Map<Uint8Array, bigint>>
+      // CIP-21 canonical key order; insertion order would make hardware wallets reject the transaction.
+      const policies: Array<[Uint8Array, Map<Uint8Array, bigint>]> = []
 
       for (const [policyId, assetMap] of toA.map.entries()) {
         const policyIdBytes = yield* ParseResult.encode(PolicyId.FromBytes)(policyId)
-        const innerMap = new Map() as Map<Uint8Array, bigint>
+        const assets: Array<[Uint8Array, bigint]> = []
 
         for (const [assetName, amount] of assetMap.entries()) {
           const assetNameBytes = yield* ParseResult.encode(AssetName.FromBytes)(assetName)
-          innerMap.set(assetNameBytes, amount)
+          assets.push([assetNameBytes, amount])
         }
 
-        outerMap.set(policyIdBytes, innerMap)
+        assets.sort(([a], [b]) => Bytes.compareCanonical(a, b))
+        policies.push([policyIdBytes, new Map(assets)])
       }
 
-      return outerMap
+      policies.sort(([a], [b]) => Bytes.compareCanonical(a, b))
+      return new Map(policies)
     }),
 
   decode: (fromA) =>

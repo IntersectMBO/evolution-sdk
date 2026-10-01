@@ -9,6 +9,22 @@ export const equals = (a: Uint8Array, b: Uint8Array): boolean => {
 }
 
 /**
+ * Order byte strings as canonical CBOR map keys (RFC 7049 §3.9): shorter first,
+ * then bytewise. CIP-21 requires this order for policy IDs, asset names and
+ * withdrawal reward accounts; hardware wallets reject transactions that use any other order.
+ *
+ * @since 2.0.0
+ * @category ordering
+ */
+export const compareCanonical = (a: Uint8Array, b: Uint8Array): number => {
+  if (a.length !== b.length) return a.length - b.length
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i]! - b[i]!
+  }
+  return 0
+}
+
+/**
  * Creates a curried filter that validates exact byte length (for Uint8Array).
  * Preserves Context inference from the base schema.
  *

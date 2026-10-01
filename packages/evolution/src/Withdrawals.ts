@@ -1,5 +1,6 @@
 import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as Coin from "./Coin.js"
 import * as RewardAccount from "./RewardAccount.js"
@@ -117,12 +118,14 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Wit
   strict: true,
   encode: (toA) =>
     Eff.gen(function* () {
-      const withdrawalsMap = new Map<Uint8Array, bigint>()
+      // CIP-21 canonical key order; insertion order would make hardware wallets reject the transaction.
+      const withdrawals: Array<[Uint8Array, bigint]> = []
       for (const [rewardAccount, coin] of toA.withdrawals.entries()) {
         const accountBytes = yield* ParseResult.encode(RewardAccount.FromBytes)(rewardAccount)
-        withdrawalsMap.set(accountBytes, coin)
+        withdrawals.push([accountBytes, coin])
       }
-      return withdrawalsMap
+      withdrawals.sort(([a], [b]) => Bytes.compareCanonical(a, b))
+      return new Map(withdrawals)
     }),
   decode: (fromA) =>
     Eff.gen(function* () {
