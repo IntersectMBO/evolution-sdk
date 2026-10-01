@@ -9,7 +9,7 @@ export const FromBytes = (prefix: string = "addr") =>
     strict: true,
     encode: (_, __, ast, toA) =>
       Effect.try({
-        try: () => bech32.decodeToBytes(toA).bytes,
+        try: () => bech32.decodeToBytes(toA, false).bytes,
         catch: () => new ParseResult.Type(ast, toA, ` ${toA} is not a valid Bech32 address`)
       }),
     decode: (_, __, ___, fromI) => {
