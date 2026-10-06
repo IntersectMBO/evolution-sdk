@@ -501,8 +501,15 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
 
     const isNativeScript = makeIsNativeScript(state)
 
+    // The guardrail script may be attached, or carried by a reference input or a spent input
+    const scriptProvidedByInput = (scriptHashHex: string): boolean =>
+      [...state.referenceInputs, ...state.selectedUtxos].some(
+        (utxo) => utxo.scriptRef !== undefined && ScriptHash.toHex(ScriptHash.fromScript(utxo.scriptRef)) === scriptHashHex
+      )
+
     const proposalsMissingRedeemer: Array<string> = []
     const proposalsWithoutPolicy: Array<string> = []
+    const proposalsMissingScript: Array<string> = []
     const nativeProposalRedeemerKeys: Array<string> = []
 
     state.proposalProcedures.procedures.forEach((procedure, index) => {
@@ -515,10 +522,13 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
         return
       }
 
-      if (isNativeScript(scriptHashHex) === true) {
+      const native = isNativeScript(scriptHashHex)
+      if (native === true) {
         if (hasRedeemer) nativeProposalRedeemerKeys.push(proposalKey)
       } else if (!hasRedeemer) {
         proposalsMissingRedeemer.push(`${proposalKey} (policy ${scriptHashHex})`)
+      } else if (native === undefined && !scriptProvidedByInput(scriptHashHex)) {
+        proposalsMissingScript.push(`${proposalKey} (policy ${scriptHashHex})`)
       }
     })
 
@@ -530,6 +540,18 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
             `${proposalsMissingRedeemer.join(", ")}. ` +
             `Pass a redeemer to .propose() and provide the guardrail script via .attachScript() or a reference input.`,
           cause: proposalsMissingRedeemer
+        })
+      )
+    }
+
+    if (proposalsMissingScript.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Guardrail script not provided for ${proposalsMissingScript.length} proposal(s): ` +
+            `${proposalsMissingScript.join(", ")}. ` +
+            `Attach it via .attachScript() or provide it through a reference input with .readFrom().`,
+          cause: proposalsMissingScript
         })
       )
     }

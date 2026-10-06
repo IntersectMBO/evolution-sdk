@@ -130,7 +130,7 @@ describe("TxBuilder propose with guardrail script", () => {
         .build()
         .then((b) => b.sign())
         .then((b) => b.submit())
-    ).rejects.toThrow(/guardrails hash/)
+    ).rejects.toThrow(/guardrail/i)
   })
 
   it("submits a treasury withdrawal with an attached guardrail script", { timeout: 120_000 }, async () => {

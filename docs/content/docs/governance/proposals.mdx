@@ -116,7 +116,7 @@ const signed = await tx.sign()
 await signed.submit()
 ```
 
-The redeemer is placed at the proposal's index in the transaction, so guardrail-checked proposals can be combined with other proposals in one transaction. The build fails if a proposal with a Plutus `policyHash` has no redeemer.
+The redeemer is placed at the proposal's index in the transaction, so guardrail-checked proposals can be combined with other proposals in one transaction. Its data must be what the guardrail script expects; the mainnet guardrail does not inspect it. Static and batch redeemers are supported; self redeemers are not, since a proposal spends no input. The build fails if a proposal with a Plutus `policyHash` has no redeemer, or if its guardrail script is neither attached nor available from a reference input.
 
 ## Next Steps
 

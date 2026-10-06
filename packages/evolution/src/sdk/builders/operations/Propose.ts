@@ -49,6 +49,17 @@ export const createProposeProgram = (
     }
     const govActionDeposit = fullParams.govActionDeposit
 
+    const deferred = params.redeemer ? RedeemerBuilder.toDeferredRedeemer(params.redeemer) : undefined
+    if (deferred?._tag === "self") {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            "Self redeemers are not supported for proposals: a proposal spends no input. " +
+            "Pass static redeemer data or a batch redeemer instead."
+        })
+      )
+    }
+
     // 2. Construct ProposalProcedure with fetched deposit
     const proposalProcedure = new ProposalProcedure.ProposalProcedure({
       deposit: govActionDeposit,
@@ -66,8 +77,7 @@ export const createProposeProgram = (
       let newRedeemers = state.redeemers
       let newDeferredRedeemers = state.deferredRedeemers
 
-      if (params.redeemer) {
-        const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
+      if (deferred) {
         const proposalKey = proposalToKey(proposalIndex)
 
         if (deferred._tag === "static") {
