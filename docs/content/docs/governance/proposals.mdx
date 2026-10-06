@@ -83,6 +83,41 @@ const signed = await tx.sign()
 await signed.submit()
 ```
 
+## Guardrail Script
+
+When the constitution defines a guardrail script (as on mainnet), `ParameterChangeAction` and `TreasuryWithdrawalsAction` must reference it in `policyHash` and run it under the propose purpose. Pass a `redeemer` to `.propose()` and provide the script with `.attachScript()` or a reference input via `.readFrom()`:
+
+```typescript twoslash
+import { Anchor, Data, GovernanceAction, PlutusV3, RewardAccount, ScriptHash, preprod, Client } from "@evolution-sdk/evolution"
+
+const client = Client.make(preprod)
+  .withBlockfrost({
+    baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
+    projectId: process.env.BLOCKFROST_API_KEY!
+  })
+  .withSeed({ mnemonic: process.env.WALLET_MNEMONIC!, accountIndex: 0 })
+
+declare const guardrailScript: PlutusV3.PlutusV3 // the constitution's guardrail script
+declare const rewardAccount: RewardAccount.RewardAccount
+declare const anchor: Anchor.Anchor
+
+const governanceAction = new GovernanceAction.TreasuryWithdrawalsAction({
+  withdrawals: new Map([[rewardAccount, 1_000_000_000n]]),
+  policyHash: ScriptHash.fromScript(guardrailScript)
+})
+
+const tx = await client
+  .newTx()
+  .propose({ governanceAction, rewardAccount, anchor, redeemer: Data.constr(0n, []) })
+  .attachScript({ script: guardrailScript })
+  .build()
+
+const signed = await tx.sign()
+await signed.submit()
+```
+
+The redeemer is placed at the proposal's index in the transaction, so guardrail-checked proposals can be combined with other proposals in one transaction. The build fails if a proposal with a Plutus `policyHash` has no redeemer.
+
 ## Next Steps
 
 - [Voting](/docs/governance/voting) — Vote on submitted proposals

@@ -37,6 +37,25 @@
       "hash": "a2492486ed656e3fb854a2c240cf16055216c38ec94d166a533c5820"
     },
     {
+      "title": "governance_guardrail.always_yes_guardrail.propose",
+      "redeemer": {
+        "title": "_redeemer",
+        "schema": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "compiledCode": "585e01010029800aba2aba1aab9eaab9dab9a4888896600264653001300600198031803800cc0180092225980099b8748028c01cdd500144c8cc89289bad300a001300a300b0013008375400514a08030600c00260066ea801a29344d9590011",
+      "hash": "5cd92fa4900c10de05ba7a5072a7cb648e82c984ac538587aaeaf8d6"
+    },
+    {
+      "title": "governance_guardrail.always_yes_guardrail.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "585e01010029800aba2aba1aab9eaab9dab9a4888896600264653001300600198031803800cc0180092225980099b8748028c01cdd500144c8cc89289bad300a001300a300b0013008375400514a08030600c00260066ea801a29344d9590011",
+      "hash": "5cd92fa4900c10de05ba7a5072a7cb648e82c984ac538587aaeaf8d6"
+    },
+    {
       "title": "governance_voting.always_yes_drep.vote",
       "redeemer": {
         "title": "_redeemer",

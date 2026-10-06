@@ -12,6 +12,7 @@ import * as CostModel from "../../../CostModel.js"
 import type * as PlutusData from "../../../Data.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as Ed25519Signature from "../../../Ed25519Signature.js"
+import type * as GovernanceAction from "../../../GovernanceAction.js"
 import type * as KeyHash from "../../../KeyHash.js"
 import * as NativeScripts from "../../../NativeScripts.js"
 import type * as PlutusV1 from "../../../PlutusV1.js"
@@ -39,6 +40,8 @@ import * as Withdrawals from "../../../Withdrawals.js"
 import {
   BuildOptionsTag,
   FullProtocolParametersTag,
+  proposalKeyToIndex,
+  proposalToKey,
   TransactionBuilderError,
   type TxBuilderConfigTag,
   TxContext,
@@ -465,6 +468,103 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
 )
 
 /**
+ * Return the guardrail policy hash (hex) a governance action must run, if any.
+ * Only ParameterChangeAction and TreasuryWithdrawalsAction carry a policy hash.
+ */
+const proposalPolicyHashHex = (action: GovernanceAction.GovernanceAction): string | undefined => {
+  switch (action._tag) {
+    case "ParameterChangeAction":
+    case "TreasuryWithdrawalsAction":
+      return action.policyHash ? ScriptHash.toHex(action.policyHash) : undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Validate redeemer requirements for governance proposals. Actions that carry a
+ * guardrail `policyHash` run the constitution script under the propose purpose,
+ * so a Plutus guardrail needs a redeemer. Redeemers supplied for proposals that
+ * run no script are rejected, since the ledger refuses extraneous redeemers.
+ *
+ * @since 2.0.0
+ * @category validation
+ */
+export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(
+  function* () {
+    const stateRef = yield* TxContext
+    const state = yield* Ref.get(stateRef)
+
+    if (!state.proposalProcedures || state.proposalProcedures.procedures.length === 0) {
+      return
+    }
+
+    const isNativeScript = makeIsNativeScript(state)
+
+    const proposalsMissingRedeemer: Array<string> = []
+    const proposalsWithoutPolicy: Array<string> = []
+    const nativeProposalRedeemerKeys: Array<string> = []
+
+    state.proposalProcedures.procedures.forEach((procedure, index) => {
+      const proposalKey = proposalToKey(index)
+      const hasRedeemer = state.redeemers.has(proposalKey) || state.deferredRedeemers.has(proposalKey)
+      const scriptHashHex = proposalPolicyHashHex(procedure.governanceAction)
+
+      if (scriptHashHex === undefined) {
+        if (hasRedeemer) proposalsWithoutPolicy.push(proposalKey)
+        return
+      }
+
+      if (isNativeScript(scriptHashHex) === true) {
+        if (hasRedeemer) nativeProposalRedeemerKeys.push(proposalKey)
+      } else if (!hasRedeemer) {
+        proposalsMissingRedeemer.push(`${proposalKey} (policy ${scriptHashHex})`)
+      }
+    })
+
+    if (proposalsMissingRedeemer.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Redeemer required for ${proposalsMissingRedeemer.length} proposal(s) checked by a guardrail script: ` +
+            `${proposalsMissingRedeemer.join(", ")}. ` +
+            `Pass a redeemer to .propose() and provide the guardrail script via .attachScript() or a reference input.`,
+          cause: proposalsMissingRedeemer
+        })
+      )
+    }
+
+    if (proposalsWithoutPolicy.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Redeemer supplied for ${proposalsWithoutPolicy.length} proposal(s) without a guardrail policyHash: ` +
+            `${proposalsWithoutPolicy.join(", ")}. ` +
+            `Only ParameterChangeAction and TreasuryWithdrawalsAction with a policyHash run the guardrail script.`,
+          cause: proposalsWithoutPolicy
+        })
+      )
+    }
+
+    if (nativeProposalRedeemerKeys.length > 0) {
+      yield* Effect.logDebug(
+        `[Propose] Ignoring redeemer(s) supplied for native-script guardrail(s): ${nativeProposalRedeemerKeys.join(", ")}. ` +
+          `Native scripts are satisfied by vkey witnesses, not redeemers.`
+      )
+      yield* Ref.update(stateRef, (s) => {
+        const redeemers = new Map(s.redeemers)
+        const deferredRedeemers = new Map(s.deferredRedeemers)
+        for (const key of nativeProposalRedeemerKeys) {
+          redeemers.delete(key)
+          deferredRedeemers.delete(key)
+        }
+        return { ...s, redeemers, deferredRedeemers }
+      })
+    }
+  }
+)
+
+/**
  * Assemble a Transaction from inputs, outputs, and calculated fee.
  * Creates TransactionBody with all required fields.
  *
@@ -684,6 +784,17 @@ export const assembleTransaction = (
           yield* Effect.logWarning(`[Assembly] Could not find voter index for key: ${key}`)
           continue
         }
+      } else if (redeemerData.tag === "propose") {
+        // For propose redeemers, the key carries the proposal's position in proposalProcedures.
+        // Proposals keep insertion order, so the position is the redeemer index.
+        // Key format: `propose:{index}`
+        const proposalIndex = proposalKeyToIndex(key)
+        const proposalCount = state.proposalProcedures?.procedures.length ?? 0
+        if (proposalIndex === undefined || proposalIndex >= proposalCount) {
+          yield* Effect.logWarning(`[Assembly] Could not find proposal index for key: ${key}`)
+          continue
+        }
+        redeemerIndex = proposalIndex
       } else {
         // For spend redeemers, look up in input index map
         redeemerIndex = inputIndexMap.get(key)
@@ -699,7 +810,7 @@ export const assembleTransaction = (
 
       // Create proper Redeemer object
       const redeemer = new Redeemer.Redeemer({
-        tag: redeemerData.tag, // "spend", "mint", "cert", or "reward"
+        tag: redeemerData.tag, // "spend", "mint", "cert", "reward", "vote", or "propose"
         index: BigInt(redeemerIndex), // Use actual redeemer index
         data: redeemerData.data,
         exUnits: redeemerData.exUnits
@@ -1206,7 +1317,7 @@ export const calculateFeeIteratively = (
   redeemers: Map<
     string,
     {
-      readonly tag: "spend" | "mint" | "cert" | "reward" | "vote"
+      readonly tag: "spend" | "mint" | "cert" | "reward" | "vote" | "propose"
       readonly data: PlutusData.Data
       readonly exUnits?: { readonly mem: bigint; readonly steps: bigint }
     }

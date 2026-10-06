@@ -230,6 +230,8 @@ export type ConwayGenesis = {
       readonly url: string
       readonly dataHash: string
     }
+    /** Optional guardrail script hash (hex) checked for ParameterChange and TreasuryWithdrawals proposals */
+    readonly script?: string
   }
   readonly committee: {
     readonly members: Record<string, unknown>
