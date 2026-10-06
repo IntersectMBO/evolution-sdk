@@ -1,9 +1,11 @@
 import * as CML from "@dcspark/cardano-multiplatform-lib-nodejs"
+import { blake2b } from "@noble/hashes/blake2.js"
 import { FastCheck, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import * as AuxiliaryData from "../src/AuxiliaryData.js"
 import * as AuxiliaryDataHash from "../src/AuxiliaryDataHash.js"
+import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Data from "../src/Data.js"
@@ -276,5 +278,66 @@ describe("UtilsHash helpers CML parity", () => {
     ).to_hex()
 
     expect(evolutionHex).toBe(cmlHex)
+  })
+
+  describe("codec options reach the datums", () => {
+    const datumHex = "d8799f019f02ffff" // Constr(0, [1, [2]]) with indefinite lists
+    const datum = Data.fromCBORHex(datumHex)
+    const canonicalDatumHex = Data.toCBORHex(datum, CBOR.CANONICAL_OPTIONS)
+    const noCostModels = new CostModel.CostModels({
+      PlutusV1: new CostModel.CostModel({ costs: [] }),
+      PlutusV2: new CostModel.CostModel({ costs: [] }),
+      PlutusV3: new CostModel.CostModel({ costs: [] })
+    })
+    const datumList = (hex: string) => {
+      const list = CML.PlutusDataList.new()
+      list.add(CML.PlutusData.from_cbor_hex(hex))
+      return list
+    }
+
+    it("hashes canonical datums when there are no redeemers", () => {
+      expect(canonicalDatumHex).toBe("d87982018102")
+      const redeemers = new Redeemers.RedeemerArray({ value: [] })
+      const evolutionHex = ScriptDataHash.toHex(
+        Redeemers.toScriptDataHash(redeemers, noCostModels, [datum], CBOR.CANONICAL_OPTIONS)
+      )
+      const cmlHex = CML.hash_script_data(
+        CML.Redeemers.from_cbor_hex("80"),
+        CML.CostModels.from_cbor_hex("a0"),
+        datumList(canonicalDatumHex)
+      ).to_hex()
+      expect(evolutionHex).toBe(cmlHex)
+      expect(evolutionHex).toBe(toHex(blake2b(Bytes.fromHex(`a0d9010281${canonicalDatumHex}a0`), { dkLen: 32 })))
+    })
+
+    it("hashes canonical datums next to redeemers", () => {
+      const redeemer = new Redeemer.Redeemer({
+        tag: "spend",
+        index: 0n,
+        data: Data.constr(0n, []),
+        exUnits: new Redeemer.ExUnits({ mem: 1n, steps: 1n })
+      })
+      const redeemers = new Redeemers.RedeemerArray({ value: [redeemer] })
+      const evolutionHex = ScriptDataHash.toHex(
+        Redeemers.toScriptDataHash(redeemers, noCostModels, [datum], CBOR.CANONICAL_OPTIONS)
+      )
+      const cmlHex = CML.hash_script_data(
+        CML.Redeemers.from_cbor_hex(Redeemers.toCBORHex(redeemers, CBOR.CANONICAL_OPTIONS)),
+        CML.CostModels.from_cbor_hex("a0"),
+        datumList(canonicalDatumHex)
+      ).to_hex()
+      expect(evolutionHex).toBe(cmlHex)
+    })
+
+    it("keeps the default datum encoding when no options are given", () => {
+      const redeemers = new Redeemers.RedeemerArray({ value: [] })
+      const evolutionHex = ScriptDataHash.toHex(Redeemers.toScriptDataHash(redeemers, noCostModels, [datum]))
+      const cmlHex = CML.hash_script_data(
+        CML.Redeemers.from_cbor_hex("80"),
+        CML.CostModels.from_cbor_hex("a0"),
+        datumList(datumHex)
+      ).to_hex()
+      expect(evolutionHex).toBe(cmlHex)
+    })
   })
 })

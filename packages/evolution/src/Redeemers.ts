@@ -589,6 +589,8 @@ export const toScriptDataHash = (
   options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
 ): ScriptDataHash.ScriptDataHash => {
   const hasDatums = Array.isArray(datums) && datums.length > 0
+  // Datums keep their own default encoding unless the caller chose options
+  const datumOptions = options === CBOR.CML_DEFAULT_OPTIONS ? CBOR.CML_DATA_DEFAULT_OPTIONS : options
 
   // Language views encoding (handles PlutusV1 indefinite-length quirk per spec)
   const langViewsBytes = CostModel.languageViewsEncoding(costModels)
@@ -597,7 +599,7 @@ export const toScriptDataHash = (
 
   if (hasDatums && redeemers.size === 0) {
     // Special case (CDDL): [ A0 | tag(258) datums | A0 ]
-    const datumsBytes = encodeDatumsTaggedSet(datums)
+    const datumsBytes = encodeDatumsTaggedSet(datums, datumOptions)
     payload = concatBytes(
       new Uint8Array([0xa0]), // Empty map
       datumsBytes,
@@ -609,7 +611,7 @@ export const toScriptDataHash = (
       redeemers._tag === "RedeemerMap"
         ? toCBORBytesMap(redeemers, options)
         : toCBORBytes(redeemers as RedeemerArray, options)
-    const datumsBytes = hasDatums ? encodeDatumsTaggedSet(datums) : undefined
+    const datumsBytes = hasDatums ? encodeDatumsTaggedSet(datums, datumOptions) : undefined
 
     payload = datumsBytes
       ? concatBytes(redeemersBytes, datumsBytes, langViewsBytes)
