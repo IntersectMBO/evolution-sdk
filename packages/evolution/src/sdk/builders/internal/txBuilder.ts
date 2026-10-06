@@ -311,15 +311,19 @@ const certScriptHashHex = (certificate: Certificate.Certificate): string | undef
 /**
  * Build a resolver that reports whether the script behind a given hash is a native
  * script. Looks at scripts attached via `.attachScript()` first, then any reference
- * inputs carrying a script. Returns `undefined` when the script cannot be classified.
+ * or spent inputs carrying a script. Returns `undefined` when the script cannot be classified.
  */
 const makeIsNativeScript =
-  (state: { scripts: ReadonlyMap<string, CoreScript.Script>; referenceInputs: ReadonlyArray<CoreUTxO.UTxO> }) =>
+  (state: {
+    scripts: ReadonlyMap<string, CoreScript.Script>
+    referenceInputs: ReadonlyArray<CoreUTxO.UTxO>
+    selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  }) =>
   (scriptHashHex: string): boolean | undefined => {
     const attached = state.scripts.get(scriptHashHex)
     if (attached) return attached._tag === "NativeScript"
 
-    for (const ref of state.referenceInputs) {
+    for (const ref of [...state.referenceInputs, ...state.selectedUtxos]) {
       if (ref.scriptRef && ScriptHash.toHex(ScriptHash.fromScript(ref.scriptRef)) === scriptHashHex) {
         return ref.scriptRef._tag === "NativeScript"
       }

@@ -347,6 +347,59 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
     expect(redeemer!.index).toBe(0n)
     expect(redeemer!.data).toEqual(Data.constr(0n, [Data.int(0n)]))
   })
+
+  it("accepts the integer redeemer 0", async () => {
+    const { evaluator } = makeEchoEvaluator()
+
+    const tx = await makeTxBuilder(baseConfig)
+      .propose({
+        governanceAction: treasuryWithdrawal(guardrailHash),
+        rewardAccount,
+        anchor: null,
+        redeemer: Data.int(0n)
+      })
+      .attachScript({ script: guardrailScript })
+      .build(buildOptions(evaluator))
+      .then((b) => b.toTransaction())
+
+    const [redeemer] = tx.witnessSet.redeemers!.toArray()
+    expect(redeemer!.tag).toBe("propose")
+    expect(redeemer!.data).toBe(0n)
+  })
+
+  describe("native guardrail carried by a spent input", () => {
+    const nativeGuardrail = NativeScripts.makeScriptNOfK(1n, [
+      NativeScripts.makeScriptPubKey(new Uint8Array(28).fill(0xcc)).script
+    ])
+    const scriptUtxo = new CoreUTxO.UTxO({
+      transactionId: TransactionHash.fromHex("d".repeat(64)),
+      index: 0n,
+      address: CoreAddress.fromBech32(CHANGE_ADDRESS),
+      assets: CoreAssets.fromLovelace(20_000_000n),
+      scriptRef: nativeGuardrail
+    })
+    const nativeAction = () => treasuryWithdrawal(ScriptHash.fromScript(nativeGuardrail))
+
+    it("needs no redeemer", async () => {
+      const tx = await makeTxBuilder(baseConfig)
+        .collectFrom({ inputs: [scriptUtxo] })
+        .propose({ governanceAction: nativeAction(), rewardAccount, anchor: null })
+        .build(buildOptions())
+        .then((b) => b.toTransaction())
+
+      expect(tx.witnessSet.redeemers).toBeUndefined()
+    })
+
+    it("drops a supplied redeemer", async () => {
+      const tx = await makeTxBuilder(baseConfig)
+        .collectFrom({ inputs: [scriptUtxo] })
+        .propose({ governanceAction: nativeAction(), rewardAccount, anchor: null, redeemer: Data.constr(0n, []) })
+        .build(buildOptions())
+        .then((b) => b.toTransaction())
+
+      expect(tx.witnessSet.redeemers).toBeUndefined()
+    })
+  })
 })
 
 describe("TxBuilder propose with guardrail script: errors", () => {

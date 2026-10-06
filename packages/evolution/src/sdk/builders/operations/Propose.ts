@@ -49,7 +49,8 @@ export const createProposeProgram = (
     }
     const govActionDeposit = fullParams.govActionDeposit
 
-    const deferred = params.redeemer ? RedeemerBuilder.toDeferredRedeemer(params.redeemer) : undefined
+    // A redeemer may be the integer 0, so test for presence rather than truthiness
+    const deferred = params.redeemer !== undefined ? RedeemerBuilder.toDeferredRedeemer(params.redeemer) : undefined
     if (deferred?._tag === "self") {
       return yield* Effect.fail(
         new TransactionBuilderError({
