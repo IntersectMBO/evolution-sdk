@@ -27,6 +27,7 @@ import {
   FullProtocolParametersTag,
   PhaseContextTag,
   type PhaseResult,
+  proposalToKey,
   type RedeemerData,
   type ScriptFailure,
   TransactionBuilderError,
@@ -73,7 +74,8 @@ const enrichFailuresWithLabels = (
   withdrawalIndexMapping: Map<number, string>,
   mintIndexMapping: Map<number, string>,
   certIndexMapping: Map<number, string>,
-  voteIndexMapping: Map<number, string>
+  voteIndexMapping: Map<number, string>,
+  proposeIndexMapping: Map<number, string>
 ): Array<ScriptFailure> => {
   return failures.map((failure) => {
     const { index, purpose } = failure
@@ -99,6 +101,8 @@ const enrichFailuresWithLabels = (
       credential = redeemerKey?.replace("cert:", "")
     } else if (purpose === "vote") {
       redeemerKey = voteIndexMapping.get(index)
+    } else if (purpose === "propose") {
+      redeemerKey = proposeIndexMapping.get(index)
     }
 
     // Look up label from redeemer state
@@ -452,6 +456,18 @@ export const executeEvaluation = (): Effect.Effect<
       }
     }
 
+    // Build proposal index mapping: index → "propose:{index}"
+    // Proposals keep insertion order, so only those with a redeemer need a mapping
+    const proposeIndexMapping = new Map<number, string>()
+    const proposalCount = updatedState.proposalProcedures?.procedures.length ?? 0
+    for (let i = 0; i < proposalCount; i++) {
+      const key = proposalToKey(i)
+      if (updatedState.redeemers.has(key)) {
+        proposeIndexMapping.set(i, key)
+        yield* Effect.logDebug(`[Evaluation] Proposal ${i} maps to: ${key}`)
+      }
+    }
+
     const inputs = CoreUTxO.toInputs(sortedUtxos)
     const allOutputs = [...updatedState.outputs, ...buildCtx.changeOutputs]
     const transaction = yield* assembleTransaction(inputs, allOutputs, buildCtx.calculatedFee)
@@ -508,7 +524,8 @@ export const executeEvaluation = (): Effect.Effect<
           withdrawalIndexMapping,
           mintIndexMapping,
           certIndexMapping,
-          voteIndexMapping
+          voteIndexMapping,
+          proposeIndexMapping
         )
 
         // Create enhanced evaluation error with enriched failures
@@ -700,6 +717,39 @@ export const executeEvaluation = (): Effect.Effect<
           return yield* Effect.fail(
             new TransactionBuilderError({
               message: `Evaluator returned vote result for ${voterKey} but no redeemer exists in builder state for that voter`
+            })
+          )
+        }
+      } else if (evalRedeemer.redeemer_tag === "propose") {
+        // For propose redeemers, map index to proposal key
+        const proposalKey = proposeIndexMapping.get(evalRedeemer.redeemer_index)
+        if (!proposalKey) {
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned propose result at index ${evalRedeemer.redeemer_index} but no proposal redeemer exists at that position in the transaction`
+            })
+          )
+        }
+
+        const redeemer = evaluatedRedeemers.get(proposalKey)
+        if (redeemer) {
+          // Update redeemer with ExUnits from evaluation
+          evaluatedRedeemers.set(proposalKey, {
+            ...redeemer,
+            exUnits: {
+              mem: BigInt(evalRedeemer.ex_units.mem),
+              steps: BigInt(evalRedeemer.ex_units.steps)
+            }
+          })
+
+          yield* Effect.logDebug(
+            `[Evaluation] Updated redeemer for ${proposalKey}: ` +
+              `mem=${evalRedeemer.ex_units.mem}, steps=${evalRedeemer.ex_units.steps}`
+          )
+        } else {
+          return yield* Effect.fail(
+            new TransactionBuilderError({
+              message: `Evaluator returned propose result for ${proposalKey} but no redeemer exists in builder state for that proposal`
             })
           )
         }

@@ -523,6 +523,15 @@ export interface ProposeParams {
   readonly rewardAccount: RewardAccount.RewardAccount
   /** Optional anchor with metadata URL and hash */
   readonly anchor: Anchor.Anchor | null
+  /**
+   * Redeemer for the constitution's guardrail script (propose purpose).
+   * Required when the governance action carries a Plutus `policyHash`
+   * (TreasuryWithdrawalsAction, ParameterChangeAction). The guardrail script
+   * itself is supplied via .attachScript() or a reference input.
+   */
+  readonly redeemer?: RedeemerBuilder.RedeemerArg
+  /** Optional label for debugging script failures - identifies this operation in error messages */
+  readonly label?: string
 }
 
 // ============================================================================

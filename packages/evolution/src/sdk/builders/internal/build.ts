@@ -168,6 +168,7 @@ export const makeBuild = (
 
     yield* TxBuilderImpl.validateVoterRedeemers
     yield* TxBuilderImpl.validateCertRedeemers
+    yield* TxBuilderImpl.validateProposalRedeemers
 
     const { transaction, txWithFakeWitnesses } = yield* phaseStateMachine
 

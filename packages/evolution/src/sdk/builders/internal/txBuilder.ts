@@ -12,6 +12,7 @@ import * as CostModel from "../../../CostModel.js"
 import type * as PlutusData from "../../../Data.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as Ed25519Signature from "../../../Ed25519Signature.js"
+import type * as GovernanceAction from "../../../GovernanceAction.js"
 import type * as KeyHash from "../../../KeyHash.js"
 import * as NativeScripts from "../../../NativeScripts.js"
 import type * as PlutusV1 from "../../../PlutusV1.js"
@@ -39,6 +40,8 @@ import * as Withdrawals from "../../../Withdrawals.js"
 import {
   BuildOptionsTag,
   FullProtocolParametersTag,
+  proposalKeyToIndex,
+  proposalToKey,
   TransactionBuilderError,
   type TxBuilderConfigTag,
   TxContext,
@@ -308,15 +311,19 @@ const certScriptHashHex = (certificate: Certificate.Certificate): string | undef
 /**
  * Build a resolver that reports whether the script behind a given hash is a native
  * script. Looks at scripts attached via `.attachScript()` first, then any reference
- * inputs carrying a script. Returns `undefined` when the script cannot be classified.
+ * or spent inputs carrying a script. Returns `undefined` when the script cannot be classified.
  */
 const makeIsNativeScript =
-  (state: { scripts: ReadonlyMap<string, CoreScript.Script>; referenceInputs: ReadonlyArray<CoreUTxO.UTxO> }) =>
+  (state: {
+    scripts: ReadonlyMap<string, CoreScript.Script>
+    referenceInputs: ReadonlyArray<CoreUTxO.UTxO>
+    selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  }) =>
   (scriptHashHex: string): boolean | undefined => {
     const attached = state.scripts.get(scriptHashHex)
     if (attached) return attached._tag === "NativeScript"
 
-    for (const ref of state.referenceInputs) {
+    for (const ref of [...state.referenceInputs, ...state.selectedUtxos]) {
       if (ref.scriptRef && ScriptHash.toHex(ScriptHash.fromScript(ref.scriptRef)) === scriptHashHex) {
         return ref.scriptRef._tag === "NativeScript"
       }
@@ -368,7 +375,7 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
             `Redeemer required for ${votersMissingRedeemer.length} non-native-script voter(s): ` +
             `${votersMissingRedeemer.join(", ")}. ` +
             `If a voter is a native (multisig) script, attach it via .attachScript() ` +
-            `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
+            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
             `if it is a Plutus script, supply a redeemer.`,
           cause: votersMissingRedeemer
         })
@@ -439,7 +446,7 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
             `Redeemer required for ${certsMissingRedeemer.length} non-native-script certificate(s): ` +
             `${certsMissingRedeemer.join(", ")}. ` +
             `If the certificate's credential is a native (multisig) script, attach it via .attachScript() ` +
-            `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
+            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
             `if it is a Plutus script, supply a redeemer.`,
           cause: certsMissingRedeemer
         })
@@ -455,6 +462,122 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
         const redeemers = new Map(s.redeemers)
         const deferredRedeemers = new Map(s.deferredRedeemers)
         for (const key of nativeCertRedeemerKeys) {
+          redeemers.delete(key)
+          deferredRedeemers.delete(key)
+        }
+        return { ...s, redeemers, deferredRedeemers }
+      })
+    }
+  }
+)
+
+/**
+ * Return the guardrail policy hash (hex) a governance action must run, if any.
+ * Only ParameterChangeAction and TreasuryWithdrawalsAction carry a policy hash.
+ */
+const proposalPolicyHashHex = (action: GovernanceAction.GovernanceAction): string | undefined => {
+  switch (action._tag) {
+    case "ParameterChangeAction":
+    case "TreasuryWithdrawalsAction":
+      return action.policyHash ? ScriptHash.toHex(action.policyHash) : undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Validate redeemer requirements for governance proposals. Actions that carry a
+ * guardrail `policyHash` run the constitution script under the propose purpose,
+ * so a Plutus guardrail needs a redeemer. Redeemers supplied for proposals that
+ * run no script are rejected, since the ledger refuses extraneous redeemers.
+ *
+ * @since 2.0.0
+ * @category validation
+ */
+export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(
+  function* () {
+    const stateRef = yield* TxContext
+    const state = yield* Ref.get(stateRef)
+
+    if (!state.proposalProcedures || state.proposalProcedures.procedures.length === 0) {
+      return
+    }
+
+    const isNativeScript = makeIsNativeScript(state)
+
+    const proposalsMissingRedeemer: Array<string> = []
+    const proposalsWithoutPolicy: Array<string> = []
+    const proposalsMissingScript: Array<string> = []
+    const nativeProposalRedeemerKeys: Array<string> = []
+
+    state.proposalProcedures.procedures.forEach((procedure, index) => {
+      const proposalKey = proposalToKey(index)
+      const hasRedeemer = state.redeemers.has(proposalKey) || state.deferredRedeemers.has(proposalKey)
+      const scriptHashHex = proposalPolicyHashHex(procedure.governanceAction)
+
+      if (scriptHashHex === undefined) {
+        if (hasRedeemer) proposalsWithoutPolicy.push(proposalKey)
+        return
+      }
+
+      const native = isNativeScript(scriptHashHex)
+      if (native === true) {
+        if (hasRedeemer) nativeProposalRedeemerKeys.push(proposalKey)
+      } else if (!hasRedeemer) {
+        proposalsMissingRedeemer.push(`${proposalKey} (policy ${scriptHashHex})`)
+      } else if (native === undefined) {
+        proposalsMissingScript.push(`${proposalKey} (policy ${scriptHashHex})`)
+      }
+    })
+
+    if (proposalsMissingRedeemer.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Redeemer required for ${proposalsMissingRedeemer.length} proposal(s) checked by a guardrail script: ` +
+            `${proposalsMissingRedeemer.join(", ")}. ` +
+            `If the guardrail is a native (multisig) script, attach it via .attachScript() ` +
+            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed. ` +
+            `If it is a Plutus script, pass a redeemer to .propose() and provide the script the same way.`,
+          cause: proposalsMissingRedeemer
+        })
+      )
+    }
+
+    if (proposalsMissingScript.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Guardrail script not provided for ${proposalsMissingScript.length} proposal(s): ` +
+            `${proposalsMissingScript.join(", ")}. ` +
+            `Attach it via .attachScript(), provide it through a reference input with .readFrom(), ` +
+            `or spend an input that carries it.`,
+          cause: proposalsMissingScript
+        })
+      )
+    }
+
+    if (proposalsWithoutPolicy.length > 0) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `Redeemer supplied for ${proposalsWithoutPolicy.length} proposal(s) without a guardrail policyHash: ` +
+            `${proposalsWithoutPolicy.join(", ")}. ` +
+            `Only ParameterChangeAction and TreasuryWithdrawalsAction with a policyHash run the guardrail script.`,
+          cause: proposalsWithoutPolicy
+        })
+      )
+    }
+
+    if (nativeProposalRedeemerKeys.length > 0) {
+      yield* Effect.logDebug(
+        `[Propose] Ignoring redeemer(s) supplied for native-script guardrail(s): ${nativeProposalRedeemerKeys.join(", ")}. ` +
+          `Native scripts are satisfied by vkey witnesses, not redeemers.`
+      )
+      yield* Ref.update(stateRef, (s) => {
+        const redeemers = new Map(s.redeemers)
+        const deferredRedeemers = new Map(s.deferredRedeemers)
+        for (const key of nativeProposalRedeemerKeys) {
           redeemers.delete(key)
           deferredRedeemers.delete(key)
         }
@@ -684,6 +807,17 @@ export const assembleTransaction = (
           yield* Effect.logWarning(`[Assembly] Could not find voter index for key: ${key}`)
           continue
         }
+      } else if (redeemerData.tag === "propose") {
+        // For propose redeemers, the key carries the proposal's position in proposalProcedures.
+        // Proposals keep insertion order, so the position is the redeemer index.
+        // Key format: `propose:{index}`
+        const proposalIndex = proposalKeyToIndex(key)
+        const proposalCount = state.proposalProcedures?.procedures.length ?? 0
+        if (proposalIndex === undefined || proposalIndex >= proposalCount) {
+          yield* Effect.logWarning(`[Assembly] Could not find proposal index for key: ${key}`)
+          continue
+        }
+        redeemerIndex = proposalIndex
       } else {
         // For spend redeemers, look up in input index map
         redeemerIndex = inputIndexMap.get(key)
@@ -699,7 +833,7 @@ export const assembleTransaction = (
 
       // Create proper Redeemer object
       const redeemer = new Redeemer.Redeemer({
-        tag: redeemerData.tag, // "spend", "mint", "cert", or "reward"
+        tag: redeemerData.tag, // "spend", "mint", "cert", "reward", "vote", or "propose"
         index: BigInt(redeemerIndex), // Use actual redeemer index
         data: redeemerData.data,
         exUnits: redeemerData.exUnits
@@ -1094,11 +1228,11 @@ export const buildFakeWitnessSet = (
       }
     }
 
-    // Also count required signers from reference scripts (scripts in referenceInputs)
-    for (const refUtxo of state.referenceInputs) {
-      if (refUtxo.scriptRef && refUtxo.scriptRef._tag === "NativeScript") {
-        const requiredSigners = addNativeScriptWitnesses(refUtxo.scriptRef)
-        yield* Effect.logDebug(`[buildFakeWitnessSet] Reference native script requires ${requiredSigners} signers`)
+    // Also count required signers from scripts carried by reference or spent inputs
+    for (const utxo of [...state.referenceInputs, ...inputUtxos]) {
+      if (utxo.scriptRef && utxo.scriptRef._tag === "NativeScript") {
+        const requiredSigners = addNativeScriptWitnesses(utxo.scriptRef)
+        yield* Effect.logDebug(`[buildFakeWitnessSet] Input-carried native script requires ${requiredSigners} signers`)
       }
     }
 
@@ -1206,7 +1340,7 @@ export const calculateFeeIteratively = (
   redeemers: Map<
     string,
     {
-      readonly tag: "spend" | "mint" | "cert" | "reward" | "vote"
+      readonly tag: "spend" | "mint" | "cert" | "reward" | "vote" | "propose"
       readonly data: PlutusData.Data
       readonly exUnits?: { readonly mem: bigint; readonly steps: bigint }
     }
