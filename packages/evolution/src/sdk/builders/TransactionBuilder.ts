@@ -1400,6 +1400,10 @@ export interface TransactionBuilderBase {
    * Call .propose() multiple times to submit multiple proposals in one transaction.
    * Consistent with .registerStake() and .registerDRep() - no manual deposit handling.
    *
+   * ParameterChangeAction and TreasuryWithdrawalsAction with a Plutus `policyHash` run the
+   * constitution's guardrail script. Pass a `redeemer` and provide the script via
+   * .attachScript(), .readFrom() or a spent input that carries it.
+   *
    * The deposit amount is automatically deducted during transaction balancing.
    *
    * Queues a deferred operation that will be executed when build() is called.
@@ -1407,8 +1411,10 @@ export interface TransactionBuilderBase {
    *
    * @example
    * ```typescript
+   * import * as Data from "@evolution-sdk/Data"
    * import * as GovernanceAction from "@evolution-sdk/GovernanceAction"
    * import * as RewardAccount from "@evolution-sdk/RewardAccount"
+   * import * as ScriptHash from "@evolution-sdk/ScriptHash"
    *
    * // Submit single proposal (deposit auto-fetched)
    * await client.newTx()
@@ -1433,6 +1439,22 @@ export interface TransactionBuilderBase {
    *     rewardAccount: myRewardAccount,
    *     anchor: myOtherAnchor
    *   })
+   *   .build()
+   *   .then(tx => tx.sign())
+   *   .then(tx => tx.submit())
+   *
+   * // Treasury withdrawal checked by the constitution's guardrail script
+   * await client.newTx()
+   *   .propose({
+   *     governanceAction: new GovernanceAction.TreasuryWithdrawalsAction({
+   *       withdrawals: new Map([[myRewardAccount, 1_000_000_000n]]),
+   *       policyHash: ScriptHash.fromScript(guardrailScript)
+   *     }),
+   *     rewardAccount: myRewardAccount,
+   *     anchor: myAnchor,
+   *     redeemer: Data.constr(0n, [])
+   *   })
+   *   .attachScript({ script: guardrailScript })
    *   .build()
    *   .then(tx => tx.sign())
    *   .then(tx => tx.submit())

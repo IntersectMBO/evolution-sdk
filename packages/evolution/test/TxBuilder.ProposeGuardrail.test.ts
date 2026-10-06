@@ -12,7 +12,7 @@ import * as ProtocolParamUpdate from "../src/ProtocolParamUpdate.js"
 import * as Redeemer from "../src/Redeemer.js"
 import * as RewardAccount from "../src/RewardAccount.js"
 import * as ScriptHash from "../src/ScriptHash.js"
-import type { Evaluator } from "../src/sdk/builders/TransactionBuilder.js"
+import type { Evaluator, ScriptFailure } from "../src/sdk/builders/TransactionBuilder.js"
 import { EvaluationError, makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { mainnet } from "../src/sdk/client/index.js"
 import type { EvalRedeemer } from "../src/sdk/EvalRedeemer.js"
@@ -237,11 +237,14 @@ const guardedProposal = (governanceAction: GovernanceAction.GovernanceAction, la
 })
 
 // Walk an error's cause chain and return the first enriched failures list
-const findFailures = (error: unknown): ReadonlyArray<{ purpose: string; index: number; label?: string }> | undefined => {
-  let current: any = error
-  for (let depth = 0; current && depth < 10; depth++) {
-    if (Array.isArray(current.failures)) return current.failures
-    current = current.cause
+type ErrorLike = { failures?: ReadonlyArray<ScriptFailure>; cause?: unknown }
+
+const findFailures = (error: unknown): ReadonlyArray<ScriptFailure> | undefined => {
+  let current: unknown = error
+  for (let depth = 0; typeof current === "object" && current !== null && depth < 10; depth++) {
+    const { cause, failures } = current as ErrorLike
+    if (Array.isArray(failures)) return failures
+    current = cause
   }
   return undefined
 }
@@ -380,14 +383,18 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
     })
     const nativeAction = () => treasuryWithdrawal(ScriptHash.fromScript(nativeGuardrail))
 
-    it("needs no redeemer", async () => {
-      const tx = await makeTxBuilder(baseConfig)
+    it("needs no redeemer and sizes the fee for the script's signer", async () => {
+      const signBuilder = await makeTxBuilder(baseConfig)
         .collectFrom({ inputs: [scriptUtxo] })
         .propose({ governanceAction: nativeAction(), rewardAccount, anchor: null })
         .build(buildOptions())
-        .then((b) => b.toTransaction())
 
+      const tx = await signBuilder.toTransaction()
       expect(tx.witnessSet.redeemers).toBeUndefined()
+
+      // The wallet key and the guardrail's own signer both need a vkey witness
+      const fakeTx = await signBuilder.toTransactionWithFakeWitnesses()
+      expect(fakeTx.witnessSet.vkeyWitnesses?.length ?? 0).toBeGreaterThanOrEqual(2)
     })
 
     it("drops a supplied redeemer", async () => {

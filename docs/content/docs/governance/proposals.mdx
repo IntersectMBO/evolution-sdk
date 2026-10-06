@@ -85,7 +85,7 @@ await signed.submit()
 
 ## Guardrail Script
 
-When the constitution defines a guardrail script (as on mainnet), `ParameterChangeAction` and `TreasuryWithdrawalsAction` must reference it in `policyHash` and run it under the propose purpose. Pass a `redeemer` to `.propose()` and provide the script with `.attachScript()` or a reference input via `.readFrom()`:
+When the constitution defines a guardrail script (as on mainnet), `ParameterChangeAction` and `TreasuryWithdrawalsAction` must reference it in `policyHash` and run it under the propose purpose. For a Plutus guardrail, pass a `redeemer` to `.propose()` and provide the script with `.attachScript()`, a reference input via `.readFrom()`, or a spent input that carries it:
 
 ```typescript twoslash
 import { Anchor, Data, GovernanceAction, PlutusV3, RewardAccount, ScriptHash, preprod, Client } from "@evolution-sdk/evolution"
@@ -116,7 +116,7 @@ const signed = await tx.sign()
 await signed.submit()
 ```
 
-The redeemer is placed at the proposal's index in the transaction, so guardrail-checked proposals can be combined with other proposals in one transaction. Its data must be what the guardrail script expects; the mainnet guardrail does not inspect it. Static and batch redeemers are supported; self redeemers are not, since a proposal spends no input. The build fails if a proposal with a Plutus `policyHash` has no redeemer, or if its guardrail script is neither attached nor available from a reference input.
+The redeemer is placed at the proposal's index in the transaction, so guardrail-checked proposals can be combined with other proposals in one transaction. Its data must be what the guardrail script expects. The mainnet guardrail does not inspect it. Static and batch redeemers are supported. Self redeemers are not, since a proposal spends no input. A native-script guardrail needs no redeemer, and one passed for it is dropped. The build fails if a proposal with a Plutus `policyHash` has no redeemer, or if its guardrail script is neither attached nor carried by a reference or spent input.
 
 ## Next Steps
 

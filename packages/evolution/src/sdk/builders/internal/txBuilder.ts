@@ -375,7 +375,7 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
             `Redeemer required for ${votersMissingRedeemer.length} non-native-script voter(s): ` +
             `${votersMissingRedeemer.join(", ")}. ` +
             `If a voter is a native (multisig) script, attach it via .attachScript() ` +
-            `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
+            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
             `if it is a Plutus script, supply a redeemer.`,
           cause: votersMissingRedeemer
         })
@@ -446,7 +446,7 @@ export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError,
             `Redeemer required for ${certsMissingRedeemer.length} non-native-script certificate(s): ` +
             `${certsMissingRedeemer.join(", ")}. ` +
             `If the certificate's credential is a native (multisig) script, attach it via .attachScript() ` +
-            `(or provide it through a reference input) so it is recognized and no redeemer is needed; ` +
+            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
             `if it is a Plutus script, supply a redeemer.`,
           cause: certsMissingRedeemer
         })
@@ -505,12 +505,6 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
 
     const isNativeScript = makeIsNativeScript(state)
 
-    // The guardrail script may be attached, or carried by a reference input or a spent input
-    const scriptProvidedByInput = (scriptHashHex: string): boolean =>
-      [...state.referenceInputs, ...state.selectedUtxos].some(
-        (utxo) => utxo.scriptRef !== undefined && ScriptHash.toHex(ScriptHash.fromScript(utxo.scriptRef)) === scriptHashHex
-      )
-
     const proposalsMissingRedeemer: Array<string> = []
     const proposalsWithoutPolicy: Array<string> = []
     const proposalsMissingScript: Array<string> = []
@@ -531,7 +525,7 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
         if (hasRedeemer) nativeProposalRedeemerKeys.push(proposalKey)
       } else if (!hasRedeemer) {
         proposalsMissingRedeemer.push(`${proposalKey} (policy ${scriptHashHex})`)
-      } else if (native === undefined && !scriptProvidedByInput(scriptHashHex)) {
+      } else if (native === undefined) {
         proposalsMissingScript.push(`${proposalKey} (policy ${scriptHashHex})`)
       }
     })
@@ -542,7 +536,9 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
           message:
             `Redeemer required for ${proposalsMissingRedeemer.length} proposal(s) checked by a guardrail script: ` +
             `${proposalsMissingRedeemer.join(", ")}. ` +
-            `Pass a redeemer to .propose() and provide the guardrail script via .attachScript() or a reference input.`,
+            `If the guardrail is a native (multisig) script, attach it via .attachScript() ` +
+            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed. ` +
+            `If it is a Plutus script, pass a redeemer to .propose() and provide the script the same way.`,
           cause: proposalsMissingRedeemer
         })
       )
@@ -554,7 +550,8 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
           message:
             `Guardrail script not provided for ${proposalsMissingScript.length} proposal(s): ` +
             `${proposalsMissingScript.join(", ")}. ` +
-            `Attach it via .attachScript() or provide it through a reference input with .readFrom().`,
+            `Attach it via .attachScript(), provide it through a reference input with .readFrom(), ` +
+            `or spend an input that carries it.`,
           cause: proposalsMissingScript
         })
       )
@@ -1231,11 +1228,11 @@ export const buildFakeWitnessSet = (
       }
     }
 
-    // Also count required signers from reference scripts (scripts in referenceInputs)
-    for (const refUtxo of state.referenceInputs) {
-      if (refUtxo.scriptRef && refUtxo.scriptRef._tag === "NativeScript") {
-        const requiredSigners = addNativeScriptWitnesses(refUtxo.scriptRef)
-        yield* Effect.logDebug(`[buildFakeWitnessSet] Reference native script requires ${requiredSigners} signers`)
+    // Also count required signers from scripts carried by reference or spent inputs
+    for (const utxo of [...state.referenceInputs, ...inputUtxos]) {
+      if (utxo.scriptRef && utxo.scriptRef._tag === "NativeScript") {
+        const requiredSigners = addNativeScriptWitnesses(utxo.scriptRef)
+        yield* Effect.logDebug(`[buildFakeWitnessSet] Input-carried native script requires ${requiredSigners} signers`)
       }
     }
 
