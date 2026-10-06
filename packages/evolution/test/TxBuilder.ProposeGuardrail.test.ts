@@ -394,7 +394,7 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
 
       // The wallet key and the guardrail's own signer both need a vkey witness
       const fakeTx = await signBuilder.toTransactionWithFakeWitnesses()
-      expect(fakeTx.witnessSet.vkeyWitnesses?.length ?? 0).toBeGreaterThanOrEqual(2)
+      expect(fakeTx.witnessSet.vkeyWitnesses?.length ?? 0).toBe(2)
     })
 
     it("drops a supplied redeemer", async () => {
