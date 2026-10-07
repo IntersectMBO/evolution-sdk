@@ -57,7 +57,8 @@ The `lib/cbor_encoding_spec.ak` file contains comprehensive tests to document Ai
 - **Primitives**: Int, ByteArray, Bool
 - **Lists**: Empty, single-item, multi-item, nested, mixed types
 - **Tuples**: Pairs, triples, nested structures
-- **Maps**: Empty, single-entry, multi-entry
+- **Lists of tuples**: Empty, single-entry, multi-entry
+- **Pairs (maps)**: Empty, single-entry
 - **Options**: Some/None with constructor tags
 - **Custom Types**: Multi-constructor types with fields
 - **Edge Cases**: Deeply nested structures, large values
