@@ -4,6 +4,7 @@ import * as CBOR from "./CBOR.js"
 import * as PlutusData from "./Data.js"
 import * as DatumHash from "./DatumHash.js"
 import * as InlineDatum from "./InlineDatum.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 
 /**
  * Schema for DatumOption representing optional datum information in transaction outputs.
@@ -77,7 +78,15 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Dat
       const result =
         toA._tag === "DatumHash"
           ? ([0n, toA.hash] as const) // Encode as [0, Bytes32]
-          : ([1n, { _tag: "Tag" as const, tag: 24 as const, value: PlutusData.toCBORBytes(toA.data) }] as const) // Encode as [1, tag(24, bytes)]
+          : ([
+              1n,
+              {
+                _tag: "Tag" as const,
+                tag: 24 as const,
+                // Write back the decoded bytes when present, so the datum keeps its original layout
+                value: OriginalBytes.get(toA) ?? PlutusData.toCBORBytes(toA.data)
+              }
+            ] as const) // Encode as [1, tag(24, bytes)]
       return yield* E.right(result)
     }),
   decode: ([tag, value], _, ast) =>
@@ -98,11 +107,14 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Dat
           )
         }
         return yield* E.right(
-          new InlineDatum.InlineDatum(
-            {
-              data: PlutusData.fromCBORBytes(taggedValue.value)
-            },
-            { disableValidation: true }
+          OriginalBytes.record(
+            new InlineDatum.InlineDatum(
+              {
+                data: PlutusData.fromCBORBytes(taggedValue.value)
+              },
+              { disableValidation: true }
+            ),
+            taggedValue.value
           )
         )
       }
