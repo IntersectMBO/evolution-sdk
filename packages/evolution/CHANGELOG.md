@@ -1,5 +1,13 @@
 # @evolution-sdk/evolution
 
+## 0.5.19
+
+### Patch Changes
+
+- [#603](https://github.com/IntersectMBO/evolution-sdk/pull/603) [`9008ebc`](https://github.com/IntersectMBO/evolution-sdk/commit/9008ebc135640d8d05cff896e298bb50635250a6) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Decoding then re-encoding a transaction now keeps each inline datum's original bytes, so adding witnesses to a decoded transaction keeps its transaction id. Previously the encoder rewrote an inline datum whose layout differed from the default, for example turning a definite map `a10102` into `bf0102ff`.
+
+- [#599](https://github.com/IntersectMBO/evolution-sdk/pull/599) [`b9d1d5e`](https://github.com/IntersectMBO/evolution-sdk/commit/b9d1d5ebee0c75d197fabb42ea0eea9e24e05f76) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `Redeemers.toScriptDataHash` now encodes datums with the codec options it is given. Before, it applied the options to the redeemers only and always wrote datums in the default Plutus data encoding. A hash requested with `CBOR.CANONICAL_OPTIONS` then did not match a witness set holding canonical datums, and the node rejected the transaction. Calls without options produce the same hashes as before.
+
 ## 0.5.18
 
 ### Patch Changes
