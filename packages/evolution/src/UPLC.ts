@@ -1507,14 +1507,15 @@ const encodeFlatToDoubleCbor = (bytes: Uint8Array): string => {
  * Create a UPLC Constant term from PlutusData.
  * The data is CBOR-encoded and stored as a constant of type Data.
  *
- * Uses Aiken-compatible encoding (indefinite-length arrays/maps) by default,
- * which matches the on-chain format. An optional `options` parameter allows
- * customizing the CBOR encoding for testing or compatibility purposes.
+ * Encodes with PLUTUS_DATA_OPTIONS by default: the node layout, with
+ * indefinite-length lists and constructor fields and definite-length maps.
+ * This matches Aiken `cbor.serialise()`. An optional `options` parameter
+ * allows customizing the CBOR encoding for testing or compatibility purposes.
  *
  * @since 2.0.0
  * @category constructors
  */
-export const dataConstant = (data: Data.Data, options: CBOR.CodecOptions = CBOR.AIKEN_DEFAULT_OPTIONS): Term => ({
+export const dataConstant = (data: Data.Data, options: CBOR.CodecOptions = CBOR.PLUTUS_DATA_OPTIONS): Term => ({
   type: "Constant",
   valueType: "Data",
   value: Data.toCBORBytes(data, options)
@@ -1527,8 +1528,11 @@ export const dataConstant = (data: Data.Data, options: CBOR.CodecOptions = CBOR.
  * the script body in a series of Application nodes, where each parameter is
  * converted to a UPLC Constant of type Data.
  *
- * Uses Aiken-compatible encoding (indefinite-length arrays/maps) by default.
- * Pass custom CBOR options for compatibility with other encoding formats.
+ * Encodes parameters with PLUTUS_DATA_OPTIONS by default: the node layout,
+ * with indefinite-length lists and constructor fields and definite-length
+ * maps. This matches `aiken blueprint apply`, so the applied script hash
+ * agrees. Pass custom CBOR options for compatibility with other encoding
+ * formats.
  *
  * @since 2.0.0
  * @category script
@@ -1536,7 +1540,7 @@ export const dataConstant = (data: Data.Data, options: CBOR.CodecOptions = CBOR.
 export const applyParamsToScript = (
   plutusScript: string,
   params: ReadonlyArray<Data.Data>,
-  options: CBOR.CodecOptions = CBOR.AIKEN_DEFAULT_OPTIONS
+  options: CBOR.CodecOptions = CBOR.PLUTUS_DATA_OPTIONS
 ): string => {
   // Decode the script to a UPLC Program
   const flatBytes = decodeDoubleCborHexToFlat(plutusScript)
