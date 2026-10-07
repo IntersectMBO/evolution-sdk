@@ -114,7 +114,7 @@ import { UPLC, Data } from "@evolution-sdk/evolution"
 // Create a data constant from PlutusData
 const term = UPLC.dataConstant(Data.int(42n))
 
-// With custom CBOR options (default is Aiken-compatible)
+// The default options match the node and Aiken (PLUTUS_DATA_OPTIONS)
 const aikenTerm = UPLC.dataConstant(
   Data.constr(0n, [Data.int(1n)]),
 )

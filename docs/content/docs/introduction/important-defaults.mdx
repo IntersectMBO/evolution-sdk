@@ -78,13 +78,13 @@ const tx2 = await template.build() // No contamination from tx1
 
 ### CBOR: Aiken-Compatible by Default
 
-`UPLC.applyParamsToScript()` uses Aiken-compatible CBOR encoding (indefinite-length arrays/maps) by default. If you're using a different Plutus toolchain, you may need different options.
+`UPLC.applyParamsToScript()` encodes parameters with `CBOR.PLUTUS_DATA_OPTIONS` by default: indefinite-length lists and constructor fields, definite-length maps. This is the layout the node, `cardano-cli`, and `aiken blueprint apply` use. If you're using a different Plutus toolchain, you may need different options.
 
 ```typescript
-// Default: Aiken encoding
+// Default: node layout, same as aiken blueprint apply
 UPLC.applyParamsToScript(script, params)
 
-// For CML-compatible encoding:
+// Indefinite lists and maps, like CML to_cardano_node_format() (map keys keep insertion order):
 UPLC.applyParamsToScript(script, params, CBOR.CML_DATA_DEFAULT_OPTIONS)
 ```
 
