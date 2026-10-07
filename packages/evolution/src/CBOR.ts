@@ -1522,21 +1522,16 @@ const encodeMapEntriesSync = (pairs: Array<[CBOR, CBOR]>, options: CodecOptions,
  */
 export const equals: (a: CBOR, b: CBOR) => boolean = Schema.equivalence(CBORSchema)
 
-/**
- * Look up a CBOR key in a Map, falling back to content-based comparison
- * for complex keys (Uint8Array, Array, Tag) where Map.get uses reference
- * equality which fails when the map was rebuilt with new objects.
- */
-const mapGetCBOR = (map: ReadonlyMap<CBOR, CBOR>, key: CBOR): CBOR | undefined => {
-  const direct = map.get(key)
-  if (direct !== undefined) return direct
-  // Primitives (bigint, string, boolean, null, number) match by value equality
-  // via Map.get; if that failed, the key genuinely doesn't exist
-  if (typeof key !== "object" || key === null) return undefined
-  for (const [k, v] of map) {
-    if (equals(key, k)) return v
+// A Plutus data byte string is a BoundedBytes node, but the same bytes decoded
+// from keyOrder are a plain Uint8Array, at any depth of the key
+const unwrapBoundedBytes = (value: CBOR): CBOR => {
+  if (BoundedBytes.is(value)) return value.bytes
+  if (Array.isArray(value)) return value.map(unwrapBoundedBytes)
+  if (value instanceof Map) {
+    return new Map(Array.from(value, ([k, v]): [CBOR, CBOR] => [unwrapBoundedBytes(k), unwrapBoundedBytes(v)]))
   }
-  return undefined
+  if (isTag(value)) return { _tag: "Tag", tag: value.tag, value: unwrapBoundedBytes(value.value) }
+  return value
 }
 
 const encodeMapSync = (value: ReadonlyMap<CBOR, CBOR>, options: CodecOptions, fmt?: CBORFormat): Uint8Array => {
@@ -1545,24 +1540,29 @@ const encodeMapSync = (value: ReadonlyMap<CBOR, CBOR>, options: CodecOptions, fm
   if (mapFmt?.keyOrder && mapFmt.keyOrder.length > 0) {
     const pairs: Array<[CBOR, CBOR]> = []
     const reorderedEntries: Array<readonly [CBORFormat, CBORFormat]> = []
-    const decodedKeyOrderKeys: Array<CBOR> = []
+    const entries = Array.from(value.entries())
+    const plainKeys = entries.map(([k]) => unwrapBoundedBytes(k))
+    const used = entries.map(() => false)
 
-    // First pass: replay surviving keyOrder keys
+    // First pass: replay surviving keyOrder keys. Each keyOrder key takes the
+    // first equal entry that no earlier keyOrder key took, so a repeated key
+    // keeps the value it had at that position
     for (let j = 0; j < mapFmt.keyOrder.length; j++) {
       const key = internalDecodeSync(mapFmt.keyOrder[j])
-      decodedKeyOrderKeys.push(key)
-      const mapped = mapGetCBOR(value, key)
-      if (mapped !== undefined) {
-        pairs.push([key, mapped])
+      let i = plainKeys.findIndex((k, n) => !used[n] && equals(key, k))
+      if (i === -1) i = plainKeys.findIndex((k) => equals(key, k))
+      if (i !== -1) {
+        used[i] = true
+        pairs.push([key, entries[i][1]])
         reorderedEntries.push(mapFmt.entries[j] ?? [{ _tag: "simple" }, { _tag: "simple" }])
       }
       // Key missing from map: simply skip (key was removed)
     }
 
     // Second pass: append new keys not covered by keyOrder
-    for (const [key, val] of value) {
-      if (!decodedKeyOrderKeys.some((k) => equals(key, k))) {
-        pairs.push([key, val])
+    for (let n = 0; n < entries.length; n++) {
+      if (!used[n]) {
+        pairs.push(entries[n])
         reorderedEntries.push([{ _tag: "simple" }, { _tag: "simple" }])
       }
     }
