@@ -1,6 +1,8 @@
+import { blake2b } from "@noble/hashes/blake2.js"
 import { FastCheck, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
+import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as Data from "../src/Data.js"
 import { PlutusV2 } from "../src/PlutusV2.js"
@@ -298,7 +300,7 @@ describe("UPLC Module", () => {
     const helloParam =
       "58b00100003232323232322322322232253330093232533300b3371e6eb8c008c034dd500280388008a5032330010013758601e60206020602060206020602060206020601a6ea8c008c034dd50019129998078008a50132533300d3371e6eb8c04400802c5288998018018009808800918070008a4c26caca66600e66e1d20003008375400226464a666018601c0042930b1bae300c001300937540022c6eb8004dd7000ab9a5573aaae7955cfaba157441"
 
-    // Expected result from lucid-evolution (single CBOR encoded, uses CARDANO_NODE_DATA_OPTIONS encoding)
+    // Expected result from lucid-evolution (single CBOR encoded, definite-length data encoding)
     const helloAppliedValid =
       "58e5010000333232323232322322322232253330093232533300b3371e6eb8c008c034dd500280388008a5032330010013758601e60206020602060206020602060206020601a6ea8c008c034dd50019129998078008a50132533300d3371e6eb8c04400802c5288998018018009808800918070008a4c26caca66600e66e1d20003008375400226464a666018601c0042930b1bae300c001300937540022c6eb8004dd7000ab9a5573aaae7955cfaba157449811e581ce6849315a2984aadcd1e42d9628f6d6cc071685bef02bb52502f86c9004c010e4d48656c6c6f2c20576f726c64210001"
 
@@ -313,7 +315,7 @@ describe("UPLC Module", () => {
           // msg: "Hello, World!" as hex
           Data.bytearray("48656c6c6f2c20576f726c6421")
         ],
-        CBOR.CARDANO_NODE_DATA_OPTIONS // Use definite-length encoding to match lucid-evolution
+        CBOR.CML_DATA_DEFINITE_OPTIONS // Use definite-length encoding to match lucid-evolution
       )
 
       // Strip one CBOR layer to get single-encoded result for comparison
@@ -325,7 +327,7 @@ describe("UPLC Module", () => {
     })
 
     it("should apply byte array parameters to script", () => {
-      // Default uses AIKEN_DEFAULT_OPTIONS (indefinite-length) which is the on-chain format
+      // Default uses PLUTUS_DATA_OPTIONS (the node layout, same as aiken blueprint apply)
       const helloApplied = UPLC.applyParamsToScript(UPLC.applyDoubleCborEncoding(helloParam), [
         Data.bytearray("e6849315a2984aadcd1e42d9628f6d6cc071685bef02bb52502f86c9"),
         Data.bytearray("48656c6c6f2c20576f726c6421")
@@ -353,21 +355,70 @@ describe("UPLC Module", () => {
       expect(roundtripped).toBe(helloApplied)
     })
 
-    it("should produce byte-exact output with CARDANO_NODE_DATA_OPTIONS", () => {
-      // Use CARDANO_NODE_DATA_OPTIONS to match lucid-evolution's expected output exactly
+    it("should produce byte-exact output with CML_DATA_DEFINITE_OPTIONS", () => {
+      // Use CML_DATA_DEFINITE_OPTIONS to match lucid-evolution's expected output exactly
       const helloApplied = UPLC.applyParamsToScript(
         UPLC.applyDoubleCborEncoding(helloParam),
         [
           Data.bytearray("e6849315a2984aadcd1e42d9628f6d6cc071685bef02bb52502f86c9"),
           Data.bytearray("48656c6c6f2c20576f726c6421")
         ],
-        CBOR.CARDANO_NODE_DATA_OPTIONS
+        CBOR.CML_DATA_DEFINITE_OPTIONS
       )
 
       // Verify it decodes correctly
       const decoded = UPLC.fromDoubleCborEncodedHex(helloApplied)
       expect(decoded.version).toBe("1.0.0")
       expect(decoded.body.type).toBe("Apply")
+    })
+
+    describe("map parameter matches aiken blueprint apply", () => {
+      // Produced with Aiken v1.1.24 from this validator:
+      //
+      //   validator limits(table: Pairs<ByteArray, Int>) {
+      //     spend(_d: Option<Data>, _r: Data, _o: Data, _t: Data) {
+      //       when table is {
+      //         [Pair(_k, v), ..] -> v > 0
+      //         [] -> False
+      //       }
+      //     }
+      //     else(_) { fail }
+      //   }
+      //
+      // limitsUnapplied is the compiledCode from `aiken build`. limitsAikenApplied
+      // is the compiledCode from `aiken blueprint apply` with the parameter
+      // a1410105 (Pairs [Pair(#"01", 5)]). Its script hash, blake2b-224 of
+      // 0x03 || compiledCode, is 1bb0e306732e07ca5495991af8b47a14e2bda09eb2235d1c264c6354.
+      const limitsUnapplied =
+        "5876010100229800aba2aba1aab9faab9eaab9dab9a9bab002488888896600264653001300800198041804800cc0200092225980099b8748008c020dd500144c8cc896600201314a113371090001bad300c300e009403460180026018601a00260126ea800a2c8038601000260086ea802229344d9590021"
+      const limitsAikenApplied =
+        "587f0101003229800aba2aba1aab9faab9eaab9dab9a9bab002488888896600264653001300800198041804800cc0200092225980099b8748008c020dd500144c8cc896600201314a113371090001bad300c300e009403460180026018601a00260126ea800a2c8038601000260086ea802229344d959002130104a14101050001"
+      const limitsAikenHash = "1bb0e306732e07ca5495991af8b47a14e2bda09eb2235d1c264c6354"
+
+      const applyLimits = () =>
+        UPLC.applyParamsToScript(UPLC.applyDoubleCborEncoding(limitsUnapplied), [
+          Data.map([[Bytes.fromHex("01"), 5n]])
+        ])
+
+      // applyParamsToScript returns double CBOR; strip one byte-string layer to
+      // get the compiledCode form that aiken writes.
+      const unwrapOnce = (hex: string): string => {
+        const inner = CBOR.fromCBORHex(hex)
+        if (!(inner instanceof Uint8Array)) throw new Error("expected a CBOR byte string")
+        return Bytes.toHex(inner)
+      }
+
+      it("default options produce the aiken applied script byte for byte", () => {
+        expect(unwrapOnce(applyLimits())).toBe(limitsAikenApplied)
+      })
+
+      it("default options produce the aiken script hash", () => {
+        const compiledCode = Bytes.fromHex(unwrapOnce(applyLimits()))
+        const preimage = new Uint8Array(compiledCode.length + 1)
+        preimage[0] = 0x03
+        preimage.set(compiledCode, 1)
+        expect(Bytes.toHex(blake2b(preimage, { dkLen: 28 }))).toBe(limitsAikenHash)
+      })
     })
 
     it("should handle double CBOR encoding", () => {

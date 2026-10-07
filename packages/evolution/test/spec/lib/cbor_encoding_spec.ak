@@ -45,7 +45,8 @@ test encode_bytearray_long() {
 // ============================================================================
 
 test encode_list_empty() {
-  cbor.serialise([]) == #"80"
+  let empty: List<Int> = []
+  cbor.serialise(empty) == #"80"
 }
 
 test encode_list_single() {
@@ -83,27 +84,41 @@ test encode_nested_pairs() {
 }
 
 // ============================================================================
-// Maps (Dictionaries)
+// Lists of Tuples
 // ============================================================================
 
-test encode_map_empty() {
-  // Empty list of pairs encodes as empty array
-  let pairs: List<(Int, ByteArray)> = []
-  cbor.serialise(pairs) == #"80"
+test encode_tuples_empty() {
+  // An empty list of tuples encodes as an empty array
+  let tuples: List<(Int, ByteArray)> = []
+  cbor.serialise(tuples) == #"80"
 }
 
-test encode_map_single_entry() {
-  // Aiken encodes maps as indefinite arrays of indefinite pairs
+test encode_tuples_single_entry() {
+  // A list of tuples is a list of lists: indefinite arrays of indefinite arrays
   cbor.serialise([(1, #"ff")]) == #"9f9f0141ffffff"
 }
 
-test encode_map_multiple_entries() {
-  // Maps in Aiken are represented as lists of pairs
+test encode_tuples_multiple_entries() {
   cbor.serialise([(#"01", 1), (#"02", 2), (#"03", 3)]) == #"9f9f410101ff9f410202ff9f410303ffff"
 }
 
-test encode_map_int_keys() {
+test encode_tuples_int_keys() {
   cbor.serialise([(1, 100), (2, 200)]) == #"9f9f011864ff9f0218c8ffff"
+}
+
+// ============================================================================
+// Pairs (Maps)
+// ============================================================================
+
+test encode_pairs_single() {
+  // Pairs encode as a definite-length CBOR map
+  let pairs: Pairs<Int, ByteArray> = [Pair(1, #"ff")]
+  cbor.serialise(pairs) == #"a10141ff"
+}
+
+test encode_pairs_empty() {
+  let pairs: Pairs<Int, ByteArray> = []
+  cbor.serialise(pairs) == #"a0"
 }
 
 // ============================================================================
@@ -215,12 +230,12 @@ test encode_option_of_list() {
   cbor.serialise(Some([1, 2, 3])) == #"d8799f9f010203ffff"
 }
 
-test encode_map_with_option_values() {
+test encode_tuples_with_option_values() {
   cbor.serialise([(1, Some(100)), (2, None)]) == #"9f9f01d8799f1864ffff9f02d87a80ffff"
 }
 
-test encode_map_nested_as_value() {
-  // Map containing another map as value (list of pairs as value)
+test encode_tuples_nested_as_value() {
+  // List of tuples with another list of tuples as a value
   cbor.serialise([(1, [(2, 3)])]) == #"9f9f019f9f0203ffffffff"
 }
 

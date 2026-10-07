@@ -168,6 +168,13 @@ export type CodecOptions =
   | {
       readonly mode: "canonical"
       readonly mapsAsObjects?: boolean
+      /**
+       * Encode every map as an array of `[key, value]` pairs.
+       *
+       * @deprecated This turns a map into a list, which is a different value
+       * with a different hash. No Plutus data encoder writes maps this way, and
+       * no option replaces it: leave it unset so maps stay maps.
+       */
       readonly encodeMapAsPairs?: boolean
     }
   | {
@@ -178,6 +185,13 @@ export type CodecOptions =
       readonly sortMapKeys: boolean
       readonly useMinimalEncoding: boolean
       readonly mapsAsObjects?: boolean
+      /**
+       * Encode every map as an array of `[key, value]` pairs.
+       *
+       * @deprecated This turns a map into a list, which is a different value
+       * with a different hash. No Plutus data encoder writes maps this way, and
+       * no option replaces it: leave it unset so maps stay maps.
+       */
       readonly encodeMapAsPairs?: boolean
     }
 
@@ -208,11 +222,46 @@ export const CML_DEFAULT_OPTIONS: CodecOptions = {
 } as const
 
 /**
- * Default CBOR encoding options for PlutusData.
+ * CBOR encoding options for PlutusData in the layout the Cardano node writes.
  *
- * Uses indefinite-length arrays and maps. The `bounded_bytes` constraint
- * (Conway CDDL: byte strings ≤ 64 bytes) is enforced at the data-type layer
- * via the `BoundedBytes` CBOR node, independent of these codec options.
+ * - Non-empty lists and constructor fields: indefinite-length (`9f...ff`)
+ * - Maps: definite-length
+ * - Empty list: `80`; empty map: `a0`
+ *
+ * This matches `encodeData` in the Haskell `PlutusCore.Data` module,
+ * `cardano-cli hash-script-data`, Aiken `cbor.serialise()`, and
+ * `aiken blueprint apply`. Two cases still differ from the node: a
+ * constructor index above 127 (tag 102) writes its `[index, fields]` pair
+ * indefinite where the node writes `82`, and the integer -2^64 is written as a
+ * negative bignum where the node writes `3bffffffffffffffff`. The
+ * `bounded_bytes` constraint (Conway CDDL: byte strings of at most 64 bytes)
+ * is enforced at the data-type layer via the `BoundedBytes` CBOR node,
+ * independent of these codec options.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const PLUTUS_DATA_OPTIONS: CodecOptions = {
+  mode: "custom",
+  useIndefiniteArrays: true,
+  useIndefiniteMaps: false,
+  useDefiniteForEmpty: true,
+  sortMapKeys: false,
+  useMinimalEncoding: true,
+  mapsAsObjects: false
+} as const
+
+/**
+ * CBOR encoding options for PlutusData matching CML
+ * `PlutusData.to_cardano_node_format()`, except that CML also sorts map keys
+ * and this preset keeps insertion order. This is the current default for
+ * `Data` encoding.
+ *
+ * Uses indefinite-length lists, constructor fields, and maps. It differs from
+ * the node layout ({@link PLUTUS_DATA_OPTIONS}) by writing non-empty maps
+ * indefinite. The `bounded_bytes` constraint (Conway CDDL: byte strings of at
+ * most 64 bytes) is enforced at the data-type layer via the `BoundedBytes`
+ * CBOR node, independent of these codec options.
  *
  * @since 1.0.0
  * @category constants
@@ -228,30 +277,18 @@ export const CML_DATA_DEFAULT_OPTIONS: CodecOptions = {
 } as const
 
 /**
- * Aiken-compatible CBOR encoding options.
+ * Aiken `cbor.serialise()` encoding options. Same object as
+ * {@link PLUTUS_DATA_OPTIONS}.
  *
- * Matches the encoding produced by `cbor.serialise()` in Aiken:
- * - Indefinite-length arrays (`9f...ff`)
- * - Maps encoded as arrays of pairs (not CBOR maps)
- * - Strings as byte arrays (major type 2, not 3)
- * - Constructor tags: 121–127 for indices 0–6, then 1280+ for 7+
+ * Aiken writes data in the node layout: non-empty lists and constructor
+ * fields indefinite, `Pairs` as definite maps. Tuples are lists, so they
+ * encode as indefinite arrays.
  *
- * PlutusData byte strings are chunked per the Conway `bounded_bytes` rule
- * via the `BoundedBytes` CBOR node, independent of these codec options.
- *
+ * @deprecated Use {@link PLUTUS_DATA_OPTIONS}.
  * @since 2.0.0
  * @category constants
  */
-export const AIKEN_DEFAULT_OPTIONS: CodecOptions = {
-  mode: "custom",
-  useIndefiniteArrays: true,
-  useIndefiniteMaps: true,
-  useDefiniteForEmpty: false,
-  sortMapKeys: false,
-  useMinimalEncoding: true,
-  mapsAsObjects: false,
-  encodeMapAsPairs: true
-} as const
+export const AIKEN_DEFAULT_OPTIONS: CodecOptions = PLUTUS_DATA_OPTIONS
 
 /**
  * CBOR encoding options that return objects instead of Maps for Schema.Struct compatibility
@@ -270,19 +307,17 @@ export const STRUCT_FRIENDLY_OPTIONS: CodecOptions = {
 } as const
 
 /**
- * Cardano Node compatible CBOR encoding options for PlutusData
+ * CBOR encoding options for PlutusData matching CML `PlutusData.to_cbor_hex()`
+ * on freshly built data.
  *
- * Uses definite-length encoding for arrays and maps, matching the format
- * produced by CML's `to_cardano_node_format().to_cbor_hex()`.
- *
- * Note: The on-chain format uses indefinite-length (AIKEN_DEFAULT_OPTIONS),
- * but this option is useful for testing compatibility with tools that
- * expect definite-length encoding.
+ * Uses definite-length lists, constructor fields, and maps. It differs from
+ * the node layout ({@link PLUTUS_DATA_OPTIONS}) by writing lists and
+ * constructor fields definite.
  *
  * @since 2.0.0
  * @category constants
  */
-export const CARDANO_NODE_DATA_OPTIONS: CodecOptions = {
+export const CML_DATA_DEFINITE_OPTIONS: CodecOptions = {
   mode: "custom",
   useIndefiniteArrays: false,
   useIndefiniteMaps: false,
@@ -291,6 +326,19 @@ export const CARDANO_NODE_DATA_OPTIONS: CodecOptions = {
   useMinimalEncoding: true,
   mapsAsObjects: false
 } as const
+
+/**
+ * Definite-length PlutusData encoding options. Same object as
+ * {@link CML_DATA_DEFINITE_OPTIONS}.
+ *
+ * The name is wrong: the Cardano node writes non-empty lists and constructor
+ * fields indefinite. For the node layout use {@link PLUTUS_DATA_OPTIONS}.
+ *
+ * @deprecated Use {@link CML_DATA_DEFINITE_OPTIONS}.
+ * @since 2.0.0
+ * @category constants
+ */
+export const CARDANO_NODE_DATA_OPTIONS: CodecOptions = CML_DATA_DEFINITE_OPTIONS
 
 const DEFAULT_OPTIONS: CodecOptions = {
   mode: "custom",
@@ -1362,7 +1410,7 @@ const encodeMapEntriesSync = (pairs: Array<[CBOR, CBOR]>, options: CodecOptions,
   const encodeAsPairs =
     !mapFmt && (options.mode === "canonical" || options.mode === "custom") && options.encodeMapAsPairs === true
 
-  // If encoding as array of pairs (Aiken/Plutus style), delegate to array encoding
+  // If encoding as array of pairs (deprecated encodeMapAsPairs), delegate to array encoding
   if (encodeAsPairs) {
     const pairArrays = pairs.map(([k, v]) => [k, v] as CBOR)
     return encodeArraySync(pairArrays, options)

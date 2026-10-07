@@ -112,39 +112,50 @@ describe("Aiken CBOR Encoding Compatibility", () => {
     expect(encoded).toBe("9f9f0102ff9f0304ffff")
   })
 
-  // Test #16: encode_map_empty
-  it("encode_map_empty: should encode empty map", () => {
-    const value = Data.map([])
+  // Test #16: encode_tuples_empty
+  it("encode_tuples_empty: should encode empty list of tuples", () => {
+    const value = Data.list([])
     const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
     expect(encoded).toBe("80")
   })
 
-  // Test #17: encode_map_single_entry
-  it("encode_map_single_entry: should encode single entry map", () => {
-    const value = Data.map([[1n, Bytes.fromHex("ff")]])
+  // Test #17: encode_tuples_single_entry
+  it("encode_tuples_single_entry: should encode [(1, #ff)] as a list of lists", () => {
+    const value = Data.list([Data.list([1n, Bytes.fromHex("ff")])])
     const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
     expect(encoded).toBe("9f9f0141ffffff")
   })
 
-  // Test #18: encode_map_multiple_entries
-  it("encode_map_multiple_entries: should encode map with multiple entries", () => {
-    const value = Data.map([
-      [Bytes.fromHex("01"), 1n],
-      [Bytes.fromHex("02"), 2n],
-      [Bytes.fromHex("03"), 3n]
+  // Test #18: encode_tuples_multiple_entries
+  it("encode_tuples_multiple_entries: should encode list of tuples with multiple entries", () => {
+    const value = Data.list([
+      Data.list([Bytes.fromHex("01"), 1n]),
+      Data.list([Bytes.fromHex("02"), 2n]),
+      Data.list([Bytes.fromHex("03"), 3n])
     ])
     const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
     expect(encoded).toBe("9f9f410101ff9f410202ff9f410303ffff")
   })
 
-  // Test #19: encode_map_int_keys
-  it("encode_map_int_keys: should encode map with int keys", () => {
-    const value = Data.map([
-      [1n, 100n],
-      [2n, 200n]
-    ])
+  // Test #19: encode_tuples_int_keys
+  it("encode_tuples_int_keys: should encode list of tuples with int keys", () => {
+    const value = Data.list([Data.list([1n, 100n]), Data.list([2n, 200n])])
     const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
     expect(encoded).toBe("9f9f011864ff9f0218c8ffff")
+  })
+
+  // encode_pairs_single: Aiken Pairs encode as a definite-length CBOR map
+  it("encode_pairs_single: should encode [Pair(1, #ff)] as a definite map", () => {
+    const value = Data.map([[1n, Bytes.fromHex("ff")]])
+    const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
+    expect(encoded).toBe("a10141ff")
+  })
+
+  // encode_pairs_empty
+  it("encode_pairs_empty: should encode empty Pairs as an empty map", () => {
+    const value = Data.map([])
+    const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
+    expect(encoded).toBe("a0")
   })
 
   // Test #20: encode_option_some
@@ -326,23 +337,20 @@ describe("Aiken CBOR Encoding Compatibility", () => {
     expect(encoded).toBe("d8799f9f010203ffff")
   })
 
-  // Test #35: encode_map_with_option_values
-  it("encode_map_with_option_values: should encode map with option values", () => {
+  // Test #35: encode_tuples_with_option_values
+  it("encode_tuples_with_option_values: should encode list of tuples with option values", () => {
     const OptionInt = TSchema.UndefinedOr(TSchema.Integer)
     const some100 = Data.withSchema(OptionInt).toData(100n)
     const none = Data.withSchema(OptionInt).toData(undefined)
-    const value = Data.map([
-      [1n, some100],
-      [2n, none]
-    ])
+    const value = Data.list([Data.list([1n, some100]), Data.list([2n, none])])
     const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
     expect(encoded).toBe("9f9f01d8799f1864ffff9f02d87a80ffff")
   })
 
-  // Test #36: encode_map_nested_as_value
-  it("encode_map_nested_as_value: should encode map with nested map value", () => {
-    const innerMap = Data.map([[2n, 3n]])
-    const value = Data.map([[1n, innerMap]])
+  // Test #36: encode_tuples_nested_as_value
+  it("encode_tuples_nested_as_value: should encode list of tuples with a nested list of tuples", () => {
+    const inner = Data.list([Data.list([2n, 3n])])
+    const value = Data.list([Data.list([1n, inner])])
     const encoded = Data.toCBORHex(value, CBOR.AIKEN_DEFAULT_OPTIONS)
     expect(encoded).toBe("9f9f019f9f0203ffffffff")
   })

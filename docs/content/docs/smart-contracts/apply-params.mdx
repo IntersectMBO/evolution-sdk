@@ -122,19 +122,19 @@ await signed.submit()
 
 ## CBOR Encoding Options
 
-By default, `applyParamsToScript` uses Aiken-compatible encoding (indefinite-length arrays and maps). If your script was compiled with a different tool, you can pass a different CBOR preset:
+By default, `applyParamsToScript` uses `CBOR.PLUTUS_DATA_OPTIONS`: indefinite-length lists and constructor fields, definite-length maps, the same bytes as `aiken blueprint apply`. If your script was compiled with a different tool, you can pass a different CBOR preset:
 
 ```typescript twoslash
 import { CBOR, Data, UPLC } from "@evolution-sdk/evolution"
 
 declare const compiledScript: string
 
-// With default Aiken encoding (indefinite-length arrays/maps)
+// With the default node layout (same as aiken blueprint apply)
 const applied = UPLC.applyParamsToScript(compiledScript, [
   Data.int(42n),
 ])
 
-// With CML-compatible encoding (definite-length)
+// With indefinite lists and maps, like CML to_cardano_node_format() (map keys keep insertion order)
 const appliedCml = UPLC.applyParamsToScript(
   compiledScript,
   [Data.int(42n)],
