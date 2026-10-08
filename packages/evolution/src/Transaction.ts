@@ -1,6 +1,7 @@
 import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AuxiliaryData from "./AuxiliaryData.js"
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as TransactionBody from "./TransactionBody.js"
 import * as TransactionWitnessSet from "./TransactionWitnessSet.js"
@@ -96,20 +97,56 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
     })
 })
 
+// An array of encoded items, definite or indefinite as `options` writes an array
+const encodeArray = (items: ReadonlyArray<Uint8Array>, options: CBOR.CodecOptions): Uint8Array =>
+  options.mode === "custom" && options.useIndefiniteArrays && items.length > 0
+    ? CBOR.encodeArrayAsIndefinite(items)
+    : CBOR.encodeArrayAsDefinite(items)
+
 /**
- * CBOR bytes transformation schema for Transaction.
+ * CBOR bytes transformation schema for Transaction. The witness set is
+ * written as `TransactionWitnessSet.FromCBORBytes(options)` writes it, the
+ * rest with the `ledger` options. Plain options are read as
+ * `CBOR.toTxCodecOptions` reads them.
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const txOptions = CBOR.toTxCodecOptions(options)
+  const { ledger } = txOptions
+  return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(Transaction), {
+    strict: true,
+    decode: (bytes, parseOptions) =>
+      ParseResult.decode(Schema.compose(CBOR.FromBytes(ledger), FromCDDL))(bytes, parseOptions),
+    encode: (tx, parseOptions, ast) =>
+      Eff.flatMap(ParseResult.encode(FromCDDL)(tx, parseOptions), (tuple) =>
+        ParseResult.try({
+          // The witness set writes its Plutus data with their own options, so
+          // the tuple is joined from its encoded items
+          try: () =>
+            encodeArray(
+              tuple.map((item, i) =>
+                i === 1 ? TransactionWitnessSet.toCBORBytes(tx.witnessSet, txOptions) : CBOR.toCBORBytes(item, ledger)
+              ),
+              ledger
+            ),
+          catch: (error) =>
+            new ParseResult.Type(
+              ast,
+              tx,
+              `Failed to encode CBOR value: ${error instanceof Error ? error.message : String(error)}`
+            )
+        })
+      )
+  }).annotations({
     identifier: "Transaction.FromCBORBytes",
     description: "Decode Transaction from CBOR bytes per Conway CDDL"
   })
+}
 
 /**
- * CBOR hex transformation schema for Transaction.
+ * CBOR hex transformation schema for Transaction, as in {@link FromCBORBytes}.
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCDDL).annotations({
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
+  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
     identifier: "Transaction.FromCBORHex",
     description: "Decode Transaction from CBOR hex per Conway CDDL"
   })
@@ -129,12 +166,16 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  */
 const formatCache = new WeakMap<Transaction, CBOR.CBORFormat>()
 
+// `CBOR.CML_DEFAULT_OPTIONS` passed explicitly acts as the default
+const isDefault = (options: CBOR.TxCodecOptions | CBOR.CodecOptions): boolean =>
+  options === CBOR.TX_DEFAULT_OPTIONS || options === CBOR.CML_DEFAULT_OPTIONS
+
 export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Transaction => {
   // When caller passes non-default codec options, honor them via the legacy
   // decode path and skip format caching — custom options typically imply the
   // caller wants re-canonicalization, which is incompatible with preserving
   // the original encoding.
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+  if (!isDefault(options)) {
     return Schema.decodeSync(FromCBORBytes(options))(bytes)
   }
   const { format, value } = fromCBORBytesWithFormat(bytes)
@@ -143,7 +184,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
 }
 
 export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Transaction => {
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+  if (!isDefault(options)) {
     return Schema.decodeSync(FromCBORHex(options))(hex)
   }
   const { format, value } = fromCBORHexWithFormat(hex)
@@ -183,10 +224,13 @@ export const fromCBORHexWithFormat = (
   return { value, format: decoded.format }
 }
 
-export const toCBORBytes = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array => {
+export const toCBORBytes = (
+  data: Transaction,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+): Uint8Array => {
   // Non-default options signal an explicit re-encode request — bypass the
   // cached format so the caller's options actually take effect.
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+  if (!isDefault(options)) {
     return Schema.encodeSync(FromCBORBytes(options))(data)
   }
   const cached = formatCache.get(data)
@@ -194,8 +238,8 @@ export const toCBORBytes = (data: Transaction, options: CBOR.CodecOptions = CBOR
   return Schema.encodeSync(FromCBORBytes(options))(data)
 }
 
-export const toCBORHex = (data: Transaction, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string => {
-  if (options !== CBOR.CML_DEFAULT_OPTIONS) {
+export const toCBORHex = (data: Transaction, options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS): string => {
+  if (!isDefault(options)) {
     return Schema.encodeSync(FromCBORHex(options))(data)
   }
   const cached = formatCache.get(data)
@@ -206,6 +250,9 @@ export const toCBORHex = (data: Transaction, options: CBOR.CodecOptions = CBOR.C
 /**
  * Convert a Transaction to CBOR bytes using an explicit root format tree.
  *
+ * The witness set is written as `TransactionWitnessSet.toCBORBytesWithFormat`
+ * writes it.
+ *
  * @since 2.0.0
  * @category encoding
  */
@@ -214,22 +261,31 @@ export const toCBORBytesWithFormat = (
   format: CBOR.CBORFormat
 ): Uint8Array => {
   const cborTuple = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORBytesWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+  if ((data.witnessSet.plutusData ?? []).length === 0 && (data.witnessSet.redeemers?.size ?? 0) === 0) {
+    return CBOR.toCBORBytesWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+  }
+  // The witness set's bytes, decoded with their format, replay exactly in
+  // the tuple. A part the format does not cover is written with the defaults.
+  const arrayFormat: CBOR.CBORFormat.Array = format._tag === "array" ? format : { _tag: "array", children: [] }
+  const [bodyFormat = { _tag: "simple" }, witnessSetFormat = { _tag: "simple" }, ...rest] = arrayFormat.children
+  const witnessSet = CBOR.fromCBORBytesWithFormat(
+    TransactionWitnessSet.toCBORBytesWithFormat(data.witnessSet, witnessSetFormat)
+  )
+  return CBOR.toCBORBytesWithFormat([cborTuple[0], witnessSet.value, ...cborTuple.slice(2)], {
+    ...arrayFormat,
+    children: [bodyFormat, witnessSet.format, ...rest]
+  })
 }
 
 /**
- * Convert a Transaction to CBOR hex string using an explicit root format tree.
+ * Convert a Transaction to CBOR hex string using an explicit root format tree,
+ * as in {@link toCBORBytesWithFormat}.
  *
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHexWithFormat = (
-  data: Transaction,
-  format: CBOR.CBORFormat
-): string => {
-  const cborTuple = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORHexWithFormat(cborTuple as unknown as CBOR.CBOR, format)
-}
+export const toCBORHexWithFormat = (data: Transaction, format: CBOR.CBORFormat): string =>
+  Bytes.toHex(toCBORBytesWithFormat(data, format))
 
 // ============================================================================
 // Witness merging via WithFormat round-trip

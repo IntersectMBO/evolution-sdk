@@ -340,6 +340,67 @@ export const CML_DATA_DEFINITE_OPTIONS: CodecOptions = {
  */
 export const CARDANO_NODE_DATA_OPTIONS: CodecOptions = CML_DATA_DEFINITE_OPTIONS
 
+/**
+ * CBOR options for a transaction and the structures in it.
+ *
+ * - `ledger`: the options for ledger structures: the body, the witness set,
+ *   and the containers that hold datums and redeemers.
+ * - `plutusData`: the options for Plutus data items: witness datums and
+ *   redeemer data.
+ *
+ * @since 2.0.0
+ * @category model
+ */
+export type TxCodecOptions = {
+  readonly ledger: CodecOptions
+  readonly plutusData: CodecOptions
+}
+
+/**
+ * Default options for a transaction.
+ *
+ * - `ledger` is {@link CML_DEFAULT_OPTIONS}, CML's transaction encoding: map
+ *   keys in insertion order, definite lengths.
+ * - `plutusData` is {@link CML_DATA_DEFAULT_OPTIONS}, the current `Data`
+ *   default.
+ *
+ * It does not match cardano-cli, which sorts map keys and writes indefinite
+ * lengths above 23 entries.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const TX_DEFAULT_OPTIONS: TxCodecOptions = {
+  ledger: CML_DEFAULT_OPTIONS,
+  plutusData: CML_DATA_DEFAULT_OPTIONS
+}
+
+/**
+ * Canonical options for a transaction: {@link CANONICAL_OPTIONS} for both
+ * ledger structures and Plutus data.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const TX_CANONICAL_OPTIONS: TxCodecOptions = {
+  ledger: CANONICAL_OPTIONS,
+  plutusData: CANONICAL_OPTIONS
+}
+
+/**
+ * Turns plain options into transaction options: `ledger` is the options and
+ * `plutusData` is the options too, except that {@link CML_DEFAULT_OPTIONS}
+ * gives {@link CML_DATA_DEFAULT_OPTIONS}, as {@link TX_DEFAULT_OPTIONS} does.
+ * Transaction options are returned as they are.
+ *
+ * @since 2.0.0
+ * @category transformation
+ */
+export const toTxCodecOptions = (options: TxCodecOptions | CodecOptions): TxCodecOptions =>
+  "ledger" in options
+    ? options
+    : { ledger: options, plutusData: options === CML_DEFAULT_OPTIONS ? CML_DATA_DEFAULT_OPTIONS : options }
+
 const DEFAULT_OPTIONS: CodecOptions = {
   mode: "custom",
   useIndefiniteArrays: false,
