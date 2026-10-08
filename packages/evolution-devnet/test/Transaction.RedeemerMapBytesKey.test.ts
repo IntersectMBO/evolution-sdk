@@ -129,10 +129,11 @@ describe("Redeemer map with byte-string key (Devnet Submit)", () => {
     const scriptUtxos = await client.getUtxos(scriptAddress)
     expect(scriptUtxos.length).toBe(1)
 
-    // The builder writes {h'01': [100, 2]} with a definite list (a1 41 01 82 1864 02).
-    // It is rewritten as {h'01': [1, 2]} with an indefinite list (a1 41 01 9f 01 02 ff),
-    // the same length, so the fee still covers it. The script ignores the redeemer.
-    const builtRedeemerData = "a14101821864" + "02"
+    // The builder writes {h'01': [100, 2]} in the data default, an indefinite map and
+    // list (bf 41 01 9f 1864 02 ff ff). It is rewritten as {h'01': [1, 2]} with a
+    // definite map and an indefinite list (a1 41 01 9f 01 02 ff), which is shorter,
+    // so the fee still covers it. The script ignores the redeemer.
+    const builtRedeemerData = "bf41019f186402ffff"
     const redeemerData = "a141019f0102ff"
     const signBuilder = await client
       .newTx()
