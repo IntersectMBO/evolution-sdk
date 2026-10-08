@@ -1,6 +1,7 @@
 import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as Bootstrap from "./BootstrapWitness.js"
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as PlutusData from "./Data.js"
 import * as Ed25519Signature from "./Ed25519Signature.js"
@@ -524,14 +525,115 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Tra
     })
 })
 
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
+// The CBOR encoder writes a whole tree with one set of options, so a witness
+// set that holds Plutus data is joined from bytes: its datums and redeemer
+// data with the `plutusData` options, the rest with the `ledger` options.
+const encodeRecord = (
+  data: TransactionWitnessSet,
+  record: Map<bigint, CBOR.CBOR>,
+  options: CBOR.TxCodecOptions
+): Uint8Array => {
+  const { plutusData = [], redeemers } = data
+  const { ledger } = options
+  if (!holdsPlutusData(data)) return CBOR.toCBORBytes(record, ledger)
+  const entries = Array.from(record, ([key, value]) => [
+    CBOR.toCBORBytes(key, ledger),
+    key === 4n
+      ? encodeDatumSet(plutusData, options)
+      : key === 5n && redeemers !== undefined
+        ? redeemers._tag === "RedeemerMap"
+          ? Redeemers.toCBORBytesMap(redeemers, options)
+          : Redeemers.toCBORBytes(redeemers, options)
+        : CBOR.toCBORBytes(value, ledger)
+  ])
+  if (ledger.encodeMapAsPairs === true) {
+    return encodeArray(
+      entries.map((entry) => encodeArray(entry, ledger)),
+      ledger
+    )
+  }
+  // The keys 0 to 7 are in ascending order, which is also their sorted order
+  const items = entries.map(([key, value]) => concatBytes(key, value))
+  const bytes =
+    ledger.mode === "custom" && ledger.useIndefiniteMaps
+      ? CBOR.encodeArrayAsIndefinite(items)
+      : CBOR.encodeArrayAsDefinite(items)
+  // A map header is the array header of its entries with major type 5 for 4
+  bytes[0] += 0x20
+  return bytes
+}
+
+const holdsPlutusData = (data: TransactionWitnessSet): boolean =>
+  (data.plutusData ?? []).length > 0 || (data.redeemers?.size ?? 0) > 0
+
+// Tag 258 over the datums, each written with the `plutusData` options
+const encodeDatumSet = (datums: ReadonlyArray<PlutusData.Data>, options: CBOR.TxCodecOptions): Uint8Array =>
+  CBOR.encodeTaggedValue(
+    258,
+    encodeArray(
+      datums.map((datum) => PlutusData.toCBORBytes(datum, options.plutusData)),
+      options.ledger
+    )
+  )
+
+// An array of encoded items, definite or indefinite as `options` writes an array
+const encodeArray = (items: ReadonlyArray<Uint8Array>, options: CBOR.CodecOptions): Uint8Array =>
+  options.mode === "custom" && options.useIndefiniteArrays && items.length > 0
+    ? CBOR.encodeArrayAsIndefinite(items)
+    : CBOR.encodeArrayAsDefinite(items)
+
+const concatBytes = (...parts: ReadonlyArray<Uint8Array>): Uint8Array => {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+  let offset = 0
+  for (const part of parts) {
+    out.set(part, offset)
+    offset += part.length
+  }
+  return out
+}
+
+/**
+ * CBOR bytes transformation schema for TransactionWitnessSet. Datums and
+ * redeemer data are written with the `plutusData` options, the rest with the
+ * `ledger` options, the layout `Redeemers.toScriptDataHash` hashes. Plain
+ * options are read as `CBOR.toTxCodecOptions` reads them.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const txOptions = CBOR.toTxCodecOptions(options)
+  return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(TransactionWitnessSet), {
+    strict: true,
+    decode: (bytes, parseOptions) =>
+      ParseResult.decode(Schema.compose(CBOR.FromBytes(txOptions.ledger), FromCDDL))(bytes, parseOptions),
+    encode: (data, parseOptions, ast) =>
+      Eff.flatMap(ParseResult.encode(FromCDDL)(data, parseOptions), (record) =>
+        ParseResult.try({
+          try: () => encodeRecord(data, record, txOptions),
+          catch: (error) =>
+            new ParseResult.Type(
+              ast,
+              data,
+              `Failed to encode CBOR value: ${error instanceof Error ? error.message : String(error)}`
+            )
+        })
+      )
+  }).annotations({
     identifier: "TransactionWitnessSet.FromCBORBytes",
     description: "Transforms CBOR bytes to TransactionWitnessSet"
   })
+}
 
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCDDL).annotations({
+/**
+ * CBOR hex transformation schema for TransactionWitnessSet, as in
+ * {@link FromCBORBytes}.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
+  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
     identifier: "TransactionWitnessSet.FromCBORHex",
     description: "Transforms CBOR hex string to TransactionWitnessSet"
   })
@@ -661,17 +763,80 @@ export const fromCBORHexWithFormat = (
 // Encoding Functions
 // ============================================================================
 
+const canonicalKey = (bytes: Uint8Array): string =>
+  CBOR.toCBORHex(CBOR.fromCBORBytes(bytes), CBOR.CANONICAL_OPTIONS)
+
+// A decoded witness set replays its format tree, which has no format for a
+// datum or redeemer added after decoding, so the encoder would write it with
+// the CBOR defaults. Each part the decoded tree lacks takes its format from
+// `fresh`, the tree of the bytes toCBORBytes writes; decoded parts keep theirs.
+const withAddedFormats = (decoded: CBOR.CBORFormat, fresh: CBOR.CBORFormat): CBOR.CBORFormat => {
+  switch (decoded._tag) {
+    case "map": {
+      // A decoded map format lists each entry's key; any other is replayed as it is
+      const decodedKeyOrder = decoded.keyOrder ?? []
+      if (fresh._tag !== "map" || fresh.keyOrder === undefined || decodedKeyOrder.length !== decoded.entries.length) {
+        return decoded
+      }
+      const freshKeyOrder = fresh.keyOrder
+      // Equal keys may be written differently, so keys are matched by their canonical bytes
+      const keyIndex = new Map<string, number>()
+      decodedKeyOrder.forEach((bytes, j) => {
+        const id = canonicalKey(bytes)
+        if (!keyIndex.has(id)) keyIndex.set(id, j)
+      })
+      const keyOrder = [...decodedKeyOrder]
+      const entries = [...decoded.entries]
+      fresh.entries.forEach(([keyFormat, valueFormat], i) => {
+        const j = keyIndex.get(canonicalKey(freshKeyOrder[i])) ?? -1
+        if (j === -1) {
+          keyOrder.push(freshKeyOrder[i])
+          entries.push([keyFormat, valueFormat])
+        } else {
+          entries[j] = [entries[j][0], withAddedFormats(entries[j][1], valueFormat)]
+        }
+      })
+      return { ...decoded, keyOrder, entries }
+    }
+    case "array": {
+      // A set decoded untagged is written tagged; it takes the tag format
+      // only when items are added
+      if (fresh._tag === "tag" && fresh.child._tag === "array" && fresh.child.children.length > decoded.children.length) {
+        return { ...fresh, child: withAddedFormats(decoded, fresh.child) }
+      }
+      if (fresh._tag !== "array") return decoded
+      return {
+        ...decoded,
+        children: fresh.children.map((child, i) =>
+          i < decoded.children.length ? withAddedFormats(decoded.children[i], child) : child
+        )
+      }
+    }
+    case "tag":
+      return fresh._tag === "tag" ? { ...decoded, child: withAddedFormats(decoded.child, fresh.child) } : decoded
+    default:
+      return decoded
+  }
+}
+
 /**
- * Convert a TransactionWitnessSet to CBOR bytes.
+ * Convert a TransactionWitnessSet to CBOR bytes, as in {@link FromCBORBytes}.
  *
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: TransactionWitnessSet, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORBytes = (
+  data: TransactionWitnessSet,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) =>
   Schema.encodeSync(FromCBORBytes(options))(data)
 
 /**
  * Convert a TransactionWitnessSet to CBOR bytes using an explicit root format tree.
+ *
+ * Datums and redeemers the format tree covers keep their captured format. A
+ * datum or redeemer added to a decoded witness set is written as
+ * {@link toCBORBytes} writes it under the default options.
  *
  * @since 2.0.0
  * @category encoding
@@ -681,31 +846,32 @@ export const toCBORBytesWithFormat = (
   format: CBOR.CBORFormat
 ): Uint8Array => {
   const cborMap = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORBytesWithFormat(cborMap, format)
+  if (!holdsPlutusData(data)) return CBOR.toCBORBytesWithFormat(cborMap, format)
+  const fresh = CBOR.fromCBORBytesWithFormat(toCBORBytes(data)).format
+  return CBOR.toCBORBytesWithFormat(cborMap, withAddedFormats(format, fresh))
 }
 
 /**
- * Convert a TransactionWitnessSet to CBOR hex string.
+ * Convert a TransactionWitnessSet to CBOR hex string, as in {@link toCBORBytes}.
  *
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: TransactionWitnessSet, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORHex = (
+  data: TransactionWitnessSet,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) =>
   Schema.encodeSync(FromCBORHex(options))(data)
 
 /**
- * Convert a TransactionWitnessSet to CBOR hex string using an explicit root format tree.
+ * Convert a TransactionWitnessSet to CBOR hex string using an explicit root
+ * format tree, as in {@link toCBORBytesWithFormat}.
  *
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHexWithFormat = (
-  data: TransactionWitnessSet,
-  format: CBOR.CBORFormat
-): string => {
-  const cborMap = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORHexWithFormat(cborMap, format)
-}
+export const toCBORHexWithFormat = (data: TransactionWitnessSet, format: CBOR.CBORFormat): string =>
+  Bytes.toHex(toCBORBytesWithFormat(data, format))
 
 // ============================================================================
 // Factory Functions

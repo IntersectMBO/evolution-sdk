@@ -260,22 +260,54 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Red
     })
 })
 
+// An array of encoded items, definite or indefinite as `options` writes an array
+const encodeArray = (items: ReadonlyArray<Uint8Array>, options: CBOR.CodecOptions): Uint8Array =>
+  options.mode === "custom" && options.useIndefiniteArrays && items.length > 0
+    ? CBOR.encodeArrayAsIndefinite(items)
+    : CBOR.encodeArrayAsDefinite(items)
+
 /**
  * CBOR bytes transformation schema for Redeemer using CDDL.
- * Transforms between CBOR bytes and Redeemer using CDDL encoding.
+ * Transforms between CBOR bytes and Redeemer using CDDL encoding. The data is
+ * written with the `plutusData` options, the rest with the `ledger` options.
+ * Plain options are read as `CBOR.toTxCodecOptions` reads them.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Redeemer
-  ).annotations({
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const { ledger, plutusData } = CBOR.toTxCodecOptions(options)
+  return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(Redeemer), {
+    strict: true,
+    decode: (bytes, parseOptions) =>
+      ParseResult.decode(Schema.compose(CBOR.FromBytes(ledger), FromCDDL))(bytes, parseOptions),
+    encode: (redeemer, parseOptions, ast) =>
+      Effect.flatMap(ParseResult.encode(FromCDDL)(redeemer, parseOptions), ([tag, index, data, exUnits]) =>
+        ParseResult.try({
+          try: () =>
+            encodeArray(
+              [
+                CBOR.toCBORBytes(tag, ledger),
+                CBOR.toCBORBytes(index, ledger),
+                CBOR.toCBORBytes(data, plutusData),
+                CBOR.toCBORBytes(exUnits, ledger)
+              ],
+              ledger
+            ),
+          catch: (error) =>
+            new ParseResult.Type(
+              ast,
+              redeemer,
+              `Failed to encode CBOR value: ${error instanceof Error ? error.message : String(error)}`
+            )
+        })
+      )
+  }).annotations({
     identifier: "Redeemer.FromCBORBytes",
     title: "Redeemer from CBOR Bytes using CDDL",
     description: "Transforms CBOR bytes to Redeemer using CDDL encoding"
   })
+}
 
 /**
  * CBOR hex transformation schema for Redeemer using CDDL.
@@ -284,7 +316,7 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.compose(
     Schema.Uint8ArrayFromHex, // string → Uint8Array
     FromCBORBytes(options) // Uint8Array → Redeemer
@@ -375,21 +407,27 @@ export const isReward = (redeemer: Redeemer): boolean => redeemer.tag === "rewar
 // ============================================================================
 
 /**
- * Encode Redeemer to CBOR bytes.
+ * Encode Redeemer to CBOR bytes, as in {@link FromCBORBytes}.
  *
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORBytes = (redeemer: Redeemer, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): Uint8Array =>
+export const toCBORBytes = (
+  redeemer: Redeemer,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+): Uint8Array =>
   Schema.encodeSync(FromCBORBytes(options))(redeemer)
 
 /**
- * Encode Redeemer to CBOR hex string.
+ * Encode Redeemer to CBOR hex string, as in {@link FromCBORBytes}.
  *
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORHex = (redeemer: Redeemer, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS): string =>
+export const toCBORHex = (
+  redeemer: Redeemer,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+): string =>
   Schema.encodeSync(FromCBORHex(options))(redeemer)
 
 /**

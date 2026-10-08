@@ -1,5 +1,5 @@
 import { blake2b } from "@noble/hashes/blake2.js"
-import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
+import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema, type SchemaAST } from "effect"
 
 import * as CBOR from "./CBOR.js"
 import * as CostModel from "./CostModel.js"
@@ -394,18 +394,80 @@ export const FromCDDL = FromMapCDDL
 // CBOR bytes / hex schemas
 // ============================================================================
 
+// An array of encoded items, definite or indefinite as `options` writes an array
+const encodeArray = (items: ReadonlyArray<Uint8Array>, options: CBOR.CodecOptions): Uint8Array =>
+  options.mode === "custom" && options.useIndefiniteArrays && items.length > 0
+    ? CBOR.encodeArrayAsIndefinite(items)
+    : CBOR.encodeArrayAsDefinite(items)
+
+// A map of encoded keys and values, written as the CBOR encoder writes a map
+// under `options`
+const encodeMap = (
+  entries: ReadonlyArray<readonly [Uint8Array, Uint8Array]>,
+  options: CBOR.CodecOptions
+): Uint8Array => {
+  if (options.encodeMapAsPairs === true) {
+    return encodeArray(
+      entries.map((entry) => encodeArray(entry, options)),
+      options
+    )
+  }
+  const sorted = options.mode === "canonical" || options.sortMapKeys ? [...entries].sort(compareKeys) : entries
+  const items = sorted.map(([key, value]) => concatBytes(key, value))
+  const bytes =
+    options.mode === "custom" && options.useIndefiniteMaps && items.length > 0
+      ? CBOR.encodeArrayAsIndefinite(items)
+      : CBOR.encodeArrayAsDefinite(items)
+  // A map header is the array header of its entries with major type 5 for 4
+  bytes[0] += 0x20
+  return bytes
+}
+
+// Shorter keys first, then bytewise, as the CBOR encoder sorts map keys
+const compareKeys = ([a]: readonly [Uint8Array, Uint8Array], [b]: readonly [Uint8Array, Uint8Array]): number => {
+  if (a.length !== b.length) return a.length - b.length
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i]
+  }
+  return 0
+}
+
+const encodeError = (ast: SchemaAST.AST, actual: unknown, error: unknown) =>
+  new ParseResult.Type(
+    ast,
+    actual,
+    `Failed to encode CBOR value: ${error instanceof Error ? error.message : String(error)}`
+  )
+
 /**
- * CBOR bytes schema for array format.
+ * CBOR bytes schema for array format. Each redeemer is written as
+ * `Redeemer.FromCBORBytes(options)` writes it, the array with the `ledger`
+ * options. Plain options are read as `CBOR.toTxCodecOptions` reads them.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromArrayCDDL).annotations({
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const txOptions = CBOR.toTxCodecOptions(options)
+  return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(RedeemerArray), {
+    strict: true,
+    decode: (bytes, parseOptions) =>
+      ParseResult.decode(Schema.compose(CBOR.FromBytes(txOptions.ledger), FromArrayCDDL))(bytes, parseOptions),
+    encode: (redeemers, _, ast) =>
+      ParseResult.try({
+        try: () =>
+          encodeArray(
+            redeemers.value.map((redeemer) => Redeemer.toCBORBytes(redeemer, txOptions)),
+            txOptions.ledger
+          ),
+        catch: (error) => encodeError(ast, redeemers, error)
+      })
+  }).annotations({
     identifier: "Redeemers.FromCBORBytes",
     title: "Redeemers from CBOR Bytes (Array)",
     description: "Transforms CBOR bytes to RedeemerArray"
   })
+}
 
 /**
  * CBOR hex schema for array format.
@@ -413,7 +475,7 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
     identifier: "Redeemers.FromCBORHex",
     title: "Redeemers from CBOR Hex (Array)",
@@ -421,17 +483,39 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
   })
 
 /**
- * CBOR bytes schema for map format.
+ * CBOR bytes schema for map format. Each redeemer's data is written with the
+ * `plutusData` options, the rest with the `ledger` options. Plain options are
+ * read as `CBOR.toTxCodecOptions` reads them.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytesMap = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromMapCDDL).annotations({
+export const FromCBORBytesMap = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const { ledger, plutusData } = CBOR.toTxCodecOptions(options)
+  return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(RedeemerMap), {
+    strict: true,
+    decode: (bytes, parseOptions) =>
+      ParseResult.decode(Schema.compose(CBOR.FromBytes(ledger), FromMapCDDL))(bytes, parseOptions),
+    encode: (redeemers, parseOptions, ast) =>
+      Eff.flatMap(ParseResult.encode(FromMapCDDL)(redeemers, parseOptions), (map) =>
+        ParseResult.try({
+          try: () =>
+            encodeMap(
+              Array.from(map, ([key, [data, exUnits]]) => [
+                CBOR.toCBORBytes(key, ledger),
+                encodeArray([CBOR.toCBORBytes(data, plutusData), CBOR.toCBORBytes(exUnits, ledger)], ledger)
+              ]),
+              ledger
+            ),
+          catch: (error) => encodeError(ast, redeemers, error)
+        })
+      )
+  }).annotations({
     identifier: "Redeemers.FromCBORBytesMap",
     title: "Redeemers from CBOR Bytes (Map)",
     description: "Transforms CBOR bytes to RedeemerMap"
   })
+}
 
 /**
  * CBOR hex schema for map format.
@@ -439,7 +523,7 @@ export const FromCBORBytesMap = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_O
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHexMap = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const FromCBORHexMap = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytesMap(options)).annotations({
     identifier: "Redeemers.FromCBORHexMap",
     title: "Redeemers from CBOR Hex (Map)",
@@ -507,7 +591,7 @@ export const fromCBORHexMap = (hex: string, options: CBOR.CodecOptions = CBOR.CM
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: RedeemerArray, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORBytes = (data: RedeemerArray, options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORBytes(options))(data)
 
 /**
@@ -516,7 +600,7 @@ export const toCBORBytes = (data: RedeemerArray, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: RedeemerArray, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORHex = (data: RedeemerArray, options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORHex(options))(data)
 
 /**
@@ -525,7 +609,7 @@ export const toCBORHex = (data: RedeemerArray, options: CBOR.CodecOptions = CBOR
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytesMap = (data: RedeemerMap, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORBytesMap = (data: RedeemerMap, options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORBytesMap(options))(data)
 
 /**
@@ -534,25 +618,24 @@ export const toCBORBytesMap = (data: RedeemerMap, options: CBOR.CodecOptions = C
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHexMap = (data: RedeemerMap, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORHexMap = (data: RedeemerMap, options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORHexMap(options))(data)
 
 // ============================================================================
 // Hashing
 // ============================================================================
 
-/**
- * Encode an array of datums as tag(258) set.
- * Each datum is encoded individually, then wrapped in a definite-length array with tag 258.
- */
-const encodeDatumsTaggedSet = (
-  datums: ReadonlyArray<Data.Data>,
-  options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS
-): Uint8Array => {
-  const items = datums.map((d) => Data.toCBORBytes(d, options))
-  const arr = CBOR.encodeArrayAsDefinite(items)
-  return CBOR.encodeTaggedValue(258, arr)
-}
+// The datums as tag 258 over an array, as `TransactionWitnessSet.toCBORBytes`
+// writes them: each datum with the `plutusData` options, the array with the
+// `ledger` options
+const encodeDatumsTaggedSet = (datums: ReadonlyArray<Data.Data>, options: CBOR.TxCodecOptions): Uint8Array =>
+  CBOR.encodeTaggedValue(
+    258,
+    encodeArray(
+      datums.map((datum) => Data.toCBORBytes(datum, options.plutusData)),
+      options.ledger
+    )
+  )
 
 /**
  * Concatenate multiple Uint8Arrays into one.
@@ -579,6 +662,9 @@ const concatBytes = (...arrays: ReadonlyArray<Uint8Array>): Uint8Array => {
  * redeemers_bytes || datums_bytes || language_views_bytes
  * ```
  *
+ * The redeemers and datums are hashed as `TransactionWitnessSet.toCBORBytes`
+ * writes them under `options`.
+ *
  * @since 2.0.0
  * @category hashing
  */
@@ -586,11 +672,10 @@ export const toScriptDataHash = (
   redeemers: Redeemers,
   costModels: CostModel.CostModels,
   datums?: ReadonlyArray<Data.Data>,
-  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
 ): ScriptDataHash.ScriptDataHash => {
+  const txOptions = CBOR.toTxCodecOptions(options)
   const hasDatums = Array.isArray(datums) && datums.length > 0
-  // Datums keep their own default encoding unless the caller chose options
-  const datumOptions = options === CBOR.CML_DEFAULT_OPTIONS ? CBOR.CML_DATA_DEFAULT_OPTIONS : options
 
   // Language views encoding (handles PlutusV1 indefinite-length quirk per spec)
   const langViewsBytes = CostModel.languageViewsEncoding(costModels)
@@ -599,7 +684,7 @@ export const toScriptDataHash = (
 
   if (hasDatums && redeemers.size === 0) {
     // Special case (CDDL): [ A0 | tag(258) datums | A0 ]
-    const datumsBytes = encodeDatumsTaggedSet(datums, datumOptions)
+    const datumsBytes = encodeDatumsTaggedSet(datums, txOptions)
     payload = concatBytes(
       new Uint8Array([0xa0]), // Empty map
       datumsBytes,
@@ -609,9 +694,9 @@ export const toScriptDataHash = (
     // Encode redeemers based on concrete type
     const redeemersBytes =
       redeemers._tag === "RedeemerMap"
-        ? toCBORBytesMap(redeemers, options)
-        : toCBORBytes(redeemers as RedeemerArray, options)
-    const datumsBytes = hasDatums ? encodeDatumsTaggedSet(datums, datumOptions) : undefined
+        ? toCBORBytesMap(redeemers, txOptions)
+        : toCBORBytes(redeemers as RedeemerArray, txOptions)
+    const datumsBytes = hasDatums ? encodeDatumsTaggedSet(datums, txOptions) : undefined
 
     payload = datumsBytes
       ? concatBytes(redeemersBytes, datumsBytes, langViewsBytes)
