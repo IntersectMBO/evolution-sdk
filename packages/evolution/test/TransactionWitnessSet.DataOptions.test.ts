@@ -8,12 +8,16 @@ import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Data from "../src/Data.js"
 import * as Ed25519Signature from "../src/Ed25519Signature.js"
+import * as InlineDatum from "../src/InlineDatum.js"
+import * as OriginalBytes from "../src/OriginalBytes.js"
 import * as PlutusV3 from "../src/PlutusV3.js"
 import * as Redeemer from "../src/Redeemer.js"
 import * as Redeemers from "../src/Redeemers.js"
 import * as ScriptDataHash from "../src/ScriptDataHash.js"
 import * as Transaction from "../src/Transaction.js"
+import * as TransactionBody from "../src/TransactionBody.js"
 import * as TransactionWitnessSet from "../src/TransactionWitnessSet.js"
+import * as TxOut from "../src/TxOut.js"
 import * as VKey from "../src/VKey.js"
 
 // Witness datums and redeemer data are written with the plutusData options,
@@ -277,6 +281,29 @@ describe("byte identity with the single-options encoder", () => {
     (tx.witnessSet.plutusData ?? []).length > 0 || (tx.witnessSet.redeemers?.size ?? 0) > 0
   const single = (tx: Transaction.Transaction, options: CBOR.CodecOptions) =>
     CBOR.toCBORBytes(Schema.encodeSync(Transaction.FromCDDL)(tx) as unknown as CBOR.CBOR, options)
+  // The transaction with each inline datum's bytes recorded as plutusData
+  // writes them, so the single-options encoder writes them that way too
+  const withInlineDatumBytes = (tx: Transaction.Transaction, plutusData: CBOR.CodecOptions) => {
+    const recorded = (output: TxOut.TransactionOutput) =>
+      output.datumOption?._tag === "InlineDatum"
+        ? new TxOut.TransactionOutput({
+            ...output,
+            datumOption: OriginalBytes.record(
+              new InlineDatum.InlineDatum({ data: output.datumOption.data }),
+              Data.toCBORBytes(output.datumOption.data, plutusData)
+            )
+          })
+        : output
+    const { body } = tx
+    return new Transaction.Transaction({
+      ...tx,
+      body: new TransactionBody.TransactionBody({
+        ...body,
+        outputs: body.outputs.map(recorded),
+        collateralReturn: body.collateralReturn && recorded(body.collateralReturn)
+      })
+    })
+  }
 
   it("the sample covers datums and both redeemer formats", () => {
     expect(txs.filter((tx) => (tx.witnessSet.plutusData ?? []).length > 0).length).toBeGreaterThan(3)
@@ -287,7 +314,9 @@ describe("byte identity with the single-options encoder", () => {
   it.each(presets)("%s: without Plutus data, or with plutusData set to the same options", (_, options) => {
     for (const tx of txs) {
       const txOptions = holdsPlutusData(tx) ? { ledger: options, plutusData: options } : options
-      expect(Transaction.toCBORBytes(tx, txOptions)).toStrictEqual(single(tx, options))
+      expect(Transaction.toCBORBytes(tx, txOptions)).toStrictEqual(
+        single(withInlineDatumBytes(tx, CBOR.toTxCodecOptions(txOptions).plutusData), options)
+      )
       expect(TransactionWitnessSet.toCBORBytes(tx.witnessSet, txOptions)).toStrictEqual(
         CBOR.toCBORBytes(Schema.encodeSync(TransactionWitnessSet.FromCDDL)(tx.witnessSet), options)
       )
