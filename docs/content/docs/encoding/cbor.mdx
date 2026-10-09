@@ -123,8 +123,8 @@ The plain `toCBORHex`/`toCBORBytes` APIs accept a `CodecOptions` argument that c
 |--------|----------|
 | `CML_DEFAULT_OPTIONS` *(default)* | General Cardano use — definite lengths, minimal integer encoding |
 | `CANONICAL_OPTIONS` | RFC 8949 canonical: sorted keys, minimal encoding |
-| `PLUTUS_DATA_OPTIONS` | Plutus data in the node layout: indefinite lists and constructor fields, definite maps. The default for `UPLC.applyParamsToScript` and `UPLC.dataConstant`; matches `cardano-cli`, Aiken `cbor.serialise()`, and `aiken blueprint apply` except for constructor indices above 127 and the integer -2^64 |
-| `CML_DATA_DEFAULT_OPTIONS` | Matches CML `PlutusData.to_cardano_node_format()`: indefinite lists and maps. CML also sorts map keys; this preset keeps insertion order. The default for `Data` encoding |
+| `PLUTUS_DATA_OPTIONS` | Plutus data in the node layout: indefinite lists and constructor fields, definite maps. The default for `Data` encoding, `UPLC.applyParamsToScript` and `UPLC.dataConstant`; matches `cardano-cli`, Aiken `cbor.serialise()`, and `aiken blueprint apply` |
+| `CML_DATA_DEFAULT_OPTIONS` | Deprecated. Indefinite lists, constructor fields and maps, keys in insertion order. The `Data` default before `PLUTUS_DATA_OPTIONS`; use it only to reproduce datum bytes and hashes the SDK wrote before. It matches no tool exactly: CML `PlutusData.to_cardano_node_format()` also sorts map keys |
 | `CML_DATA_DEFINITE_OPTIONS` | Matches CML `PlutusData.to_cbor_hex()` on new data: definite lists and maps |
 | `AIKEN_DEFAULT_OPTIONS` | Deprecated alias of `PLUTUS_DATA_OPTIONS` |
 | `CARDANO_NODE_DATA_OPTIONS` | Deprecated alias of `CML_DATA_DEFINITE_OPTIONS` |
