@@ -110,12 +110,12 @@ describe("inline datum keeps its original bytes", () => {
   }
 
   it("a new InlineDatum with the same Data uses the default encoding", () => {
-    const option = "8201d818" + bstr("d8799fa10102ff")
+    const option = "8201d818" + bstr("d8799fbf0102ffff")
     const decoded = DatumOption.fromCBORHex(option)
     if (!InlineDatum.isInlineDatum(decoded)) throw new Error("expected an inline datum")
     const edited = new InlineDatum.InlineDatum({ data: decoded.data })
     const expected = "8201d818" + bstr(PlutusData.toCBORHex(decoded.data))
-    expect(expected).toBe("8201d818" + bstr("d8799fbf0102ffff"))
+    expect(expected).toBe("8201d818" + bstr("d8799fa10102ff"))
     expect(DatumOption.toCBORHex(edited)).toBe(expected)
   })
 })

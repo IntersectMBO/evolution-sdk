@@ -59,6 +59,11 @@ describe("PLUTUS_DATA_OPTIONS matches the node encoding", () => {
       const encoded = Data.toCBORBytes(data, CBOR.PLUTUS_DATA_OPTIONS)
       expect(Bytes.toHex(blake2b(encoded, { dkLen: 32 }))).toBe(hash)
     })
+
+    it(`${name}: the Data default writes the same bytes and datum hash`, () => {
+      expect(Data.toCBORHex(data)).toBe(Data.toCBORHex(data, CBOR.PLUTUS_DATA_OPTIONS))
+      expect(Bytes.toHex(Data.toDatumHash(data).hash)).toBe(hash)
+    })
   }
 
   it("encodes the empty list as 80 and the empty map as a0", () => {
@@ -71,8 +76,13 @@ describe("PLUTUS_DATA_OPTIONS matches the node encoding", () => {
     expect(CBOR.CARDANO_NODE_DATA_OPTIONS).toBe(CBOR.CML_DATA_DEFINITE_OPTIONS)
   })
 
-  it("leaves the Data default on CML_DATA_DEFAULT_OPTIONS", () => {
-    expect(Data.toCBORHex(Data.map([[1n, 2n]]))).toBe("bf0102ff")
+  it("is the Data default", () => {
+    expect(Data.DEFAULT_CBOR_OPTIONS).toBe(CBOR.PLUTUS_DATA_OPTIONS)
+    expect(Data.toCBORHex(Data.map([[1n, 2n]]))).toBe("a10102")
+  })
+
+  it("leaves CML_DATA_DEFAULT_OPTIONS writing maps indefinite", () => {
+    expect(Data.toCBORHex(Data.map([[1n, 2n]]), CBOR.CML_DATA_DEFAULT_OPTIONS)).toBe("bf0102ff")
   })
 })
 

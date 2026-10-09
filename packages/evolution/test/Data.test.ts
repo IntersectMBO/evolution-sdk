@@ -161,7 +161,7 @@ describe("CBOR Encoding/Decoding", () => {
     {
       name: "map with entries",
       value: Data.map([[1n, Data.bytearray("cafe")]]),
-      expectedHex: "bf0142cafeff"
+      expectedHex: "a10142cafe"
     },
     {
       name: "small int",

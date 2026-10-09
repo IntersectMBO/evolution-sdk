@@ -134,11 +134,11 @@ const applied = UPLC.applyParamsToScript(compiledScript, [
   Data.int(42n),
 ])
 
-// With indefinite lists and maps, like CML to_cardano_node_format() (map keys keep insertion order)
+// With definite lists and maps, like CML to_cbor_hex() on new data
 const appliedCml = UPLC.applyParamsToScript(
   compiledScript,
   [Data.int(42n)],
-  CBOR.CML_DATA_DEFAULT_OPTIONS,
+  CBOR.CML_DATA_DEFINITE_OPTIONS,
 )
 ```
 

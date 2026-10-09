@@ -199,7 +199,7 @@ const datum = Data.constr(0n, [
 
 // Encode to hex string
 const cborHex = Data.toCBORHex(datum)
-// "d8799fa2646265..."
+// "d8799fa24b62656e..."
 
 // Encode to bytes  
 const cborBytes = Data.toCBORBytes(datum)
@@ -209,6 +209,8 @@ const cborBytes = Data.toCBORBytes(datum)
 const decoded = Data.fromCBORHex(cborHex)
 // Returns original PlutusData structure
 ```
+
+By default the encoder writes the layout the node writes, `CBOR.PLUTUS_DATA_OPTIONS`: non-empty lists and constructor fields indefinite, maps definite. The map above starts with `a2`, a definite map of two entries. Earlier releases wrote maps indefinite. To reproduce those bytes or datum hashes, pass the deprecated `CBOR.CML_DATA_DEFAULT_OPTIONS` to `Data.toCBORHex`, `Data.toCBORBytes` or `Data.toDatumHash`.
 
 ## Equality Comparison
 
