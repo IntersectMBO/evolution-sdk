@@ -170,7 +170,7 @@ describe("TypeTaggedSchema Tests", () => {
         const encoded = Data.withSchema(IntegerByteArrayMap).toCBORHex(input)
         const decoded = Data.withSchema(IntegerByteArrayMap).fromCBORHex(encoded)
 
-        expect(encoded).toEqual("bf190c894231311b0000003a06945f464432323232ff")
+        expect(encoded).toEqual("a2190c894231311b0000003a06945f464432323232")
         expect(eq(decoded, input)).toBe(true)
       })
 

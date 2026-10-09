@@ -84,10 +84,11 @@ describe("Inline datum bytes (Devnet Submit)", () => {
     const client = createTestClient()
     const myAddress = await client.address()
 
-    // The builder writes both maps indefinite (bf...ff). The second one is then
-    // rewritten as a definite map (a1...), one byte shorter, so the fee still covers it.
-    const indefiniteDatum = "bf0102ff"
-    const definiteDatum = "a10304"
+    // The builder writes both maps definite (a1...). The second one, {3: 1000}, is
+    // then rewritten as the indefinite map {3: 4} (bf...ff), one byte shorter, so
+    // the fee still covers it.
+    const definiteDatum = "a10102"
+    const indefiniteDatum = "bf0304ff"
     const signBuilder = await client
       .newTx()
       .payToAddress({
@@ -98,14 +99,14 @@ describe("Inline datum bytes (Devnet Submit)", () => {
       .payToAddress({
         address: myAddress,
         assets: Cardano.Assets.fromLovelace(5_000_000n),
-        datum: new InlineDatum.InlineDatum({ data: PlutusData.map([[PlutusData.int(3n), PlutusData.int(4n)]]) })
+        datum: new InlineDatum.InlineDatum({ data: PlutusData.map([[PlutusData.int(3n), PlutusData.int(1000n)]]) })
       })
       .build({ availableUtxos: [...genesisUtxos] })
 
     const builtHex = Transaction.toCBORHex(await signBuilder.toTransaction())
-    expect(builtHex.split("d81844" + indefiniteDatum).length).toBe(2)
-    expect(builtHex.split("d81844bf0304ff").length).toBe(2)
-    const txHex = builtHex.replace("d81844bf0304ff", "d81843" + definiteDatum)
+    expect(builtHex.split("d81843" + definiteDatum).length).toBe(2)
+    expect(builtHex.split("d81845a1031903e8").length).toBe(2)
+    const txHex = builtHex.replace("d81845a1031903e8", "d81844" + indefiniteDatum)
     const txBytes = Bytes.fromHex(txHex)
     const bodyBytes = Transaction.extractBodyBytes(txBytes)
     const expectedTxId = TransactionHash.toHex(TransactionBody.toHashFromBytes(bodyBytes))
@@ -131,6 +132,6 @@ describe("Inline datum bytes (Devnet Submit)", () => {
     const datums = (utxos.result as Array<{ index: number; datum?: string }>)
       .sort((a, b) => a.index - b.index)
       .map((utxo) => utxo.datum)
-    expect(datums).toEqual([indefiniteDatum, definiteDatum])
+    expect(datums).toEqual([definiteDatum, indefiniteDatum])
   })
 })

@@ -28,11 +28,16 @@ import * as fs from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
 
+import * as CBOR from "../src/CBOR.js"
 import * as Data from "../src/Data.js"
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// The fixtures were generated with the old Data default, which wrote maps
+// indefinite.
+const GOLDEN_OPTIONS = CBOR.CML_DATA_DEFAULT_OPTIONS
 
 /**
  * Test configuration defining the number of samples to test for each category
@@ -233,7 +238,7 @@ describe("Data Golden Tests", () => {
           throw new Error(`Invalid integer sample at index ${entry.index}`)
         }
         const plutusData = Data.int(entry.sample.integer)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
       })
     })
@@ -246,7 +251,7 @@ describe("Data Golden Tests", () => {
           throw new Error(`Invalid integer sample at index ${entry.index}`)
         }
         const plutusData = Data.int(entry.sample.integer)
-        const encoded = Data.toCBORBytes(plutusData)
+        const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
         expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
       })
     })
@@ -277,7 +282,7 @@ describe("Data Golden Tests", () => {
           throw new Error(`Invalid integer sample at index ${entry.index}`)
         }
         const plutusData = Data.int(entry.sample.integer)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         const decoded = Data.fromCBORHex(encoded)
 
         expect(normalizeDecodedData(decoded), `Failed at sample index ${entry.index}`).toEqual(entry.sample)
@@ -294,7 +299,7 @@ describe("Data Golden Tests", () => {
           throw new Error(`Invalid byte array sample at index ${entry.index}`)
         }
         const plutusData = Data.bytearray(entry.sample.bytearray)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
       })
     })
@@ -307,7 +312,7 @@ describe("Data Golden Tests", () => {
           throw new Error(`Invalid byte array sample at index ${entry.index}`)
         }
         const plutusData = Data.bytearray(entry.sample.bytearray)
-        const encoded = Data.toCBORBytes(plutusData)
+        const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
         expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
       })
     })
@@ -338,7 +343,7 @@ describe("Data Golden Tests", () => {
           throw new Error(`Invalid byte array sample at index ${entry.index}`)
         }
         const plutusData = Data.bytearray(entry.sample.bytearray)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         const decoded = Data.fromCBORHex(encoded)
 
         expect(normalizeDecodedData(decoded), `Failed at sample index ${entry.index}`).toEqual(entry.sample)
@@ -356,7 +361,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusDataList = entry.sample.list.map(reconstructPlutusData)
         const plutusData = Data.list(plutusDataList)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
       })
     }, 30000) // 30 second timeout for large test cases
@@ -370,7 +375,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusDataList = entry.sample.list.map(reconstructPlutusData)
         const plutusData = Data.list(plutusDataList)
-        const encoded = Data.toCBORBytes(plutusData)
+        const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
         expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
       })
     })
@@ -402,7 +407,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusDataList = entry.sample.list.map(reconstructPlutusData)
         const plutusData = Data.list(plutusDataList)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         const decoded = Data.fromCBORHex(encoded)
 
         expect(normalizeDecodedData(decoded), `Failed at sample index ${entry.index}`).toEqual(entry.sample)
@@ -423,7 +428,7 @@ describe("Data Golden Tests", () => {
             [reconstructPlutusData(entryObj.key), reconstructPlutusData(entryObj.value)] as [Data.Data, Data.Data]
         )
         const plutusData = Data.map(plutusDataEntries)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
       })
     })
@@ -440,7 +445,7 @@ describe("Data Golden Tests", () => {
             [reconstructPlutusData(entryObj.key), reconstructPlutusData(entryObj.value)] as [Data.Data, Data.Data]
         )
         const plutusData = Data.map(plutusDataEntries)
-        const encoded = Data.toCBORBytes(plutusData)
+        const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
         expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
       })
     })
@@ -475,7 +480,7 @@ describe("Data Golden Tests", () => {
             [reconstructPlutusData(entryObj.key), reconstructPlutusData(entryObj.value)] as [Data.Data, Data.Data]
         )
         const plutusData = Data.map(plutusDataEntries)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         const decoded = Data.fromCBORHex(encoded)
 
         expect(normalizeDecodedData(decoded), `Failed at sample index ${entry.index}`).toEqual(entry.sample)
@@ -493,7 +498,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusDataFields = entry.sample.fields.map(reconstructPlutusData)
         const plutusData = Data.constr(BigInt(entry.sample.index), plutusDataFields)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
       })
     })
@@ -507,7 +512,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusDataFields = entry.sample.fields.map(reconstructPlutusData)
         const plutusData = Data.constr(BigInt(entry.sample.index), plutusDataFields)
-        const encoded = Data.toCBORBytes(plutusData)
+        const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
         expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
       })
     })
@@ -539,7 +544,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusDataFields = entry.sample.fields.map(reconstructPlutusData)
         const plutusData = Data.constr(BigInt(entry.sample.index), plutusDataFields)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         const decoded = Data.fromCBORHex(encoded)
 
         expect(normalizeDecodedData(decoded), `Failed at sample index ${entry.index}`).toEqual(entry.sample)
@@ -553,7 +558,7 @@ describe("Data Golden Tests", () => {
 
       testCases.forEach((entry) => {
         const plutusData = reconstructPlutusData(entry.sample)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
       })
     })
@@ -563,7 +568,7 @@ describe("Data Golden Tests", () => {
 
       testCases.forEach((entry) => {
         const plutusData = reconstructPlutusData(entry.sample)
-        const encoded = Data.toCBORBytes(plutusData)
+        const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
         expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
       })
     })
@@ -591,7 +596,7 @@ describe("Data Golden Tests", () => {
 
       testCases.forEach((entry) => {
         const plutusData = reconstructPlutusData(entry.sample)
-        const encoded = Data.toCBORHex(plutusData)
+        const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
         const decoded = Data.fromCBORHex(encoded)
 
         expect(normalizeDecodedData(decoded), `Failed at sample index ${entry.index}`).toEqual(entry.sample)

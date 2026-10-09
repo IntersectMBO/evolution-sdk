@@ -11,7 +11,7 @@
  * signs with Transaction.addVKeyWitnessesBytes, and submits. Each case uses
  * one set of options for the script data hash and the encoding, and their
  * plutusData options for the datum hash: no options, CBOR.CML_DEFAULT_OPTIONS,
- * CBOR.TX_CANONICAL_OPTIONS, or plutusData set to PLUTUS_DATA_OPTIONS. The
+ * CBOR.TX_CANONICAL_OPTIONS, or plutusData set to CML_DATA_DEFAULT_OPTIONS. The
  * node accepts the spend only when the written datum hashes to the locked
  * datum hash and the script data hash covers the datum and redeemer as
  * written.
@@ -57,8 +57,8 @@ describe("Witness datum layout (Devnet Submit)", () => {
   const script = new PlutusV3.PlutusV3({ bytes: Bytes.fromHex(alwaysSucceed.compiledCode) })
   const scriptAddress = Address.Address.make({ networkId: 0, paymentCredential: ScriptHash.fromScript(script) })
 
-  // Constr 0 [{1: 2}, [3]]: the data default writes its map and lists
-  // indefinite, PLUTUS_DATA_OPTIONS its map definite
+  // Constr 0 [{1: 2}, [3]]: the data default writes its lists indefinite and
+  // its map definite, CML_DATA_DEFAULT_OPTIONS its map indefinite
   const mapAndList = Data.constr(0n, [Data.map([[Data.int(1n), Data.int(2n)]]), Data.list([Data.int(3n)])])
 
   // Each datum, the options it is written with, and the bytes they give for
@@ -75,15 +75,15 @@ describe("Witness datum layout (Devnet Submit)", () => {
       name: "Constr 0 [{1: 2}, [3]] with no options",
       datum: mapAndList,
       options: undefined,
-      datumHex: "d8799fbf0102ff9f03ffff",
-      redeemerHex: "d8799fbf0102ff9f03ffff"
+      datumHex: "d8799fa101029f03ffff",
+      redeemerHex: "d8799fa101029f03ffff"
     },
     {
       name: "Constr 0 [1] with CBOR.CML_DEFAULT_OPTIONS",
       datum: Data.constr(0n, [Data.int(1n)]),
       options: CBOR.CML_DEFAULT_OPTIONS,
       datumHex: "d8799f01ff",
-      redeemerHex: "d8799fbf0102ff9f03ffff"
+      redeemerHex: "d8799fa101029f03ffff"
     },
     {
       name: "Constr 0 [{1: 2}, [3]] with CBOR.TX_CANONICAL_OPTIONS",
@@ -93,11 +93,11 @@ describe("Witness datum layout (Devnet Submit)", () => {
       redeemerHex: "d87982a101028103"
     },
     {
-      name: "Constr 0 [{1: 2}, [3]] with plutusData PLUTUS_DATA_OPTIONS",
+      name: "Constr 0 [{1: 2}, [3]] with plutusData CML_DATA_DEFAULT_OPTIONS",
       datum: mapAndList,
-      options: { ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.PLUTUS_DATA_OPTIONS },
-      datumHex: "d8799fa101029f03ffff",
-      redeemerHex: "d8799fa101029f03ffff"
+      options: { ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.CML_DATA_DEFAULT_OPTIONS },
+      datumHex: "d8799fbf0102ff9f03ffff",
+      redeemerHex: "d8799fbf0102ff9f03ffff"
     }
   ]
 
@@ -283,7 +283,7 @@ describe("Witness datum layout (Devnet Submit)", () => {
       .build()
     const builtHex = Transaction.toCBORHex(await signBuilder.toTransaction())
     expect(builtHex).toContain(`05a182000082${Data.toCBORHex(mapAndList)}`)
-    expect(Data.toCBORHex(mapAndList)).toBe("d8799fbf0102ff9f03ffff")
+    expect(Data.toCBORHex(mapAndList)).toBe("d8799fa101029f03ffff")
 
     const txHash = await (await signBuilder.sign()).submit()
     expect(await client.awaitTx(txHash, 1000)).toBe(true)
