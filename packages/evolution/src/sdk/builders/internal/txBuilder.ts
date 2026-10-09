@@ -1211,9 +1211,6 @@ export const buildFakeWitnessSet = (
       switch (script._tag) {
         case "NativeScript": {
           nativeScripts.push(script)
-          // Count required signers for this native script and add fake witnesses
-          const requiredSigners = addNativeScriptWitnesses(script)
-          yield* Effect.logDebug(`[buildFakeWitnessSet] Native script requires ${requiredSigners} signers`)
           break
         }
         case "PlutusV1":
@@ -1228,11 +1225,67 @@ export const buildFakeWitnessSet = (
       }
     }
 
-    // Also count required signers from scripts carried by reference or spent inputs
-    for (const utxo of [...state.referenceInputs, ...inputUtxos]) {
-      if (utxo.scriptRef && utxo.scriptRef._tag === "NativeScript") {
-        const requiredSigners = addNativeScriptWitnesses(utxo.scriptRef)
-        yield* Effect.logDebug(`[buildFakeWitnessSet] Input-carried native script requires ${requiredSigners} signers`)
+    // Count native-script signers only for scripts required by an actual transaction purpose.
+    const requiredScriptHashes = new Set<string>()
+    for (const utxo of state.selectedUtxos) {
+      if (utxo.address.paymentCredential._tag === "ScriptHash") {
+        requiredScriptHashes.add(ScriptHash.toHex(utxo.address.paymentCredential))
+      }
+    }
+    if (state.mint) {
+      for (const policyId of state.mint.map.keys()) {
+        requiredScriptHashes.add(PolicyId.toHex(policyId))
+      }
+    }
+    for (const certificate of state.certificates) {
+      let scriptHashHex = certScriptHashHex(certificate)
+      if (scriptHashHex === undefined) {
+        switch (certificate._tag) {
+          case "StakeRegistration":
+          case "StakeDeregistration":
+          case "StakeDelegation":
+          case "RegCert":
+          case "UnregCert":
+          case "VoteDelegCert":
+          case "StakeVoteDelegCert":
+          case "StakeRegDelegCert":
+          case "VoteRegDelegCert":
+          case "StakeVoteRegDelegCert":
+            if (certificate.stakeCredential._tag === "ScriptHash") {
+              scriptHashHex = ScriptHash.toHex(certificate.stakeCredential)
+            }
+            break
+        }
+      }
+      if (scriptHashHex !== undefined) requiredScriptHashes.add(scriptHashHex)
+    }
+    for (const [rewardAccount] of state.withdrawals) {
+      if (rewardAccount.stakeCredential._tag === "ScriptHash") {
+        requiredScriptHashes.add(ScriptHash.toHex(rewardAccount.stakeCredential))
+      }
+    }
+    for (const voter of state.votingProcedures?.procedures.keys() ?? []) {
+      const scriptHashHex = voterScriptHashHex(voter)
+      if (scriptHashHex !== undefined) requiredScriptHashes.add(scriptHashHex)
+    }
+    for (const procedure of state.proposalProcedures?.procedures ?? []) {
+      const scriptHashHex = proposalPolicyHashHex(procedure.governanceAction)
+      if (scriptHashHex !== undefined) requiredScriptHashes.add(scriptHashHex)
+    }
+
+    const isNativeScript = makeIsNativeScript(state)
+    for (const scriptHashHex of requiredScriptHashes) {
+      if (isNativeScript(scriptHashHex) !== true) continue
+
+      const script = state.scripts.get(scriptHashHex) ??
+        [...state.referenceInputs, ...state.selectedUtxos]
+          .map((utxo) => utxo.scriptRef)
+          .find((script) =>
+            script?._tag === "NativeScript" && ScriptHash.toHex(ScriptHash.fromScript(script)) === scriptHashHex
+          )
+      if (script?._tag === "NativeScript") {
+        const requiredSigners = addNativeScriptWitnesses(script)
+        yield* Effect.logDebug(`[buildFakeWitnessSet] Required native script requires ${requiredSigners} signers`)
       }
     }
 
