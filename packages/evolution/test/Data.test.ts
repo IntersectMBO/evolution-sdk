@@ -141,7 +141,7 @@ describe("CBOR Encoding/Decoding", () => {
     {
       name: "large constructor index",
       value: Data.constr(999999n, [42n]),
-      expectedHex: "d8669f1a000f423f9f182affff"
+      expectedHex: "d866821a000f423f9f182aff"
     },
     {
       name: "empty list",

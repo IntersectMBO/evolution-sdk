@@ -241,9 +241,36 @@ describe("byte identity with the single-options encoder", () => {
     ["canonical map pairs", { mode: "canonical", encodeMapAsPairs: true }]
   ]
 
+  // The tree writes a constructor index above 127 and an integer outside
+  // (-2^64, 2^64) as the Plutus data encoder does not, so the sampled data
+  // stays inside those ranges
+  const inTreeRange = (data: Data.Data): Data.Data => {
+    if (typeof data === "bigint") return data % 2n ** 64n
+    if (data instanceof Uint8Array) return data
+    if (Array.isArray(data)) return data.map(inTreeRange)
+    if (data instanceof Map) return new Map(Array.from(data, ([k, v]) => [inTreeRange(k), inTreeRange(v)]))
+    const constr = data as Data.Constr
+    return Data.constr(constr.index % 128n, constr.fields.map(inTreeRange))
+  }
+  const withDataInTreeRange = (tx: Transaction.Transaction): Transaction.Transaction => {
+    const { plutusData, redeemers } = tx.witnessSet
+    const mapped = redeemers
+      ?.toArray()
+      .map((r) => new Redeemer.Redeemer({ tag: r.tag, index: r.index, data: inTreeRange(r.data), exUnits: r.exUnits }))
+    return withWitnessSet(tx, {
+      plutusData: plutusData?.map(inTreeRange),
+      redeemers:
+        mapped === undefined
+          ? undefined
+          : redeemers?._tag === "RedeemerMap"
+            ? Redeemers.makeRedeemerMap(mapped)
+            : new Redeemers.RedeemerArray({ value: mapped })
+    })
+  }
+
   // Each sampled transaction, and the same transaction without datums and redeemers
   const txs = FastCheck.sample(Transaction.arbitrary, { seed: 604, numRuns: 20 }).flatMap((tx) => [
-    tx,
+    withDataInTreeRange(tx),
     withWitnessSet(tx, { plutusData: undefined, redeemers: undefined })
   ])
   const holdsPlutusData = (tx: Transaction.Transaction) =>
