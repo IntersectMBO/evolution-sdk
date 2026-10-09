@@ -521,8 +521,8 @@ export interface ProposeParams {
   readonly governanceAction: GovernanceAction.GovernanceAction
   /** Reward account for deposit refund when proposal is finalized */
   readonly rewardAccount: RewardAccount.RewardAccount
-  /** Optional anchor with metadata URL and hash */
-  readonly anchor: Anchor.Anchor | null
+  /** Anchor with the metadata URL and hash describing the proposal (required by the ledger) */
+  readonly anchor: Anchor.Anchor
   /**
    * Redeemer for the constitution's guardrail script (propose purpose).
    * Required when the governance action carries a Plutus `policyHash`

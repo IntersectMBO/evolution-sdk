@@ -1421,7 +1421,7 @@ export interface TransactionBuilderBase {
    *   .propose({
    *     governanceAction: new GovernanceAction.InfoAction({}),
    *     rewardAccount: myRewardAccount,
-   *     anchor: myAnchor // or null
+   *     anchor: myAnchor
    *   })
    *   .build()
    *   .then(tx => tx.sign())
@@ -1432,7 +1432,7 @@ export interface TransactionBuilderBase {
    *   .propose({
    *     governanceAction: new GovernanceAction.InfoAction({}),
    *     rewardAccount: myRewardAccount,
-   *     anchor: null
+   *     anchor: myAnchor
    *   })
    *   .propose({
    *     governanceAction: new GovernanceAction.NoConfidenceAction({ govActionId: null }),

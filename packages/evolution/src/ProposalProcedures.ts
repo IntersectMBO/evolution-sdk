@@ -142,7 +142,7 @@ export const arbitrary = FastCheck.record({
       deposit: Coin.arbitrary,
       rewardAccount: RewardAccount.arbitrary,
       governanceAction: GovernanceAction.arbitrary,
-      anchor: FastCheck.option(Anchor.arbitrary, { nil: null })
+      anchor: Anchor.arbitrary
     }).map((params) => new ProposalProcedure.ProposalProcedure(params)),
     { minLength: 1, maxLength: 5 }
   )
@@ -204,7 +204,7 @@ export const single = (
   deposit: Coin.Coin,
   rewardAccount: RewardAccount.RewardAccount,
   governanceAction: GovernanceAction.GovernanceAction,
-  anchor: Anchor.Anchor | null
+  anchor: Anchor.Anchor
 ): ProposalProcedures => {
   return new ProposalProcedures({
     procedures: [

@@ -2,8 +2,10 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import * as CoreAddress from "../src/Address.js"
+import * as Anchor from "../src/Anchor.js"
 import * as CoreAssets from "../src/Assets.js"
 import * as Bytes from "../src/Bytes.js"
+import * as Bytes32 from "../src/Bytes32.js"
 import * as Data from "../src/Data.js"
 import * as GovernanceAction from "../src/GovernanceAction.js"
 import * as NativeScripts from "../src/NativeScripts.js"
@@ -19,6 +21,7 @@ import type { EvalRedeemer } from "../src/sdk/EvalRedeemer.js"
 import type { ProtocolParameters } from "../src/sdk/provider/Provider.js"
 import * as Text from "../src/Text.js"
 import * as TransactionHash from "../src/TransactionHash.js"
+import * as Url from "../src/Url.js"
 import * as CoreUTxO from "../src/UTxO.js"
 import plutusJson from "./spec/plutus.json"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
@@ -62,6 +65,11 @@ const guardrailHash = ScriptHash.fromScript(guardrailScript)
 const rewardAccount = new RewardAccount.RewardAccount({
   networkId: 1,
   stakeCredential: new ScriptHash.ScriptHash({ hash: new Uint8Array(28).fill(0xab) })
+})
+
+const anchor = new Anchor.Anchor({
+  anchorUrl: new Url.Url({ href: "https://example.com/proposal.json" }),
+  anchorDataHash: Bytes32.fromHex("0".repeat(64))
 })
 
 const treasuryWithdrawal = (policyHash: ScriptHash.ScriptHash | null) =>
@@ -118,7 +126,7 @@ describe("TxBuilder propose with guardrail script", () => {
       .propose({
         governanceAction: treasuryWithdrawal(guardrailHash),
         rewardAccount,
-        anchor: null,
+        anchor,
         redeemer: Data.constr(0n, [])
       })
       .attachScript({ script: guardrailScript })
@@ -142,11 +150,11 @@ describe("TxBuilder propose with guardrail script", () => {
     const { evaluator } = makeEchoEvaluator()
 
     const tx = await makeTxBuilder(baseConfig)
-      .propose({ governanceAction: new GovernanceAction.InfoAction({}), rewardAccount, anchor: null })
+      .propose({ governanceAction: new GovernanceAction.InfoAction({}), rewardAccount, anchor })
       .propose({
         governanceAction: treasuryWithdrawal(guardrailHash),
         rewardAccount,
-        anchor: null,
+        anchor,
         redeemer: Data.constr(0n, []),
         label: "guardrail"
       })
@@ -166,7 +174,7 @@ describe("TxBuilder propose with guardrail script", () => {
 
   it("builds proposals without a policyHash as before (no redeemer, no script data)", async () => {
     const tx = await makeTxBuilder(baseConfig)
-      .propose({ governanceAction: treasuryWithdrawal(null), rewardAccount, anchor: null })
+      .propose({ governanceAction: treasuryWithdrawal(null), rewardAccount, anchor })
       .build(buildOptions())
       .then((b) => b.toTransaction())
 
@@ -177,7 +185,7 @@ describe("TxBuilder propose with guardrail script", () => {
   it("rejects a guardrail-checked proposal without a redeemer", async () => {
     await expect(
       makeTxBuilder(baseConfig)
-        .propose({ governanceAction: treasuryWithdrawal(guardrailHash), rewardAccount, anchor: null })
+        .propose({ governanceAction: treasuryWithdrawal(guardrailHash), rewardAccount, anchor })
         .attachScript({ script: guardrailScript })
         .build(buildOptions())
     ).rejects.toThrow(/[Rr]edeemer required/)
@@ -189,7 +197,7 @@ describe("TxBuilder propose with guardrail script", () => {
         .propose({
           governanceAction: new GovernanceAction.InfoAction({}),
           rewardAccount,
-          anchor: null,
+          anchor,
           redeemer: Data.constr(0n, [])
         })
         .build(buildOptions())
@@ -206,7 +214,7 @@ describe("TxBuilder propose with guardrail script", () => {
       .propose({
         governanceAction: treasuryWithdrawal(nativeHash),
         rewardAccount,
-        anchor: null,
+        anchor,
         redeemer: Data.constr(0n, [])
       })
       .attachScript({ script: nativeGuardrail })
@@ -231,7 +239,7 @@ const parameterChange = () =>
 const guardedProposal = (governanceAction: GovernanceAction.GovernanceAction, label?: string) => ({
   governanceAction,
   rewardAccount,
-  anchor: null,
+  anchor,
   redeemer: Data.constr(0n, []),
   ...(label ? { label } : {})
 })
@@ -296,7 +304,7 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
       .attachScript({ script: guardrailScript })
 
     const tx = await makeTxBuilder(baseConfig)
-      .propose({ governanceAction: new GovernanceAction.InfoAction({}), rewardAccount, anchor: null })
+      .propose({ governanceAction: new GovernanceAction.InfoAction({}), rewardAccount, anchor })
       .compose(guarded)
       .build(buildOptions(evaluator))
       .then((b) => b.toTransaction())
@@ -338,7 +346,7 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
       .propose({
         governanceAction: treasuryWithdrawal(guardrailHash),
         rewardAccount,
-        anchor: null,
+        anchor,
         redeemer: { all: (inputs) => Data.constr(0n, [Data.int(BigInt(inputs[0]!.index))]), inputs: [fundingUtxo!] }
       })
       .attachScript({ script: guardrailScript })
@@ -358,7 +366,7 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
       .propose({
         governanceAction: treasuryWithdrawal(guardrailHash),
         rewardAccount,
-        anchor: null,
+        anchor,
         redeemer: Data.int(0n)
       })
       .attachScript({ script: guardrailScript })
@@ -386,7 +394,7 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
     it("needs no redeemer and sizes the fee for the script's signer", async () => {
       const signBuilder = await makeTxBuilder(baseConfig)
         .collectFrom({ inputs: [scriptUtxo] })
-        .propose({ governanceAction: nativeAction(), rewardAccount, anchor: null })
+        .propose({ governanceAction: nativeAction(), rewardAccount, anchor })
         .build(buildOptions())
 
       const tx = await signBuilder.toTransaction()
@@ -400,7 +408,7 @@ describe("TxBuilder propose with guardrail script: combinations", () => {
     it("drops a supplied redeemer", async () => {
       const tx = await makeTxBuilder(baseConfig)
         .collectFrom({ inputs: [scriptUtxo] })
-        .propose({ governanceAction: nativeAction(), rewardAccount, anchor: null, redeemer: Data.constr(0n, []) })
+        .propose({ governanceAction: nativeAction(), rewardAccount, anchor, redeemer: Data.constr(0n, []) })
         .build(buildOptions())
         .then((b) => b.toTransaction())
 
@@ -416,7 +424,7 @@ describe("TxBuilder propose with guardrail script: errors", () => {
         .propose({
           governanceAction: treasuryWithdrawal(guardrailHash),
           rewardAccount,
-          anchor: null,
+          anchor,
           redeemer: () => Data.constr(0n, [])
         })
         .attachScript({ script: guardrailScript })
@@ -461,7 +469,7 @@ describe("TxBuilder propose with guardrail script: errors", () => {
     }
 
     const error = await makeTxBuilder(baseConfig)
-      .propose({ governanceAction: new GovernanceAction.InfoAction({}), rewardAccount, anchor: null })
+      .propose({ governanceAction: new GovernanceAction.InfoAction({}), rewardAccount, anchor })
       .propose(guardedProposal(parameterChange(), "params-guardrail"))
       .attachScript({ script: guardrailScript })
       .build(buildOptions(evaluator))
