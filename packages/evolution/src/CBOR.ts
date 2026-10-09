@@ -228,7 +228,8 @@ export const CML_DEFAULT_OPTIONS: CodecOptions = {
  * - Maps: definite-length
  * - Empty list: `80`; empty map: `a0`
  *
- * `Data.toCBORBytes` with these options writes the bytes the node writes.
+ * The `Data` default. `Data.toCBORBytes` with these options writes the bytes
+ * the node writes.
  * The rules that do not depend on options are applied by the Plutus data
  * encoder under every preset: byte strings over 64 bytes in 64-byte chunks,
  * bignums only outside -2^64 to 2^64 - 1 with their bytes chunked the same
@@ -248,17 +249,19 @@ export const PLUTUS_DATA_OPTIONS: CodecOptions = {
 } as const
 
 /**
- * CBOR encoding options for PlutusData matching CML
- * `PlutusData.to_cardano_node_format()`, except that CML also sorts map keys
- * and this preset keeps insertion order. This is the current default for
- * `Data` encoding.
+ * CBOR encoding options for PlutusData with non-empty lists, constructor
+ * fields and maps indefinite, map keys in the order given. This was the
+ * `Data` default before {@link PLUTUS_DATA_OPTIONS}.
  *
- * Uses indefinite-length lists, constructor fields, and maps. It differs from
- * the node layout ({@link PLUTUS_DATA_OPTIONS}) by writing non-empty maps
- * indefinite. The `bounded_bytes` constraint (Conway CDDL: byte strings of at
- * most 64 bytes) is applied by the Plutus data encoder, independent of these
- * codec options.
+ * It matches no tool exactly. The node, cardano-cli and Aiken write maps
+ * definite. CML 6.2.0 `PlutusData.to_cardano_node_format()` writes maps
+ * indefinite but also sorts map keys. For a constructor index above 127 the
+ * Plutus data encoder writes the tag 102 `[index, fields]` pair definite
+ * under every preset, including this one. Use it only to reproduce the bytes
+ * and datum hashes the SDK wrote before {@link PLUTUS_DATA_OPTIONS} became
+ * the default.
  *
+ * @deprecated Use {@link PLUTUS_DATA_OPTIONS}.
  * @since 1.0.0
  * @category constants
  */
@@ -357,8 +360,7 @@ export type TxCodecOptions = {
  *
  * - `ledger` is {@link CML_DEFAULT_OPTIONS}, CML's transaction encoding: map
  *   keys in insertion order, definite lengths.
- * - `plutusData` is {@link CML_DATA_DEFAULT_OPTIONS}, the current `Data`
- *   default.
+ * - `plutusData` is {@link PLUTUS_DATA_OPTIONS}, the `Data` default.
  *
  * It does not match cardano-cli, which sorts map keys and writes indefinite
  * lengths above 23 entries.
@@ -368,7 +370,7 @@ export type TxCodecOptions = {
  */
 export const TX_DEFAULT_OPTIONS: TxCodecOptions = {
   ledger: CML_DEFAULT_OPTIONS,
-  plutusData: CML_DATA_DEFAULT_OPTIONS
+  plutusData: PLUTUS_DATA_OPTIONS
 }
 
 /**
@@ -386,7 +388,7 @@ export const TX_CANONICAL_OPTIONS: TxCodecOptions = {
 /**
  * Turns plain options into transaction options: `ledger` is the options and
  * `plutusData` is the options too, except that {@link CML_DEFAULT_OPTIONS}
- * gives {@link CML_DATA_DEFAULT_OPTIONS}, as {@link TX_DEFAULT_OPTIONS} does.
+ * gives {@link PLUTUS_DATA_OPTIONS}, as {@link TX_DEFAULT_OPTIONS} does.
  * Transaction options are returned as they are.
  *
  * @since 2.0.0
@@ -395,7 +397,7 @@ export const TX_CANONICAL_OPTIONS: TxCodecOptions = {
 export const toTxCodecOptions = (options: TxCodecOptions | CodecOptions): TxCodecOptions =>
   "ledger" in options
     ? options
-    : { ledger: options, plutusData: options === CML_DEFAULT_OPTIONS ? CML_DATA_DEFAULT_OPTIONS : options }
+    : { ledger: options, plutusData: options === CML_DEFAULT_OPTIONS ? PLUTUS_DATA_OPTIONS : options }
 
 const DEFAULT_OPTIONS: CodecOptions = {
   mode: "custom",

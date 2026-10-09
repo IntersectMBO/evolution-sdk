@@ -490,12 +490,13 @@ export const arbitrary = arbitraryPlutusData(3)
 // ============================================================================
 
 /**
- * Default CBOR options for Data encoding/decoding
+ * Default CBOR options for Data encoding/decoding: {@link CBOR.PLUTUS_DATA_OPTIONS},
+ * the layout the node writes.
  *
  * @since 2.0.0
  * @category constants
  */
-export const DEFAULT_CBOR_OPTIONS = CBOR.CML_DATA_DEFAULT_OPTIONS
+export const DEFAULT_CBOR_OPTIONS = CBOR.PLUTUS_DATA_OPTIONS
 
 /**
  * Convert a big-endian byte array to a positive bigint
@@ -1041,7 +1042,7 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Dat
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) => {
+export const FromCBORBytes = (options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS) => {
   const fromBytes = Schema.compose(CBOR.FromBytes(options), FromCDDL)
   const layout = toLayout(options)
   return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(DataSchema), {
@@ -1071,7 +1072,7 @@ export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
+export const FromCBORHex = (options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS) =>
   Schema.compose(
     Schema.Uint8ArrayFromHex, // string → Uint8Array
     FromCBORBytes(options) // Uint8Array → Data
@@ -1096,7 +1097,7 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_O
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Uint8Array =>
+export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Uint8Array =>
   encodeData(data, toLayout(options))
 
 /**
@@ -1105,7 +1106,7 @@ export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DA
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORHex = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): string =>
+export const toCBORHex = (data: Data, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): string =>
   Bytes.toHex(toCBORBytes(data, options))
 
 /**
@@ -1114,7 +1115,7 @@ export const toCBORHex = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Data =>
+export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
   Schema.decodeSync(FromCBORBytes(options))(bytes)
 
 /**
@@ -1123,7 +1124,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Data =>
+export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
   Schema.decodeSync(FromCBORHex(options))(hex)
 
 /**
@@ -1148,7 +1149,7 @@ export const withSchema = <A, I extends Data>(
 
 /**
  * Compute the hash of PlutusData using blake2b-256 over its CBOR encoding.
- * Defaults to CML_DATA_DEFAULT_OPTIONS (indefinite-length arrays/maps).
+ * Defaults to PLUTUS_DATA_OPTIONS, the node layout.
  *
  * @since 2.0.0
  * @category hashing
@@ -1171,7 +1172,7 @@ export const withSchema = <A, I extends Data>(
  */
 export const toDatumHash = (
   data: Data,
-  options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS
+  options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS
 ): DatumHash.DatumHash => {
   const bytes = toCBORBytes(data, options)
   const digest = blake2b(bytes, { dkLen: 32 })
