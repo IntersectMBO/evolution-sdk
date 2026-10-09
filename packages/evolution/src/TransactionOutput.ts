@@ -3,6 +3,7 @@ import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema }
 import * as AddressEras from "./AddressEras.js"
 import * as BaseAddress from "./BaseAddress.js"
 import * as CBOR from "./CBOR.js"
+import * as PlutusData from "./Data.js"
 import * as DatumHash from "./DatumHash.js"
 import * as DatumOption from "./DatumOption.js"
 import * as EnterpriseAddress from "./EnterpriseAddress.js"
@@ -14,7 +15,6 @@ const encAddress = ParseResult.encodeEither(AddressEras.FromBytes)
 const decAddress = ParseResult.decodeUnknownEither(Schema.Union(BaseAddress.FromBytes, EnterpriseAddress.FromBytes))
 const encValue = ParseResult.encodeEither(Value.FromCDDL)
 const decValue = ParseResult.decodeUnknownEither(Value.FromCDDL)
-const encDatumOption = ParseResult.encodeEither(DatumOption.FromCDDL)
 const decDatumOption = ParseResult.decodeUnknownEither(DatumOption.FromCDDL)
 const decDatumHash = ParseResult.decodeEither(DatumHash.FromBytes)
 const encScriptRef = ParseResult.encodeEither(ScriptRef.FromCDDL)
@@ -198,16 +198,10 @@ const BabbageTransactionOutputCDDL = Schema.MapFromSelf({
   value: CBOR.CBORSchema
 })
 
-/**
- * CDDL schema for Babbage transaction outputs
- *
- * @since 2.0.0
- * @category transformation
- */
-export const FromBabbageTransactionOutputCDDLSchema = Schema.transformOrFail(
-  BabbageTransactionOutputCDDL,
-  Schema.typeSchema(BabbageTransactionOutput),
-  {
+// Writes a new inline datum with the `plutusData` options.
+const makeFromBabbageTransactionOutputCDDLSchema = (plutusData: CBOR.CodecOptions) => {
+  const encodeDatumOption = ParseResult.encodeEither(DatumOption.makeFromCDDL(plutusData))
+  return Schema.transformOrFail(BabbageTransactionOutputCDDL, Schema.typeSchema(BabbageTransactionOutput), {
     strict: true,
     encode: (toI) =>
       E.gen(function* () {
@@ -215,7 +209,7 @@ export const FromBabbageTransactionOutputCDDLSchema = Schema.transformOrFail(
         const addressBytes = yield* encAddress(toI.address)
         const valueBytes = yield* encValue(toI.amount)
         // Prepare optional fields
-        const datumOptionBytes = toI.datumOption !== undefined ? yield* encDatumOption(toI.datumOption) : undefined
+        const datumOptionBytes = toI.datumOption !== undefined ? yield* encodeDatumOption(toI.datumOption) : undefined
         const scriptRefBytes = toI.scriptRef !== undefined ? yield* encScriptRef(toI.scriptRef) : undefined
 
         // Build result object with conditional properties
@@ -254,7 +248,18 @@ export const FromBabbageTransactionOutputCDDLSchema = Schema.transformOrFail(
           { disableValidation: true }
         )
       })
-  }
+  })
+}
+
+/**
+ * CDDL schema for Babbage transaction outputs. A new inline datum is written
+ * with `Data.DEFAULT_CBOR_OPTIONS`.
+ *
+ * @since 2.0.0
+ * @category transformation
+ */
+export const FromBabbageTransactionOutputCDDLSchema = makeFromBabbageTransactionOutputCDDLSchema(
+  PlutusData.DEFAULT_CBOR_OPTIONS
 )
 
 export const CDDLSchema = Schema.Union(ShelleyTransactionOutputCDDL, BabbageTransactionOutputCDDL)
@@ -268,28 +273,35 @@ export const CDDLSchema = Schema.Union(ShelleyTransactionOutputCDDL, BabbageTran
 export const FromCDDL = Schema.Union(FromShelleyTransactionOutputCDDLSchema, FromBabbageTransactionOutputCDDLSchema)
 
 /**
- * CBOR bytes transformation schema for TransactionOutput.
+ * CBOR bytes transformation schema for TransactionOutput. A new inline datum
+ * is written with the `plutusData` options, the rest with the `ledger`
+ * options. Plain options are read as `CBOR.toTxCodecOptions` reads them.
  *
  * @since 2.0.0
  * @category transformer
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → TransactionOutput
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const { ledger, plutusData } = CBOR.toTxCodecOptions(options)
+  return Schema.compose(
+    CBOR.FromBytes(ledger), // Uint8Array → CBOR
+    plutusData === PlutusData.DEFAULT_CBOR_OPTIONS
+      ? FromCDDL
+      : Schema.Union(FromShelleyTransactionOutputCDDLSchema, makeFromBabbageTransactionOutputCDDLSchema(plutusData)) // CBOR → TransactionOutput
   ).annotations({
     identifier: "TransactionOutput.FromCBORBytes",
     title: "TransactionOutput from CBOR Bytes",
     description: "Transforms CBOR bytes (Uint8Array) to TransactionOutput"
   })
+}
 
 /**
- * CBOR hex transformation schema for TransactionOutput.
+ * CBOR hex transformation schema for TransactionOutput, as in
+ * {@link FromCBORBytes}.
  *
  * @since 2.0.0
  * @category transformer
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.compose(
     Schema.Uint8ArrayFromHex, // string → Uint8Array
     FromCBORBytes(options) // Uint8Array → TransactionOutput
@@ -326,8 +338,10 @@ export const arbitrary = FastCheck.oneof(
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: TransactionOutput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (
+  data: TransactionOutput,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) => Schema.encodeSync(FromCBORBytes(options))(data)
 
 /**
  * Convert TransactionOutput to CBOR hex.
@@ -335,8 +349,10 @@ export const toCBORBytes = (data: TransactionOutput, options: CBOR.CodecOptions 
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: TransactionOutput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (
+  data: TransactionOutput,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) => Schema.encodeSync(FromCBORHex(options))(data)
 
 /**
  * Parse TransactionOutput from CBOR bytes.

@@ -3,6 +3,7 @@ import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema
 import * as AuxiliaryData from "./AuxiliaryData.js"
 import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
+import * as PlutusData from "./Data.js"
 import * as TransactionBody from "./TransactionBody.js"
 import * as TransactionWitnessSet from "./TransactionWitnessSet.js"
 
@@ -104,14 +105,15 @@ const encodeArray = (items: ReadonlyArray<Uint8Array>, options: CBOR.CodecOption
     : CBOR.encodeArrayAsDefinite(items)
 
 /**
- * CBOR bytes transformation schema for Transaction. The witness set is
- * written as `TransactionWitnessSet.FromCBORBytes(options)` writes it, the
- * rest with the `ledger` options. Plain options are read as
- * `CBOR.toTxCodecOptions` reads them.
+ * CBOR bytes transformation schema for Transaction. The body and the witness
+ * set are written as `TransactionBody.FromCBORBytes(options)` and
+ * `TransactionWitnessSet.FromCBORBytes(options)` write them, the rest with
+ * the `ledger` options. Plain options are read as `CBOR.toTxCodecOptions`
+ * reads them.
  */
 export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
   const txOptions = CBOR.toTxCodecOptions(options)
-  const { ledger } = txOptions
+  const { ledger, plutusData } = txOptions
   return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(Transaction), {
     strict: true,
     decode: (bytes, parseOptions) =>
@@ -119,12 +121,17 @@ export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions =
     encode: (tx, parseOptions, ast) =>
       Eff.flatMap(ParseResult.encode(FromCDDL)(tx, parseOptions), (tuple) =>
         ParseResult.try({
-          // The witness set writes its Plutus data with their own options, so
-          // the tuple is joined from its encoded items
+          // The body and the witness set write their Plutus data with their
+          // own options, so the tuple is joined from its encoded items. The
+          // tuple holds the body with its inline datums in the default layout.
           try: () =>
             encodeArray(
               tuple.map((item, i) =>
-                i === 1 ? TransactionWitnessSet.toCBORBytes(tx.witnessSet, txOptions) : CBOR.toCBORBytes(item, ledger)
+                i === 0 && plutusData !== PlutusData.DEFAULT_CBOR_OPTIONS
+                  ? TransactionBody.toCBORBytes(tx.body, txOptions)
+                  : i === 1
+                    ? TransactionWitnessSet.toCBORBytes(tx.witnessSet, txOptions)
+                    : CBOR.toCBORBytes(item, ledger)
               ),
               ledger
             ),

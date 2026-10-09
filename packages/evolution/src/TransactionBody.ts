@@ -8,6 +8,7 @@ import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as Certificate from "./Certificate.js"
 import * as Coin from "./Coin.js"
+import * as PlutusData from "./Data.js"
 import * as GovernanceAction from "./GovernanceAction.js"
 import * as KeyHash from "./KeyHash.js"
 import * as Mint from "./Mint.js"
@@ -177,7 +178,6 @@ export class TransactionBody extends Schema.TaggedClass<TransactionBody>()("Tran
 // Pre-bind hot ParseResult helpers
 const encodeTxInput = ParseResult.encodeEither(TransactionInput.FromCDDL)
 const decodeTxInput = ParseResult.decodeEither(TransactionInput.FromCDDL)
-const encodeTxOutput = ParseResult.encodeEither(TxOut.FromCDDL)
 const decodeTxOutput = ParseResult.decodeEither(TxOut.FromCDDL)
 const encodeCertificate = ParseResult.encodeEither(Certificate.FromCDDL)
 const decodeCertificate = ParseResult.decodeEither(Certificate.FromCDDL)
@@ -211,319 +211,340 @@ export const CDDLSchema = Schema.declare(
 
 type CDDLSchema = typeof CDDLSchema.Type
 
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(TransactionBody), {
-  strict: true,
-  encode: (toA) =>
-    E.gen(function* () {
-      const record = new Map<bigint, CBOR.CBOR>()
+// The CDDL transform that writes a new inline datum with the `plutusData` options
+const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
+  const encodeTxOutput = ParseResult.encodeEither(TxOut.makeFromCDDL(plutusData))
+  return Schema.transformOrFail(CDDLSchema, Schema.typeSchema(TransactionBody), {
+    strict: true,
+    encode: (toA) =>
+      E.gen(function* () {
+        const record = new Map<bigint, CBOR.CBOR>()
 
-      // Required fields
-      // 0: inputs - always tagged as set
-      const inputsLen = toA.inputs.length
-      const inputsArr = new Array(inputsLen)
-      for (let i = 0; i < inputsLen; i++) {
-        inputsArr[i] = yield* encodeTxInput(toA.inputs[i])
-      }
-      record.set(0n, CBOR.Tag.make({ tag: 258, value: inputsArr }, { disableValidation: true }))
-
-      // 1: outputs
-      const outputsLen = toA.outputs.length
-      const outputsArr = new Array(outputsLen)
-      for (let i = 0; i < outputsLen; i++) {
-        outputsArr[i] = yield* encodeTxOutput(toA.outputs[i])
-      }
-      record.set(1n, outputsArr)
-
-      // 2: fee
-      record.set(2n, toA.fee)
-
-      // Optional fields (assign directly when present)
-      if (toA.ttl !== undefined) record.set(3n, toA.ttl)
-
-      if (toA.certificates && toA.certificates.length > 0) {
-        const len = toA.certificates.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeCertificate(toA.certificates[i])
+        // Required fields
+        // 0: inputs - always tagged as set
+        const inputsLen = toA.inputs.length
+        const inputsArr = new Array(inputsLen)
+        for (let i = 0; i < inputsLen; i++) {
+          inputsArr[i] = yield* encodeTxInput(toA.inputs[i])
         }
-        record.set(4n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
-      }
+        record.set(0n, CBOR.Tag.make({ tag: 258, value: inputsArr }, { disableValidation: true }))
 
-      if (toA.withdrawals) {
-        const map = new Map<Uint8Array, bigint>()
-        for (const [rewardAccount, coin] of toA.withdrawals.withdrawals.entries()) {
-          const accountBytes = yield* encodeRewardAccountBytes(rewardAccount)
-          map.set(accountBytes, coin)
+        // 1: outputs
+        const outputsLen = toA.outputs.length
+        const outputsArr = new Array(outputsLen)
+        for (let i = 0; i < outputsLen; i++) {
+          outputsArr[i] = yield* encodeTxOutput(toA.outputs[i])
         }
-        record.set(5n, map)
-      }
+        record.set(1n, outputsArr)
 
-      if (toA.auxiliaryDataHash) record.set(7n, toA.auxiliaryDataHash.bytes)
+        // 2: fee
+        record.set(2n, toA.fee)
 
-      if (toA.validityIntervalStart !== undefined) record.set(8n, toA.validityIntervalStart)
+        // Optional fields (assign directly when present)
+        if (toA.ttl !== undefined) record.set(3n, toA.ttl)
 
-      if (toA.mint) record.set(9n, yield* encodeMint(toA.mint))
-
-      if (toA.scriptDataHash) record.set(11n, toA.scriptDataHash.hash)
-
-      if (toA.collateralInputs) {
-        const len = toA.collateralInputs.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeTxInput(toA.collateralInputs[i])
+        if (toA.certificates && toA.certificates.length > 0) {
+          const len = toA.certificates.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* encodeCertificate(toA.certificates[i])
+          }
+          record.set(4n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
         }
-        record.set(13n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
-      }
 
-      if (toA.requiredSigners) {
-        const len = toA.requiredSigners.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = toA.requiredSigners[i].hash
+        if (toA.withdrawals) {
+          const map = new Map<Uint8Array, bigint>()
+          for (const [rewardAccount, coin] of toA.withdrawals.withdrawals.entries()) {
+            const accountBytes = yield* encodeRewardAccountBytes(rewardAccount)
+            map.set(accountBytes, coin)
+          }
+          record.set(5n, map)
         }
-        record.set(14n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
-      }
 
-      if (toA.networkId !== undefined) record.set(15n, BigInt(toA.networkId))
+        if (toA.auxiliaryDataHash) record.set(7n, toA.auxiliaryDataHash.bytes)
 
-      if (toA.collateralReturn) {
-        record.set(16n, yield* encodeTxOutput(toA.collateralReturn))
-      }
+        if (toA.validityIntervalStart !== undefined) record.set(8n, toA.validityIntervalStart)
 
-      if (toA.totalCollateral !== undefined) record.set(17n, toA.totalCollateral)
+        if (toA.mint) record.set(9n, yield* encodeMint(toA.mint))
 
-      if (toA.referenceInputs) {
-        const len = toA.referenceInputs.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeTxInput(toA.referenceInputs[i])
+        if (toA.scriptDataHash) record.set(11n, toA.scriptDataHash.hash)
+
+        if (toA.collateralInputs) {
+          const len = toA.collateralInputs.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* encodeTxInput(toA.collateralInputs[i])
+          }
+          record.set(13n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
         }
-        record.set(18n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
-      }
 
-      if (toA.votingProcedures) record.set(19n, yield* encodeVotingProcedures(toA.votingProcedures))
-
-      if (toA.proposalProcedures && toA.proposalProcedures.procedures.length > 0) {
-        const len = toA.proposalProcedures.procedures.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* encodeProposalProcedure(toA.proposalProcedures.procedures[i])
+        if (toA.requiredSigners) {
+          const len = toA.requiredSigners.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = toA.requiredSigners[i].hash
+          }
+          record.set(14n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
         }
-        record.set(20n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
-      }
 
-      if (toA.currentTreasuryValue !== undefined) record.set(21n, toA.currentTreasuryValue)
+        if (toA.networkId !== undefined) record.set(15n, BigInt(toA.networkId))
 
-      if (toA.donation !== undefined) record.set(22n, toA.donation)
-
-      return record as CDDLSchema
-    }),
-  decode: (fromA) =>
-    E.gen(function* () {
-      // Required fields - accept both tag-258 (Conway) and plain array (Babbage)
-      const inputsRaw = fromA.get(0n)
-      const taggedResult = decodeTaggedInputs(inputsRaw)
-      const inputs = E.isRight(taggedResult)
-        ? taggedResult.right.value
-        : yield* decodeUntaggedInputs(inputsRaw)
-
-      // const inputsArray = inputsTag.value
-      // const inputsLen = inputsArray.length
-      // const inputs = new Array(inputsLen)
-      // for (let i = 0; i < inputsLen; i++) {
-      //   inputs[i] = yield* decodeTxInput(inputsArray[i])
-      // }
-
-      const outputsArray = fromA.get(1n) as Array<typeof TxOut.CDDLSchema.Type>
-      const outputsLen = outputsArray.length
-      const outputs = new Array(outputsLen)
-      for (let i = 0; i < outputsLen; i++) {
-        outputs[i] = yield* decodeTxOutput(outputsArray[i])
-      }
-      const fee = fromA.get(2n) as bigint
-
-      // Optional fields - access as record properties
-      const ttl = fromA.get(3n) as bigint | undefined
-
-      // Accept both tag-258 (Conway) and plain array (Babbage) for certificates.
-      // Mirrors the `inputs` pattern above: try tagged first, fall back to
-      // untagged, and fail decoding if neither matches.
-      const certificatesRaw = fromA.get(4n)
-      let certificatesArray: ReadonlyArray<typeof Certificate.CDDLSchema.Type> | undefined
-      if (certificatesRaw !== undefined) {
-        const taggedCertsResult = decodeTaggedCertificates(certificatesRaw)
-        certificatesArray = E.isRight(taggedCertsResult)
-          ? taggedCertsResult.right.value
-          : yield* decodeUntaggedCertificates(certificatesRaw)
-      }
-      let certificates: NonEmptyArray<Certificate.Certificate> | undefined
-      if (certificatesArray) {
-        const len = certificatesArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeCertificate(certificatesArray[i])
+        if (toA.collateralReturn) {
+          record.set(16n, yield* encodeTxOutput(toA.collateralReturn))
         }
-        certificates = arr as NonEmptyArray<Certificate.Certificate>
-      }
 
-      let withdrawals: Withdrawals.Withdrawals | undefined
-      const withdrawalsMap = fromA.get(5n) as typeof Withdrawals.CDDLSchema.Type | undefined
-      if (withdrawalsMap) {
-        const decodedWithdrawals = new Map<RewardAccount.RewardAccount, Coin.Coin>()
-        const entriesIter = (withdrawalsMap as ReadonlyMap<Uint8Array, bigint>).entries()
-        for (const [accountBytes, coinAmount] of entriesIter) {
-          const rewardAccount = yield* decodeRewardAccountBytes(accountBytes)
-          decodedWithdrawals.set(rewardAccount, coinAmount)
+        if (toA.totalCollateral !== undefined) record.set(17n, toA.totalCollateral)
+
+        if (toA.referenceInputs) {
+          const len = toA.referenceInputs.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* encodeTxInput(toA.referenceInputs[i])
+          }
+          record.set(18n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
         }
-        withdrawals = new Withdrawals.Withdrawals({ withdrawals: decodedWithdrawals })
-      }
 
-      const auxiliaryDataHashBytes = fromA.get(7n) as Uint8Array | undefined
-      const auxiliaryDataHash = auxiliaryDataHashBytes
-        ? yield* decodeAuxiliaryDataHash(auxiliaryDataHashBytes)
-        : undefined
-      const validityIntervalStart = fromA.get(8n) as bigint | undefined
-      const mintData = fromA.get(9n) as typeof Mint.CDDLSchema.Type | undefined
-      const mint = mintData ? yield* decodeMint(mintData) : undefined
-      const scriptDataHashBytes = fromA.get(11n) as Uint8Array | undefined
-      const scriptDataHash = scriptDataHashBytes ? yield* decodeScriptDataHash(scriptDataHashBytes) : undefined
+        if (toA.votingProcedures) record.set(19n, yield* encodeVotingProcedures(toA.votingProcedures))
 
-      // Accept both tag-258 (Conway) and plain array (Babbage) for collateral inputs
-      const collateralInputsRaw = fromA.get(13n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
-        | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
-        | undefined
-      const collateralInputsArray = collateralInputsRaw
-        ? (collateralInputsRaw as any)._tag === "Tag"
-          ? (collateralInputsRaw as any).value
-          : collateralInputsRaw
-        : undefined
-      let collateralInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
-      if (collateralInputsArray) {
-        const len = collateralInputsArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeTxInput(collateralInputsArray[i])
+        if (toA.proposalProcedures && toA.proposalProcedures.procedures.length > 0) {
+          const len = toA.proposalProcedures.procedures.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* encodeProposalProcedure(toA.proposalProcedures.procedures[i])
+          }
+          record.set(20n, CBOR.Tag.make({ tag: 258, value: arr }, { disableValidation: true }))
         }
-        collateralInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
-      }
 
-      // Accept both tag-258 (Conway) and plain array (Babbage) for required signers
-      const requiredSignersRaw = fromA.get(14n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<Uint8Array> }
-        | ReadonlyArray<Uint8Array>
-        | undefined
-      const requiredSignersArray = requiredSignersRaw
-        ? (requiredSignersRaw as any)._tag === "Tag"
-          ? (requiredSignersRaw as any).value
-          : requiredSignersRaw
-        : undefined
-      let requiredSigners: NonEmptyArray<KeyHash.KeyHash> | undefined
-      if (requiredSignersArray) {
-        const len = requiredSignersArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeKeyHash(requiredSignersArray[i])
+        if (toA.currentTreasuryValue !== undefined) record.set(21n, toA.currentTreasuryValue)
+
+        if (toA.donation !== undefined) record.set(22n, toA.donation)
+
+        return record as CDDLSchema
+      }),
+    decode: (fromA) =>
+      E.gen(function* () {
+        // Required fields - accept both tag-258 (Conway) and plain array (Babbage)
+        const inputsRaw = fromA.get(0n)
+        const taggedResult = decodeTaggedInputs(inputsRaw)
+        const inputs = E.isRight(taggedResult)
+          ? taggedResult.right.value
+          : yield* decodeUntaggedInputs(inputsRaw)
+
+        // const inputsArray = inputsTag.value
+        // const inputsLen = inputsArray.length
+        // const inputs = new Array(inputsLen)
+        // for (let i = 0; i < inputsLen; i++) {
+        //   inputs[i] = yield* decodeTxInput(inputsArray[i])
+        // }
+
+        const outputsArray = fromA.get(1n) as Array<typeof TxOut.CDDLSchema.Type>
+        const outputsLen = outputsArray.length
+        const outputs = new Array(outputsLen)
+        for (let i = 0; i < outputsLen; i++) {
+          outputs[i] = yield* decodeTxOutput(outputsArray[i])
         }
-        requiredSigners = arr as NonEmptyArray<KeyHash.KeyHash>
-      }
-      const networkIdBigInt = fromA.get(15n) as bigint | undefined
-      const networkId = networkIdBigInt !== undefined ? (Number(networkIdBigInt) as NetworkId.NetworkId) : undefined
-      const collateralReturnData = fromA.get(16n) as typeof TxOut.CDDLSchema.Type | undefined
-      const collateralReturn = collateralReturnData ? yield* decodeTxOutput(collateralReturnData) : undefined
-      const totalCollateral = fromA.get(17n) as Coin.Coin | undefined
+        const fee = fromA.get(2n) as bigint
 
-      // Accept both tag-258 (Conway) and plain array (Babbage) for reference inputs
-      const referenceInputsRaw = fromA.get(18n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
-        | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
-        | undefined
-      const referenceInputsArray: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> | undefined = referenceInputsRaw
-        ? (referenceInputsRaw as any)._tag === "Tag"
-          ? (referenceInputsRaw as any).value
-          : referenceInputsRaw
-        : undefined
-      let referenceInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
-      if (referenceInputsArray) {
-        const len = referenceInputsArray.length
-        const arr = new Array(len)
-        for (let i = 0; i < len; i++) {
-          arr[i] = yield* decodeTxInput(referenceInputsArray[i])
+        // Optional fields - access as record properties
+        const ttl = fromA.get(3n) as bigint | undefined
+
+        // Accept both tag-258 (Conway) and plain array (Babbage) for certificates.
+        // Mirrors the `inputs` pattern above: try tagged first, fall back to
+        // untagged, and fail decoding if neither matches.
+        const certificatesRaw = fromA.get(4n)
+        let certificatesArray: ReadonlyArray<typeof Certificate.CDDLSchema.Type> | undefined
+        if (certificatesRaw !== undefined) {
+          const taggedCertsResult = decodeTaggedCertificates(certificatesRaw)
+          certificatesArray = E.isRight(taggedCertsResult)
+            ? taggedCertsResult.right.value
+            : yield* decodeUntaggedCertificates(certificatesRaw)
         }
-        referenceInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
-      }
-      const votingProceduresData = fromA.get(19n) as typeof VotingProcedures.CDDLSchema.Type | undefined
-      const votingProcedures = votingProceduresData ? yield* decodeVotingProcedures(votingProceduresData) : undefined
-      // Accept both tag-258 (Conway) and plain array (Babbage) for proposal procedures
-      const proposalProceduresRaw = fromA.get(20n) as
-        | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> }
-        | ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>
-        | undefined
-      const proposalProceduresArray: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> | undefined = proposalProceduresRaw
-        ? (proposalProceduresRaw as any)._tag === "Tag"
-          ? (proposalProceduresRaw as any).value
-          : proposalProceduresRaw
-        : undefined
-      const proposalProcedures = proposalProceduresArray
-        ? new ProposalProcedures.ProposalProcedures({
-            procedures: yield* E.all(proposalProceduresArray.map((pp) => decodeProposalProcedure(pp)))
-          })
-        : undefined
-      const currentTreasuryValue = fromA.get(21n) as Coin.Coin | undefined
-      const donation = fromA.get(22n) as Coin.Coin | undefined
+        let certificates: NonEmptyArray<Certificate.Certificate> | undefined
+        if (certificatesArray) {
+          const len = certificatesArray.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* decodeCertificate(certificatesArray[i])
+          }
+          certificates = arr as NonEmptyArray<Certificate.Certificate>
+        }
 
-      const result = new TransactionBody(
-        {
-          inputs,
-          outputs,
-          fee,
-          ttl,
-          certificates,
-          withdrawals,
-          auxiliaryDataHash,
-          validityIntervalStart,
-          mint,
-          scriptDataHash,
-          collateralInputs,
-          requiredSigners,
-          networkId,
-          collateralReturn,
-          totalCollateral,
-          referenceInputs,
-          votingProcedures,
-          proposalProcedures,
-          currentTreasuryValue,
-          donation
-        },
-        { disableValidation: true }
-      )
-      return result
-    })
-})
+        let withdrawals: Withdrawals.Withdrawals | undefined
+        const withdrawalsMap = fromA.get(5n) as typeof Withdrawals.CDDLSchema.Type | undefined
+        if (withdrawalsMap) {
+          const decodedWithdrawals = new Map<RewardAccount.RewardAccount, Coin.Coin>()
+          const entriesIter = (withdrawalsMap as ReadonlyMap<Uint8Array, bigint>).entries()
+          for (const [accountBytes, coinAmount] of entriesIter) {
+            const rewardAccount = yield* decodeRewardAccountBytes(accountBytes)
+            decodedWithdrawals.set(rewardAccount, coinAmount)
+          }
+          withdrawals = new Withdrawals.Withdrawals({ withdrawals: decodedWithdrawals })
+        }
+
+        const auxiliaryDataHashBytes = fromA.get(7n) as Uint8Array | undefined
+        const auxiliaryDataHash = auxiliaryDataHashBytes
+          ? yield* decodeAuxiliaryDataHash(auxiliaryDataHashBytes)
+          : undefined
+        const validityIntervalStart = fromA.get(8n) as bigint | undefined
+        const mintData = fromA.get(9n) as typeof Mint.CDDLSchema.Type | undefined
+        const mint = mintData ? yield* decodeMint(mintData) : undefined
+        const scriptDataHashBytes = fromA.get(11n) as Uint8Array | undefined
+        const scriptDataHash = scriptDataHashBytes ? yield* decodeScriptDataHash(scriptDataHashBytes) : undefined
+
+        // Accept both tag-258 (Conway) and plain array (Babbage) for collateral inputs
+        const collateralInputsRaw = fromA.get(13n) as
+          | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
+          | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
+          | undefined
+        const collateralInputsArray = collateralInputsRaw
+          ? (collateralInputsRaw as any)._tag === "Tag"
+            ? (collateralInputsRaw as any).value
+            : collateralInputsRaw
+          : undefined
+        let collateralInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
+        if (collateralInputsArray) {
+          const len = collateralInputsArray.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* decodeTxInput(collateralInputsArray[i])
+          }
+          collateralInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
+        }
+
+        // Accept both tag-258 (Conway) and plain array (Babbage) for required signers
+        const requiredSignersRaw = fromA.get(14n) as
+          | { _tag: "Tag"; tag: 258; value: ReadonlyArray<Uint8Array> }
+          | ReadonlyArray<Uint8Array>
+          | undefined
+        const requiredSignersArray = requiredSignersRaw
+          ? (requiredSignersRaw as any)._tag === "Tag"
+            ? (requiredSignersRaw as any).value
+            : requiredSignersRaw
+          : undefined
+        let requiredSigners: NonEmptyArray<KeyHash.KeyHash> | undefined
+        if (requiredSignersArray) {
+          const len = requiredSignersArray.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* decodeKeyHash(requiredSignersArray[i])
+          }
+          requiredSigners = arr as NonEmptyArray<KeyHash.KeyHash>
+        }
+        const networkIdBigInt = fromA.get(15n) as bigint | undefined
+        const networkId = networkIdBigInt !== undefined ? (Number(networkIdBigInt) as NetworkId.NetworkId) : undefined
+        const collateralReturnData = fromA.get(16n) as typeof TxOut.CDDLSchema.Type | undefined
+        const collateralReturn = collateralReturnData ? yield* decodeTxOutput(collateralReturnData) : undefined
+        const totalCollateral = fromA.get(17n) as Coin.Coin | undefined
+
+        // Accept both tag-258 (Conway) and plain array (Babbage) for reference inputs
+        const referenceInputsRaw = fromA.get(18n) as
+          | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> }
+          | ReadonlyArray<typeof TransactionInput.CDDLSchema.Type>
+          | undefined
+        const referenceInputsArray: ReadonlyArray<typeof TransactionInput.CDDLSchema.Type> | undefined = referenceInputsRaw
+          ? (referenceInputsRaw as any)._tag === "Tag"
+            ? (referenceInputsRaw as any).value
+            : referenceInputsRaw
+          : undefined
+        let referenceInputs: NonEmptyArray<TransactionInput.TransactionInput> | undefined
+        if (referenceInputsArray) {
+          const len = referenceInputsArray.length
+          const arr = new Array(len)
+          for (let i = 0; i < len; i++) {
+            arr[i] = yield* decodeTxInput(referenceInputsArray[i])
+          }
+          referenceInputs = arr as NonEmptyArray<TransactionInput.TransactionInput>
+        }
+        const votingProceduresData = fromA.get(19n) as typeof VotingProcedures.CDDLSchema.Type | undefined
+        const votingProcedures = votingProceduresData ? yield* decodeVotingProcedures(votingProceduresData) : undefined
+        // Accept both tag-258 (Conway) and plain array (Babbage) for proposal procedures
+        const proposalProceduresRaw = fromA.get(20n) as
+          | { _tag: "Tag"; tag: 258; value: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> }
+          | ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>
+          | undefined
+        const proposalProceduresArray: ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type> | undefined = proposalProceduresRaw
+          ? (proposalProceduresRaw as any)._tag === "Tag"
+            ? (proposalProceduresRaw as any).value
+            : proposalProceduresRaw
+          : undefined
+        const proposalProcedures = proposalProceduresArray
+          ? new ProposalProcedures.ProposalProcedures({
+              procedures: yield* E.all(proposalProceduresArray.map((pp) => decodeProposalProcedure(pp)))
+            })
+          : undefined
+        const currentTreasuryValue = fromA.get(21n) as Coin.Coin | undefined
+        const donation = fromA.get(22n) as Coin.Coin | undefined
+
+        const result = new TransactionBody(
+          {
+            inputs,
+            outputs,
+            fee,
+            ttl,
+            certificates,
+            withdrawals,
+            auxiliaryDataHash,
+            validityIntervalStart,
+            mint,
+            scriptDataHash,
+            collateralInputs,
+            requiredSigners,
+            networkId,
+            collateralReturn,
+            totalCollateral,
+            referenceInputs,
+            votingProcedures,
+            proposalProcedures,
+            currentTreasuryValue,
+            donation
+          },
+          { disableValidation: true }
+        )
+        return result
+      })
+  })
+}
+
+/**
+ * CDDL transformation schema for TransactionBody. A new inline datum is
+ * written with `Data.DEFAULT_CBOR_OPTIONS`.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromCDDL = makeFromCDDL(PlutusData.DEFAULT_CBOR_OPTIONS)
 
 /**
  * CBOR bytes transformation schema for TransactionBody.
  * Transforms between CBOR bytes and TransactionBody using Conway CDDL specification.
  *
- * @since 2.0.0
- * @category schemas
- */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromBytes(options), FromCDDL).annotations({
-    identifier: "TransactionBody.FromCBORBytes",
-    title: "TransactionBody from CBOR bytes",
-    description: "Decode TransactionBody from CBOR-encoded bytes using Conway CDDL specification"
-  })
-
-/**
- * CBOR hex transformation schema for TransactionBody.
- * Transforms between CBOR hex string and TransactionBody using Conway CDDL specification.
+ * A new inline datum is written with the `plutusData` options, the rest with
+ * the `ledger` options. Plain options are read as `CBOR.toTxCodecOptions`
+ * reads them.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCDDL).annotations({
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const { ledger, plutusData } = CBOR.toTxCodecOptions(options)
+  return Schema.compose(
+    CBOR.FromBytes(ledger),
+    plutusData === PlutusData.DEFAULT_CBOR_OPTIONS ? FromCDDL : makeFromCDDL(plutusData)
+  ).annotations({
+    identifier: "TransactionBody.FromCBORBytes",
+    title: "TransactionBody from CBOR bytes",
+    description: "Decode TransactionBody from CBOR-encoded bytes using Conway CDDL specification"
+  })
+}
+
+/**
+ * CBOR hex transformation schema for TransactionBody, as in {@link FromCBORBytes}.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
+  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options)).annotations({
     identifier: "TransactionBody.FromCBORHex",
     title: "TransactionBody from CBOR hex",
     description: "Decode TransactionBody from CBOR-encoded hex string using Conway CDDL specification"
@@ -555,7 +576,10 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORBytes = (data: TransactionBody, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORBytes = (
+  data: TransactionBody,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) =>
   Schema.encodeSync(FromCBORBytes(options))(data)
 
 /**
@@ -564,7 +588,10 @@ export const toCBORBytes = (data: TransactionBody, options: CBOR.CodecOptions = 
  * @since 2.0.0
  * @category conversion
  */
-export const toCBORHex = (data: TransactionBody, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORHex = (
+  data: TransactionBody,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) =>
   Schema.encodeSync(FromCBORHex(options))(data)
 
 /**
