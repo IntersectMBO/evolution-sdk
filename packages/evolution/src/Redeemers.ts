@@ -499,14 +499,17 @@ export const FromCBORBytesMap = (options: CBOR.TxCodecOptions | CBOR.CodecOption
     encode: (redeemers, parseOptions, ast) =>
       Eff.flatMap(ParseResult.encode(FromMapCDDL)(redeemers, parseOptions), (map) =>
         ParseResult.try({
-          try: () =>
-            encodeMap(
-              Array.from(map, ([key, [data, exUnits]]) => [
+          try: () => {
+            // The map holds the entries in the order of `redeemers.value`
+            const values = Array.from(redeemers.value.values())
+            return encodeMap(
+              Array.from(map, ([key, [, exUnits]], i) => [
                 CBOR.toCBORBytes(key, ledger),
-                encodeArray([CBOR.toCBORBytes(data, plutusData), CBOR.toCBORBytes(exUnits, ledger)], ledger)
+                encodeArray([Data.toCBORBytes(values[i].data, plutusData), CBOR.toCBORBytes(exUnits, ledger)], ledger)
               ]),
               ledger
-            ),
+            )
+          },
           catch: (error) => encodeError(ast, redeemers, error)
         })
       )

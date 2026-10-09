@@ -228,15 +228,11 @@ export const CML_DEFAULT_OPTIONS: CodecOptions = {
  * - Maps: definite-length
  * - Empty list: `80`; empty map: `a0`
  *
- * This matches `encodeData` in the Haskell `PlutusCore.Data` module,
- * `cardano-cli hash-script-data`, Aiken `cbor.serialise()`, and
- * `aiken blueprint apply`. Two cases still differ from the node: a
- * constructor index above 127 (tag 102) writes its `[index, fields]` pair
- * indefinite where the node writes `82`, and the integer -2^64 is written as a
- * negative bignum where the node writes `3bffffffffffffffff`. The
- * `bounded_bytes` constraint (Conway CDDL: byte strings of at most 64 bytes)
- * is enforced at the data-type layer via the `BoundedBytes` CBOR node,
- * independent of these codec options.
+ * `Data.toCBORBytes` with these options writes the bytes the node writes.
+ * The rules that do not depend on options are applied by the Plutus data
+ * encoder under every preset: byte strings over 64 bytes in 64-byte chunks,
+ * bignums only outside -2^64 to 2^64 - 1 with their bytes chunked the same
+ * way, and a definite `[index, fields]` pair under tag 102.
  *
  * @since 2.0.0
  * @category constants
@@ -260,8 +256,8 @@ export const PLUTUS_DATA_OPTIONS: CodecOptions = {
  * Uses indefinite-length lists, constructor fields, and maps. It differs from
  * the node layout ({@link PLUTUS_DATA_OPTIONS}) by writing non-empty maps
  * indefinite. The `bounded_bytes` constraint (Conway CDDL: byte strings of at
- * most 64 bytes) is enforced at the data-type layer via the `BoundedBytes`
- * CBOR node, independent of these codec options.
+ * most 64 bytes) is applied by the Plutus data encoder, independent of these
+ * codec options.
  *
  * @since 1.0.0
  * @category constants
@@ -1091,12 +1087,27 @@ export const internalEncodeSync = (value: CBOR, options: CodecOptions = CML_DEFA
   throw new CBORError({ message: `Unsupported CBOR value type: ${typeof value}` })
 }
 
+// An integer in the 64-bit range that was decoded from a bignum tag keeps the
+// tag on replay, when its captured chunk lengths still fit its bytes.
+const replaysAsBignum = (fmt: CBORFormat.Tag, bytes: Uint8Array): boolean => {
+  if (fmt.child._tag !== "bytes") return false
+  const encoding = fmt.child.encoding
+  if (encoding?.tag !== "indefinite") return true
+  let length = 0
+  for (const chunk of encoding.chunks) length += chunk.length
+  return length === bytes.length
+}
+
 const encodeUintSync = (value: bigint, options: CodecOptions, fmt?: CBORFormat): Uint8Array => {
   if (value < 0n) throw new CBORError({ message: `Cannot encode negative value ${value} as unsigned integer` })
   const maxUint64 = 18446744073709551615n
   if (value > maxUint64) {
     const bytes = bigintToBytes(value)
     return encodeTagSync(2, bytes, options, fmt)
+  }
+  if (fmt?._tag === "tag") {
+    const bytes = bigintToBytes(value)
+    if (replaysAsBignum(fmt, bytes)) return encodeTagSync(2, bytes, options, fmt)
   }
   // Use specific ByteSize from format metadata
   if (fmt?._tag === "uint" && fmt.byteSize !== undefined) {
@@ -1136,11 +1147,15 @@ const encodeUintSync = (value: bigint, options: CodecOptions, fmt?: CBORFormat):
 
 const encodeNintSync = (value: bigint, options: CodecOptions, fmt?: CBORFormat): Uint8Array => {
   if (value >= 0n) throw new CBORError({ message: `Cannot encode non-negative value ${value} as negative integer` })
-  const minInt64 = -18446744073709551615n
+  const minInt64 = -18446744073709551616n
   if (value < minInt64) {
     const positiveValue = -(value + 1n)
     const bytes = bigintToBytes(positiveValue)
     return encodeTagSync(3, bytes, options, fmt)
+  }
+  if (fmt?._tag === "tag") {
+    const bytes = bigintToBytes(-(value + 1n))
+    if (replaysAsBignum(fmt, bytes)) return encodeTagSync(3, bytes, options, fmt)
   }
   const positiveValue = -value - 1n
   // Use specific ByteSize from format metadata
