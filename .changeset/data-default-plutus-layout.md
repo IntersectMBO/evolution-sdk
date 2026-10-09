@@ -19,6 +19,6 @@ Data.toDatumHash(datum, CBOR.CML_DATA_DEFAULT_OPTIONS)
 Transaction.toCBORHex(tx, { ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.CML_DATA_DEFAULT_OPTIONS })
 ```
 
-The transaction options cover witness datums and redeemer data. An inline datum in a new output is written with the `Data` default under every option set, as before, so it takes the new layout.
+The transaction options cover inline datums, witness datums and redeemer data, so the second call keeps the old bytes for all three.
 
 `CBOR.CML_DATA_DEFAULT_OPTIONS` is deprecated in favor of `CBOR.PLUTUS_DATA_OPTIONS`. It keeps its bytes, but matches no tool exactly, so use it only to reproduce bytes and datum hashes written before this release.

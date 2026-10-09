@@ -3,6 +3,7 @@ import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema }
 import * as Address from "./Address.js"
 import * as Assets from "./Assets.js"
 import * as CBOR from "./CBOR.js"
+import * as PlutusData from "./Data.js"
 import * as DatumHash from "./DatumHash.js"
 import * as DatumOption from "./DatumOption.js"
 import * as ScriptRef from "./ScriptRef.js"
@@ -223,6 +224,102 @@ export const FromBabbageTransactionOutputCDDL = Schema.transformOrFail(
 )
 
 /**
+ * CDDL transformation schema for transaction outputs, as in {@link FromCDDL},
+ * that writes a new inline datum with the `plutusData` options.
+ *
+ * @since 2.0.0
+ * @category transformation
+ */
+export const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
+  const encodeDatumOption = ParseResult.encodeEither(DatumOption.makeFromCDDL(plutusData))
+  return Schema.transformOrFail(CDDLSchema, Schema.typeSchema(TransactionOutput), {
+    strict: true,
+    encode: (toI) =>
+      E.gen(function* () {
+        // Determine if we can use Shelley format (more compact)
+        const canUseShelleyFormat =
+          toI.scriptRef === undefined && (toI.datumOption === undefined || toI.datumOption._tag === "DatumHash")
+
+        if (canUseShelleyFormat) {
+          // Use Shelley format (array)
+          const addressBytes = yield* encAddress(toI.address)
+          const assetsBytes = yield* encAssets(toI.assets)
+
+          if (toI.datumOption !== undefined && toI.datumOption._tag === "DatumHash") {
+            return [addressBytes, assetsBytes, toI.datumOption.hash] as const
+          }
+
+          return [addressBytes, assetsBytes] as const
+        } else {
+          // Use Babbage format (map)
+          const outputMap = new Map<bigint, CBOR.CBOR>()
+          const addressBytes = yield* encAddress(toI.address)
+          const assetsBytes = yield* encAssets(toI.assets)
+          const datumOptionBytes = toI.datumOption !== undefined ? yield* encodeDatumOption(toI.datumOption) : undefined
+          const scriptRefBytes = toI.scriptRef !== undefined ? yield* encScriptRef(toI.scriptRef) : undefined
+
+          outputMap.set(0n, addressBytes)
+          outputMap.set(1n, assetsBytes)
+          if (datumOptionBytes !== undefined) {
+            outputMap.set(2n, datumOptionBytes)
+          }
+          if (scriptRefBytes !== undefined) {
+            outputMap.set(3n, scriptRefBytes)
+          }
+          return outputMap
+        }
+      }),
+    decode: (fromI) =>
+      E.gen(function* () {
+        // Check if it's an array (Shelley) or map (Babbage)
+        if (Array.isArray(fromI)) {
+          // Shelley format
+          const [addressBytes, assetsBytes, datumHashBytes] = fromI
+          const address = yield* decAddress(addressBytes)
+          const assets = yield* decAssets(assetsBytes)
+          let datumOption: DatumOption.DatumOption | undefined
+          if (datumHashBytes !== undefined) {
+            const datumHash = yield* decDatumHash(datumHashBytes)
+            datumOption = datumHash
+          }
+
+          return new TransactionOutput(
+            {
+              address,
+              assets,
+              datumOption,
+              scriptRef: undefined
+            },
+            { disableValidation: true }
+          )
+        } else {
+          // Babbage format (map) - cast to Map type
+          const outputMap = fromI as ReadonlyMap<bigint, CBOR.CBOR>
+          const addressBytes = outputMap.get(0n)
+          const assetsBytes = outputMap.get(1n)
+          const datumOptionBytes = outputMap.get(2n)
+          const scriptRefBytes = outputMap.get(3n)
+
+          const address = yield* decAddress(addressBytes)
+          const assets = yield* decAssets(assetsBytes)
+          const datumOption = datumOptionBytes !== undefined ? yield* decDatumOption(datumOptionBytes) : undefined
+          const scriptRef = scriptRefBytes !== undefined ? yield* decScriptRef(scriptRefBytes) : undefined
+
+          return new TransactionOutput(
+            {
+              address,
+              assets,
+              datumOption,
+              scriptRef
+            },
+            { disableValidation: true }
+          )
+        }
+      })
+  })
+}
+
+/**
  * CDDL transformation schema for transaction outputs (supports both Shelley and Babbage formats)
  *
  * Encoding logic:
@@ -231,118 +328,41 @@ export const FromBabbageTransactionOutputCDDL = Schema.transformOrFail(
  *
  * Decoding: Accepts both formats
  *
+ * A new inline datum is written with `Data.DEFAULT_CBOR_OPTIONS`.
+ *
  * @since 2.0.0
  * @category transformation
  */
-export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(TransactionOutput), {
-  strict: true,
-  encode: (toI) =>
-    E.gen(function* () {
-      // Determine if we can use Shelley format (more compact)
-      const canUseShelleyFormat =
-        toI.scriptRef === undefined && (toI.datumOption === undefined || toI.datumOption._tag === "DatumHash")
-
-      if (canUseShelleyFormat) {
-        // Use Shelley format (array)
-        const addressBytes = yield* encAddress(toI.address)
-        const assetsBytes = yield* encAssets(toI.assets)
-
-        if (toI.datumOption !== undefined && toI.datumOption._tag === "DatumHash") {
-          return [addressBytes, assetsBytes, toI.datumOption.hash] as const
-        }
-
-        return [addressBytes, assetsBytes] as const
-      } else {
-        // Use Babbage format (map)
-        const outputMap = new Map<bigint, CBOR.CBOR>()
-        const addressBytes = yield* encAddress(toI.address)
-        const assetsBytes = yield* encAssets(toI.assets)
-        const datumOptionBytes = toI.datumOption !== undefined ? yield* encDatumOption(toI.datumOption) : undefined
-        const scriptRefBytes = toI.scriptRef !== undefined ? yield* encScriptRef(toI.scriptRef) : undefined
-
-        outputMap.set(0n, addressBytes)
-        outputMap.set(1n, assetsBytes)
-        if (datumOptionBytes !== undefined) {
-          outputMap.set(2n, datumOptionBytes)
-        }
-        if (scriptRefBytes !== undefined) {
-          outputMap.set(3n, scriptRefBytes)
-        }
-        return outputMap
-      }
-    }),
-  decode: (fromI) =>
-    E.gen(function* () {
-      // Check if it's an array (Shelley) or map (Babbage)
-      if (Array.isArray(fromI)) {
-        // Shelley format
-        const [addressBytes, assetsBytes, datumHashBytes] = fromI
-        const address = yield* decAddress(addressBytes)
-        const assets = yield* decAssets(assetsBytes)
-        let datumOption: DatumOption.DatumOption | undefined
-        if (datumHashBytes !== undefined) {
-          const datumHash = yield* decDatumHash(datumHashBytes)
-          datumOption = datumHash
-        }
-
-        return new TransactionOutput(
-          {
-            address,
-            assets,
-            datumOption,
-            scriptRef: undefined
-          },
-          { disableValidation: true }
-        )
-      } else {
-        // Babbage format (map) - cast to Map type
-        const outputMap = fromI as ReadonlyMap<bigint, CBOR.CBOR>
-        const addressBytes = outputMap.get(0n)
-        const assetsBytes = outputMap.get(1n)
-        const datumOptionBytes = outputMap.get(2n)
-        const scriptRefBytes = outputMap.get(3n)
-
-        const address = yield* decAddress(addressBytes)
-        const assets = yield* decAssets(assetsBytes)
-        const datumOption = datumOptionBytes !== undefined ? yield* decDatumOption(datumOptionBytes) : undefined
-        const scriptRef = scriptRefBytes !== undefined ? yield* decScriptRef(scriptRefBytes) : undefined
-
-        return new TransactionOutput(
-          {
-            address,
-            assets,
-            datumOption,
-            scriptRef
-          },
-          { disableValidation: true }
-        )
-      }
-    })
-})
+export const FromCDDL = makeFromCDDL(PlutusData.DEFAULT_CBOR_OPTIONS)
 
 /**
- * CBOR bytes transformation schema for TransactionOutput.
+ * CBOR bytes transformation schema for TransactionOutput. A new inline datum
+ * is written with the `plutusData` options, the rest with the `ledger`
+ * options. Plain options are read as `CBOR.toTxCodecOptions` reads them.
  *
  * @since 2.0.0
  * @category transformer
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → TransactionOutput
+export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
+  const { ledger, plutusData } = CBOR.toTxCodecOptions(options)
+  return Schema.compose(
+    CBOR.FromBytes(ledger), // Uint8Array → CBOR
+    plutusData === PlutusData.DEFAULT_CBOR_OPTIONS ? FromCDDL : makeFromCDDL(plutusData) // CBOR → TransactionOutput
   ).annotations({
     identifier: "TransactionOutput.FromCBORBytes",
     title: "TransactionOutput from CBOR Bytes",
     description: "Transforms CBOR bytes (Uint8Array) to TransactionOutput"
   })
+}
 
 /**
- * CBOR hex transformation schema for TransactionOutput.
+ * CBOR hex transformation schema for TransactionOutput, as in
+ * {@link FromCBORBytes}.
  *
  * @since 2.0.0
  * @category transformer
  */
-export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.compose(
     Schema.Uint8ArrayFromHex, // string → Uint8Array
     FromCBORBytes(options) // Uint8Array → TransactionOutput
@@ -369,7 +389,10 @@ export const arbitrary = FastCheck.record({
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORBytes = (data: TransactionOutput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORBytes = (
+  data: TransactionOutput,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) =>
   Schema.encodeSync(FromCBORBytes(options))(data)
 
 /**
@@ -378,7 +401,10 @@ export const toCBORBytes = (data: TransactionOutput, options: CBOR.CodecOptions 
  * @since 2.0.0
  * @category encoding
  */
-export const toCBORHex = (data: TransactionOutput, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+export const toCBORHex = (
+  data: TransactionOutput,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+) =>
   Schema.encodeSync(FromCBORHex(options))(data)
 
 /**
