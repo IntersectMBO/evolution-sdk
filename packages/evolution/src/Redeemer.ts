@@ -282,14 +282,14 @@ export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions =
     decode: (bytes, parseOptions) =>
       ParseResult.decode(Schema.compose(CBOR.FromBytes(ledger), FromCDDL))(bytes, parseOptions),
     encode: (redeemer, parseOptions, ast) =>
-      Effect.flatMap(ParseResult.encode(FromCDDL)(redeemer, parseOptions), ([tag, index, data, exUnits]) =>
+      Effect.flatMap(ParseResult.encode(FromCDDL)(redeemer, parseOptions), ([tag, index, _, exUnits]) =>
         ParseResult.try({
           try: () =>
             encodeArray(
               [
                 CBOR.toCBORBytes(tag, ledger),
                 CBOR.toCBORBytes(index, ledger),
-                CBOR.toCBORBytes(data, plutusData),
+                PlutusData.toCBORBytes(redeemer.data, plutusData),
                 CBOR.toCBORBytes(exUnits, ledger)
               ],
               ledger

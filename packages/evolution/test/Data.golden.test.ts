@@ -201,7 +201,23 @@ const getTestCases = (
 ): Array<GoldenEntry> => {
   const entries = getGoldenEntries(type)
   const count = TEST_CONFIG[type][category]
-  return entries.slice(0, count)
+  const sampled = entries.slice(0, count)
+  // The golden files hold the bytes of the first release, which wrote the tag
+  // 102 pair of a constructor index above 127 with the list options. The
+  // encoder now writes that pair definite (#601), so those entries are checked
+  // on decode and round trip only
+  return category === "encoding" ? sampled.filter((entry) => !holdsGeneralConstr(entry.sample)) : sampled
+}
+
+/**
+ * Whether a sample holds a constructor index above 127 at any depth
+ *
+ */
+const holdsGeneralConstr = (sample: unknown): boolean => {
+  if (isConstrSample(sample) && BigInt(sample.index) > 127n) return true
+  if (Array.isArray(sample)) return sample.some(holdsGeneralConstr)
+  if (typeof sample === "object" && sample !== null) return Object.values(sample).some(holdsGeneralConstr)
+  return false
 }
 
 /**

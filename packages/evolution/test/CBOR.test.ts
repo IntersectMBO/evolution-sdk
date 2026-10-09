@@ -192,6 +192,19 @@ describe("CBOR Implementation Tests", () => {
       expect(decoded).toBe(maxUint64)
     })
 
+    it("writes -2^64 as a negative integer and bignums only outside the 64-bit range", () => {
+      expect(CBOR.toCBORHex(-(2n ** 64n))).toBe("3bffffffffffffffff")
+      expect(CBOR.toCBORHex(-(2n ** 64n) - 1n)).toBe("c349010000000000000000")
+      expect(CBOR.toCBORHex(2n ** 64n)).toBe("c249010000000000000000")
+    })
+
+    it("replays a bignum decoded inside the 64-bit range as a bignum", () => {
+      for (const hex of ["c348ffffffffffffffff", "3bffffffffffffffff", "c24101", "c35f4101ff", "82c24101d87980"]) {
+        const decoded = CBOR.fromCBORHexWithFormat(hex)
+        expect(CBOR.toCBORHexWithFormat(decoded.value, decoded.format)).toBe(hex)
+      }
+    })
+
     it("should handle various CBOR integer encoding sizes", () => {
       const testCases = [
         { name: "direct encoding (0-23)", value: 23n },

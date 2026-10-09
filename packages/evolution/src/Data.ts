@@ -1,6 +1,7 @@
 import { blake2b } from "@noble/hashes/blake2.js"
 import { Data as EffectData, Effect, Equal, FastCheck, Hash, ParseResult, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as DatumHash from "./DatumHash.js"
 import * as Numeric from "./Numeric.js"
@@ -514,6 +515,247 @@ const bytesToBigint = (bytes: Uint8Array): bigint => {
 }
 
 // ============================================================================
+// Encoding
+// ============================================================================
+
+// The layout choices that CodecOptions make for Plutus data, read once per call
+type Layout = {
+  readonly indefiniteArrays: boolean
+  readonly indefiniteMaps: boolean
+  readonly sortMapKeys: boolean
+  readonly minimal: boolean
+  readonly mapsAsPairs: boolean
+}
+
+const toLayout = (options: CBOR.CodecOptions): Layout =>
+  options.mode === "custom"
+    ? {
+        indefiniteArrays: options.useIndefiniteArrays,
+        indefiniteMaps: options.useIndefiniteMaps,
+        sortMapKeys: options.sortMapKeys,
+        minimal: options.useMinimalEncoding,
+        mapsAsPairs: options.encodeMapAsPairs === true
+      }
+    : {
+        indefiniteArrays: false,
+        indefiniteMaps: false,
+        sortMapKeys: true,
+        minimal: true,
+        mapsAsPairs: options.encodeMapAsPairs === true
+      }
+
+const MAX_UINT64 = 0xffffffffffffffffn
+const BYTES_CHUNK_SIZE = 64
+
+// A growable output buffer
+type Writer = { buf: Uint8Array; pos: number }
+
+const reserve = (w: Writer, n: number): void => {
+  if (w.pos + n <= w.buf.length) return
+  let size = w.buf.length * 2
+  while (size < w.pos + n) size *= 2
+  const buf = new Uint8Array(size)
+  buf.set(w.buf.subarray(0, w.pos))
+  w.buf = buf
+}
+
+const writeByte = (w: Writer, b: number): void => {
+  reserve(w, 1)
+  w.buf[w.pos++] = b
+}
+
+const writeBytes = (w: Writer, bytes: Uint8Array): void => {
+  reserve(w, bytes.length)
+  w.buf.set(bytes, w.pos)
+  w.pos += bytes.length
+}
+
+// A head with the shortest argument, for a length or tag below 2^32
+const writeHead = (w: Writer, major: number, n: number): void => {
+  reserve(w, 5)
+  const mt = major << 5
+  const buf = w.buf
+  if (n < 24) {
+    buf[w.pos++] = mt | n
+  } else if (n < 0x100) {
+    buf[w.pos++] = mt | 24
+    buf[w.pos++] = n
+  } else if (n < 0x10000) {
+    buf[w.pos++] = mt | 25
+    buf[w.pos++] = n >>> 8
+    buf[w.pos++] = n & 0xff
+  } else {
+    buf[w.pos++] = mt | 26
+    buf[w.pos++] = n >>> 24
+    buf[w.pos++] = (n >>> 16) & 0xff
+    buf[w.pos++] = (n >>> 8) & 0xff
+    buf[w.pos++] = n & 0xff
+  }
+}
+
+// An integer head for 0 <= n <= 2^64 - 1. Without minimal encoding, an
+// argument of 24 or more takes the 8-byte form, as the CBOR encoder writes it
+const writeIntHead = (w: Writer, major: number, n: bigint, minimal: boolean): void => {
+  if (n < 0x100000000n && (minimal || n < 24n)) {
+    writeHead(w, major, Number(n))
+    return
+  }
+  reserve(w, 9)
+  const buf = w.buf
+  const high = Number(n >> 32n)
+  const low = Number(n & 0xffffffffn)
+  buf[w.pos++] = (major << 5) | 27
+  buf[w.pos++] = high >>> 24
+  buf[w.pos++] = (high >>> 16) & 0xff
+  buf[w.pos++] = (high >>> 8) & 0xff
+  buf[w.pos++] = high & 0xff
+  buf[w.pos++] = low >>> 24
+  buf[w.pos++] = (low >>> 16) & 0xff
+  buf[w.pos++] = (low >>> 8) & 0xff
+  buf[w.pos++] = low & 0xff
+}
+
+// A byte string of at most 64 bytes is written definite. A longer one is
+// written indefinite, in 64-byte chunks
+const writeBoundedBytes = (w: Writer, bytes: Uint8Array): void => {
+  const length = bytes.length
+  if (length <= BYTES_CHUNK_SIZE) {
+    writeHead(w, 2, length)
+    writeBytes(w, bytes)
+    return
+  }
+  writeByte(w, 0x5f)
+  for (let offset = 0; offset < length; offset += BYTES_CHUNK_SIZE) {
+    const end = Math.min(offset + BYTES_CHUNK_SIZE, length)
+    writeHead(w, 2, end - offset)
+    writeBytes(w, bytes.subarray(offset, end))
+  }
+  writeByte(w, 0xff)
+}
+
+// The big-endian bytes of a positive integer, with no leading zero byte
+const toBigEndian = (n: bigint): Uint8Array => {
+  const hex = n.toString(16)
+  const offset = hex.length & 1
+  const bytes = new Uint8Array((hex.length + offset) >> 1)
+  bytes[0] = parseInt(hex.slice(0, 2 - offset), 16)
+  for (let i = 1; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(2 * i - offset, 2 * i + 2 - offset), 16)
+  }
+  return bytes
+}
+
+// An integer from -2^64 to 2^64 - 1 is a CBOR integer. Outside that range it
+// is a bignum, tag 2 or 3, whose bytes follow the byte string rule
+const writeInt = (w: Writer, layout: Layout, value: bigint): void => {
+  const major = value < 0n ? 1 : 0
+  const n = value < 0n ? -1n - value : value
+  if (n <= MAX_UINT64) {
+    writeIntHead(w, major, n, layout.minimal)
+    return
+  }
+  writeByte(w, 0xc2 + major)
+  writeBoundedBytes(w, toBigEndian(n))
+}
+
+const writeList = (w: Writer, layout: Layout, items: ReadonlyArray<Data>): void => {
+  const length = items.length
+  if (length === 0) {
+    writeByte(w, 0x80)
+    return
+  }
+  if (layout.indefiniteArrays) writeByte(w, 0x9f)
+  else writeHead(w, 4, length)
+  for (let i = 0; i < length; i++) writeData(w, layout, items[i])
+  if (layout.indefiniteArrays) writeByte(w, 0xff)
+}
+
+// Shorter encoded keys first, then bytewise, as the CBOR encoder sorts map keys
+const compareEncodedKeys = (a: readonly [Uint8Array, Uint8Array], b: readonly [Uint8Array, Uint8Array]): number => {
+  const x = a[0]
+  const y = b[0]
+  if (x.length !== y.length) return x.length - y.length
+  for (let i = 0; i < x.length; i++) {
+    if (x[i] !== y[i]) return x[i] - y[i]
+  }
+  return 0
+}
+
+const writeMap = (w: Writer, layout: Layout, map: globalThis.Map<Data, Data>): void => {
+  const size = map.size
+  if (layout.mapsAsPairs) {
+    if (size === 0) {
+      writeByte(w, 0x80)
+      return
+    }
+    if (layout.indefiniteArrays) writeByte(w, 0x9f)
+    else writeHead(w, 4, size)
+    for (const [key, value] of map) {
+      writeByte(w, layout.indefiniteArrays ? 0x9f : 0x82)
+      writeData(w, layout, key)
+      writeData(w, layout, value)
+      if (layout.indefiniteArrays) writeByte(w, 0xff)
+    }
+    if (layout.indefiniteArrays) writeByte(w, 0xff)
+    return
+  }
+  if (size === 0) {
+    writeByte(w, 0xa0)
+    return
+  }
+  if (layout.indefiniteMaps) writeByte(w, 0xbf)
+  else if (size < 24 || layout.minimal) writeHead(w, 5, size)
+  else throw new CBOR.CBORError({ message: `Map too long: ${size} entries` })
+  if (layout.sortMapKeys) {
+    const entries = Array.from(map, ([key, value]) => [encodeData(key, layout), encodeData(value, layout)] as const)
+    entries.sort(compareEncodedKeys)
+    for (const [key, value] of entries) {
+      writeBytes(w, key)
+      writeBytes(w, value)
+    }
+  } else {
+    for (const [key, value] of map) {
+      writeData(w, layout, key)
+      writeData(w, layout, value)
+    }
+  }
+  if (layout.indefiniteMaps) writeByte(w, 0xff)
+}
+
+// Indices 0 to 6 are tags 121 to 127, indices 7 to 127 are tags 1280 to 1400,
+// and any other index is tag 102 over the definite pair [index, fields]
+const writeConstr = (w: Writer, layout: Layout, constr: Constr): void => {
+  const index = constr.index
+  if (index < 0n || index > MAX_UINT64) {
+    throw new DataError({ message: `Constructor index out of range: ${index}` })
+  }
+  const tag = index <= 6n ? 121 + Number(index) : index <= 127n ? 1280 + Number(index) - 7 : 102
+  // Without minimal encoding the CBOR encoder cannot write a tag of 24 or more
+  if (!layout.minimal) throw new CBOR.CBORError({ message: `Tag ${tag} too large` })
+  writeHead(w, 6, tag)
+  if (tag === 102) {
+    writeByte(w, 0x82)
+    writeIntHead(w, 0, index, true)
+  }
+  writeList(w, layout, constr.fields)
+}
+
+const writeData = (w: Writer, layout: Layout, data: Data): void => {
+  if (typeof data === "bigint") writeInt(w, layout, data)
+  else if (data instanceof Uint8Array) writeBoundedBytes(w, data)
+  else if (Array.isArray(data)) writeList(w, layout, data)
+  else if (data instanceof globalThis.Map) writeMap(w, layout, data)
+  else if (data instanceof Constr || isConstr(data)) writeConstr(w, layout, data)
+  else throw new DataError({ message: `Unsupported PlutusData type: ${String(data)}` })
+}
+
+const encodeData = (data: Data, layout: Layout): Uint8Array => {
+  const w: Writer = { buf: new Uint8Array(256), pos: 0 }
+  writeData(w, layout, data)
+  return w.buf.slice(0, w.pos)
+}
+
+// ============================================================================
 // Combinators
 // ============================================================================
 
@@ -794,20 +1036,33 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Dat
 
 /**
  * CBOR bytes transformation schema for PlutusData using CDDL.
- * Transforms between CBOR bytes and Data using CDDL encoding.
+ * Decodes through {@link FromCDDL}. Encodes as {@link toCBORBytes} does.
  *
  * @since 2.0.0
  * @category schemas
  */
-export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.compose(
-    CBOR.FromBytes(options), // Uint8Array → CBOR
-    FromCDDL // CBOR → Data
-  ).annotations({
+export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) => {
+  const fromBytes = Schema.compose(CBOR.FromBytes(options), FromCDDL)
+  const layout = toLayout(options)
+  return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(DataSchema), {
+    strict: true,
+    decode: (bytes, parseOptions) => ParseResult.decode(fromBytes)(bytes, parseOptions),
+    encode: (data, _, ast) =>
+      ParseResult.try({
+        try: () => encodeData(data, layout),
+        catch: (error) =>
+          new ParseResult.Type(
+            ast,
+            data,
+            `Failed to encode CBOR value: ${error instanceof Error ? error.message : String(error)}`
+          )
+      })
+  }).annotations({
     identifier: "Data.FromCBORBytes",
     title: "Data from CBOR Bytes using CDDL",
     description: "Transforms CBOR bytes to Data using CDDL encoding"
   })
+}
 
 /**
  * CBOR hex transformation schema for PlutusData using CDDL.
@@ -827,22 +1082,31 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_O
   })
 
 /**
- * Encode PlutusData to CBOR bytes
+ * Encode PlutusData to CBOR bytes.
+ *
+ * `options` choose definite or indefinite lists and maps, map key order and
+ * integer widths. These rules hold under every option:
+ *
+ * - A byte string over 64 bytes is written indefinite, in 64-byte chunks.
+ * - An integer from -2^64 to 2^64 - 1 is a CBOR integer. Outside that range it
+ *   is a bignum (tag 2 or 3) whose bytes follow the byte string rule.
+ * - A constructor index above 127 is tag 102 over a definite pair
+ *   `[index, fields]`; only the fields follow `options`.
  *
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Uint8Array =>
+  encodeData(data, toLayout(options))
 
 /**
- * Encode PlutusData to CBOR hex string
+ * Encode PlutusData to CBOR hex string, as {@link toCBORBytes} writes it.
  *
  * @since 2.0.0
  * @category transformation
  */
-export const toCBORHex = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+export const toCBORHex = (data: Data, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): string =>
+  Bytes.toHex(toCBORBytes(data, options))
 
 /**
  * Decode PlutusData from CBOR bytes
