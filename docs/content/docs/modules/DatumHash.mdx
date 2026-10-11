@@ -1,6 +1,7 @@
 ---
+
 title: DatumHash.ts
-nav_order: 52
+nav_order: 53
 parent: Modules
 ---
 
@@ -12,10 +13,10 @@ parent: Modules
 
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
+- [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [predicates](#predicates)
   - [isDatumHash](#isdatumhash)
 - [schemas](#schemas)
@@ -26,9 +27,13 @@ parent: Modules
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [Hex](#hex)
 - [testing](#testing)
   - [arbitrary](#arbitrary)
+- [utils](#utils)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -46,17 +51,17 @@ export declare const toBytes: (a: DatumHash, overrideOptions?: ParseOptions) => 
 
 Added in v2.0.0
 
-## toHex
+# model
 
-Encode DatumHash to hex string.
+## Hex (type alias)
 
 **Signature**
 
 ```ts
-export declare const toHex: (a: DatumHash, overrideOptions?: ParseOptions) => string
+export type Hex = typeof Hex.Type
 ```
 
-Added in v2.0.0
+Added in v2.4.0
 
 # parsing
 
@@ -68,18 +73,6 @@ Parse DatumHash from bytes.
 
 ```ts
 export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) => DatumHash
-```
-
-Added in v2.0.0
-
-## fromHex
-
-Parse DatumHash from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => DatumHash
 ```
 
 Added in v2.0.0
@@ -192,6 +185,24 @@ export declare const FromHex: Schema.transform<
 
 Added in v2.0.0
 
+## Hex
+
+A datum hash as hex.
+
+Validated as well as branded: a 32-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ Same shape as a transaction hash. A script consumer matches a datum by this value, so the
+two being interchangeable as `string` was a real hazard.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "DatumHashHex">
+```
+
+Added in v2.4.0
+
 # testing
 
 ## arbitrary
@@ -205,3 +216,21 @@ export declare const arbitrary: FastCheck.Arbitrary<DatumHash>
 ```
 
 Added in v2.0.0
+
+# utils
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => DatumHash
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
+```

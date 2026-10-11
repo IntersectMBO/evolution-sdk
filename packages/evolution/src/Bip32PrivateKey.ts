@@ -160,6 +160,26 @@ export const fromBytes = Schema.decodeSync(FromBytes)
  * @since 2.0.0
  * @category parsing
  */
+/**
+ * A BIP32-Ed25519 extended PRIVATE key as hex (96 bytes: scalar, IV and chain code).
+ *
+ * Validated as well as branded: a 96-byte lowercase or uppercase hex string. {@link toHex}
+ * returns this type, so the kind of a hex string survives leaving the typed domain — upstream of
+ * this, every hash and key was an unmarked `string` once encoded.
+ *
+ * ⚠️ See {@link Bip32PublicKey.Hex} for why these two carry different brands.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^[0-9a-fA-F]{192}$/), Schema.brand("Bip32PrivateKeyHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
 
 /**
@@ -176,7 +196,9 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))
+
+const encodeHex = Schema.encodeSync(FromHex)
 
 /**
  * Create a Bip32PrivateKey from BIP39 entropy with PBKDF2 key stretching.
@@ -184,7 +206,7 @@ export const toHex = Schema.encodeSync(FromHex)
  * @since 2.0.0
  * @category bip39
  */
-export const fromBip39Entropy = (entropy: Uint8Array, password: string = ""): Bip32PrivateKey => {
+export const fromBip39Entropy = (entropy: Uint8Array, password: Uint8Array | string = ""): Bip32PrivateKey => {
   return Effect.runSync(Either.fromBip39Entropy(entropy, password))
 }
 
@@ -265,7 +287,13 @@ export const arbitrary = FastCheck.uint8Array({ minLength: 96, maxLength: 96 }).
 )
 
 export namespace Either {
-  export const fromBip39Entropy = (entropy: Uint8Array, password: string = "") =>
+  /**
+   * A BIP-39 passphrase is BYTES. Accepting only `string` meant a caller holding raw bytes had
+   * to decode them as UTF-8 first, and any passphrase that is not valid UTF-8 was silently
+   * mangled on the way into pbkdf2 — a different key, a different wallet, no error anywhere.
+   * `pbkdf2` already takes either, so the narrowing was in this signature alone.
+   */
+  export const fromBip39Entropy = (entropy: Uint8Array, password: Uint8Array | string = "") =>
     Effect.gen(function* () {
       const keyMaterial = pbkdf2(sha512, password, entropy, { c: PBKDF2_ITERATIONS, dkLen: PBKDF2_KEY_SIZE })
       const clamped = new Uint8Array(keyMaterial)
@@ -483,17 +511,50 @@ export namespace Either {
  * Utility functions to build Cardano BIP44 derivation indices.
  * Standard path: m/1852'/1815'/account'/role/index
  */
+/**
+ * CIP-1852, the ordinary wallet purpose.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const PURPOSE_CIP1852 = 1852
+/**
+ * CIP-1854, the multi-signature purpose: same shape, different keys, never interchangeable.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const PURPOSE_CIP1854 = 1854
+
 export const CardanoPath = {
   harden: (n: number) => (0x8000_0000 + n) >>> 0,
-  indices: (account: number = 0, role: 0 | 2 = 0, index: number = 0): Array<number> => [
-    (0x8000_0000 + 1852) >>> 0,
+  /**
+   * `m/purpose'/1815'/account'/role/index`.
+   *
+   * `role` is a plain `number`, not a `0 | 2` union: CIP-1852 already defines role 3 for a DRep
+   * key and role 4 for constitutional-committee keys, and a wallet should not need a release of
+   * this library to reach one. `purpose` is likewise open, because CIP-1854 shares the shape.
+   */
+  indices: (
+    account: number = 0,
+    role: number = 0,
+    index: number = 0,
+    purpose: number = PURPOSE_CIP1852
+  ): Array<number> => [
+    (0x8000_0000 + purpose) >>> 0,
     (0x8000_0000 + 1815) >>> 0,
     (0x8000_0000 + account) >>> 0,
     role,
     index
   ],
-  paymentIndices: (account: number = 0, index: number = 0): Array<number> =>
-    (CardanoPath.indices as (a?: number, r?: 0 | 2, i?: number) => Array<number>)(account, 0, index),
-  stakeIndices: (account: number = 0, index: number = 0): Array<number> =>
-    (CardanoPath.indices as (a?: number, r?: 0 | 2, i?: number) => Array<number>)(account, 2, index)
+  paymentIndices: (account: number = 0, index: number = 0): Array<number> => CardanoPath.indices(account, 0, index),
+  stakeIndices: (account: number = 0, index: number = 0): Array<number> => CardanoPath.indices(account, 2, index),
+  /** CIP-1852 role 3 — the DRep key a wallet votes with. */
+  drepIndices: (account: number = 0, index: number = 0): Array<number> => CardanoPath.indices(account, 3, index),
+  /** CIP-1854 payment. ⚠️ A different key from `paymentIndices` at the same account and index. */
+  multisigPaymentIndices: (account: number = 0, index: number = 0): Array<number> =>
+    CardanoPath.indices(account, 0, index, PURPOSE_CIP1854),
+  /** CIP-1854 stake. */
+  multisigStakeIndices: (account: number = 0, index: number = 0): Array<number> =>
+    CardanoPath.indices(account, 2, index, PURPOSE_CIP1854)
 }

@@ -3,6 +3,7 @@ import { Data, Effect as Eff, Equal, FastCheck, Hash, ParseResult, Schema } from
 import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as Hash28 from "./Hash28.js"
+import type * as NativeScriptJSON from "./NativeScriptJSON.js"
 
 /**
  * Error class for Native script related operations.
@@ -164,7 +165,10 @@ export class NativeScript extends Schema.TaggedClass<NativeScript>("NativeScript
   }
 
   [Hash.symbol](): number {
-    return Hash.hash(JSON.stringify(toJSON(this.script)))
+    // Hashed from the variant itself, not from `toJSON`: that form refuses a uint64 slot above
+    // `Number.MAX_SAFE_INTEGER`, and before it did, it truncated one — so two scripts differing
+    // only above that bound hashed equal.
+    return Hash.hash(JSON.stringify(this.script, (_key, value) => (typeof value === "bigint" ? value.toString() : value)))
   }
 }
 
@@ -262,12 +266,30 @@ export const makeScriptNOfK = (required: bigint, scripts: ReadonlyArray<NativeSc
 // ============================================================================
 
 /**
+ * Maximum integer a JSON number carries exactly. The cardano-cli JSON form uses JSON numbers for
+ * `slot` and `required`, so a CDDL uint64 above this has no representation in it.
+ */
+const JSON_SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER)
+
+const jsonNumber = (value: bigint, field: string): number => {
+  // Refused rather than truncated: `Number(2n ** 53n + 1n)` silently returns a different slot,
+  // and a script decoded from the chain may legitimately carry any uint64.
+  if (value > JSON_SAFE_MAX) {
+    throw new Error(`${field} ${value} exceeds what the cardano-cli JSON form can represent exactly`)
+  }
+  return Number(value)
+}
+
+/**
  * Convert a NativeScript to JSON representation matching cardano-cli format
+ *
+ * Throws if `slot` or `required` exceeds `Number.MAX_SAFE_INTEGER`, which the JSON form cannot
+ * carry exactly. {@link fromJSON} is the inverse.
  *
  * @since 2.0.0
  * @category conversion
  */
-export const toJSON = (script: NativeScriptVariants): any => {
+export const toJSON = (script: NativeScriptVariants): NativeScriptJSON.NativeJSON => {
   switch (script._tag) {
     case "ScriptPubKey":
       return {
@@ -277,12 +299,12 @@ export const toJSON = (script: NativeScriptVariants): any => {
     case "InvalidBefore":
       return {
         type: "after" as const,
-        slot: Number(script.slot)
+        slot: jsonNumber(script.slot, "slot")
       }
     case "InvalidHereafter":
       return {
         type: "before" as const,
-        slot: Number(script.slot)
+        slot: jsonNumber(script.slot, "slot")
       }
     case "ScriptAll":
       return {
@@ -297,9 +319,39 @@ export const toJSON = (script: NativeScriptVariants): any => {
     case "ScriptNOfK":
       return {
         type: "atLeast" as const,
-        required: Number(script.required),
+        required: jsonNumber(script.required, "required"),
         scripts: script.scripts.map(toJSON)
       }
+  }
+}
+
+/**
+ * Build a native script from the cardano-cli JSON representation — the inverse of {@link toJSON}.
+ *
+ * ⚠️ `before` and `after` are the JSON form's names, and they are the **opposite** way round from
+ * the CDDL's: `before` is `InvalidHereafter` (valid only *before* that slot) and `after` is
+ * `InvalidBefore`. Getting the pair backwards builds a script that locks when it should open.
+ *
+ * Each node is built through the smart constructors, so `keyHash` is validated as a 28-byte hash
+ * rather than taken on trust.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const fromJSON = (json: NativeScriptJSON.NativeJSON): NativeScriptVariants => {
+  switch (json.type) {
+    case "sig":
+      return makeScriptPubKey(Bytes.fromHex(json.keyHash)).script
+    case "before":
+      return makeInvalidHereafter(BigInt(json.slot)).script
+    case "after":
+      return makeInvalidBefore(BigInt(json.slot)).script
+    case "all":
+      return makeScriptAll(json.scripts.map(fromJSON)).script
+    case "any":
+      return makeScriptAny(json.scripts.map(fromJSON)).script
+    case "atLeast":
+      return makeScriptNOfK(BigInt(json.required), json.scripts.map(fromJSON)).script
   }
 }
 

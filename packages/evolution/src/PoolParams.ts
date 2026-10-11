@@ -139,6 +139,45 @@ export class PoolParams extends Schema.TaggedClass<PoolParams>()("PoolParams", {
   }
 }
 
+const TaggedPoolOwners = CBOR.tag(258, Schema.Array(CBOR.ByteArray))
+
+/**
+ * `pool_owners` is `set<addr_keyhash>`: the chain, CSL and CML all write it `#6.258`, and a bare
+ * array is still valid on the way in.
+ *
+ * Modelled as a transform rather than a union in the tuple slot so that the slot's **Type** stays
+ * `ReadonlyArray<Uint8Array>` and only its Encoded side widens. A union here would change
+ * `CDDLSchema.Type`, which cascades through `Certificate`'s sixteen-arm union and is rejected by
+ * declaration emit.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
+export const PoolOwnersCDDL = Schema.transform(
+  Schema.Union(TaggedPoolOwners, Schema.Array(CBOR.ByteArray)),
+  Schema.Array(CBOR.ByteArray),
+  {
+    strict: true,
+    decode: (fromA) => ("_tag" in fromA ? fromA.value : fromA),
+    encode: (toI): Schema.Schema.Type<typeof TaggedPoolOwners> =>
+      CBOR.Tag.make({ tag: 258, value: toI }, { disableValidation: true }) as Schema.Schema.Type<
+        typeof TaggedPoolOwners
+      >
+  }
+)
+
+/**
+ * `pool_owners` as a plain array of key-hash bytes, whether it arrived `#6.258`-tagged or bare.
+ *
+ * `Certificate` flattens `PoolParams.CDDLSchema` into its own tuple, so it needs the untagged
+ * form at its encode boundary; `PoolOwnersCDDL` re-tags it there.
+ *
+ * @since 2.0.0
+ * @category utils
+ */
+export const poolOwnersArray = (slot: unknown): ReadonlyArray<Uint8Array> =>
+  Array.isArray(slot) ? slot : (slot as { readonly value: ReadonlyArray<Uint8Array> }).value
+
 export const CDDLSchema = Schema.Tuple(
   CBOR.ByteArray, // operator (pool_keyhash as bytes)
   CBOR.ByteArray, // vrf_keyhash (as bytes)
@@ -146,7 +185,7 @@ export const CDDLSchema = Schema.Tuple(
   CBOR.Integer, // cost (coin)
   UnitInterval.CDDLSchema, // margin using UnitInterval CDDL schema
   CBOR.ByteArray, // reward_account (bytes)
-  Schema.Array(CBOR.ByteArray), // pool_owners (set<addr_keyhash> as bytes array)
+  PoolOwnersCDDL, // pool_owners (set<addr_keyhash>, written #6.258)
   Schema.Array(Schema.encodedSchema(Relay.FromCDDL)), // relays using Relay CDDL schema
   Schema.NullOr(Schema.encodedSchema(PoolMetadata.FromCDDL)) // pool_metadata using PoolMetadata CDDL schema
 )

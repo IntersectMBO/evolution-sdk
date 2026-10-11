@@ -1,7 +1,8 @@
 import { Effect } from "effect"
 
 import * as BlockfrostEffect from "./internal/BlockfrostEffect.js"
-import type { Provider, ProviderEffect } from "./Provider.js"
+import * as BlockfrostQuery from "./internal/BlockfrostQuery.js"
+import type { Provider, ProviderEffectWithTip } from "./Provider.js"
 
 /**
  * Blockfrost provider for Cardano blockchain data access.
@@ -12,7 +13,7 @@ import type { Provider, ProviderEffect } from "./Provider.js"
  * @category constructors
  */
 export class BlockfrostProvider implements Provider {
-  readonly effect: ProviderEffect
+  readonly effect: ProviderEffectWithTip
   readonly baseUrl: string
   readonly projectId?: string
 
@@ -22,6 +23,7 @@ export class BlockfrostProvider implements Provider {
 
     this.effect = {
       getProtocolParameters: () => BlockfrostEffect.getProtocolParameters(baseUrl, projectId),
+      getTip: BlockfrostEffect.getTip(baseUrl, projectId),
       getUtxos: BlockfrostEffect.getUtxos(baseUrl, projectId),
       getUtxosWithUnit: BlockfrostEffect.getUtxosWithUnit(baseUrl, projectId),
       getUtxoByUnit: BlockfrostEffect.getUtxoByUnit(baseUrl, projectId),
@@ -30,11 +32,40 @@ export class BlockfrostProvider implements Provider {
       getDatum: BlockfrostEffect.getDatum(baseUrl, projectId),
       awaitTx: BlockfrostEffect.awaitTx(baseUrl, projectId),
       submitTx: BlockfrostEffect.submitTx(baseUrl, projectId),
-      evaluateTx: BlockfrostEffect.evaluateTx(baseUrl, projectId)
+      evaluateTx: BlockfrostEffect.evaluateTx(baseUrl, projectId),
+      // The WALLET tier: history, discovery, accounts and governance. Blockfrost serves all of
+      // these from its own endpoints; see `internal/BlockfrostQuery` for the two it cannot, and
+      // why they stay absent rather than failing.
+      getTxsAt: BlockfrostQuery.getTxsAt(baseUrl, projectId),
+      getTxInfo: BlockfrostQuery.getTxInfo(baseUrl, projectId),
+      getTxCbor: BlockfrostQuery.getTxCbor(baseUrl, projectId),
+      getAccountInfo: BlockfrostQuery.getAccountInfo(baseUrl, projectId),
+      getAccountAddresses: BlockfrostQuery.getAccountAddresses(baseUrl, projectId),
+      getAccountUtxos: BlockfrostQuery.getAccountUtxos(baseUrl, projectId),
+      getAccountTxs: BlockfrostQuery.getAccountTxs(baseUrl, projectId),
+      getAddressesSeen: BlockfrostQuery.getAddressesSeen(baseUrl, projectId),
+      getUtxosByAsset: BlockfrostQuery.getUtxosByAsset(baseUrl, projectId),
+      getUtxosOfTransaction: BlockfrostQuery.getUtxosOfTransaction(baseUrl, projectId),
+      getScriptByHash: BlockfrostQuery.getScriptByHash(baseUrl, projectId),
+      getProtocolParametersAt: BlockfrostQuery.getProtocolParametersAt(baseUrl, projectId),
+      getChainParameters: BlockfrostQuery.getChainParameters(baseUrl, projectId),
+      getDReps: BlockfrostQuery.getDReps(baseUrl, projectId),
+      getDRep: BlockfrostQuery.getDRep(baseUrl, projectId),
+      getCommittee: BlockfrostQuery.getCommittee(baseUrl, projectId),
+      getPools: BlockfrostQuery.getPools(baseUrl, projectId),
+      getPool: BlockfrostQuery.getPool(baseUrl, projectId),
+      getProposals: BlockfrostQuery.getProposals(baseUrl, projectId),
+      getProposal: BlockfrostQuery.getProposal(baseUrl, projectId),
+      getVotesByDRep: BlockfrostQuery.getVotesByDRep(baseUrl, projectId),
+      getVotesByPool: BlockfrostQuery.getVotesByPool(baseUrl, projectId),
+      getVotesByCommittee: BlockfrostQuery.getVotesByCommittee(baseUrl, projectId),
+      getVotesByProposal: BlockfrostQuery.getVotesByProposal(baseUrl, projectId)
     }
   }
 
   getProtocolParameters = () => Effect.runPromise(this.effect.getProtocolParameters())
+
+  getTip = () => Effect.runPromise(this.effect.getTip())
 
   getUtxos = (addressOrCredential: Parameters<Provider["getUtxos"]>[0]) =>
     Effect.runPromise(this.effect.getUtxos(addressOrCredential))

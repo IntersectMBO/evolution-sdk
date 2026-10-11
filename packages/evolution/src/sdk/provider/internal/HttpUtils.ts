@@ -1,5 +1,8 @@
 import { Data, Effect, Either, ParseResult, Schema } from "effect"
+import type { TimeoutException } from "effect/Cause"
 import type { ParseError } from "effect/ParseResult"
+
+import * as RequestBudget from "../RequestBudget.js"
 
 /**
  * Raised when a request never produced a response (network failure, DNS, abort)
@@ -29,12 +32,90 @@ export class HttpResponseError extends Data.TaggedError("HttpResponseError")<{
  */
 export type HttpError = HttpRequestError | HttpResponseError
 
-const sendRequest = (method: string, url: string, init: RequestInit): Effect.Effect<Response, HttpRequestError> =>
-  Effect.tryPromise({
-    // Aborts the in-flight request on interruption, so Effect.timeout releases the connection
-    try: (signal) => fetch(url, { ...init, method, signal }),
-    catch: (cause) => new HttpRequestError({ method, url, message: `${method} ${url} failed`, cause })
+/**
+ * Request headers that carry a credential: a bearer token, a Blockfrost project id, a
+ * Maestro api key. Compared case-insensitively, which is what `Headers` does.
+ */
+const CREDENTIAL_HEADERS = ["authorization", "project_id", "api-key"] as const
+
+/**
+ * Whether a credential may be put on this wire.
+ *
+ * `https` always; plain http only to loopback, where there is no wire to intercept. A LAN
+ * address or a hostname is neither — an indexer one hop away on a shared network is exactly
+ * where a token gets captured.
+ */
+const credentialMayTravel = (url: string): boolean =>
+  /^https:/i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url)
+
+/** The credential header this request would send, if any. */
+const credentialHeaderIn = (init: RequestInit): string | undefined => {
+  const headers = new Headers(init.headers ?? {})
+  return CREDENTIAL_HEADERS.find((name) => headers.has(name))
+}
+
+/**
+ * Every provider request passes through here, so this is where the host's request budget
+ * is spent and where the traffic is reported. A host with no configured budget is counted
+ * and issued immediately — the pacing is opt-in, the attribution is not.
+ *
+ * It is also the only place that sees both the url and the headers, which is why a
+ * credential bound for a plain-http endpoint is refused here rather than by each provider:
+ * a token sent in cleartext is readable by every hop it crosses, and it is a user's paid
+ * tier or a wallet's identity, not a configuration detail. The request is never issued, so
+ * this fails as a request that produced no response — the header is named, never its value.
+ */
+const sendRequest = (method: string, url: string, init: RequestInit): Effect.Effect<Response, HttpRequestError> => {
+  const cleartextCredential = credentialMayTravel(url) ? undefined : credentialHeaderIn(init)
+  if (cleartextCredential !== undefined) {
+    return Effect.fail(
+      new HttpRequestError({
+        method,
+        url,
+        message: `refusing to send the ${cleartextCredential} header to a plain-http endpoint: ${url}`
+      })
+    )
+  }
+  return Effect.flatMap(RequestBudget.acquire(url), (waitedMs) => {
+    const issuedAt = Date.now()
+    const observe = (status: number, refusalBody?: string) =>
+      RequestBudget.report({
+        host: RequestBudget.hostKey(url),
+        path: RequestBudget.requestPath(url),
+        method,
+        status,
+        waitedMs,
+        ms: Date.now() - issuedAt,
+        inWindow: RequestBudget.windowCount(url),
+        ...(refusalBody !== undefined ? { refusalBody } : {})
+      })
+
+    /**
+     * A refusal is reported with its body, because the status alone does not identify it —
+     * Koios's two different 429s are told apart by the text. Read from a CLONE, so the
+     * caller still gets an unread body to fail with; an unreadable one leaves `refusalBody`
+     * absent rather than reporting an empty string it never sent.
+     */
+    const observeResponse = (response: Response) =>
+      response.ok
+        ? Effect.sync(() => observe(response.status))
+        : Effect.flatMap(
+            Effect.either(Effect.tryPromise({ try: () => response.clone().text(), catch: (cause) => cause })),
+            (body) => Effect.sync(() => observe(response.status, Either.getOrUndefined(body)))
+          )
+
+    return Effect.tryPromise({
+      // Aborts the in-flight request on interruption, so Effect.timeout releases the connection
+      try: (signal) => fetch(url, { ...init, method, signal }),
+      catch: (cause) => new HttpRequestError({ method, url, message: `${method} ${url} failed`, cause })
+    }).pipe(
+      Effect.tap(observeResponse),
+      // A request that never produced a response is still spent budget, and is the one a
+      // 429 investigation most needs to see.
+      Effect.tapError(() => Effect.sync(() => observe(0)))
+    )
   })
+}
 
 /**
  * Read the response body as text, failing on non-2xx status codes
@@ -116,22 +197,45 @@ const withContentType = (contentType: string, headers?: Record<string, string>):
   return merged
 }
 
+/**
+ * Bound ONE request, when a caller asked for a bound.
+ *
+ * ⚠️ Optional with no default on purpose. `HttpUtils` is shared by every provider — Blockfrost,
+ * Maestro, Kupmios and Ogmios as well as Koios — so a default here would silently put a ceiling on
+ * four providers that never asked for one. A provider opts in by threading its own value down.
+ *
+ * ⚠️ Per REQUEST, which is the whole point of its being here rather than around an operation: a
+ * paged walk calls this once per page, so each page gets the full ceiling and a long walk is not
+ * cut off for being long. A timeout wrapped around `pageAll` instead bounds the walk — which is
+ * what `getUtxos` over a *credential* used to do, three requests under one ceiling.
+ */
+const bound = <A, E, R>(effect: Effect.Effect<A, E, R>, timeoutMs?: number) =>
+  timeoutMs === undefined ? effect : Effect.timeout(effect, timeoutMs)
+
 const requestJson = <A, I, R>(
   method: string,
   url: string,
   schema: Schema.Schema<A, I, R>,
-  init: RequestInit
-): Effect.Effect<A, HttpError | ParseError, R> =>
-  sendRequest(method, url, init).pipe(
-    Effect.flatMap((response) => readOkBody(method, url, response)),
-    Effect.flatMap(Schema.decodeUnknown(Schema.compose(Json, schema)))
+  init: RequestInit,
+  timeoutMs?: number
+): Effect.Effect<A, HttpError | ParseError | TimeoutException, R> =>
+  bound(
+    sendRequest(method, url, init).pipe(
+      Effect.flatMap((response) => readOkBody(method, url, response)),
+      Effect.flatMap(Schema.decodeUnknown(Schema.compose(Json, schema)))
+    ),
+    timeoutMs
   )
 
 /**
  * Performs a GET request and decodes the response using the provided schema
  */
-export const get = <A, I, R>(url: string, schema: Schema.Schema<A, I, R>, headers?: Record<string, string>) =>
-  requestJson("GET", url, schema, headers ? { headers } : {})
+export const get = <A, I, R>(
+  url: string,
+  schema: Schema.Schema<A, I, R>,
+  headers?: Record<string, string>,
+  timeoutMs?: number
+) => requestJson("GET", url, schema, headers ? { headers } : {}, timeoutMs)
 
 /**
  * Performs a POST request with JSON body and decodes the response using the provided schema
@@ -140,12 +244,19 @@ export const postJson = <A, I, R>(
   url: string,
   body: unknown,
   schema: Schema.Schema<A, I, R>,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  timeoutMs?: number
 ) =>
-  requestJson("POST", url, schema, {
-    headers: withContentType("application/json", headers),
-    body: JSON.stringify(body)
-  })
+  requestJson(
+    "POST",
+    url,
+    schema,
+    {
+      headers: withContentType("application/json", headers),
+      body: JSON.stringify(body)
+    },
+    timeoutMs
+  )
 
 /**
  * Performs a POST request with Uint8Array body and decodes the response using the provided schema
@@ -154,13 +265,17 @@ export const postUint8Array = <A, I>(
   url: string,
   body: Uint8Array,
   schema: Schema.Schema<A, I>,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  timeoutMs?: number
 ) =>
-  sendRequest("POST", url, {
-    headers: withContentType("application/cbor", headers),
-    // BodyInit excludes SharedArrayBuffer-backed views; transaction bytes are never shared
-    body: body as BodyInit
-  }).pipe(
+  bound(
+    sendRequest("POST", url, {
+      headers: withContentType("application/cbor", headers),
+      // BodyInit excludes SharedArrayBuffer-backed views; transaction bytes are never shared
+      body: body as BodyInit
+    }),
+    timeoutMs
+  ).pipe(
     Effect.flatMap((response) => readOkBody("POST", url, response)),
     // Try JSON first, fall back to plain text for endpoints that return unquoted strings (e.g. Dolos /tx/submit)
     Effect.map((text): unknown => Either.getOrElse(Schema.decodeUnknownEither(Json)(text), () => text)),

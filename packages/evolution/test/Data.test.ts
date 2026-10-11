@@ -139,9 +139,19 @@ describe("CBOR Encoding/Decoding", () => {
       expectedHex: "d87a9f182a42cafeff"
     },
     {
+      // ⚠️ The tag-102 wrapper is a DEFINITE two-element array `[index, fields]`; only the fields
+      // array inside it is indefinite. Two independent implementations agree and this library did
+      // not: cardano-serialization-lib 15.0.3 writes `d866821a000f423f9f182aff` and
+      // cardano-multiplatform-lib 6.2 writes `d866821a000f423f81182a` — differing on the FIELDS
+      // framing, agreeing on the `82` wrapper. Both write `d866821a000f423f80` with no fields.
       name: "large constructor index",
       value: Data.constr(999999n, [42n]),
       expectedHex: "d866821a000f423f9f182aff"
+    },
+    {
+      name: "large constructor index, no fields",
+      value: Data.constr(999999n, []),
+      expectedHex: "d866821a000f423f80"
     },
     {
       name: "empty list",

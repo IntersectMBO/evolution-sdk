@@ -1,6 +1,7 @@
 ---
+
 title: sdk/provider/Blockfrost.ts
-nav_order: 153
+nav_order: 157
 parent: Modules
 ---
 
@@ -16,6 +17,7 @@ parent: Modules
     - [baseUrl (property)](#baseurl-property)
     - [projectId (property)](#projectid-property)
     - [getProtocolParameters (property)](#getprotocolparameters-property)
+    - [getTip (property)](#gettip-property)
     - [getUtxos (property)](#getutxos-property)
     - [getUtxosWithUnit (property)](#getutxoswithunit-property)
     - [getUtxoByUnit (property)](#getutxobyunit-property)
@@ -55,7 +57,7 @@ Added in v2.0.0
 **Signature**
 
 ```ts
-readonly effect: ProviderEffect
+readonly effect: ProviderEffectWithTip
 ```
 
 ### baseUrl (property)
@@ -80,6 +82,14 @@ readonly projectId: string | undefined
 
 ```ts
 getProtocolParameters: () => Promise<ProtocolParameters>
+```
+
+### getTip (property)
+
+**Signature**
+
+```ts
+getTip: () => Promise<Tip>
 ```
 
 ### getUtxos (property)

@@ -1,9 +1,11 @@
 import { blake2b } from "@noble/hashes/blake2.js"
 import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema, type SchemaAST } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as CostModel from "./CostModel.js"
 import * as Data from "./Data.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 import * as Redeemer from "./Redeemer.js"
 import * as ScriptDataHash from "./ScriptDataHash.js"
 
@@ -62,7 +64,9 @@ export const keyToString = ([tag, index]: RedeemerKey): string => `${tag}:${inde
  * @category model
  */
 export class RedeemerValue extends Schema.Class<RedeemerValue>("RedeemerValue")({
-  data: Schema.typeSchema(Data.DataSchema),
+  // `DataValue`, not the transforming schema: validation must not rebuild the value, or the
+  // datum's arrival bytes are lost at the constructor. See `Data.DataValue`.
+  data: Data.DataValue,
   exUnits: Redeemer.ExUnits
 }) {
   [Equal.symbol](that: unknown): boolean {
@@ -553,13 +557,48 @@ export const arbitrary: FastCheck.Arbitrary<Redeemers> = FastCheck.array(Redeeme
 // ============================================================================
 
 /**
+ * Re-attach each redeemer's ARRIVAL BYTES to its decoded `data`.
+ *
+ * ⚠️ **Without this, decoding a redeemer map and re-encoding it silently reframes the data.** The
+ * decode goes through `Data.FromCDDL`, which receives a CBOR value with no bytes behind it, so a
+ * datum carrying an empty indefinite array comes back as `d87a80` where `d87a9fff` went in. Three
+ * bytes, a different `script_data_hash`, and a PHASE-2 FAILURE at the node -- and the failure is
+ * invisible locally, because the hash the builder computed over the spliced bytes and the
+ * redeemers it then embedded disagree only once the node recomputes it.
+ *
+ * The bytes are SLICED from the input rather than replayed from a format tree, and paired with the
+ * decoded redeemers positionally: both are in wire order, and a Plutus map keeps the order it was
+ * given.
+ *
+ * @since 2.8.0
+ */
+export const keepDataBytes = <A extends Redeemers>(redeemers: A, bytes: Uint8Array): A => {
+  // `[data, ex_units]` for the map form, `[tag, index, data, ex_units]` for the array form.
+  const dataBytes =
+    redeemers._tag === "RedeemerMap"
+      ? CBOR.splitMapEntries(bytes).map(([, value]) => CBOR.splitArrayItems(value)[0])
+      : CBOR.splitArrayItems(bytes).map((item) => CBOR.splitArrayItems(item)[2])
+  const datums =
+    redeemers._tag === "RedeemerMap"
+      ? [...redeemers.value.values()].map((v) => v.data)
+      : redeemers.value.map((r) => r.data)
+  datums.forEach((datum, i) => {
+    const arrived = dataBytes[i]
+    if (arrived !== undefined && typeof datum === "object" && datum !== null) {
+      OriginalBytes.record(datum, arrived)
+    }
+  })
+  return redeemers
+}
+
+/**
  * Parse from CBOR bytes (array format).
  *
  * @since 2.0.0
  * @category parsing
  */
 export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+  keepDataBytes(Schema.decodeSync(FromCBORBytes(options))(bytes), bytes)
 
 /**
  * Parse from CBOR hex string (array format).
@@ -568,7 +607,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @category parsing
  */
 export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+  fromCBORBytes(Bytes.fromHex(hex), options)
 
 /**
  * Parse from CBOR bytes (map format).
@@ -577,7 +616,7 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  * @category parsing
  */
 export const fromCBORBytesMap = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytesMap(options))(bytes)
+  keepDataBytes(Schema.decodeSync(FromCBORBytesMap(options))(bytes), bytes)
 
 /**
  * Parse from CBOR hex string (map format).
@@ -586,7 +625,7 @@ export const fromCBORBytesMap = (bytes: Uint8Array, options: CBOR.CodecOptions =
  * @category parsing
  */
 export const fromCBORHexMap = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHexMap(options))(hex)
+  fromCBORBytesMap(Bytes.fromHex(hex), options)
 
 /**
  * Encode to CBOR bytes (array format).
@@ -652,6 +691,72 @@ const concatBytes = (...arrays: ReadonlyArray<Uint8Array>): Uint8Array => {
     offset += arr.length
   }
   return result
+}
+
+/**
+ * A Conway redeemer MAP over data that is already encoded: `{[tag, index] => [data, ex_units]}`.
+ *
+ * ⚠️ **The data is spliced, not re-encoded.** Going through {@link Redeemer.Redeemer} means going
+ * through `Data`, and while `Data` keeps the bytes it was decoded from, one thing it cannot keep
+ * is the header width of an integer that IS the whole datum -- a `bigint` is not an object and
+ * has nowhere to carry the record. A redeemer whose bytes change moves `script_data_hash`, which
+ * is a phase-2 failure on chain, so the path that takes bytes keeps them.
+ *
+ * ⚠️ The keys are sorted bytewise over their ENCODED form, which is what the ledger requires of a
+ * map it reconstructs. The five arrays are positional and must be the same length: a short one
+ * used to encode `undefined` as a redeemer field, which changed the hash and failed at the node
+ * with nothing pointing back here.
+ *
+ * @since 2.8.0
+ * @category encoding
+ */
+export const spliceMap = (
+  entries: ReadonlyArray<{
+    readonly tag: number
+    readonly index: bigint
+    readonly data: Uint8Array
+    readonly mem: bigint
+    readonly steps: bigint
+  }>
+): Uint8Array => {
+  const uint = (n: bigint | number) => CBOR.toCBORBytes(BigInt(n))
+  const pairs = entries.map((e): readonly [Uint8Array, Uint8Array] => [
+    CBOR.encodeArrayAsDefinite([uint(e.tag), uint(e.index)]),
+    CBOR.encodeArrayAsDefinite([e.data, CBOR.encodeArrayAsDefinite([uint(e.mem), uint(e.steps)])])
+  ])
+  return CBOR.encodeMapAsDefinite([...pairs].sort((a, b) => CBOR.compareByteKeys(a[0], b[0])))
+}
+
+/**
+ * `script_data_hash` over redeemers and datums that are already encoded.
+ *
+ * `script_data_hash = blake2b256(redeemers ‖ datums ‖ language_views)`, with the Conway special
+ * case that no redeemers but datums present hashes `A0 ‖ datums ‖ A0`.
+ *
+ * ⚠️ **The bytes-level sibling of {@link toScriptDataHash}, and the one a wallet wants.** That one
+ * re-encodes the redeemers and the datums from their decoded values, which is correct only as far
+ * as those values can carry their arrival bytes. This takes the bytes the transaction will
+ * actually carry, so the hash is over what gets signed rather than over a re-derivation of it.
+ * Only `languageViewsEncoding` needs the typed model, because the PlutusV1 indefinite quirk lives
+ * there, and it is shared rather than restated.
+ *
+ * `datums` absent and `datums` empty are DIFFERENT: absent omits the field, which is the Conway
+ * special case's precondition.
+ *
+ * @since 2.8.0
+ * @category hashing
+ */
+export const toScriptDataHashFromEncoded = (
+  redeemers: Uint8Array,
+  datums: Uint8Array | undefined,
+  costModels: CostModel.CostModels
+): ScriptDataHash.ScriptDataHash => {
+  const EMPTY_MAP = Uint8Array.from([0xa0])
+  const payload =
+    redeemers.length === 0 && datums !== undefined
+      ? concatBytes(EMPTY_MAP, datums, EMPTY_MAP)
+      : concatBytes(redeemers, datums ?? new Uint8Array(0), CostModel.languageViewsEncoding(costModels))
+  return new ScriptDataHash.ScriptDataHash({ hash: blake2b(payload, { dkLen: 32 }) })
 }
 
 /**

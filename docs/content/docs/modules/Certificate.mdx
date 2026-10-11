@@ -1,6 +1,7 @@
 ---
+
 title: Certificate.ts
-nav_order: 35
+nav_order: 36
 parent: Modules
 ---
 
@@ -1240,7 +1241,18 @@ export declare const FromCBORBytes: (
               }
             >,
             typeof Schema.Uint8ArrayFromSelf,
-            Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+            Schema.transform<
+              Schema.Union<
+                [
+                  Schema.TaggedStruct<
+                    "Tag",
+                    { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+                  >,
+                  Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+                ]
+              >,
+              Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+            >,
             Schema.Array$<
               Schema.SchemaClass<
                 readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -1466,7 +1478,18 @@ export declare const FromCBORHex: (
                 }
               >,
               typeof Schema.Uint8ArrayFromSelf,
-              Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+              Schema.transform<
+                Schema.Union<
+                  [
+                    Schema.TaggedStruct<
+                      "Tag",
+                      { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+                    >,
+                    Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+                  ]
+                >,
+                Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+              >,
               Schema.Array$<
                 Schema.SchemaClass<
                   readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -1680,7 +1703,18 @@ export declare const FromCDDL: Schema.transformOrFail<
             }
           >,
           typeof Schema.Uint8ArrayFromSelf,
-          Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+          Schema.transform<
+            Schema.Union<
+              [
+                Schema.TaggedStruct<
+                  "Tag",
+                  { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+                >,
+                Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+              ]
+            >,
+            Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+          >,
           Schema.Array$<
             Schema.SchemaClass<
               readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -1920,7 +1954,18 @@ export declare const CDDLSchema: Schema.Union<
           }
         >,
         typeof Schema.Uint8ArrayFromSelf,
-        Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+        Schema.transform<
+          Schema.Union<
+            [
+              Schema.TaggedStruct<
+                "Tag",
+                { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+              >,
+              Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+            ]
+          >,
+          Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+        >,
         Schema.Array$<
           Schema.SchemaClass<
             readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],

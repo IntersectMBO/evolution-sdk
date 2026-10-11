@@ -1,6 +1,7 @@
 ---
+
 title: UnitInterval.ts
-nav_order: 181
+nav_order: 186
 parent: Modules
 ---
 
@@ -14,6 +15,9 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [constructors](#constructors)
   - [fromBigDecimal](#frombigdecimal)
+- [encoding](#encoding)
+  - [toCBORBytes](#tocborbytes)
+  - [toCBORHex](#tocborhex)
 - [model](#model)
   - [UnitInterval (class)](#unitinterval-class)
     - [toJSON (method)](#tojson-method)
@@ -21,9 +25,12 @@ parent: Modules
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+- [parsing](#parsing)
+  - [fromCBORBytes](#fromcborbytes)
+  - [fromCBORHex](#fromcborhex)
 - [schemas](#schemas)
-  - [FromCBORBytes](#fromcborbytes)
-  - [FromCBORHex](#fromcborhex)
+  - [FromCBORBytes](#fromcborbytes-1)
+  - [FromCBORHex](#fromcborhex-1)
   - [FromCDDL](#fromcddl)
 - [transformation](#transformation)
   - [toBigDecimal](#tobigdecimal)
@@ -56,6 +63,32 @@ Create UnitInterval from BigDecimal value.
 
 ```ts
 export declare const fromBigDecimal: (value: BigDecimal.BigDecimal) => UnitInterval
+```
+
+Added in v2.0.0
+
+# encoding
+
+## toCBORBytes
+
+Convert UnitInterval to CBOR bytes.
+
+**Signature**
+
+```ts
+export declare const toCBORBytes: (input: UnitInterval, options?: CBOR.CodecOptions) => any
+```
+
+Added in v2.0.0
+
+## toCBORHex
+
+Convert UnitInterval to a CBOR hex string.
+
+**Signature**
+
+```ts
+export declare const toCBORHex: (input: UnitInterval, options?: CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
@@ -142,6 +175,32 @@ Hash code generation.
 
 ```ts
 [Hash.symbol](): number
+```
+
+Added in v2.0.0
+
+# parsing
+
+## fromCBORBytes
+
+Parse UnitInterval from CBOR bytes.
+
+**Signature**
+
+```ts
+export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOptions) => UnitInterval
+```
+
+Added in v2.0.0
+
+## fromCBORHex
+
+Parse UnitInterval from a CBOR hex string.
+
+**Signature**
+
+```ts
+export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => UnitInterval
 ```
 
 Added in v2.0.0

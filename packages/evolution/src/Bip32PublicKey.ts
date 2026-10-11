@@ -109,6 +109,28 @@ export const fromBytes = Schema.decodeSync(FromBytes)
  * @since 2.0.0
  * @category parsing
  */
+/**
+ * A BIP32-Ed25519 extended PUBLIC key as hex (64 bytes: 32-byte key + 32-byte chain code).
+ *
+ * Validated as well as branded: a 64-byte lowercase or uppercase hex string. {@link toHex}
+ * returns this type, so the kind of a hex string survives leaving the typed domain — upstream of
+ * this, every hash and key was an unmarked `string` once encoded.
+ *
+ * ⚠️ Branded apart from {@link Bip32PrivateKey.Hex} deliberately. The two are the same shape and
+ * confusing them is unrecoverable in one direction: publishing where a private key was expected is
+ * merely wrong, while signing with what you believed was public is a leaked key.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^[0-9a-fA-F]{128}$/), Schema.brand("Bip32PublicKeyHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
 
 /**
@@ -125,7 +147,9 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))
+
+const encodeHex = Schema.encodeSync(FromHex)
 
 /**
  * Convert a Bip32PublicKey to raw public key bytes (32 bytes only).
@@ -147,6 +171,44 @@ export const deriveChild = (bip32PublicKey: Bip32PublicKey, index: number): Bip3
   return E.getOrThrowWith(Either.deriveChild(bip32PublicKey, index), (err) => {
     throw err
   })
+}
+
+/**
+ * The first index in the hardened range. A hardened child has no public derivation: it needs the
+ * private scalar, which an extended public key does not carry.
+ */
+const HARDENED_OFFSET = 0x8000_0000
+
+/**
+ * Derive a child public key down a path of indices (soft derivation only).
+ *
+ * This is what lets a wallet derive addresses from a co-signer's account xpub — no seed, no
+ * signing ceremony — which is the whole basis of a shared wallet.
+ *
+ * ⚠️ **Throws on any hardened index.** `deriveChild` takes a plain `number`, so a caller who
+ * passes `0x80000000 + n` by habit (every private-side path is written that way) would otherwise
+ * get a key silently derived from the wrong index. The account level and above are hardened by
+ * construction, so the mistake is an easy one; failing loudly is the only safe answer.
+ *
+ * @since 2.0.0
+ * @category derivation
+ */
+export const derivePath = (bip32PublicKey: Bip32PublicKey, indices: ReadonlyArray<number>): Bip32PublicKey => {
+  let current = bip32PublicKey
+  for (const index of indices) {
+    if (!Number.isInteger(index) || index < 0) {
+      throw new Bip32PublicKeyError({ message: `derivePath: index ${index} is not a non-negative integer` })
+    }
+    if (index >= HARDENED_OFFSET) {
+      throw new Bip32PublicKeyError({
+        message:
+          `derivePath: index ${index} is hardened, and a hardened child cannot be derived from a ` +
+          `public key. Derive the hardened prefix from the private key and start from that xpub.`
+      })
+    }
+    current = deriveChild(current, index)
+  }
+  return current
 }
 
 /**

@@ -146,6 +146,34 @@ describe("UtilsHash helpers CML parity", () => {
     )
   })
 
+  it("property: a datum is encoded identically standalone and inside a script-data hash", () => {
+    // The property that makes a datum hash and a script-data hash agree with each other. It
+    // held only by accident before `Data` carried its own array framing: `Data.toCBORBytes`
+    // wrote a non-empty list indefinite while the script-data path, running under the
+    // transaction's own codec options, rewrote it definite. The two hashes then disagreed for
+    // every datum containing a list or a non-empty constructor, which is most real datums.
+    FastCheck.assert(
+      FastCheck.property(FastCheck.array(Data.arbitrary, { minLength: 1, maxLength: 3 }), (datums) => {
+        const noCosts = new CostModel.CostModels({
+          PlutusV1: new CostModel.CostModel({ costs: [] }),
+          PlutusV2: new CostModel.CostModel({ costs: [] }),
+          PlutusV3: new CostModel.CostModel({ costs: [] })
+        })
+        const empty = new Redeemers.RedeemerArray({ value: [] })
+        const viaHash = ScriptDataHash.toHex(Redeemers.toScriptDataHash(empty, noCosts, datums))
+
+        // The same datums, hashed over bytes produced by the public Data encoder.
+        const standalone = datums.map((d) => Data.toCBORHex(d))
+        const rebuilt = standalone.map((hex) => Data.fromCBORHex(hex))
+        const viaRebuilt = ScriptDataHash.toHex(Redeemers.toScriptDataHash(empty, noCosts, rebuilt))
+
+        expect(viaRebuilt).toBe(viaHash)
+        // and the round-trip itself is byte-stable
+        expect(rebuilt.map((d) => Data.toCBORHex(d))).toStrictEqual(standalone)
+      })
+    )
+  })
+
   it("languageViewsEncoding: V1 all-zero matches ledger example hex", () => {
     // V1 has 166 parameters in example; value should be indefinite array wrapped in bytes
     const zerosV1 = Array.from({ length: 166 }, () => 0n)

@@ -1,0 +1,304 @@
+---
+
+title: sdk/provider/RequestBudget.ts
+nav_order: 163
+parent: Modules
+---
+
+## RequestBudget overview
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [combinators](#combinators)
+  - [acquire](#acquire)
+  - [configure](#configure)
+  - [report](#report)
+  - [reset](#reset)
+  - [setObserver](#setobserver)
+- [constants](#constants)
+  - [OBSERVATION_WINDOW_MS](#observation_window_ms)
+- [getters](#getters)
+  - [budgetFor](#budgetfor)
+  - [windowCount](#windowcount)
+- [model](#model)
+  - [BudgetWindow (interface)](#budgetwindow-interface)
+  - [HostBudget (interface)](#hostbudget-interface)
+  - [RequestObserver (type alias)](#requestobserver-type-alias)
+  - [RequestReport (interface)](#requestreport-interface)
+- [utils](#utils)
+  - [hostKey](#hostkey)
+  - [requestPath](#requestpath)
+  - [throttleDelayMs](#throttledelayms)
+
+---
+
+# combinators
+
+## acquire
+
+Wait until issuing a request to `url` stays inside its host's allowance, then record it.
+Resolves with how long the request was held back, which is what a report needs to
+separate our own pacing from the endpoint's latency.
+
+A host with no allowance is recorded and issued immediately.
+
+**Signature**
+
+```ts
+export declare const acquire: (url: string) => Effect.Effect<number>
+```
+
+Added in v2.2.0
+
+## configure
+
+Give a host an allowance, or remove it with `null`. The key is an origin — what
+{@link hostKey} returns for that host's urls.
+
+**Signature**
+
+```ts
+export declare const configure: (host: string, budget: HostBudget | null) => void
+```
+
+**Example**
+
+```typescript
+import * as RequestBudget from "@evolution-sdk/evolution/sdk/provider/RequestBudget"
+
+RequestBudget.configure("https://api.koios.rest", { limit: 90, windowMs: 10_000 })
+```
+
+Added in v2.2.0
+
+## report
+
+Report a request to the installed observer. A no-op when there is none.
+
+**Signature**
+
+```ts
+export declare const report: (request: RequestReport) => void
+```
+
+Added in v2.2.0
+
+## reset
+
+Forget every host's issue ledger and allowance. The observer is left alone.
+
+**Signature**
+
+```ts
+export declare const reset: () => void
+```
+
+Added in v2.2.0
+
+## setObserver
+
+Install, or clear with `null`, the process-wide request observer.
+
+**Signature**
+
+```ts
+export declare const setObserver: (next: RequestObserver | null) => void
+```
+
+Added in v2.2.0
+
+# constants
+
+## OBSERVATION_WINDOW_MS
+
+How far back `inWindow` counts for a host with no configured budget. Counting is the
+part that still matters without pacing: a refusal that names no volume cannot be told
+apart from the endpoint shedding load.
+
+**Signature**
+
+```ts
+export declare const OBSERVATION_WINDOW_MS: 10000
+```
+
+Added in v2.2.0
+
+# getters
+
+## budgetFor
+
+The allowance in force for a host, or `undefined` when it has none and is only counted.
+
+**Signature**
+
+```ts
+export declare const budgetFor: (host: string) => HostBudget | undefined
+```
+
+Added in v2.2.0
+
+## windowCount
+
+Requests issued against a host inside the current window.
+
+Reads the pacer's own ledger rather than a second counter, so what a report says was
+spent is what the pacer priced.
+
+**Signature**
+
+```ts
+export declare const windowCount: (host: string, now?: number) => number
+```
+
+Added in v2.2.0
+
+# model
+
+## BudgetWindow (interface)
+
+A host's issued requests and the allowance they are measured against.
+
+**Signature**
+
+```ts
+export interface BudgetWindow {
+  /** Issue times of requests still inside the window, oldest first. */
+  readonly recent: ReadonlyArray<number>
+  readonly limit: number
+  readonly windowMs: number
+}
+```
+
+Added in v2.2.0
+
+## HostBudget (interface)
+
+A client-side request budget, shared by every provider that talks to the same host.
+
+A provider that fans out — a gap-limit address scan, a history backfill, a per-asset
+sweep — spends a published allowance in a couple of seconds, and the endpoint answers
+429, or in Koios's case 403 to _everything_ once a per-address budget is gone. Retrying
+after the fact is the wrong shape: the refusal has already been earned, and every call
+site has to reinvent the backoff. Pacing before the call means the limit is never
+exceeded.
+
+The budget is keyed by **host**, not by provider instance: several providers are
+routinely built against one endpoint, and a per-instance limiter would let each of them
+spend the whole allowance. It lives at module scope for the same reason.
+
+Nothing is paced until a host is given a budget with {@link configure}; an unconfigured
+host is only counted, so {@link setObserver} still sees the traffic.
+
+**Signature**
+
+```ts
+export interface HostBudget {
+  /** Requests allowed inside one window. */
+  readonly limit: number
+  /** Window length in milliseconds. */
+  readonly windowMs: number
+}
+```
+
+Added in v2.2.0
+
+## RequestObserver (type alias)
+
+Observer contract: it MUST NOT throw. It runs on the request path, so a throw fails the
+request that reported to it — deliberately not caught here, because a library with no
+logger could only swallow it, and a silently dropped observer is the failure this seam
+exists to end.
+
+**Signature**
+
+```ts
+export type RequestObserver = (report: RequestReport) => void
+```
+
+Added in v2.2.0
+
+## RequestReport (interface)
+
+One request the pacer let through, reported once its outcome is known.
+
+The pacer is the only place every provider read passes through, so it is the only place
+that can say how much was actually spent — which is what a refusal needs to be
+attributable. Without it a 429 or a 403 names no volume at all.
+
+**Signature**
+
+```ts
+export interface RequestReport {
+  /** The budget key: the backend's origin. */
+  readonly host: string
+  /** The path the request went to, query dropped. */
+  readonly path: string
+  readonly method: string
+  /** HTTP status, or 0 when no response arrived at all. */
+  readonly status: number
+  /** How long the pacer held this request back before issuing it. */
+  readonly waitedMs: number
+  /** Round-trip time once issued. */
+  readonly ms: number
+  /** Requests issued against `host` inside the current window, this one included. */
+  readonly inWindow: number
+  /**
+   * The response body, when the response was a refusal.
+   *
+   * The status alone does not identify a refusal: Koios answers 429 both for one
+   * credential over its own window (`Exceeded Burst Limit, count was N`) and for an
+   * instance shedding load by source IP, and the two are told apart by this text. Absent
+   * means the body could not be read, which is not the same as an empty one.
+   */
+  readonly refusalBody?: string
+}
+```
+
+Added in v2.2.0
+
+# utils
+
+## hostKey
+
+The budget key for a url: one allowance per origin.
+
+Derived without `new URL` so a malformed value degrades to itself rather than throwing
+on the request path. Every caller must agree on this function — one keying its requests
+differently would spend an allowance of its own.
+
+**Signature**
+
+```ts
+export declare const hostKey: (url: string) => string
+```
+
+Added in v2.2.0
+
+## requestPath
+
+The path a request went to, query and fragment dropped — what a tally groups by.
+
+**Signature**
+
+```ts
+export declare const requestPath: (url: string) => string
+```
+
+Added in v2.2.0
+
+## throttleDelayMs
+
+How long to wait before issuing the next request against this window, in milliseconds.
+
+Pure, so the pacing rule is testable without timers: drop the issue times that have aged
+out; if there is room, go now; otherwise wait until the oldest one ages out.
+
+**Signature**
+
+```ts
+export declare const throttleDelayMs: (window: BudgetWindow, now: number) => number
+```
+
+Added in v2.2.0

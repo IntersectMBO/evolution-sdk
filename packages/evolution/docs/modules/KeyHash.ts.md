@@ -1,6 +1,7 @@
 ---
+
 title: KeyHash.ts
-nav_order: 71
+nav_order: 73
 parent: Modules
 ---
 
@@ -16,20 +17,27 @@ parent: Modules
   - [fromPrivateKey](#fromprivatekey)
   - [fromVKey](#fromvkey)
 - [encoding/decoding](#encodingdecoding)
+  - [fromBech32](#frombech32)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
+  - [toBech32](#tobech32)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
 - [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
   - [KeyHash (class)](#keyhash-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+- [schemas](#schemas)
+  - [Hex](#hex)
 - [transformer](#transformer)
+  - [FromBech32](#frombech32-1)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+- [utils](#utils)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -75,6 +83,18 @@ Added in v2.0.0
 
 # encoding/decoding
 
+## fromBech32
+
+Parse a KeyHash from a bech32 string (addr_vkh1...).
+
+**Signature**
+
+```ts
+export declare const fromBech32: (i: string, overrideOptions?: ParseOptions) => KeyHash
+```
+
+Added in v2.0.0
+
 ## fromBytes
 
 Decode a KeyHash from raw bytes.
@@ -87,14 +107,14 @@ export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) 
 
 Added in v2.0.0
 
-## fromHex
+## toBech32
 
-Decode a KeyHash from a hex string.
+Convert a KeyHash to a bech32 string (addr_vkh1...).
 
 **Signature**
 
 ```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => KeyHash
+export declare const toBech32: (a: KeyHash, overrideOptions?: ParseOptions) => string
 ```
 
 Added in v2.0.0
@@ -111,19 +131,17 @@ export declare const toBytes: (a: KeyHash, overrideOptions?: ParseOptions) => Ui
 
 Added in v2.0.0
 
-## toHex
+# model
 
-Convert a KeyHash to a hex string.
+## Hex (type alias)
 
 **Signature**
 
 ```ts
-export declare const toHex: (a: KeyHash, overrideOptions?: ParseOptions) => string
+export type Hex = typeof Hex.Type
 ```
 
-Added in v2.0.0
-
-# model
+Added in v2.4.0
 
 ## KeyHash (class)
 
@@ -183,7 +201,44 @@ toString(): string
 [Hash.symbol](): number
 ```
 
+# schemas
+
+## Hex
+
+An Ed25519 key hash as hex.
+
+Validated as well as branded: a 28-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ Same shape as a script hash and a policy id, all three 28 bytes. A credential of the wrong
+kind travels a long way before anything notices.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "KeyHashHex">
+```
+
+Added in v2.4.0
+
 # transformer
+
+## FromBech32
+
+Schema transformer from bech32 string (addr_vkh1...) to KeyHash.
+Uses the CIP-0005 `addr_vkh` prefix for address verification key hashes.
+
+**Signature**
+
+```ts
+export declare const FromBech32: Schema.transformOrFail<
+  typeof Schema.String,
+  Schema.SchemaClass<KeyHash, KeyHash, never>,
+  never
+>
+```
+
+Added in v2.0.0
 
 ## FromBytes
 
@@ -214,3 +269,21 @@ export declare const FromHex: Schema.transform<
 ```
 
 Added in v2.0.0
+
+# utils
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => KeyHash
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
+```

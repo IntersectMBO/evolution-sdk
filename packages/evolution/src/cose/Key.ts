@@ -161,6 +161,25 @@ export const COSEKeyFromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAU
     }
   }).annotations({ identifier: "COSEKeyFromCBORBytes" })
 
+/**
+ * The Ed25519 public key a COSE_Key carries, or `undefined`.
+ *
+ * ⚠️ `COSEKey` keeps the key in an UNTYPED header map at label -2 (RFC 8152's `x` for an OKP
+ * key), and {@link EdDSA25519Key} only builds in the other direction — so without this every
+ * consumer that reads a key hand-walks that map. Returns `undefined` rather than throwing for a
+ * key that carries no such header or carries something that is not a 32-byte string: these
+ * arrive from a counterparty, and a verifier an attacker can crash is a verifier an attacker
+ * controls.
+ *
+ * @since 2.3.0
+ * @category transformation
+ */
+export const publicKey = (key: COSEKey): VKey.VKey | undefined => {
+  const value = key.headers.header(labelFromInt(-2n))
+  if (!(value instanceof Uint8Array) || value.length !== 32) return undefined
+  return VKey.fromBytes(value)
+}
+
 // ============================================================================
 // EdDSA25519Key
 // ============================================================================

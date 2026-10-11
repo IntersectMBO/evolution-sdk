@@ -1,6 +1,7 @@
 ---
+
 title: PoolParams.ts
-nav_order: 101
+nav_order: 105
 parent: Modules
 ---
 
@@ -34,11 +35,13 @@ parent: Modules
   - [FromBytes](#frombytes-1)
   - [FromCDDL](#fromcddl)
   - [FromHex](#fromhex-1)
+  - [PoolOwnersCDDL](#poolownerscddl)
 - [transformation](#transformation)
   - [calculatePoolRewards](#calculatepoolrewards)
   - [getEffectiveStake](#geteffectivestake)
 - [utils](#utils)
   - [CDDLSchema](#cddlschema)
+  - [poolOwnersArray](#poolownersarray)
 
 ---
 
@@ -263,7 +266,18 @@ export declare const FromBytes: (
           }
         >,
         typeof Schema.Uint8ArrayFromSelf,
-        Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+        Schema.transform<
+          Schema.Union<
+            [
+              Schema.TaggedStruct<
+                "Tag",
+                { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+              >,
+              Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+            ]
+          >,
+          Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+        >,
         Schema.Array$<
           Schema.SchemaClass<
             readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -315,7 +329,18 @@ export declare const FromCDDL: Schema.transformOrFail<
         { tag: Schema.Literal<[30]>; value: Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf> }
       >,
       typeof Schema.Uint8ArrayFromSelf,
-      Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+      Schema.transform<
+        Schema.Union<
+          [
+            Schema.TaggedStruct<
+              "Tag",
+              { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+            >,
+            Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+          ]
+        >,
+        Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+      >,
       Schema.Array$<
         Schema.SchemaClass<
           readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -365,7 +390,18 @@ export declare const FromHex: (
             }
           >,
           typeof Schema.Uint8ArrayFromSelf,
-          Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+          Schema.transform<
+            Schema.Union<
+              [
+                Schema.TaggedStruct<
+                  "Tag",
+                  { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+                >,
+                Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+              ]
+            >,
+            Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+          >,
           Schema.Array$<
             Schema.SchemaClass<
               readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -380,6 +416,35 @@ export declare const FromHex: (
       never
     >
   >
+>
+```
+
+Added in v2.0.0
+
+## PoolOwnersCDDL
+
+`pool_owners` is `set<addr_keyhash>`: the chain, CSL and CML all write it `#6.258`, and a bare
+array is still valid on the way in.
+
+Modelled as a transform rather than a union in the tuple slot so that the slot's **Type** stays
+`ReadonlyArray<Uint8Array>` and only its Encoded side widens. A union here would change
+`CDDLSchema.Type`, which cascades through `Certificate`'s sixteen-arm union and is rejected by
+declaration emit.
+
+**Signature**
+
+```ts
+export declare const PoolOwnersCDDL: Schema.transform<
+  Schema.Union<
+    [
+      Schema.TaggedStruct<
+        "Tag",
+        { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+      >,
+      Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+    ]
+  >,
+  Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
 >
 ```
 
@@ -432,7 +497,18 @@ export declare const CDDLSchema: Schema.Tuple<
       { tag: Schema.Literal<[30]>; value: Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf> }
     >,
     typeof Schema.Uint8ArrayFromSelf,
-    Schema.Array$<typeof Schema.Uint8ArrayFromSelf>,
+    Schema.transform<
+      Schema.Union<
+        [
+          Schema.TaggedStruct<
+            "Tag",
+            { tag: Schema.Literal<[258]>; value: Schema.Array$<typeof Schema.Uint8ArrayFromSelf> }
+          >,
+          Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+        ]
+      >,
+      Schema.Array$<typeof Schema.Uint8ArrayFromSelf>
+    >,
     Schema.Array$<
       Schema.SchemaClass<
         readonly [0n, bigint | null, any, any] | readonly [1n, bigint | null, string] | readonly [2n, string],
@@ -444,3 +520,18 @@ export declare const CDDLSchema: Schema.Tuple<
   ]
 >
 ```
+
+## poolOwnersArray
+
+`pool_owners` as a plain array of key-hash bytes, whether it arrived `#6.258`-tagged or bare.
+
+`Certificate` flattens `PoolParams.CDDLSchema` into its own tuple, so it needs the untagged
+form at its encode boundary; `PoolOwnersCDDL` re-tags it there.
+
+**Signature**
+
+```ts
+export declare const poolOwnersArray: (slot: unknown) => ReadonlyArray<Uint8Array>
+```
+
+Added in v2.0.0

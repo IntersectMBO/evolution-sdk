@@ -1,6 +1,7 @@
 ---
+
 title: TransactionWitnessSet.ts
-nav_order: 177
+nav_order: 183
 parent: Modules
 ---
 
@@ -14,6 +15,7 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [constructors](#constructors)
   - [empty](#empty)
+  - [fromEncoded](#fromencoded)
   - [fromNativeScripts](#fromnativescripts)
   - [fromVKeyWitnesses](#fromvkeywitnesses)
 - [encoding](#encoding)
@@ -36,17 +38,17 @@ parent: Modules
     - [[Equal.symbol] (method)](#equalsymbol-method-1)
     - [[Hash.symbol] (method)](#hashsymbol-method-1)
 - [parsing](#parsing)
-  - [fromCBORBytes](#fromcborbytes)
   - [fromCBORBytesWithFormat](#fromcborbyteswithformat)
   - [fromCBORHex](#fromcborhex)
   - [fromCBORHexWithFormat](#fromcborhexwithformat)
 - [schemas](#schemas)
   - [CDDLSchema](#cddlschema)
+  - [FromCBORBytes](#fromcborbytes)
+  - [FromCBORHex](#fromcborhex-1)
   - [FromCDDL](#fromcddl)
 - [utils](#utils)
-  - [FromCBORBytes](#fromcborbytes-1)
-  - [FromCBORHex](#fromcborhex-1)
   - [PlutusScript (type alias)](#plutusscript-type-alias)
+  - [fromCBORBytes](#fromcborbytes-1)
 
 ---
 
@@ -78,6 +80,40 @@ export declare const empty: () => TransactionWitnessSet
 
 Added in v2.0.0
 
+## fromEncoded
+
+Assemble a witness set from parts that are already encoded.
+
+The counterpart of `TransactionBody.fromEncoded`, and needed for the same reason: a builder
+holds a witness set's contents as bytes, produced by whatever supplied the scripts.
+
+`fields` carries the script fields (3, 6, 7), `plutus_data` (4) and `redeemers` (5) by their
+CDDL key. The script fields and `plutus_data` are given as the whole encoded `#6.258` set and
+split into items; `redeemers` is the encoded map.
+
+⚠️ Keys 4 and 5 are the two that are NOT script-shaped, and a version of this table that
+handled only the script shape made assembling the witness set of ANY Plutus transaction throw --
+including the sizing pass every fee estimate runs. No vector reached it because every
+transaction under test had been script-free.
+
+⚠️ `plutus_data` items go through `Data.fromCBORBytes`, which records each datum's arrival
+bytes, so a datum re-encodes as it came. Splitting the set with `CBOR.splitArrayItems` is the
+other half of that: decoding the set and re-encoding its items would reframe them before the
+datums were ever read.
+
+**Signature**
+
+```ts
+export declare const fromEncoded: (input: {
+  readonly vkeyWitnesses?: ReadonlyArray<{ readonly vkey: Uint8Array; readonly signature: Uint8Array }>
+  readonly nativeScripts?: ReadonlyArray<Uint8Array>
+  readonly bootstrapWitnesses?: ReadonlyArray<Uint8Array>
+  readonly fields?: ReadonlyArray<readonly [number, Uint8Array]>
+}) => TransactionWitnessSet
+```
+
+Added in v2.8.0
+
 ## fromNativeScripts
 
 Create a TransactionWitnessSet with only native scripts.
@@ -106,12 +142,15 @@ Added in v2.0.0
 
 ## toCBORBytes
 
-Convert a TransactionWitnessSet to CBOR bytes.
+Convert a TransactionWitnessSet to CBOR bytes, as in {@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: TransactionWitnessSet, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (
+  data: TransactionWitnessSet,
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => any
 ```
 
 Added in v2.0.0
@@ -119,6 +158,10 @@ Added in v2.0.0
 ## toCBORBytesWithFormat
 
 Convert a TransactionWitnessSet to CBOR bytes using an explicit root format tree.
+
+Datums and redeemers the format tree covers keep their captured format. A
+datum or redeemer added to a decoded witness set is written as
+{@link toCBORBytes} writes it under the default options.
 
 **Signature**
 
@@ -130,19 +173,23 @@ Added in v2.0.0
 
 ## toCBORHex
 
-Convert a TransactionWitnessSet to CBOR hex string.
+Convert a TransactionWitnessSet to CBOR hex string, as in {@link toCBORBytes}.
 
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: TransactionWitnessSet, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (
+  data: TransactionWitnessSet,
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => string
 ```
 
 Added in v2.0.0
 
 ## toCBORHexWithFormat
 
-Convert a TransactionWitnessSet to CBOR hex string using an explicit root format tree.
+Convert a TransactionWitnessSet to CBOR hex string using an explicit root
+format tree, as in {@link toCBORBytesWithFormat}.
 
 **Signature**
 
@@ -318,18 +365,6 @@ Added in v2.0.0
 
 # parsing
 
-## fromCBORBytes
-
-Parse a TransactionWitnessSet from CBOR bytes.
-
-**Signature**
-
-```ts
-export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOptions) => TransactionWitnessSet
-```
-
-Added in v2.0.0
-
 ## fromCBORBytesWithFormat
 
 Parse a TransactionWitnessSet from CBOR bytes and return the root format tree.
@@ -394,6 +429,49 @@ export declare const CDDLSchema: Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigi
 
 Added in v2.0.0
 
+## FromCBORBytes
+
+CBOR bytes transformation schema for TransactionWitnessSet. Datums and
+redeemer data are written with the `plutusData` options, the rest with the
+`ledger` options, the layout `Redeemers.toScriptDataHash` hashes. Plain
+options are read as `CBOR.toTxCodecOptions` reads them.
+
+**Signature**
+
+```ts
+export declare const FromCBORBytes: (
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => Schema.transformOrFail<
+  typeof Schema.Uint8ArrayFromSelf,
+  Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
+  never
+>
+```
+
+Added in v2.0.0
+
+## FromCBORHex
+
+CBOR hex transformation schema for TransactionWitnessSet, as in
+{@link FromCBORBytes}.
+
+**Signature**
+
+```ts
+export declare const FromCBORHex: (
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => Schema.transform<
+  Schema.Schema<Uint8Array, string, never>,
+  Schema.transformOrFail<
+    typeof Schema.Uint8ArrayFromSelf,
+    Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
+    never
+  >
+>
+```
+
+Added in v2.0.0
+
 ## FromCDDL
 
 CDDL transformation schema for TransactionWitnessSet.
@@ -412,55 +490,18 @@ Added in v2.0.0
 
 # utils
 
-## FromCBORBytes
-
-**Signature**
-
-```ts
-export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.transformOrFail<
-    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
-    Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
-    never
-  >
->
-```
-
-## FromCBORHex
-
-**Signature**
-
-```ts
-export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transform<
-    Schema.Schema<Uint8Array, string, never>,
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >
-  >,
-  Schema.transformOrFail<
-    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
-    Schema.SchemaClass<TransactionWitnessSet, TransactionWitnessSet, never>,
-    never
-  >
->
-```
-
 ## PlutusScript (type alias)
 
 **Signature**
 
 ```ts
 export type PlutusScript = typeof PlutusScript.Type
+```
+
+## fromCBORBytes
+
+**Signature**
+
+```ts
+export declare const fromCBORBytes: (bytes: Uint8Array, options?: CBOR.CodecOptions) => TransactionWitnessSet
 ```

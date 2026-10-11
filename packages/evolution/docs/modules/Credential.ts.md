@@ -1,6 +1,7 @@
 ---
+
 title: Credential.ts
-nav_order: 49
+nav_order: 50
 parent: Modules
 ---
 
@@ -11,8 +12,10 @@ parent: Modules
 <h2 class="text-delta">Table of contents</h2>
 
 - [encoding](#encoding)
+  - [toBech32](#tobech32)
   - [toCBORBytes](#tocborbytes)
   - [toCBORHex](#tocborhex)
+  - [toHex](#tohex)
 - [model](#model)
   - [Credential (type alias)](#credential-type-alias)
 - [parsing](#parsing)
@@ -37,6 +40,19 @@ parent: Modules
 
 # encoding
 
+## toBech32
+
+Convert a Credential to a bech32 string.
+Uses CIP-0005 prefixes: `addr_vkh` for KeyHash, `script` for ScriptHash.
+
+**Signature**
+
+```ts
+export declare const toBech32: (credential: Credential) => string
+```
+
+Added in v2.0.0
+
 ## toCBORBytes
 
 Convert a Credential to CBOR bytes.
@@ -57,6 +73,18 @@ Convert a Credential to CBOR hex string.
 
 ```ts
 export declare const toCBORHex: (credential: Credential, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
+## toHex
+
+Convert a Credential to a hex string of its hash.
+
+**Signature**
+
+```ts
+export declare const toHex: (credential: Credential) => string
 ```
 
 Added in v2.0.0

@@ -8,7 +8,6 @@ import { Schema } from "effect"
 import * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets.js"
 import * as Bytes from "../../../Bytes.js"
-import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
 import type { DatumOption } from "../../../DatumOption.js"
 import * as InlineDatum from "../../../InlineDatum.js"
@@ -153,6 +152,16 @@ export const MaestroTransaction = Schema.Struct({
 /**
  * Maestro timestamped response wrapper
  */
+/**
+ * Maestro `/chain-tip`. It carries no epoch and no block time, which is why both are
+ * optional on {@link Provider.Tip}.
+ */
+export const MaestroChainTip = Schema.Struct({
+  block_hash: Schema.String,
+  slot: Schema.NumberFromString,
+  height: Schema.NumberFromString
+})
+
 export const MaestroTimestampedResponse = <A, I>(dataSchema: Schema.Schema<A, I>) =>
   Schema.Struct({
     data: dataSchema,
@@ -252,7 +261,10 @@ export const transformDatumOption = (
 ): DatumOption | undefined => {
   if (!maestroDatum) return undefined
   if (maestroDatum.type === "inline" && maestroDatum.bytes) {
-    return new InlineDatum.InlineDatum({ data: PlutusData.fromCBORHex(maestroDatum.bytes) })
+    // ⚠️ The bytes the backend sent are RECORDED, not just decoded. A datum re-encoded from its
+    // tree reframes an empty Plutus array and hashes differently, and cip113/cip139 report
+    // `datum_hex` only from this channel -- absent rather than re-derived.
+    return InlineDatum.fromCBORHex(maestroDatum.bytes)
   }
   return DatumHash.fromHex(maestroDatum.hash)
 }
@@ -335,6 +347,9 @@ export const transformDelegation = (
   maestroDelegation: Schema.Schema.Type<typeof MaestroDelegation>
 ): Provider.Delegation => {
   return {
+    // Maestro's account response carries no registration flag, so this stays absent rather than
+    // being inferred from `delegated_pool` — which cannot distinguish the two cases.
+    registered: undefined,
     poolId: maestroDelegation.delegated_pool
       ? PoolKeyHash.fromBech32(maestroDelegation.delegated_pool)
       : null,

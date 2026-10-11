@@ -1,4 +1,5 @@
 ---
+
 title: AssetName.ts
 nav_order: 5
 parent: Modules
@@ -14,7 +15,6 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
 - [model](#model)
   - [AssetName (class)](#assetname-class)
     - [toJSON (method)](#tojson-method)
@@ -22,6 +22,7 @@ parent: Modules
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
   - [fromHex](#fromhex)
@@ -30,6 +31,9 @@ parent: Modules
 - [schemas](#schemas)
   - [FromBytes](#frombytes-1)
   - [FromHex](#fromhex-1)
+  - [Hex](#hex)
+- [utils](#utils)
+  - [toHex](#tohex)
 
 ---
 
@@ -57,18 +61,6 @@ Encode AssetName to bytes.
 
 ```ts
 export declare const toBytes: (assetName: AssetName) => Uint8Array
-```
-
-Added in v2.0.0
-
-## toHex
-
-Encode AssetName to hex string.
-
-**Signature**
-
-```ts
-export declare const toHex: (assetName: AssetName) => string
 ```
 
 Added in v2.0.0
@@ -148,6 +140,16 @@ Content-based hash for optimization of Equal.equals.
 
 Added in v2.0.0
 
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 # parsing
 
 ## fromBytes
@@ -219,3 +221,28 @@ export declare const FromHex: Schema.transform<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+An asset name as hex, 0 to 32 bytes.
+
+⚠️ The EMPTY string is a valid asset name, not a missing one — a policy's unnamed asset is
+spelled exactly that way — so the pattern admits it deliberately.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "AssetNameHex">
+```
+
+Added in v2.4.0
+
+# utils
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (assetName: AssetName) => Hex
+```

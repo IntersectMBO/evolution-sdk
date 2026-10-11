@@ -76,7 +76,14 @@ export class ProposalProcedures extends Schema.TaggedClass<ProposalProcedures>()
  * @since 2.0.0
  * @category schemas
  */
-export const CDDLSchema = Schema.Array(ProposalProcedure.CDDLSchema)
+// `proposal_procedures` is `nonempty_set<proposal_procedure>`, so it is written `#6.258`. A bare
+// array is still accepted on the way in — previously the TAGGED form, which the node and every
+// other library produce, was the one that could not be decoded.
+//
+// Opaque rather than a union of the two shapes, narrowed in the transform instead: a union here
+// pushes `transformOrFail`'s inferred context to `unknown`, which type checking accepts and
+// declaration emit rejects. See PoolParams.PoolOwnersCDDL for the same note.
+export const CDDLSchema = Schema.Unknown
 
 /**
  * CDDL transformation schema for ProposalProcedures.
@@ -87,11 +94,22 @@ export const CDDLSchema = Schema.Array(ProposalProcedure.CDDLSchema)
 export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(ProposalProcedures), {
   strict: true,
   encode: (toA) =>
-    Eff.all(toA.procedures.map((procedure) => ParseResult.encode(ProposalProcedure.FromCDDL)(procedure))),
+    Eff.gen(function* () {
+      const encoded = yield* Eff.all(
+        toA.procedures.map((procedure) => ParseResult.encode(ProposalProcedure.FromCDDL)(procedure))
+      )
+      return CBOR.Tag.make({ tag: 258, value: encoded }, { disableValidation: true })
+    }),
   decode: (fromA) =>
     Eff.gen(function* () {
+      const items = (Array.isArray(fromA) ? fromA : (fromA as { readonly value?: unknown })?.value) as
+        | ReadonlyArray<typeof ProposalProcedure.CDDLSchema.Type>
+        | undefined
+      if (!Array.isArray(items)) {
+        return yield* Eff.fail(new ParseResult.Type(Schema.typeSchema(ProposalProcedures).ast, fromA, "expected a set or an array of proposal procedures"))
+      }
       const procedures = yield* Eff.all(
-        fromA.map((procedureTuple) => ParseResult.decode(ProposalProcedure.FromCDDL)(procedureTuple))
+        items.map((procedureTuple) => ParseResult.decode(ProposalProcedure.FromCDDL)(procedureTuple))
       )
 
       return new ProposalProcedures({ procedures })

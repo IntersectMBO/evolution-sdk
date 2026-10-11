@@ -8,9 +8,11 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as Address from "../../src/Address.js"
 import * as Assets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as Data from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
 import * as InlineDatum from "../../src/InlineDatum.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PlutusV2 from "../../src/PlutusV2.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
@@ -212,6 +214,30 @@ describe("Blockfrost UTxO queries", () => {
     expect(utxos[1].scriptRef).toBeInstanceOf(PlutusV2.PlutusV2)
   })
 
+  /**
+   * ⚠️ The assertion above cannot see this: `OriginalBytes` is a side channel, not a field, so
+   * `toEqual` on an `InlineDatum` passes whether or not the wire bytes were kept. They have to
+   * be read back explicitly.
+   *
+   * A datum matched by a script is matched BY ITS HASH, and bytes re-derived from the decoded
+   * tree reframe an empty Plutus array and hash differently. `cip113`/`cip139` therefore report
+   * `datum_hex` only from this channel, absent rather than re-derived — so a backend that drops
+   * the bytes silently turns `datum_hex` into "unavailable" for every datum it serves.
+   */
+  it("keeps the inline datum's ORIGINAL bytes, not just the decoded tree", async () => {
+    stubRoutes({ [`/addresses/${ADDRESS}/utxos?page=1&count=100`]: ADDRESS_UTXOS, ...SCRIPT_ROUTES })
+
+    const utxos = await Effect.runPromise(
+      BlockfrostEffect.getUtxos(BASE, PROJECT_ID)(Address.fromBech32(ADDRESS))
+    )
+
+    const datum = utxos[0].datumOption
+    expect(datum).toBeDefined()
+    const raw = OriginalBytes.get(datum as object)
+    expect(raw).toBeDefined()
+    expect(Bytes.toHex(raw!)).toBe("19a6aa")
+  })
+
   it("decodes tx_index past 2^53 exactly", async () => {
     stubRoutes({ "/utxos": ADDRESS_UTXOS })
 
@@ -341,8 +367,54 @@ describe("Blockfrost getDelegation", () => {
 
     expect(delegation).toEqual({
       poolId: Schema.decodeSync(PoolKeyHash.FromBech32)(POOL_ID),
-      rewards: 18446744073709551616n
+      rewards: 18446744073709551616n,
+      registered: true
     })
+  })
+
+  /**
+   * ⚠️ `registered` is not derivable from `poolId`. A registered account that has not delegated
+   * reports `pool_id: null` and no rewards, which is byte for byte what a never-registered
+   * account reports through the 404 path below. CIP-95's registered/unregistered stake-key split
+   * is exactly that question, and a dApp reads it to decide whether a vote-delegation
+   * certificate needs a registration certificate beside it.
+   */
+  it("reports a registered account that has not delegated", async () => {
+    stubRoutes({
+      [`/accounts/${STAKE_ADDRESS}`]: ACCOUNT.replace(`"${POOL_ID}"`, "null")
+    })
+
+    const delegation = await Effect.runPromise(
+      BlockfrostEffect.getDelegation(BASE, PROJECT_ID)(RewardAddress.RewardAddress.make(STAKE_ADDRESS))
+    )
+
+    expect(delegation.poolId).toBeNull()
+    expect(delegation.registered).toBe(true)
+  })
+
+  it("distinguishes it from an account that was never registered", async () => {
+    // Blockfrost has no row at all for a stake key that was never registered, which is a
+    // definitive answer rather than missing data.
+    stubRoutes({})
+
+    const delegation = await Effect.runPromise(
+      BlockfrostEffect.getDelegation(BASE, PROJECT_ID)(RewardAddress.RewardAddress.make(STAKE_ADDRESS))
+    )
+
+    expect(delegation.poolId).toBeNull()
+    expect(delegation.registered).toBe(false)
+  })
+
+  it("carries the deregistered case through, rather than inferring it from the pool", async () => {
+    stubRoutes({
+      [`/accounts/${STAKE_ADDRESS}`]: ACCOUNT.replace('"active": true', '"active": false')
+    })
+
+    const delegation = await Effect.runPromise(
+      BlockfrostEffect.getDelegation(BASE, PROJECT_ID)(RewardAddress.RewardAddress.make(STAKE_ADDRESS))
+    )
+
+    expect(delegation.registered).toBe(false)
   })
 
   it("decodes active_epoch past 2^53 exactly", async () => {

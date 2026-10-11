@@ -13,6 +13,7 @@ import * as GovernanceAction from "./GovernanceAction.js"
 import * as KeyHash from "./KeyHash.js"
 import * as Mint from "./Mint.js"
 import * as NetworkId from "./NetworkId.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 import * as PositiveCoin from "./PositiveCoin.js"
 import * as ProposalProcedure from "./ProposalProcedure.js"
 import * as ProposalProcedures from "./ProposalProcedures.js"
@@ -211,6 +212,35 @@ export const CDDLSchema = Schema.declare(
 
 type CDDLSchema = typeof CDDLSchema.Type
 
+/**
+ * Every transaction-body key this schema reads — the whole of Conway's `transaction_body`.
+ *
+ * ⚠️ Keep it in step with the decoder below. A key added there and not here is refused; a key
+ * here and not there is silently dropped, which is the defect this set exists to prevent.
+ */
+const MODELLED_KEYS: ReadonlySet<bigint> = new Set([
+  0n, // inputs
+  1n, // outputs
+  2n, // fee
+  3n, // ttl
+  4n, // certificates
+  5n, // withdrawals
+  7n, // auxiliary data hash
+  8n, // validity interval start
+  9n, // mint
+  11n, // script data hash
+  13n, // collateral inputs
+  14n, // required signers
+  15n, // network id
+  16n, // collateral return
+  17n, // total collateral
+  18n, // reference inputs
+  19n, // voting procedures
+  20n, // proposal procedures
+  21n, // current treasury value
+  22n // donation
+])
+
 // The CDDL transform that writes a new inline datum with the `plutusData` options
 const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
   const encodeTxOutput = ParseResult.encodeEither(TxOut.makeFromCDDL(plutusData))
@@ -321,8 +351,30 @@ const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
 
         return record as CDDLSchema
       }),
-    decode: (fromA) =>
+    decode: (fromA, _options, ast) =>
       E.gen(function* () {
+        // ⚠️ A key this schema does not model is REFUSED, not dropped. The fields below are read
+        // by key, so one that is never read is absent from the result and missing from the
+        // re-encode: measured, a body with one extra key went in at 1213 bytes and came out at
+        // 1209 — a different transaction id, with nothing raised.
+        //
+        // Every valid Conway body key is modelled, so an unmodelled one is either a pre-Conway
+        // field this schema cannot represent or a field from a newer era. Carrying the bytes
+        // through would be no better than dropping them: it would let a wallet sign a field it
+        // cannot display, which is what a review step exists to prevent.
+        for (const key of fromA.keys()) {
+          if (!MODELLED_KEYS.has(key)) {
+            return yield* ParseResult.fail(
+              new ParseResult.Type(
+                ast,
+                fromA,
+                `unknown transaction body key ${key}: this schema models ${[...MODELLED_KEYS].join(", ")}, ` +
+                  "and dropping a field it does not understand would change the transaction id"
+              )
+            )
+          }
+        }
+
         // Required fields - accept both tag-258 (Conway) and plain array (Babbage)
         const inputsRaw = fromA.get(0n)
         const taggedResult = decodeTaggedInputs(inputsRaw)
@@ -552,6 +604,83 @@ export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = C
 
 export const isTransactionBody = Schema.is(TransactionBody)
 
+const ENCODED_FIELD: Record<number, (bytes: Uint8Array) => readonly [string, unknown]> = {
+  4: (b) => ["certificates", CBOR.splitArrayItems(b).map((c) => Certificate.fromCBORBytes(c))],
+  5: (b) => ["withdrawals", Withdrawals.fromCBORBytes(b)],
+  7: (b) => ["auxiliaryDataHash", AuxiliaryDataHash.fromBytes(byteStringOf(b))],
+  8: (b) => ["validityIntervalStart", uintOf(b)],
+  9: (b) => ["mint", Mint.fromCBORBytes(b)],
+  11: (b) => ["scriptDataHash", ScriptDataHash.fromBytes(byteStringOf(b))],
+  13: (b) => ["collateralInputs", CBOR.splitArrayItems(b).map((i) => TransactionInput.fromCBORBytes(i))],
+  14: (b) => ["requiredSigners", CBOR.splitArrayItems(b).map((h) => KeyHash.fromBytes(byteStringOf(h)))],
+  15: (b) => ["networkId", Number(uintOf(b))],
+  16: (b) => ["collateralReturn", TxOut.fromCBORBytes(b)],
+  17: (b) => ["totalCollateral", uintOf(b)],
+  18: (b) => ["referenceInputs", CBOR.splitArrayItems(b).map((i) => TransactionInput.fromCBORBytes(i))],
+  19: (b) => ["votingProcedures", VotingProcedures.fromCBORBytes(b)],
+  20: (b) => ["proposalProcedures", ProposalProcedures.fromCBORBytes(b)],
+  21: (b) => ["currentTreasuryValue", uintOf(b)],
+  22: (b) => ["donation", uintOf(b)]
+}
+
+const uintOf = (bytes: Uint8Array): bigint => {
+  const node = CBOR.fromCBORBytes(bytes)
+  if (typeof node !== "bigint") throw new Error("transaction body: expected a CBOR uint")
+  return node
+}
+
+/** A `bytes32` body field arrives as its CBOR byte string (`5820` ‖ 32 bytes), not as raw bytes. */
+const byteStringOf = (bytes: Uint8Array): Uint8Array => {
+  const node = CBOR.fromCBORBytes(bytes)
+  if (!(node instanceof Uint8Array)) throw new Error("transaction body: expected a CBOR byte string")
+  return node
+}
+
+/**
+ * Assemble a body from parts that are already encoded.
+ *
+ * ⚠️ **This is what a transaction builder needs and the typed constructor is not.** A builder
+ * accumulates body fields from plugins as bytes -- a certificate from one, a withdrawal map from
+ * another, a `script_data_hash` computed over bytes it does not model -- and has no typed value
+ * for most of them. Without this it either reaches for a hex-shaped service of its own (which is
+ * how a 109-operation parallel codec came to exist) or re-derives the bytes it was given.
+ *
+ * `inputs` and `outputs` are item bytes and are written as the `#6.258` set and the array Conway
+ * expects. `fields` carries everything else by its CDDL key; a key this type does not model
+ * throws rather than being dropped, because a dropped field is a body the caller did not ask for
+ * and will sign anyway.
+ *
+ * The result is an ordinary {@link TransactionBody}, so it has NO recorded arrival bytes and
+ * {@link toCBORBytes} encodes it structurally -- which is correct: it was built here, not decoded.
+ *
+ * @since 2.8.0
+ * @category constructors
+ */
+export const fromEncoded = (input: {
+  readonly inputs: ReadonlyArray<Uint8Array>
+  readonly outputs: ReadonlyArray<Uint8Array>
+  readonly fee: bigint
+  readonly ttl?: bigint
+  readonly fields?: ReadonlyArray<readonly [number, Uint8Array]>
+}): TransactionBody => {
+  const assembled: Record<string, unknown> = {
+    inputs: input.inputs.map((i) => TransactionInput.fromCBORBytes(i)),
+    outputs: input.outputs.map((o) => TxOut.fromCBORBytes(o)),
+    fee: input.fee
+  }
+  if (input.ttl !== undefined) assembled.ttl = input.ttl
+  for (const [key, bytes] of input.fields ?? []) {
+    const decode = ENCODED_FIELD[key]
+    if (decode === undefined) {
+      throw new Error(`transaction body: key ${key} is not modelled by TransactionBody`)
+    }
+    const [field, value] = decode(bytes)
+    assembled[field] = value
+  }
+  // Key-driven, so the bag is assembled open and typed at this one boundary.
+  return new TransactionBody(assembled as ConstructorParameters<typeof TransactionBody>[0])
+}
+
 /**
  * Convert CBOR bytes to TransactionBody.
  *
@@ -559,7 +688,10 @@ export const isTransactionBody = Schema.is(TransactionBody)
  * @category conversion
  */
 export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+  // Recorded, so `toCBORBytes` can hand these bytes back rather than choosing a form again. The
+  // input set's `#6.258` tag and every integer header width are arrival details the decoded value
+  // does not carry, and re-choosing them changes the transaction id.
+  OriginalBytes.record(Schema.decodeSync(FromCBORBytes(options))(bytes), bytes)
 
 /**
  * Convert CBOR hex string to TransactionBody.
@@ -568,7 +700,8 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  * @category conversion
  */
 export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+  // Through the bytes form, so a body decoded from hex carries its arrival record too.
+  fromCBORBytes(Bytes.fromHex(hex), options)
 
 /**
  * Convert TransactionBody to CBOR bytes.
@@ -579,8 +712,24 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
 export const toCBORBytes = (
   data: TransactionBody,
   options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
-) =>
-  Schema.encodeSync(FromCBORBytes(options))(data)
+) => {
+  // The bytes this body arrived as, when it arrived at all. A body is the thing the ledger hashes
+  // and the thing a hardware wallet signed, and two of its arrival details cannot be recovered
+  // from the decoded value: whether the input set came `#6.258`-tagged (Conway) or bare (Babbage,
+  // still accepted), and the width of every integer header. The encoder always tags, so a bare
+  // body came back three bytes longer with a DIFFERENT transaction id — under a signature already
+  // attached to the other one. A wallet co-signing someone else's transaction does not get to
+  // choose the form it is handed.
+  //
+  // `mode: "canonical"` outranks the record, as it does for Plutus data: canonicalising is a
+  // request for a new representation. A body edited rather than decoded is a new object with no
+  // record, and is encoded structurally.
+  if (CBOR.toTxCodecOptions(options).ledger.mode !== "canonical") {
+    const arrived = OriginalBytes.get(data)
+    if (arrived !== undefined) return arrived.slice()
+  }
+  return Schema.encodeSync(FromCBORBytes(options))(data)
+}
 
 /**
  * Convert TransactionBody to CBOR hex string.
@@ -592,7 +741,8 @@ export const toCBORHex = (
   data: TransactionBody,
   options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
 ) =>
-  Schema.encodeSync(FromCBORHex(options))(data)
+  // Through `toCBORBytes`, so the arrival record applies here too.
+  Bytes.toHex(toCBORBytes(data, options))
 
 /**
  * Parse a TransactionBody from CBOR bytes and return the root format tree.

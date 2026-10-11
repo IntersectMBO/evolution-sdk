@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest"
 import * as Anchor from "../src/Anchor.js"
 import { InfoAction } from "../src/GovernanceAction.js"
 import * as ProposalProcedure from "../src/ProposalProcedure.js"
+import * as ProposalProcedures from "../src/ProposalProcedures.js"
 import * as RewardAccount from "../src/RewardAccount.js"
 
 /**
@@ -62,5 +63,27 @@ describe("ProposalProcedures CML Compatibility", () => {
     // Test that Evolution SDK can parse CML's CBOR (the truth)
     const evolutionRoundTrip = ProposalProcedure.fromCBORHex(cmlProcedureCborHex)
     expect(evolutionRoundTrip).toEqual(evolutionProcedure)
+  })
+
+  it("proposal_procedures is a Conway set: written #6.258, and the tagged form decodes", () => {
+    const procedure = new ProposalProcedure.ProposalProcedure({
+      deposit: 500000000n,
+      rewardAccount: generateTestRewardAccount(1),
+      governanceAction: new InfoAction(),
+      anchor: generateTestAnchor(1)
+    })
+    const procedures = new ProposalProcedures.ProposalProcedures({ procedures: [procedure] })
+
+    // `nonempty_set<proposal_procedure>` — CML writes the 258 tag, and so must we.
+    const hex = ProposalProcedures.toCBORHex(procedures)
+    expect(hex.startsWith("d9010281")).toBe(true)
+
+    // The tagged form is what a node and every other library emit. It previously failed to
+    // decode, so governance proposals read off-chain could not be parsed at all.
+    expect(ProposalProcedures.fromCBORHex(hex)).toStrictEqual(procedures)
+
+    // A bare array stays acceptable on the way in.
+    const untagged = `81${hex.slice("d9010281".length)}`
+    expect(ProposalProcedures.fromCBORHex(untagged)).toStrictEqual(procedures)
   })
 })

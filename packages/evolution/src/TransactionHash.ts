@@ -95,6 +95,27 @@ export const fromBytes = Schema.decodeSync(FromBytes)
  * @since 2.0.0
  * @category parsing
  */
+/**
+ * A transaction hash as hex.
+ *
+ * Validated as well as branded: a 32-byte lowercase or uppercase hex string. {@link toHex}
+ * returns this type, so the kind of a hex string survives leaving the typed domain — upstream of
+ * this, every hash and key was an unmarked `string` once encoded.
+ *
+ * ⚠️ Branded apart from every other 32-byte hash hex. They are the same shape, and the type
+ * system is the only thing standing between a transaction hash and a datum hash.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^[0-9a-fA-F]{64}$/), Schema.brand("TransactionHashHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
 
 /**
@@ -111,4 +132,6 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))
+
+const encodeHex = Schema.encodeSync(FromHex)

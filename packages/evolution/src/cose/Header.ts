@@ -21,6 +21,14 @@ import { Label, labelFromInt, labelFromText } from "./Label.js"
  * @since 2.0.0
  * @category Model
  */
+/** The structurally equal key already in `headers`, if there is one. */
+const findKey = (headers: ReadonlyMap<Label, CBOR.CBOR>, label: Label): Label | undefined => {
+  for (const candidate of headers.keys()) {
+    if (Equal.equals(candidate, label)) return candidate
+  }
+  return undefined
+}
+
 export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
   headers: Schema.ReadonlyMapFromSelf({
     key: Schema.instanceOf(Label),
@@ -247,18 +255,30 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setHeader(label: Label, value: CBOR.CBOR): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(label, value)
+    // ⚠️ The map is keyed by Label OBJECT, and `labelFromInt(-2n)` builds a fresh one on every
+    // call — so a plain `Map.set` APPENDS a second entry for a label already present instead of
+    // replacing it. That encodes a COSE header map with a duplicate key, and a receiver then
+    // reads whichever of the two it reaches first. Replace at the existing key when there is a
+    // structurally equal one.
+    const existing = findKey(newHeaders, label)
+    newHeaders.set(existing ?? label, value)
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
   /**
    * Get custom header.
    *
+   * ⚠️ Structural, not by object identity. `this.headers.get(label)` answered `undefined` for a
+   * label that IS present, because the caller's `labelFromInt(n)` is a different object from the
+   * one in the map — which is why every reader in this package hand-walked `entries()` rather
+   * than calling this.
+   *
    * @since 2.0.0
    * @category Accessors
    */
   header(label: Label): CBOR.CBOR | undefined {
-    return this.headers.get(label)
+    const key = findKey(this.headers, label)
+    return key === undefined ? undefined : this.headers.get(key)
   }
 
   /**

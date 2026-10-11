@@ -11,7 +11,7 @@ import * as FeeCalculation from "../phases/FeeCalculation.js"
 import * as Selection from "../phases/Selection.js"
 import * as SignBuilderImpl from "../SignBuilderImpl.js"
 import type { BuildOptions, ProgramStep, TxBuilderConfig } from "../TransactionBuilder.js"
-import { AvailableUtxosTag, PhaseContextTag, ProtocolParametersTag, TransactionBuilderError, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
+import { AvailableUtxosTag, BuildOptionsTag, PhaseContextTag, ProtocolParametersTag, TransactionBuilderError, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
 import * as TransactionResult from "../TransactionResult.js"
 import * as BuilderLayers from "./layers.js"
 import * as BuilderState from "./state.js"
@@ -107,7 +107,10 @@ const assembleAndValidateTransaction = Effect.gen(function* () {
     auxiliaryData: finalState.auxiliaryData ?? null
   })
 
-  const txSizeWithWitnesses = TxBuilderImpl.calculateTransactionSize(txWithFakeWitnesses)
+  // Sized under the options this will be SERIALIZED with: the fee follows the serialized length,
+  // and the caller may not be encoding with the CML defaults.
+  const codecOptions = (yield* BuildOptionsTag).codecOptions
+  const txSizeWithWitnesses = TxBuilderImpl.calculateTransactionSize(txWithFakeWitnesses, codecOptions)
   const protocolParameters = yield* ProtocolParametersTag
 
   yield* Effect.logDebug(

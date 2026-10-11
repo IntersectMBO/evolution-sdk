@@ -100,6 +100,26 @@ export const fromBytes = Schema.decodeSync(FromBytes)
  * @since 2.0.0
  * @category parsing
  */
+/**
+ * A minting policy id as hex.
+ *
+ * Validated as well as branded: a 28-byte hex string, either case. {@link toHex} returns
+ * this type, so the kind survives leaving the typed domain.
+ *
+ * ⚠️ A policy id IS a script hash, and 28 bytes like a key hash. The brand is what keeps a
+ * credential out of a policy position.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^[0-9a-fA-F]{56}$/), Schema.brand("PolicyIdHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
 
 /**
@@ -116,4 +136,6 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+const encodeHex = Schema.encodeSync(FromHex)
+
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))

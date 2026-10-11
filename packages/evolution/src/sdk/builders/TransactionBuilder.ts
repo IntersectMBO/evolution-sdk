@@ -34,6 +34,7 @@ import type * as CoreAddress from "../../Address.js"
 import type * as CoreAssets from "../../Assets.js"
 import type * as AuxiliaryData from "../../AuxiliaryData.js"
 import * as Bytes from "../../Bytes.js"
+import type * as CBOR from "../../CBOR.js"
 import type * as Certificate from "../../Certificate.js"
 import type * as Coin from "../../Coin.js"
 import type * as CostModel from "../../CostModel.js"
@@ -598,6 +599,24 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly autoMinUtxo?: boolean
+
+  /**
+   * The CBOR options this transaction will be SERIALIZED with.
+   *
+   * ⚠️ Opt-in, and it must match what the caller finally encodes with. The builder returns a
+   * `Transaction`, not bytes, so the caller chooses the encoding afterwards — but
+   * `script_data_hash` and `auxiliary_data_hash` are computed over serialized bytes DURING the
+   * build, and the fee is computed from the serialized size. Left unset, all three use
+   * `CBOR.CML_DEFAULT_OPTIONS`, so a transaction later encoded canonically carries hashes taken
+   * over different bytes and the node rejects it with `PPViewHashesDontMatch`.
+   *
+   * Set it when encoding with anything other than the CML defaults — notably canonical CBOR,
+   * which is what hardware wallets require: `cardano-hw-cli` refuses to witness a transaction
+   * carrying a *fixable* issue, so a CIP-21-conformant body is necessary and not sufficient.
+   *
+   * @since 2.2.0
+   */
+  readonly codecOptions?: CBOR.CodecOptions
 }
 
 // ============================================================================

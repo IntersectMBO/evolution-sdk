@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/TransactionResult.ts
-nav_order: 148
+nav_order: 152
 parent: Modules
 ---
 

@@ -1,6 +1,7 @@
 ---
+
 title: VrfKeyHash.ts
-nav_order: 190
+nav_order: 195
 parent: Modules
 ---
 

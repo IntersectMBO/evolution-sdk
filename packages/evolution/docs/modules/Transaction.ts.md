@@ -1,6 +1,7 @@
 ---
+
 title: Transaction.ts
-nav_order: 169
+nav_order: 175
 parent: Modules
 ---
 
@@ -10,11 +11,15 @@ parent: Modules
 
 <h2 class="text-delta">Table of contents</h2>
 
+- [constructors](#constructors)
+  - [fromEncoded](#fromencoded)
 - [encoding](#encoding)
   - [addVKeyWitnesses](#addvkeywitnesses)
   - [addVKeyWitnessesBytes](#addvkeywitnessesbytes)
   - [addVKeyWitnessesHex](#addvkeywitnesseshex)
   - [extractBodyBytes](#extractbodybytes)
+  - [getIntendedCodecOptions](#getintendedcodecoptions)
+  - [setIntendedCodecOptions](#setintendedcodecoptions)
   - [toCBORBytesWithFormat](#tocborbyteswithformat)
   - [toCBORHexWithFormat](#tocborhexwithformat)
 - [model](#model)
@@ -33,12 +38,37 @@ parent: Modules
   - [FromCBORHex](#fromcborhex)
   - [FromCDDL](#fromcddl)
   - [arbitrary](#arbitrary)
+  - [cborHeaderSize](#cborheadersize)
   - [fromCBORBytes](#fromcborbytes-1)
   - [fromCBORHex](#fromcborhex-1)
   - [toCBORBytes](#tocborbytes)
   - [toCBORHex](#tocborhex)
 
 ---
+
+# constructors
+
+## fromEncoded
+
+Assemble a signed transaction from a body and auxiliary data that are already encoded.
+
+The body arrives as bytes because that is what was hashed and signed: decoding it and
+re-encoding it is how a co-signed transaction acquires a different id than the one its first
+signature covers. {@link fromCBORBytes} on `TransactionBody` records the arrival bytes, so the
+body this carries re-encodes exactly, and `isValid` defaults to the only value a wallet submits.
+
+**Signature**
+
+```ts
+export declare const fromEncoded: (input: {
+  readonly body: Uint8Array
+  readonly witnessSet: TransactionWitnessSet.TransactionWitnessSet
+  readonly auxiliaryData?: Uint8Array
+  readonly isValid?: boolean
+}) => Transaction
+```
+
+Added in v2.8.0
 
 # encoding
 
@@ -116,9 +146,39 @@ export declare const extractBodyBytes: (txBytes: Uint8Array) => Uint8Array
 
 Added in v2.0.0
 
+## getIntendedCodecOptions
+
+The options this transaction is meant to be serialized with, if any were recorded.
+
+**Signature**
+
+```ts
+export declare const getIntendedCodecOptions: (data: Transaction) => CBOR.CodecOptions | undefined
+```
+
+Added in v2.2.0
+
+## setIntendedCodecOptions
+
+Record the options this transaction is meant to be serialized with.
+
+Intended for builders: a transaction whose hashes were computed under non-default options must
+be encoded under those same options wherever it goes next.
+
+**Signature**
+
+```ts
+export declare const setIntendedCodecOptions: (data: Transaction, options: CBOR.CodecOptions) => void
+```
+
+Added in v2.2.0
+
 ## toCBORBytesWithFormat
 
 Convert a Transaction to CBOR bytes using an explicit root format tree.
+
+The witness set is written as `TransactionWitnessSet.toCBORBytesWithFormat`
+writes it.
 
 **Signature**
 
@@ -130,7 +190,8 @@ Added in v2.0.0
 
 ## toCBORHexWithFormat
 
-Convert a Transaction to CBOR hex string using an explicit root format tree.
+Convert a Transaction to CBOR hex string using an explicit root format tree,
+as in {@link toCBORBytesWithFormat}.
 
 **Signature**
 
@@ -244,60 +305,36 @@ export declare const CDDLSchema: Schema.declare<
 
 ## FromCBORBytes
 
-CBOR bytes transformation schema for Transaction.
+CBOR bytes transformation schema for Transaction. The body and the witness
+set are written as `TransactionBody.FromCBORBytes(options)` and
+`TransactionWitnessSet.FromCBORBytes(options)` write them, the rest with
+the `ledger` options. Plain options are read as `CBOR.toTxCodecOptions`
+reads them.
 
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.transformOrFail<
-    Schema.declare<
-      readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR],
-      readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR],
-      readonly [],
-      never
-    >,
-    Schema.SchemaClass<Transaction, Transaction, never>,
-    never
-  >
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => Schema.transformOrFail<
+  typeof Schema.Uint8ArrayFromSelf,
+  Schema.SchemaClass<Transaction, Transaction, never>,
+  never
 >
 ```
 
 ## FromCBORHex
 
-CBOR hex transformation schema for Transaction.
+CBOR hex transformation schema for Transaction, as in {@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
 export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
-  Schema.transform<
-    Schema.Schema<Uint8Array, string, never>,
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >
-  >,
-  Schema.transformOrFail<
-    Schema.declare<
-      readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR],
-      readonly [Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, boolean, CBOR.CBOR],
-      readonly [],
-      never
-    >,
-    Schema.SchemaClass<Transaction, Transaction, never>,
-    never
-  >
+  Schema.Schema<Uint8Array, string, never>,
+  Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, Schema.SchemaClass<Transaction, Transaction, never>, never>
 >
 ```
 
@@ -328,6 +365,25 @@ export declare const FromCDDL: Schema.transformOrFail<
 export declare const arbitrary: FastCheck.Arbitrary<Transaction>
 ```
 
+## cborHeaderSize
+
+The byte width of the CBOR item header at `offset`.
+
+Paired with {@link CBOR.decodeItemWithOffset} this is what slices an element out of a CBOR
+array **byte-exactly** — `decodeItemWithOffset` gives the end of an item, this gives the start
+of the first one inside a container. `extractBodyBytes` is one such slice; a wallet that
+reviews a transaction before signing needs the same for the witness set and the auxiliary
+data, and a re-encode is not a substitute because a span that differs by one byte is a
+different transaction id.
+
+**Signature**
+
+```ts
+export declare const cborHeaderSize: (data: Uint8Array, offset: number) => number
+```
+
+Added in v2.2.0
+
 ## fromCBORBytes
 
 **Signature**
@@ -349,7 +405,7 @@ export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => 
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: Transaction, options?: CBOR.CodecOptions) => Uint8Array
+export declare const toCBORBytes: (data: Transaction, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => Uint8Array
 ```
 
 ## toCBORHex
@@ -357,5 +413,5 @@ export declare const toCBORBytes: (data: Transaction, options?: CBOR.CodecOption
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: Transaction, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (data: Transaction, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```

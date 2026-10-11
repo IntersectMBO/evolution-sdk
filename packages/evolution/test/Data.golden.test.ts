@@ -23,9 +23,10 @@
  *
  */
 
-import { describe, expect, it } from "@effect/vitest"
+import { afterAll, describe, expect, it } from "@effect/vitest"
 import * as fs from "fs"
 import * as path from "path"
+import * as prettier from "prettier"
 import { fileURLToPath } from "url"
 
 import * as CBOR from "../src/CBOR.js"
@@ -163,6 +164,28 @@ const isConstrSample = (sample: unknown): sample is ConstrSample => {
 }
 
 /**
+ * Regenerate the golden files from the current encoder instead of asserting against them.
+ *
+ * The fixtures are the encoder's own output, so a change to Plutus CBOR encoding necessarily
+ * rewrites thousands of lines of them. Without a way to reproduce that, a reviewer can only take
+ * the diff on trust - which is the wrong answer for bytes that decide `script_data_hash`.
+ *
+ * `UPDATE_GOLDENS=1 vitest run test/Data.golden.test.ts` rewrites `cborHex` and `cborBytes` for
+ * every entry and leaves `sample`, `roundTripSuccess` and `metadata` alone. A clean `git diff`
+ * afterwards is the check: the committed fixtures are exactly what this code emits.
+ *
+ */
+const UPDATE_GOLDENS = process.env.UPDATE_GOLDENS === "1"
+
+/**
+ * The inverse of {@link bigintReviver}. Samples carry BigInt values, which JSON cannot represent,
+ * so they are written back in the `{__type, value}` form the reviver reads.
+ *
+ */
+const bigintReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === "bigint" ? { __type: "bigint", value: value.toString() } : value
+
+/**
  * Load golden files from the test/golden directory
  *
  */
@@ -195,6 +218,39 @@ const getGoldenEntries = (type: keyof typeof goldenCache): Array<GoldenEntry> =>
   }
   return goldenCache[type]!
 }
+
+/**
+ * Assert an encoding against its fixture, or record it when regenerating.
+ *
+ */
+const checkHex = (entry: GoldenEntry, encoded: string): void => {
+  if (UPDATE_GOLDENS) {
+    ;(entry as { cborHex: string }).cborHex = encoded
+    return
+  }
+  expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+}
+
+const checkBytes = (entry: GoldenEntry, encoded: Uint8Array): void => {
+  if (UPDATE_GOLDENS) {
+    ;(entry as { cborBytes: ReadonlyArray<number> }).cborBytes = Array.from(encoded)
+    return
+  }
+  expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+}
+
+afterAll(async () => {
+  if (!UPDATE_GOLDENS) return
+  for (const [type, entries] of Object.entries(goldenCache)) {
+    if (!entries) continue
+    const file = path.join(__dirname, "golden", `${type}.golden.json`)
+    const json = JSON.stringify(entries, bigintReplacer, 2)
+    // The repo's own prettier settings, not the defaults: `filepath` alone picks the parser but
+    // leaves printWidth at 80, which rewraps every `cborBytes` array that fits on one line here.
+    const options = await prettier.resolveConfig(file)
+    fs.writeFileSync(file, await prettier.format(json, { ...options, filepath: file }))
+  }
+})
 
 /**
  * Get test cases for a specific type and test category with sample limiting
@@ -239,7 +295,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusData = Data.int(entry.sample.integer)
         const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
-        expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+        checkHex(entry, encoded)
       })
     })
 
@@ -252,7 +308,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusData = Data.int(entry.sample.integer)
         const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
-        expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+        checkBytes(entry, encoded)
       })
     })
 
@@ -300,7 +356,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusData = Data.bytearray(entry.sample.bytearray)
         const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
-        expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+        checkHex(entry, encoded)
       })
     })
 
@@ -313,7 +369,7 @@ describe("Data Golden Tests", () => {
         }
         const plutusData = Data.bytearray(entry.sample.bytearray)
         const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
-        expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+        checkBytes(entry, encoded)
       })
     })
 
@@ -362,7 +418,7 @@ describe("Data Golden Tests", () => {
         const plutusDataList = entry.sample.list.map(reconstructPlutusData)
         const plutusData = Data.list(plutusDataList)
         const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
-        expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+        checkHex(entry, encoded)
       })
     }, 30000) // 30 second timeout for large test cases
 
@@ -376,7 +432,7 @@ describe("Data Golden Tests", () => {
         const plutusDataList = entry.sample.list.map(reconstructPlutusData)
         const plutusData = Data.list(plutusDataList)
         const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
-        expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+        checkBytes(entry, encoded)
       })
     })
 
@@ -429,7 +485,7 @@ describe("Data Golden Tests", () => {
         )
         const plutusData = Data.map(plutusDataEntries)
         const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
-        expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+        checkHex(entry, encoded)
       })
     })
 
@@ -446,7 +502,7 @@ describe("Data Golden Tests", () => {
         )
         const plutusData = Data.map(plutusDataEntries)
         const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
-        expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+        checkBytes(entry, encoded)
       })
     })
 
@@ -499,7 +555,7 @@ describe("Data Golden Tests", () => {
         const plutusDataFields = entry.sample.fields.map(reconstructPlutusData)
         const plutusData = Data.constr(BigInt(entry.sample.index), plutusDataFields)
         const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
-        expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+        checkHex(entry, encoded)
       })
     })
 
@@ -513,7 +569,7 @@ describe("Data Golden Tests", () => {
         const plutusDataFields = entry.sample.fields.map(reconstructPlutusData)
         const plutusData = Data.constr(BigInt(entry.sample.index), plutusDataFields)
         const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
-        expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+        checkBytes(entry, encoded)
       })
     })
 
@@ -559,7 +615,7 @@ describe("Data Golden Tests", () => {
       testCases.forEach((entry) => {
         const plutusData = reconstructPlutusData(entry.sample)
         const encoded = Data.toCBORHex(plutusData, GOLDEN_OPTIONS)
-        expect(encoded, `Failed at sample index ${entry.index}`).toBe(entry.cborHex)
+        checkHex(entry, encoded)
       })
     })
 
@@ -569,7 +625,7 @@ describe("Data Golden Tests", () => {
       testCases.forEach((entry) => {
         const plutusData = reconstructPlutusData(entry.sample)
         const encoded = Data.toCBORBytes(plutusData, GOLDEN_OPTIONS)
-        expect(Array.from(encoded), `Failed at sample index ${entry.index}`).toEqual(entry.cborBytes)
+        checkBytes(entry, encoded)
       })
     })
 

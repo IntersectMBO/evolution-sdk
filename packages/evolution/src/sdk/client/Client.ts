@@ -152,6 +152,13 @@ export interface PrivateKeyWalletConfig {
  */
 export interface ClientAssembly {
   readonly chain: Chain
+  /**
+   * Build on any provider, including one this package does not ship: a custom backend, a
+   * decorated provider, or `MockProvider` in a test.
+   *
+   * @since 2.2.0
+   */
+  readonly withProvider: (provider: Provider.Provider) => ReadClient
   readonly withBlockfrost: (config: BlockfrostConfig) => ReadClient
   readonly withKoios: (config: KoiosConfig) => ReadClient
   readonly withKupmios: (config: KupmiosConfig) => ReadClient
@@ -186,6 +193,7 @@ export type ReadClient = EffectToPromiseAPI<Provider.ProviderEffect> & {
  */
 export type AddressClient = EffectToPromiseAPI<AddressClientEffect> & {
   readonly chain: Chain
+  readonly withProvider: (provider: Provider.Provider) => ReadOnlyClient
   readonly withBlockfrost: (config: BlockfrostConfig) => ReadOnlyClient
   readonly withKoios: (config: KoiosConfig) => ReadOnlyClient
   readonly withKupmios: (config: KupmiosConfig) => ReadOnlyClient
@@ -201,6 +209,7 @@ export type AddressClient = EffectToPromiseAPI<AddressClientEffect> & {
  */
 export type OfflineSignerClient = EffectToPromiseAPI<OfflineSignerClientEffect> & {
   readonly chain: Chain
+  readonly withProvider: (provider: Provider.Provider) => SigningClient
   readonly withBlockfrost: (config: BlockfrostConfig) => SigningClient
   readonly withKoios: (config: KoiosConfig) => SigningClient
   readonly withKupmios: (config: KupmiosConfig) => SigningClient

@@ -1,6 +1,7 @@
 ---
+
 title: Ed25519Signature.ts
-nav_order: 57
+nav_order: 58
 parent: Modules
 ---
 
@@ -14,10 +15,8 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [constructors](#constructors)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
 - [model](#model)
   - [Ed25519Signature (class)](#ed25519signature-class)
     - [toJSON (method)](#tojson-method)
@@ -25,11 +24,16 @@ parent: Modules
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+  - [Hex (type alias)](#hex-type-alias)
 - [predicates](#predicates)
   - [is](#is)
 - [schemas](#schemas)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [Hex](#hex)
+- [utils](#utils)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -61,18 +65,6 @@ export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) 
 
 Added in v2.0.0
 
-## fromHex
-
-Parse Ed25519Signature from hex string (unsafe - throws on error).
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Ed25519Signature
-```
-
-Added in v2.0.0
-
 # encoding
 
 ## toBytes
@@ -83,18 +75,6 @@ Get the underlying bytes (returns a copy for safety).
 
 ```ts
 export declare const toBytes: (a: Ed25519Signature, overrideOptions?: ParseOptions) => Uint8Array
-```
-
-Added in v2.0.0
-
-## toHex
-
-Convert to hex string using optimized lookup table.
-
-**Signature**
-
-```ts
-export declare const toHex: (a: Ed25519Signature, overrideOptions?: ParseOptions) => string
 ```
 
 Added in v2.0.0
@@ -155,6 +135,16 @@ toString(): string
 [Hash.symbol](): number
 ```
 
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 # predicates
 
 ## is
@@ -203,3 +193,40 @@ export declare const FromHex: Schema.transform<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+An Ed25519 signature as hex (64 bytes).
+
+Validated as well as branded: a 64-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ Branded apart from a verification key because a `vkeywitness` holds exactly those two, in
+that order, and transposing them yields a witness that is structurally valid and verifies
+against nothing.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "Ed25519SignatureHex">
+```
+
+Added in v2.4.0
+
+# utils
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Ed25519Signature
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
+```

@@ -1,6 +1,7 @@
 ---
+
 title: cose/Header.ts
-nav_order: 41
+nav_order: 42
 parent: Modules
 ---
 
@@ -23,12 +24,22 @@ Added in v2.0.0
   - [headerMapToCBORBytes](#headermaptocborbytes)
   - [headerMapToCBORHex](#headermaptocborhex)
 - [Model](#model)
-  - [HeaderMap (class)](#headermap-class)
+  - [Headers (class)](#headers-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+- [Schemas](#schemas)
+  - [HeaderMapFromCBORBytes](#headermapfromcborbytes-1)
+  - [HeaderMapFromCBORHex](#headermapfromcborhex-1)
+- [utils](#utils)
+  - [HeaderMap (class)](#headermap-class)
+    - [toJSON (method)](#tojson-method-1)
+    - [toString (method)](#tostring-method-1)
+    - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method-1)
+    - [[Equal.symbol] (method)](#equalsymbol-method-1)
+    - [[Hash.symbol] (method)](#hashsymbol-method-1)
     - [setAlgorithmId (method)](#setalgorithmid-method)
     - [algorithmId (method)](#algorithmid-method)
     - [setCriticality (method)](#setcriticality-method)
@@ -44,15 +55,6 @@ Added in v2.0.0
     - [setHeader (method)](#setheader-method)
     - [header (method)](#header-method)
     - [keys (method)](#keys-method)
-  - [Headers (class)](#headers-class)
-    - [toJSON (method)](#tojson-method-1)
-    - [toString (method)](#tostring-method-1)
-    - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method-1)
-    - [[Equal.symbol] (method)](#equalsymbol-method-1)
-    - [[Hash.symbol] (method)](#hashsymbol-method-1)
-- [Schemas](#schemas)
-  - [HeaderMapFromCBORBytes](#headermapfromcborbytes-1)
-  - [HeaderMapFromCBORHex](#headermapfromcborhex-1)
 
 ---
 
@@ -134,17 +136,116 @@ Added in v2.0.0
 
 # Model
 
-## HeaderMap (class)
+## Headers (class)
 
-Map of COSE header labels to values (RFC 8152).
+COSE protected and unprotected headers (RFC 8152).
+
+**Signature**
+
+```ts
+export declare class Headers
+```
+
+Added in v2.0.0
+
+### toJSON (method)
+
+**Signature**
+
+```ts
+toJSON()
+```
+
+### toString (method)
+
+**Signature**
+
+```ts
+toString(): string
+```
+
+### [Inspectable.NodeInspectSymbol] (method)
+
+**Signature**
+
+```ts
+[Inspectable.NodeInspectSymbol](): unknown
+```
+
+### [Equal.symbol] (method)
+
+**Signature**
+
+```ts
+[Equal.symbol](that: unknown): boolean
+```
+
+### [Hash.symbol] (method)
+
+**Signature**
+
+```ts
+[Hash.symbol](): number
+```
+
+# Schemas
+
+## HeaderMapFromCBORBytes
+
+CBOR bytes transformation schema for HeaderMap.
+
+**Signature**
+
+```ts
+export declare const HeaderMapFromCBORBytes: (
+  options?: CBOR.CodecOptions
+) => Schema.transformOrFail<
+  Schema.transformOrFail<
+    typeof Schema.Uint8ArrayFromSelf,
+    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
+    never
+  >,
+  Schema.SchemaClass<HeaderMap, HeaderMap, never>,
+  never
+>
+```
+
+Added in v2.0.0
+
+## HeaderMapFromCBORHex
+
+CBOR hex transformation schema for HeaderMap.
+
+**Signature**
+
+```ts
+export declare const HeaderMapFromCBORHex: (
+  options?: CBOR.CodecOptions
+) => Schema.transform<
+  Schema.Schema<Uint8Array, string, never>,
+  Schema.transformOrFail<
+    Schema.transformOrFail<
+      typeof Schema.Uint8ArrayFromSelf,
+      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
+      never
+    >,
+    Schema.SchemaClass<HeaderMap, HeaderMap, never>,
+    never
+  >
+>
+```
+
+Added in v2.0.0
+
+# utils
+
+## HeaderMap (class)
 
 **Signature**
 
 ```ts
 export declare class HeaderMap
 ```
-
-Added in v2.0.0
 
 ### toJSON (method)
 
@@ -346,6 +447,11 @@ Added in v2.0.0
 
 Get custom header.
 
+⚠️ Structural, not by object identity. `this.headers.get(label)` answered `undefined` for a
+label that IS present, because the caller's `labelFromInt(n)` is a different object from the
+one in the map — which is why every reader in this package hand-walked `entries()` rather
+than calling this.
+
 **Signature**
 
 ```ts
@@ -362,107 +468,6 @@ Get all header label keys.
 
 ```ts
 keys(): ReadonlyArray<Label>
-```
-
-Added in v2.0.0
-
-## Headers (class)
-
-COSE protected and unprotected headers (RFC 8152).
-
-**Signature**
-
-```ts
-export declare class Headers
-```
-
-Added in v2.0.0
-
-### toJSON (method)
-
-**Signature**
-
-```ts
-toJSON()
-```
-
-### toString (method)
-
-**Signature**
-
-```ts
-toString(): string
-```
-
-### [Inspectable.NodeInspectSymbol] (method)
-
-**Signature**
-
-```ts
-[Inspectable.NodeInspectSymbol](): unknown
-```
-
-### [Equal.symbol] (method)
-
-**Signature**
-
-```ts
-[Equal.symbol](that: unknown): boolean
-```
-
-### [Hash.symbol] (method)
-
-**Signature**
-
-```ts
-[Hash.symbol](): number
-```
-
-# Schemas
-
-## HeaderMapFromCBORBytes
-
-CBOR bytes transformation schema for HeaderMap.
-
-**Signature**
-
-```ts
-export declare const HeaderMapFromCBORBytes: (
-  options?: CBOR.CodecOptions
-) => Schema.transformOrFail<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.SchemaClass<HeaderMap, HeaderMap, never>,
-  never
->
-```
-
-Added in v2.0.0
-
-## HeaderMapFromCBORHex
-
-CBOR hex transformation schema for HeaderMap.
-
-**Signature**
-
-```ts
-export declare const HeaderMapFromCBORHex: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.Schema<Uint8Array, string, never>,
-  Schema.transformOrFail<
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >,
-    Schema.SchemaClass<HeaderMap, HeaderMap, never>,
-    never
-  >
->
 ```
 
 Added in v2.0.0

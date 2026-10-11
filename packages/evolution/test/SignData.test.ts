@@ -33,6 +33,39 @@ describe("SignData", () => {
   })
 
   describe("signData and verifyData", () => {
+    // ⚠️ The hardware envelope form. A device's KEY_HASH mode embeds the 28-byte credential in
+    // the protected `"address"` header rather than the full address, and `assembleSignData` passes
+    // it through verbatim — so a verifier that demands the full address rejects every Ledger and
+    // Trezor `signData` signature. Nothing here covered that shape, so the stricter rule looked
+    // correct for as long as only software wallets were tested.
+    it("verifies a KEY_HASH-mode address claim (the hardware envelope)", () => {
+      const privateKey = PrivateKey.fromBytes(PrivateKey.generate())
+      const keyHash = KeyHash.fromPrivateKey(privateKey)
+      const addressHex = addressHexFor(keyHash)
+      const payload = Utils.fromText("prove you own this address")
+
+      // Sign over headers carrying the CREDENTIAL, as device firmware does.
+      const credentialHex = KeyHash.toHex(keyHash)
+      const signedMessage = SignData.signData(credentialHex, payload, privateKey)
+
+      // Verified against the full ADDRESS the caller names, not the claim's own spelling.
+      expect(SignData.verifyData(addressHex, credentialHex, payload, signedMessage)).toBe(true)
+    })
+
+    // The credential form must buy no latitude: it is matched against the credential of the
+    // address the CALLER named, so another key's credential cannot stand in for it.
+    it("rejects a KEY_HASH claim that is a DIFFERENT address's credential", () => {
+      const victim = PrivateKey.fromBytes(PrivateKey.generate())
+      const attacker = PrivateKey.fromBytes(PrivateKey.generate())
+      const victimAddressHex = addressHexFor(KeyHash.fromPrivateKey(victim))
+      const attackerKeyHash = KeyHash.fromPrivateKey(attacker)
+      const payload = Utils.fromText("prove you own this address")
+
+      const signedMessage = SignData.signData(KeyHash.toHex(attackerKeyHash), payload, attacker)
+
+      expect(SignData.verifyData(victimAddressHex, KeyHash.toHex(attackerKeyHash), payload, signedMessage)).toBe(false)
+    })
+
     it("should sign and verify a simple message", () => {
       // Generate a private key
       const privateKeyBytes = PrivateKey.generate()

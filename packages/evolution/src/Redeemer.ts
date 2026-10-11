@@ -77,7 +77,12 @@ export class Redeemer extends Schema.Class<Redeemer>("Redeemer")({
     title: "Redeemer Index",
     description: "Index into the respective transaction array (inputs, outputs, certificates, or rewards)"
   }),
-  data: PlutusData.DataSchema.annotations({
+  // ⚠️ `typeSchema`, as `Redeemers.RedeemerValue` has always had it. The transforming schema
+  // rebuilds the value on construction -- a list comes back as a different array with the same
+  // contents -- and `OriginalBytes` keys on identity, so the arrival bytes of a datum handed to
+  // `Redeemer.spend` were dropped at the constructor. The data is already a `Data` here; there is
+  // nothing to decode.
+  data: PlutusData.DataValue.annotations({
     identifier: "Redeemer.Data",
     title: "Redeemer Data",
     description: "PlutusData passed to the script for validation"

@@ -553,6 +553,35 @@ export const shelley = (input: { metadata: Metadata.Metadata }): AuxiliaryData =
   new ShelleyAuxiliaryData({ metadata: input.metadata })
 
 /**
+ * Build `auxiliary_data` from a metadata map and native scripts that are already encoded,
+ * choosing the era form the way the chain's other producers do.
+ *
+ * ⚠️ **The era form is part of the hash.** Bare metadata stays Shelley; anything carrying scripts
+ * becomes Conway (`#6.259`). Always writing Conway would change `auxiliary_data_hash`, and
+ * therefore the transaction id, for every metadata-only transaction -- which is most of them.
+ * `cardano-multiplatform-lib` makes the same choice.
+ *
+ * ⚠️ A Shelley `auxiliary_data` IS its metadata map, so there is nothing to build without one.
+ * Passing neither throws rather than producing an `auxiliary_data` whose hash covers no metadata.
+ *
+ * @since 2.8.0
+ * @category constructors
+ */
+export const fromEncoded = (input: {
+  readonly metadata?: Uint8Array
+  readonly nativeScripts?: ReadonlyArray<Uint8Array>
+}): AuxiliaryData => {
+  const metadata = input.metadata === undefined ? undefined : Metadata.fromCBORBytes()(input.metadata)
+  const nativeScripts = (input.nativeScripts ?? []).map((bytes) => NativeScripts.fromCBORBytes(bytes))
+  if (metadata === undefined && nativeScripts.length === 0) {
+    throw new Error("auxiliary_data: neither metadata nor native scripts")
+  }
+  return nativeScripts.length === 0 && metadata !== undefined
+    ? shelley({ metadata })
+    : conway({ ...(metadata === undefined ? {} : { metadata }), nativeScripts })
+}
+
+/**
  * FastCheck arbitrary for generating Conway-era AuxiliaryData instances.
  * Conway era supports all features: metadata, native scripts, and all Plutus script versions.
  *

@@ -151,4 +151,21 @@ export const toBytes = (assetName: AssetName) => Schema.encodeSync(FromBytes)(as
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = (assetName: AssetName) => Schema.encodeSync(FromHex)(assetName)
+/**
+ * An asset name as hex, 0 to 32 bytes.
+ *
+ * ⚠️ The EMPTY string is a valid asset name, not a missing one — a policy's unnamed asset is
+ * spelled exactly that way — so the pattern admits it deliberately.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^([0-9a-fA-F]{2}){0,32}$/), Schema.brand("AssetNameHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
+export const toHex = (assetName: AssetName): Hex => Hex.make(Schema.encodeSync(FromHex)(assetName))

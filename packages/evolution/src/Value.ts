@@ -313,10 +313,12 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Val
             innerMap.set(assetNameBytes, amount)
           }
 
-          outerMap.set(policyIdBytes, innerMap)
+          outerMap.set(policyIdBytes, CBOR.sortByteKeyedMap(innerMap))
         }
 
-        return [toI.coin, outerMap] as const // Return as tuple
+        // CIP-21 canonical key order. Applied by the encoder that owns the map rather than by a
+        // global codec option, because the same option would also reorder Plutus map keys.
+        return [toI.coin, CBOR.sortByteKeyedMap(outerMap)] as const // Return as tuple
       }
     }),
   decode: (fromA) =>
@@ -429,6 +431,25 @@ export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_D
  */
 export const toCBORBytes = (data: Value, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.encodeSync(FromCBORBytes(options))(data)
+
+/**
+ * A `value` as CBOR hex.
+ *
+ * The CBOR encoding of a value, not a hash of one: length varies with the number of assets.
+ *
+ * Branded so that CBOR hex of one kind cannot stand in for another once it leaves the typed
+ * domain. Non-empty whole bytes is all the shape there is to check.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^([0-9a-fA-F]{2})+$/), Schema.brand("ValueHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
 
 /**
  * Encode Value to CBOR hex string.

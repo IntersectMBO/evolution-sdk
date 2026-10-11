@@ -1,7 +1,6 @@
 import { FastCheck, Schema } from "effect"
 
 import * as CBOR from "./CBOR.js"
-import * as Numeric from "./Numeric.js"
 
 /**
  * Encoded type for transaction metadata (wire format).
@@ -118,10 +117,22 @@ export const TextSchema = Schema.String.annotations({
  * @category schemas
  * @since 2.0.0
  */
-export const IntSchema = Numeric.Int64.annotations({
+const METADATUM_INT_MIN = -18446744073709551616n // -2^64, the CDDL's nint floor
+const METADATUM_INT_MAX = 18446744073709551615n // 2^64-1, the CDDL's uint ceiling
+
+/**
+ * ⚠️ The CDDL is `transaction_metadatum = ... / int / ...` where `int = uint / nint`, so the
+ * range is -2^64 .. 2^64-1 -- NOT a signed 64-bit integer. This was `Numeric.Int64`, which meant
+ * a metadatum carrying any value in [2^63, 2^64-1] could neither be built nor, worse, **read off
+ * the chain**: decoding `1bffffffffffffffff` failed outright. That is valid CBOR a transaction
+ * can legitimately carry.
+ */
+export const IntSchema = Schema.BigInt.pipe(
+  Schema.filter((value) => value >= METADATUM_INT_MIN && value <= METADATUM_INT_MAX)
+).annotations({
   identifier: "TransactionMetadatum.Int",
   title: "Metadata Integer",
-  description: "An integer value in transaction metadata (64-bit signed)"
+  description: `An integer value in transaction metadata (${METADATUM_INT_MIN} to ${METADATUM_INT_MAX})`
 })
 
 /**
@@ -205,9 +216,8 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
  * @since 2.0.0
  * @category equality
  */
-export const equals: (a: TransactionMetadatum, b: TransactionMetadatum) => boolean = Schema.equivalence(
-  TransactionMetadatumSchema
-)
+export const equals: (a: TransactionMetadatum, b: TransactionMetadatum) => boolean =
+  Schema.equivalence(TransactionMetadatumSchema)
 
 /**
  * FastCheck arbitrary for generating random TransactionMetadatum instances.

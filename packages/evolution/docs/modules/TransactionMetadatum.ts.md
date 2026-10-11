@@ -1,6 +1,7 @@
 ---
+
 title: TransactionMetadatum.ts
-nav_order: 174
+nav_order: 180
 parent: Modules
 ---
 
@@ -34,12 +35,12 @@ parent: Modules
   - [BytesSchema](#bytesschema)
   - [FromCBORBytes](#fromcborbytes-1)
   - [FromCBORHex](#fromcborhex-1)
-  - [IntSchema](#intschema)
   - [ListSchema](#listschema)
   - [MapSchema](#mapschema)
   - [TextSchema](#textschema)
   - [TransactionMetadatumSchema](#transactionmetadatumschema)
 - [utils](#utils)
+  - [IntSchema](#intschema)
   - [arbitrary](#arbitrary)
 
 ---
@@ -362,18 +363,6 @@ export declare const FromCBORHex: (
 
 Added in v2.0.0
 
-## IntSchema
-
-Schema for TransactionMetadatum integer type
-
-**Signature**
-
-```ts
-export declare const IntSchema: Schema.refine<bigint, typeof Schema.BigInt>
-```
-
-Added in v2.0.0
-
 ## ListSchema
 
 Schema for TransactionMetadatum list type
@@ -453,6 +442,20 @@ export declare const TransactionMetadatumSchema: Schema.Union<
 Added in v2.0.0
 
 # utils
+
+## IntSchema
+
+⚠️ The CDDL is `transaction_metadatum = ... / int / ...` where `int = uint / nint`, so the
+range is -2^64 .. 2^64-1 -- NOT a signed 64-bit integer. This was `Numeric.Int64`, which meant
+a metadatum carrying any value in [2^63, 2^64-1] could neither be built nor, worse, **read off
+the chain**: decoding `1bffffffffffffffff` failed outright. That is valid CBOR a transaction
+can legitimately carry.
+
+**Signature**
+
+```ts
+export declare const IntSchema: Schema.refine<bigint, typeof Schema.BigInt>
+```
 
 ## arbitrary
 

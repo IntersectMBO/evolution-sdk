@@ -1,4 +1,5 @@
 ---
+
 title: AddressEras.ts
 nav_order: 2
 parent: Modules
@@ -43,9 +44,9 @@ FastCheck arbitrary for Address instances.
 ```ts
 export declare const arbitrary: FastCheck.Arbitrary<
   | RewardAccount.RewardAccount
-  | BaseAddress.BaseAddress
-  | EnterpriseAddress.EnterpriseAddress
   | PointerAddress.PointerAddress
+  | EnterpriseAddress.EnterpriseAddress
+  | BaseAddress.BaseAddress
 >
 ```
 
@@ -63,10 +64,10 @@ Convert an Address to Bech32 string.
 export declare const toBech32: (
   a:
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
   overrideOptions?: ParseOptions
 ) => string
 ```
@@ -83,10 +84,10 @@ Convert an Address to bytes.
 export declare const toBytes: (
   a:
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
   overrideOptions?: ParseOptions
 ) => any
 ```
@@ -103,10 +104,10 @@ Convert an Address to hex string.
 export declare const toHex: (
   a:
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
   overrideOptions?: ParseOptions
 ) => string
 ```
@@ -161,10 +162,10 @@ export declare const fromBech32: (
   overrideOptions?: ParseOptions
 ) =>
   | RewardAccount.RewardAccount
-  | BaseAddress.BaseAddress
-  | EnterpriseAddress.EnterpriseAddress
   | PointerAddress.PointerAddress
+  | EnterpriseAddress.EnterpriseAddress
   | ByronAddress.ByronAddress
+  | BaseAddress.BaseAddress
 ```
 
 Added in v2.0.0
@@ -181,10 +182,10 @@ export declare const fromBytes: (
   overrideOptions?: ParseOptions
 ) =>
   | RewardAccount.RewardAccount
-  | BaseAddress.BaseAddress
-  | EnterpriseAddress.EnterpriseAddress
   | PointerAddress.PointerAddress
+  | EnterpriseAddress.EnterpriseAddress
   | ByronAddress.ByronAddress
+  | BaseAddress.BaseAddress
 ```
 
 Added in v2.0.0
@@ -201,10 +202,10 @@ export declare const fromHex: (
   overrideOptions?: ParseOptions
 ) =>
   | RewardAccount.RewardAccount
-  | BaseAddress.BaseAddress
-  | EnterpriseAddress.EnterpriseAddress
   | PointerAddress.PointerAddress
+  | EnterpriseAddress.EnterpriseAddress
   | ByronAddress.ByronAddress
+  | BaseAddress.BaseAddress
 ```
 
 Added in v2.0.0
@@ -222,15 +223,15 @@ export declare const FromBech32: Schema.transformOrFail<
   typeof Schema.String,
   Schema.SchemaClass<
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
     never
   >,
   never
@@ -250,15 +251,15 @@ export declare const FromBytes: Schema.transformOrFail<
   typeof Schema.Uint8ArrayFromSelf,
   Schema.SchemaClass<
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
     | RewardAccount.RewardAccount
-    | BaseAddress.BaseAddress
-    | EnterpriseAddress.EnterpriseAddress
     | PointerAddress.PointerAddress
-    | ByronAddress.ByronAddress,
+    | EnterpriseAddress.EnterpriseAddress
+    | ByronAddress.ByronAddress
+    | BaseAddress.BaseAddress,
     never
   >,
   never
@@ -280,15 +281,15 @@ export declare const FromHex: Schema.transform<
     typeof Schema.Uint8ArrayFromSelf,
     Schema.SchemaClass<
       | RewardAccount.RewardAccount
-      | BaseAddress.BaseAddress
-      | EnterpriseAddress.EnterpriseAddress
       | PointerAddress.PointerAddress
-      | ByronAddress.ByronAddress,
+      | EnterpriseAddress.EnterpriseAddress
+      | ByronAddress.ByronAddress
+      | BaseAddress.BaseAddress,
       | RewardAccount.RewardAccount
-      | BaseAddress.BaseAddress
-      | EnterpriseAddress.EnterpriseAddress
       | PointerAddress.PointerAddress
-      | ByronAddress.ByronAddress,
+      | EnterpriseAddress.EnterpriseAddress
+      | ByronAddress.ByronAddress
+      | BaseAddress.BaseAddress,
       never
     >,
     never
@@ -310,8 +311,8 @@ export declare const isAddress: (
   overrideOptions?: ParseOptions | number
 ) => u is
   | RewardAccount.RewardAccount
-  | BaseAddress.BaseAddress
-  | EnterpriseAddress.EnterpriseAddress
   | PointerAddress.PointerAddress
+  | EnterpriseAddress.EnterpriseAddress
   | ByronAddress.ByronAddress
+  | BaseAddress.BaseAddress
 ```

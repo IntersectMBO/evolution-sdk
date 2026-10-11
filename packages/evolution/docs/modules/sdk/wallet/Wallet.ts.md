@@ -1,6 +1,7 @@
 ---
+
 title: sdk/wallet/Wallet.ts
-nav_order: 160
+nav_order: 166
 parent: Modules
 ---
 
@@ -22,6 +23,8 @@ parent: Modules
   - [SignedMessage (interface)](#signedmessage-interface)
   - [SigningWallet (interface)](#signingwallet-interface)
   - [SigningWalletEffect (interface)](#signingwalleteffect-interface)
+  - [TransactionSignatureRequest (interface)](#transactionsignaturerequest-interface)
+- [utils](#utils)
   - [WalletApi (interface)](#walletapi-interface)
 
 ---
@@ -52,7 +55,11 @@ Wraps ApiWalletEffect with promise-based API for browser contexts.
 **Signature**
 
 ```ts
-export interface ApiWallet extends EffectToPromiseAPI<ApiWalletEffect> {
+export interface ApiWallet extends EffectToPromiseAPI<Omit<ApiWalletEffect, "signTxs">> {
+  readonly signTxs: (
+    txs: ReadonlyArray<Transaction.Transaction | string>,
+    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }
+  ) => Promise<ReadonlyArray<TransactionWitnessSet.TransactionWitnessSet>>
   readonly effect: ApiWalletEffect
   readonly api: WalletApi
   readonly type: "api"
@@ -75,6 +82,16 @@ export interface ApiWalletEffect extends ReadOnlyWalletEffect {
     tx: Transaction.Transaction | string,
     context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }
   ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
+  /**
+   * Sign multiple transactions in batch (CIP-103).
+   * Falls back to sequential signTx if the wallet doesn't support batch signing.
+   *
+   * @since 2.2.0
+   */
+  readonly signTxs: (
+    txs: ReadonlyArray<Transaction.Transaction | string>,
+    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }
+  ) => Effect.Effect<ReadonlyArray<TransactionWitnessSet.TransactionWitnessSet>, WalletError>
   readonly signMessage: (
     address: CoreAddress.Address | RewardAddress.RewardAddress,
     payload: Payload
@@ -86,6 +103,14 @@ export interface ApiWalletEffect extends ReadOnlyWalletEffect {
   readonly submitTx: (
     tx: Transaction.Transaction | string
   ) => Effect.Effect<TransactionHash.TransactionHash, WalletError>
+  /**
+   * Fetch the wallet's available UTxOs (CIP-30 `getUtxos`) parsed into typed UTxOs.
+   * Reflects the wallet's own view, including UTxOs created by transactions the wallet
+   * has submitted, which an external provider may not have indexed yet.
+   *
+   * @since 2.3.0
+   */
+  readonly getUtxos: () => Effect.Effect<ReadonlyArray<CoreUTxO.UTxO>, WalletError>
 }
 ```
 
@@ -171,7 +196,11 @@ Wraps SigningWalletEffect with promise-based API for browser and non-Effect cont
 **Signature**
 
 ```ts
-export interface SigningWallet extends EffectToPromiseAPI<SigningWalletEffect> {
+export interface SigningWallet extends EffectToPromiseAPI<Omit<SigningWalletEffect, "signTxs">> {
+  readonly signTxs: (
+    txs: ReadonlyArray<Transaction.Transaction | string>,
+    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
+  ) => Promise<ReadonlyArray<TransactionWitnessSet.TransactionWitnessSet>>
   readonly effect: SigningWalletEffect
   readonly type: "signing"
 }
@@ -198,6 +227,16 @@ export interface SigningWalletEffect extends ReadOnlyWalletEffect {
     tx: Transaction.Transaction | string,
     context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
   ) => Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, WalletError>
+  /**
+   * Sign multiple transactions in batch (CIP-103).
+   * Falls back to sequential signTx if the wallet doesn't support batch signing.
+   *
+   * @since 2.2.0
+   */
+  readonly signTxs: (
+    txs: ReadonlyArray<Transaction.Transaction | string>,
+    context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO>; referenceUtxos?: ReadonlyArray<CoreUTxO.UTxO> }
+  ) => Effect.Effect<ReadonlyArray<TransactionWitnessSet.TransactionWitnessSet>, WalletError>
   readonly signMessage: (
     address: CoreAddress.Address | RewardAddress.RewardAddress,
     payload: Payload
@@ -207,10 +246,24 @@ export interface SigningWalletEffect extends ReadOnlyWalletEffect {
 
 Added in v2.0.0
 
-## WalletApi (interface)
+## TransactionSignatureRequest (interface)
 
-CIP-30 compatible wallet API interface representing browser wallet extension methods.
-Used by browser-based wallet applications to interact with native wallet extensions.
+CIP-103 transaction signature request for batch signing.
+
+**Signature**
+
+```ts
+export interface TransactionSignatureRequest {
+  readonly cbor: string
+  readonly partialSign: boolean
+}
+```
+
+Added in v2.2.0
+
+# utils
+
+## WalletApi (interface)
 
 **Signature**
 
@@ -223,7 +276,15 @@ export interface WalletApi {
   signTx(txCborHex: string, partialSign: boolean): Promise<string>
   signData(addressHex: string, payload: Payload): Promise<SignedMessage>
   submitTx(txCborHex: string): Promise<string>
+  /** CIP-103 standard namespace */
+  cip103?: {
+    signTxs(requests: ReadonlyArray<TransactionSignatureRequest>): Promise<ReadonlyArray<string>>
+  }
+  /** Experimental namespace (e.g. Eternl) */
+  experimental?: {
+    signTxs?(requests: ReadonlyArray<TransactionSignatureRequest>): Promise<ReadonlyArray<string>>
+  }
+  /** Direct signTxs (some wallets) */
+  signTxs?(requests: ReadonlyArray<TransactionSignatureRequest>): Promise<ReadonlyArray<string>>
 }
 ```
-
-Added in v2.0.0

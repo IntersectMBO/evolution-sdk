@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/CoinSelection.ts
-nav_order: 118
+nav_order: 122
 parent: Modules
 ---
 
@@ -12,6 +13,8 @@ parent: Modules
 
 - [coin-selection](#coin-selection)
   - [largestFirstSelection](#largestfirstselection)
+  - [randomImproveSelection](#randomimproveselection)
+  - [randomImproveSelectionWith](#randomimproveselectionwith)
 - [utils](#utils)
   - [CoinSelectionAlgorithm (type alias)](#coinselectionalgorithm-type-alias)
   - [CoinSelectionError (class)](#coinselectionerror-class)
@@ -58,6 +61,45 @@ export declare const largestFirstSelection: CoinSelectionFunction
 
 Added in v2.0.0
 
+## randomImproveSelection
+
+Random-improve coin selection (CIP-2), asset-aware.
+
+Phase 1 selects at random until the target is covered; phase 2 swaps a chosen input for a
+remaining one when that moves the per-input contribution closer to twice the target without
+exceeding three times it. The point is that an observer cannot predict which UTxOs a wallet
+will combine, so the default randomness is `crypto.getRandomValues` and there is no silent
+fallback to a predictable PRNG.
+
+Use {@link randomImproveSelectionWith} to supply a seed or your own source.
+
+**Signature**
+
+```ts
+export declare const randomImproveSelection: CoinSelectionFunction
+```
+
+Added in v2.0.0
+
+## randomImproveSelectionWith
+
+{@link randomImproveSelection} with an explicit randomness source.
+
+⚠️ `seed` is for tests and examples only: a fixed seed makes selection identical for every
+wallet holding the same UTxO set, which is the opposite of the property random-improve exists
+to provide.
+
+**Signature**
+
+```ts
+export declare const randomImproveSelectionWith: (opts: {
+  readonly seed?: number
+  readonly rng?: Cip2.Rng
+}) => CoinSelectionFunction
+```
+
+Added in v2.0.0
+
 # utils
 
 ## CoinSelectionAlgorithm (type alias)
@@ -65,7 +107,7 @@ Added in v2.0.0
 **Signature**
 
 ```ts
-export type CoinSelectionAlgorithm = "largest-first" | "random-improve" | "optimal"
+export type CoinSelectionAlgorithm = "largest-first" | "random-improve"
 ```
 
 ## CoinSelectionError (class)

@@ -243,6 +243,148 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/backup-keys:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@noble/ciphers':
+        specifier: ^2.0.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.4.0
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/canonical:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@evolution-sdk/review':
+        specifier: workspace:*
+        version: link:../review
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/cip113:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@evolution-sdk/plan':
+        specifier: workspace:*
+        version: link:../plan
+      '@evolution-sdk/review':
+        specifier: workspace:*
+        version: link:../review
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      '@dcspark/cardano-multiplatform-lib-nodejs':
+        specifier: ^6.2.0
+        version: 6.2.0
+      '@evolution-sdk/aiken-uplc':
+        specifier: workspace:*
+        version: link:../aiken-uplc
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/cip139:
+    dependencies:
+      '@evolution-sdk/canonical':
+        specifier: workspace:*
+        version: link:../canonical
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@evolution-sdk/review':
+        specifier: workspace:*
+        version: link:../review
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/cip30:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/cips:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.4.0
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/dijkstra:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/evolution:
     dependencies:
       '@noble/curves':
@@ -273,6 +415,9 @@ importers:
       bip39:
         specifier: ^3.1.0
         version: 3.1.0
+      prettier:
+        specifier: ^3.6.2
+        version: 3.9.9
       tinybench:
         specifier: ^6.0.0
         version: 6.2.0
@@ -313,6 +458,57 @@ importers:
       '@types/dockerode':
         specifier: ^3.3.43
         version: 3.3.47
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/hardware-cardano:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      '@evolution-sdk/review':
+        specifier: workspace:*
+        version: link:../review
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plan:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
+      tsx:
+        specifier: ^4.20.4
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/review:
+    dependencies:
+      '@evolution-sdk/evolution':
+        specifier: workspace:*
+        version: link:../evolution
+      effect:
+        specifier: ^3.21.1
+        version: 3.22.2
+    devDependencies:
       tsx:
         specifier: ^4.20.4
         version: 4.23.15
@@ -1429,6 +1625,10 @@ packages:
 
   '@nicolo-ribaudo/chokidar-2@2.1.8-no-fsevents.3':
     resolution: {integrity: sha512-s88O1aVtXftvp5bCPB7WnmXc5IwOZZ7YPuwNPt+GtOOXpPvad1LfbmjYv+qII7zP6RU2QGnqve27dnLycEnyEQ==}
+
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
 
   '@noble/curves@2.4.0':
     resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
@@ -7698,6 +7898,8 @@ snapshots:
 
   '@nicolo-ribaudo/chokidar-2@2.1.8-no-fsevents.3':
     optional: true
+
+  '@noble/ciphers@2.4.0': {}
 
   '@noble/curves@2.4.0':
     dependencies:

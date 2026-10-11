@@ -77,8 +77,11 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Con
 export const FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.compose(CBOR.FromBytes(options), FromCDDL)
 
+// `Uint8ArrayFromHex` (hex -> bytes), not `CBOR.FromHex` (hex -> CBOR VALUE): with the latter
+// in front of `FromCBORBytes` the encoded bytes were themselves written as a CBOR byte string,
+// so the hex form came out wrapped in `5841...` while the bytes form was correct.
 export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.compose(CBOR.FromHex(options), FromCBORBytes(options))
+  Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options))
 
 /**
  * Arbitrary for Constitution

@@ -1,4 +1,5 @@
 ---
+
 title: Bip32PublicKey.ts
 nav_order: 13
 parent: Modules
@@ -17,6 +18,7 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [derivation](#derivation)
   - [deriveChild](#derivechild)
+  - [derivePath](#derivepath)
 - [either](#either)
   - [Either (namespace)](#either-namespace)
 - [encoding](#encoding)
@@ -25,9 +27,10 @@ parent: Modules
   - [toRawBytes](#torawbytes)
 - [errors](#errors)
   - [Bip32PublicKeyError (class)](#bip32publickeyerror-class)
+- [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [schemas](#schemas)
   - [Bip32PublicKey (class)](#bip32publickey-class)
     - [toJSON (method)](#tojson-method)
@@ -36,7 +39,10 @@ parent: Modules
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [Hex](#hex)
+- [utils](#utils)
+  - [fromHex](#fromhex-1)
 
 ---
 
@@ -94,6 +100,26 @@ export declare const deriveChild: (bip32PublicKey: Bip32PublicKey, index: number
 
 Added in v2.0.0
 
+## derivePath
+
+Derive a child public key down a path of indices (soft derivation only).
+
+This is what lets a wallet derive addresses from a co-signer's account xpub — no seed, no
+signing ceremony — which is the whole basis of a shared wallet.
+
+⚠️ **Throws on any hardened index.** `deriveChild` takes a plain `number`, so a caller who
+passes `0x80000000 + n` by habit (every private-side path is written that way) would otherwise
+get a key silently derived from the wrong index. The account level and above are hardened by
+construction, so the mistake is an easy one; failing loudly is the only safe answer.
+
+**Signature**
+
+```ts
+export declare const derivePath: (bip32PublicKey: Bip32PublicKey, indices: ReadonlyArray<number>) => Bip32PublicKey
+```
+
+Added in v2.0.0
+
 # either
 
 ## Either (namespace)
@@ -123,7 +149,7 @@ Convert a Bip32PublicKey to hex string.
 **Signature**
 
 ```ts
-export declare const toHex: (a: Bip32PublicKey, overrideOptions?: ParseOptions) => string
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
 ```
 
 Added in v2.0.0
@@ -154,6 +180,18 @@ export declare class Bip32PublicKeyError
 
 Added in v2.0.0
 
+# model
+
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 # parsing
 
 ## fromBytes
@@ -164,18 +202,6 @@ Create a BIP32 public key from public key and chain code bytes.
 
 ```ts
 export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) => Bip32PublicKey
-```
-
-Added in v2.0.0
-
-## fromHex
-
-Parse Bip32PublicKey from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Bip32PublicKey
 ```
 
 Added in v2.0.0
@@ -269,3 +295,33 @@ export declare const FromHex: Schema.transform<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A BIP32-Ed25519 extended PUBLIC key as hex (64 bytes: 32-byte key + 32-byte chain code).
+
+Validated as well as branded: a 64-byte lowercase or uppercase hex string. {@link toHex}
+returns this type, so the kind of a hex string survives leaving the typed domain — upstream of
+this, every hash and key was an unmarked `string` once encoded.
+
+⚠️ Branded apart from {@link Bip32PrivateKey.Hex} deliberately. The two are the same shape and
+confusing them is unrecoverable in one direction: publishing where a private key was expected is
+merely wrong, while signing with what you believed was public is a leaked key.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "Bip32PublicKeyHex">
+```
+
+Added in v2.4.0
+
+# utils
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Bip32PublicKey
+```

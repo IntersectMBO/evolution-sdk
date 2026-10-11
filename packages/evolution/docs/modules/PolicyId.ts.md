@@ -1,6 +1,7 @@
 ---
+
 title: PolicyId.ts
-nav_order: 98
+nav_order: 102
 parent: Modules
 ---
 
@@ -14,8 +15,8 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
 - [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
   - [PolicyId (class)](#policyid-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
@@ -24,12 +25,15 @@ parent: Modules
     - [[Hash.symbol] (method)](#hashsymbol-method)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [predicates](#predicates)
   - [isPolicyId](#ispolicyid)
 - [schemas](#schemas)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [Hex](#hex)
+- [utils](#utils)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -61,19 +65,17 @@ export declare const toBytes: (a: PolicyId, overrideOptions?: ParseOptions) => U
 
 Added in v2.0.0
 
-## toHex
+# model
 
-Encode PolicyId to hex string.
+## Hex (type alias)
 
 **Signature**
 
 ```ts
-export declare const toHex: (a: PolicyId, overrideOptions?: ParseOptions) => string
+export type Hex = typeof Hex.Type
 ```
 
-Added in v2.0.0
-
-# model
+Added in v2.4.0
 
 ## PolicyId (class)
 
@@ -146,18 +148,6 @@ export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) 
 
 Added in v2.0.0
 
-## fromHex
-
-Parse PolicyId from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => PolicyId
-```
-
-Added in v2.0.0
-
 # predicates
 
 ## isPolicyId
@@ -203,3 +193,39 @@ export declare const FromHex: Schema.transform<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A minting policy id as hex.
+
+Validated as well as branded: a 28-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ A policy id IS a script hash, and 28 bytes like a key hash. The brand is what keeps a
+credential out of a policy position.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "PolicyIdHex">
+```
+
+Added in v2.4.0
+
+# utils
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => PolicyId
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
+```

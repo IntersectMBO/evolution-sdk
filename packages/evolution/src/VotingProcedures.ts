@@ -869,3 +869,53 @@ export const multiVote = (
     procedures: new Map([[voter, new Map(votes)]])
   })
 }
+
+/**
+ * Codec pair for a standalone `Voter`.
+ *
+ * `Voter` and `VotingProcedure` are addressable on their own -- a wallet builds a vote before it
+ * has a `VotingProcedures` map to put it in -- but only their CDDL transforms were exported, so
+ * encoding one meant reaching through `Schema.encodeSync` and the CBOR writer by hand.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const voterToCBORBytes = (input: Voter, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  CBOR.toCBORBytes(ParseResult.encodeSync(VoterFromCDDL)(input), options)
+
+/**
+ * @since 2.0.0
+ * @category encoding
+ */
+export const voterToCBORHex = (input: Voter, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  CBOR.toCBORHex(ParseResult.encodeSync(VoterFromCDDL)(input), options)
+
+/**
+ * @since 2.0.0
+ * @category parsing
+ */
+export const voterFromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  ParseResult.decodeSync(VoterFromCDDL)(CBOR.fromCBORBytes(bytes, options) as never)
+
+/**
+ * @since 2.0.0
+ * @category parsing
+ */
+export const voterFromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  ParseResult.decodeSync(VoterFromCDDL)(CBOR.fromCBORHex(hex, options) as never)
+
+/**
+ * @since 2.0.0
+ * @category encoding
+ */
+export const votingProcedureToCBORHex = (
+  input: VotingProcedure,
+  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+) => CBOR.toCBORHex(ParseResult.encodeSync(VotingProcedureFromCDDL)(input), options)
+
+/**
+ * @since 2.0.0
+ * @category parsing
+ */
+export const votingProcedureFromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  ParseResult.decodeSync(VotingProcedureFromCDDL)(CBOR.fromCBORHex(hex, options) as never)

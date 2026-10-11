@@ -1,6 +1,7 @@
 ---
+
 title: NativeScripts.ts
-nav_order: 79
+nav_order: 82
 parent: Modules
 ---
 
@@ -18,6 +19,7 @@ parent: Modules
   - [makeScriptNOfK](#makescriptnofk)
   - [makeScriptPubKey](#makescriptpubkey)
 - [conversion](#conversion)
+  - [fromJSON](#fromjson)
   - [toJSON](#tojson)
 - [encoding](#encoding)
   - [toCBORBytes](#tocborbytes)
@@ -127,14 +129,36 @@ Added in v2.0.0
 
 # conversion
 
-## toJSON
+## fromJSON
 
-Convert a NativeScript to JSON representation matching cardano-cli format
+Build a native script from the cardano-cli JSON representation — the inverse of {@link toJSON}.
+
+⚠️ `before` and `after` are the JSON form's names, and they are the **opposite** way round from
+the CDDL's: `before` is `InvalidHereafter` (valid only _before_ that slot) and `after` is
+`InvalidBefore`. Getting the pair backwards builds a script that locks when it should open.
+
+Each node is built through the smart constructors, so `keyHash` is validated as a 28-byte hash
+rather than taken on trust.
 
 **Signature**
 
 ```ts
-export declare const toJSON: (script: NativeScriptVariants) => any
+export declare const fromJSON: (json: NativeScriptJSON.NativeJSON) => NativeScriptVariants
+```
+
+Added in v2.0.0
+
+## toJSON
+
+Convert a NativeScript to JSON representation matching cardano-cli format
+
+Throws if `slot` or `required` exceeds `Number.MAX_SAFE_INTEGER`, which the JSON form cannot
+carry exactly. {@link fromJSON} is the inverse.
+
+**Signature**
+
+```ts
+export declare const toJSON: (script: NativeScriptVariants) => NativeScriptJSON.NativeJSON
 ```
 
 Added in v2.0.0

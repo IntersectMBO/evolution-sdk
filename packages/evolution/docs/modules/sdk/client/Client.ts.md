@@ -1,6 +1,7 @@
 ---
+
 title: sdk/client/Client.ts
-nav_order: 151
+nav_order: 155
 parent: Modules
 ---
 
@@ -57,6 +58,7 @@ Address-capable client.
 ```ts
 export type AddressClient = EffectToPromiseAPI<AddressClientEffect> & {
   readonly chain: Chain
+  readonly withProvider: (provider: Provider.Provider) => ReadOnlyClient
   readonly withBlockfrost: (config: BlockfrostConfig) => ReadOnlyClient
   readonly withKoios: (config: KoiosConfig) => ReadOnlyClient
   readonly withKupmios: (config: KupmiosConfig) => ReadOnlyClient
@@ -103,6 +105,13 @@ Client assembly stage scoped to a chain.
 ```ts
 export interface ClientAssembly {
   readonly chain: Chain
+  /**
+   * Build on any provider, including one this package does not ship: a custom backend, a
+   * decorated provider, or `MockProvider` in a test.
+   *
+   * @since 2.2.0
+   */
+  readonly withProvider: (provider: Provider.Provider) => ReadClient
   readonly withBlockfrost: (config: BlockfrostConfig) => ReadClient
   readonly withKoios: (config: KoiosConfig) => ReadClient
   readonly withKupmios: (config: KupmiosConfig) => ReadClient
@@ -175,6 +184,7 @@ Signing-capable client without read capability.
 ```ts
 export type OfflineSignerClient = EffectToPromiseAPI<OfflineSignerClientEffect> & {
   readonly chain: Chain
+  readonly withProvider: (provider: Provider.Provider) => SigningClient
   readonly withBlockfrost: (config: BlockfrostConfig) => SigningClient
   readonly withKoios: (config: KoiosConfig) => SigningClient
   readonly withKupmios: (config: KupmiosConfig) => SigningClient
@@ -197,6 +207,16 @@ export interface OfflineSignerClientEffect extends AddressClientEffect {
     tx: Parameters<Wallet.SigningWalletEffect["signTx"]>[0],
     context?: Parameters<Wallet.SigningWalletEffect["signTx"]>[1]
   ) => ReturnType<Wallet.SigningWalletEffect["signTx"]>
+  /**
+   * Sign multiple transactions in batch (CIP-103).
+   * Falls back to sequential signTx if the wallet doesn't support batch signing.
+   *
+   * @since 2.2.0
+   */
+  readonly signTxs: (
+    txs: Parameters<Wallet.SigningWalletEffect["signTxs"]>[0],
+    context?: Parameters<Wallet.SigningWalletEffect["signTxs"]>[1]
+  ) => ReturnType<Wallet.SigningWalletEffect["signTxs"]>
   readonly signMessage: Wallet.SigningWalletEffect["signMessage"]
 }
 ```

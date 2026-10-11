@@ -1,6 +1,7 @@
 ---
+
 title: Value.ts
-nav_order: 186
+nav_order: 191
 parent: Modules
 ---
 
@@ -19,6 +20,7 @@ parent: Modules
 - [generators](#generators)
   - [arbitrary](#arbitrary)
 - [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
   - [ValueCDDL (type alias)](#valuecddl-type-alias)
 - [ordering](#ordering)
   - [geq](#geq)
@@ -33,6 +35,7 @@ parent: Modules
   - [FromCBORBytes](#fromcborbytes-1)
   - [FromCBORHex](#fromcborhex-1)
   - [FromCDDL](#fromcddl)
+  - [Hex](#hex)
   - [OnlyCoin (class)](#onlycoin-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
@@ -124,6 +127,16 @@ export declare const arbitrary: FastCheck.Arbitrary<OnlyCoin | WithAssets>
 Added in v2.0.0
 
 # model
+
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
 
 ## ValueCDDL (type alias)
 
@@ -334,6 +347,23 @@ export declare const FromCDDL: Schema.transformOrFail<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A `value` as CBOR hex.
+
+The CBOR encoding of a value, not a hash of one: length varies with the number of assets.
+
+Branded so that CBOR hex of one kind cannot stand in for another once it leaves the typed
+domain. Non-empty whole bytes is all the shape there is to check.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "ValueHex">
+```
+
+Added in v2.4.0
 
 ## OnlyCoin (class)
 

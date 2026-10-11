@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/operations/Operations.ts
-nav_order: 126
+nav_order: 130
 parent: Modules
 ---
 
@@ -112,8 +113,17 @@ export interface ProposeParams {
   readonly governanceAction: GovernanceAction.GovernanceAction
   /** Reward account for deposit refund when proposal is finalized */
   readonly rewardAccount: RewardAccount.RewardAccount
-  /** Optional anchor with metadata URL and hash */
-  readonly anchor: Anchor.Anchor | null
+  /** Anchor with the metadata URL and hash describing the proposal (required by the ledger) */
+  readonly anchor: Anchor.Anchor
+  /**
+   * Redeemer for the constitution's guardrail script (propose purpose).
+   * Required when the governance action carries a Plutus `policyHash`
+   * (TreasuryWithdrawalsAction, ParameterChangeAction). The guardrail script
+   * itself is supplied via .attachScript() or a reference input.
+   */
+  readonly redeemer?: RedeemerBuilder.RedeemerArg
+  /** Optional label for debugging script failures - identifies this operation in error messages */
+  readonly label?: string
 }
 ```
 
@@ -629,6 +639,8 @@ export interface PayToAddressParams {
   readonly datum?: CoreDatumOption.DatumOption
   /** Optional script to store as a reference script in the output */
   readonly script?: CoreScript.Script
+  /** Override the build-level `autoMinUtxo` setting for this specific output. */
+  readonly autoMinUtxo?: boolean
 }
 ```
 

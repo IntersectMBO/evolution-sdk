@@ -1,6 +1,7 @@
 ---
+
 title: plutus/Address.ts
-nav_order: 88
+nav_order: 92
 parent: Modules
 ---
 
@@ -76,8 +77,7 @@ export declare const Codec: {
   toData: (
     a: {
       readonly payment_credential:
-        | { readonly VerificationKey: { readonly hash: Uint8Array } }
-        | { readonly Script: { readonly hash: Uint8Array } }
+        { readonly VerificationKey: { readonly hash: Uint8Array } } | { readonly Script: { readonly hash: Uint8Array } }
       readonly stake_credential:
         | {
             readonly Pointer: {
@@ -102,8 +102,7 @@ export declare const Codec: {
     overrideOptions?: ParseOptions
   ) => {
     readonly payment_credential:
-      | { readonly VerificationKey: { readonly hash: Uint8Array } }
-      | { readonly Script: { readonly hash: Uint8Array } }
+      { readonly VerificationKey: { readonly hash: Uint8Array } } | { readonly Script: { readonly hash: Uint8Array } }
     readonly stake_credential:
       | {
           readonly Pointer: {
@@ -124,8 +123,7 @@ export declare const Codec: {
   toCBORHex: (
     a: {
       readonly payment_credential:
-        | { readonly VerificationKey: { readonly hash: Uint8Array } }
-        | { readonly Script: { readonly hash: Uint8Array } }
+        { readonly VerificationKey: { readonly hash: Uint8Array } } | { readonly Script: { readonly hash: Uint8Array } }
       readonly stake_credential:
         | {
             readonly Pointer: {
@@ -148,8 +146,7 @@ export declare const Codec: {
   toCBORBytes: (
     a: {
       readonly payment_credential:
-        | { readonly VerificationKey: { readonly hash: Uint8Array } }
-        | { readonly Script: { readonly hash: Uint8Array } }
+        { readonly VerificationKey: { readonly hash: Uint8Array } } | { readonly Script: { readonly hash: Uint8Array } }
       readonly stake_credential:
         | {
             readonly Pointer: {
@@ -174,8 +171,7 @@ export declare const Codec: {
     overrideOptions?: ParseOptions
   ) => {
     readonly payment_credential:
-      | { readonly VerificationKey: { readonly hash: Uint8Array } }
-      | { readonly Script: { readonly hash: Uint8Array } }
+      { readonly VerificationKey: { readonly hash: Uint8Array } } | { readonly Script: { readonly hash: Uint8Array } }
     readonly stake_credential:
       | {
           readonly Pointer: {
@@ -198,8 +194,7 @@ export declare const Codec: {
     overrideOptions?: ParseOptions
   ) => {
     readonly payment_credential:
-      | { readonly VerificationKey: { readonly hash: Uint8Array } }
-      | { readonly Script: { readonly hash: Uint8Array } }
+      { readonly VerificationKey: { readonly hash: Uint8Array } } | { readonly Script: { readonly hash: Uint8Array } }
     readonly stake_credential:
       | {
           readonly Pointer: {

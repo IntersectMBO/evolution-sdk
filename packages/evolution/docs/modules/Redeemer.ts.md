@@ -1,6 +1,7 @@
 ---
+
 title: Redeemer.ts
-nav_order: 109
+nav_order: 113
 parent: Modules
 ---
 
@@ -344,32 +345,16 @@ Added in v2.0.0
 ## FromCBORBytes
 
 CBOR bytes transformation schema for Redeemer using CDDL.
-Transforms between CBOR bytes and Redeemer using CDDL encoding.
+Transforms between CBOR bytes and Redeemer using CDDL encoding. The data is
+written with the `plutusData` options, the rest with the `ledger` options.
+Plain options are read as `CBOR.toTxCodecOptions` reads them.
 
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.transformOrFail<
-    Schema.Tuple<
-      [
-        Schema.SchemaClass<bigint, bigint, never>,
-        Schema.SchemaClass<bigint, bigint, never>,
-        Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-        Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-      ]
-    >,
-    Schema.SchemaClass<Redeemer, Redeemer, never>,
-    never
-  >
->
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, Schema.SchemaClass<Redeemer, Redeemer, never>, never>
 ```
 
 Added in v2.0.0
@@ -383,28 +368,10 @@ Transforms between CBOR hex string and Redeemer using CDDL encoding.
 
 ```ts
 export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.Schema<Uint8Array, string, never>,
-  Schema.transform<
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >,
-    Schema.transformOrFail<
-      Schema.Tuple<
-        [
-          Schema.SchemaClass<bigint, bigint, never>,
-          Schema.SchemaClass<bigint, bigint, never>,
-          Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-          Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-        ]
-      >,
-      Schema.SchemaClass<Redeemer, Redeemer, never>,
-      never
-    >
-  >
+  Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, Schema.SchemaClass<Redeemer, Redeemer, never>, never>
 >
 ```
 
@@ -463,24 +430,24 @@ Added in v2.0.0
 
 ## toCBORBytes
 
-Encode Redeemer to CBOR bytes.
+Encode Redeemer to CBOR bytes, as in {@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (redeemer: Redeemer, options?: CBOR.CodecOptions) => Uint8Array
+export declare const toCBORBytes: (redeemer: Redeemer, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => Uint8Array
 ```
 
 Added in v2.0.0
 
 ## toCBORHex
 
-Encode Redeemer to CBOR hex string.
+Encode Redeemer to CBOR hex string, as in {@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
-export declare const toCBORHex: (redeemer: Redeemer, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (redeemer: Redeemer, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0

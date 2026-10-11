@@ -1,6 +1,7 @@
 ---
+
 title: TransactionBody.ts
-nav_order: 170
+nav_order: 176
 parent: Modules
 ---
 
@@ -10,6 +11,8 @@ parent: Modules
 
 <h2 class="text-delta">Table of contents</h2>
 
+- [constructors](#constructors)
+  - [fromEncoded](#fromencoded)
 - [conversion](#conversion)
   - [fromCBORBytes](#fromcborbytes)
   - [fromCBORBytesWithFormat](#fromcborbyteswithformat)
@@ -33,12 +36,46 @@ parent: Modules
   - [CDDLSchema](#cddlschema)
   - [FromCBORBytes](#fromcborbytes-1)
   - [FromCBORHex](#fromcborhex-1)
-- [utils](#utils)
   - [FromCDDL](#fromcddl)
+- [utils](#utils)
   - [arbitrary](#arbitrary)
   - [isTransactionBody](#istransactionbody)
 
 ---
+
+# constructors
+
+## fromEncoded
+
+Assemble a body from parts that are already encoded.
+
+⚠️ **This is what a transaction builder needs and the typed constructor is not.** A builder
+accumulates body fields from plugins as bytes -- a certificate from one, a withdrawal map from
+another, a `script_data_hash` computed over bytes it does not model -- and has no typed value
+for most of them. Without this it either reaches for a hex-shaped service of its own (which is
+how a 109-operation parallel codec came to exist) or re-derives the bytes it was given.
+
+`inputs` and `outputs` are item bytes and are written as the `#6.258` set and the array Conway
+expects. `fields` carries everything else by its CDDL key; a key this type does not model
+throws rather than being dropped, because a dropped field is a body the caller did not ask for
+and will sign anyway.
+
+The result is an ordinary {@link TransactionBody}, so it has NO recorded arrival bytes and
+{@link toCBORBytes} encodes it structurally -- which is correct: it was built here, not decoded.
+
+**Signature**
+
+```ts
+export declare const fromEncoded: (input: {
+  readonly inputs: ReadonlyArray<Uint8Array>
+  readonly outputs: ReadonlyArray<Uint8Array>
+  readonly fee: bigint
+  readonly ttl?: bigint
+  readonly fields?: ReadonlyArray<readonly [number, Uint8Array]>
+}) => TransactionBody
+```
+
+Added in v2.8.0
 
 # conversion
 
@@ -97,7 +134,7 @@ Convert TransactionBody to CBOR bytes.
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: TransactionBody, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (data: TransactionBody, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
@@ -121,7 +158,7 @@ Convert TransactionBody to CBOR hex string.
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: TransactionBody, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (data: TransactionBody, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
@@ -267,11 +304,15 @@ Added in v2.0.0
 CBOR bytes transformation schema for TransactionBody.
 Transforms between CBOR bytes and TransactionBody using Conway CDDL specification.
 
+A new inline datum is written with the `plutusData` options, the rest with
+the `ledger` options. Plain options are read as `CBOR.toTxCodecOptions`
+reads them.
+
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.transformOrFail<
     typeof Schema.Uint8ArrayFromSelf,
@@ -290,36 +331,36 @@ Added in v2.0.0
 
 ## FromCBORHex
 
-CBOR hex transformation schema for TransactionBody.
-Transforms between CBOR hex string and TransactionBody using Conway CDDL specification.
+CBOR hex transformation schema for TransactionBody, as in {@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
 export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
+  Schema.Schema<Uint8Array, string, never>,
   Schema.transform<
-    Schema.Schema<Uint8Array, string, never>,
     Schema.transformOrFail<
       typeof Schema.Uint8ArrayFromSelf,
       Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
       never
+    >,
+    Schema.transformOrFail<
+      Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
+      Schema.SchemaClass<TransactionBody, TransactionBody, never>,
+      never
     >
-  >,
-  Schema.transformOrFail<
-    Schema.declare<Map<bigint, CBOR.CBOR>, Map<bigint, CBOR.CBOR>, readonly [], never>,
-    Schema.SchemaClass<TransactionBody, TransactionBody, never>,
-    never
   >
 >
 ```
 
 Added in v2.0.0
 
-# utils
-
 ## FromCDDL
+
+CDDL transformation schema for TransactionBody. A new inline datum is
+written with `Data.DEFAULT_CBOR_OPTIONS`.
 
 **Signature**
 
@@ -330,6 +371,10 @@ export declare const FromCDDL: Schema.transformOrFail<
   never
 >
 ```
+
+Added in v2.0.0
+
+# utils
 
 ## arbitrary
 

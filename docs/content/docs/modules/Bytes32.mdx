@@ -1,4 +1,5 @@
 ---
+
 title: Bytes32.ts
 nav_order: 27
 parent: Modules

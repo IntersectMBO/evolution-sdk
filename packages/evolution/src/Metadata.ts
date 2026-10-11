@@ -136,8 +136,11 @@ export const fromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTI
  * @since 2.0.0
  * @category parsing
  */
+// Built from FromCBORHex rather than re-composed: the hand-rolled composition put
+// `CBOR.FromHex` (hex -> CBOR value) in front of `FromCBORBytes` (bytes -> Metadata), whose
+// input is bytes, so decoding anything `toCBORHex` had written failed.
 export const fromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(Schema.compose(CBOR.FromHex(options), FromCBORBytes(options)))
+  Schema.decodeSync(FromCBORHex(options))
 
 // ============================================================================
 // Encoding Functions

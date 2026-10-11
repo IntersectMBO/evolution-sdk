@@ -1173,3 +1173,22 @@ export const toCBOR = (data: GovernanceAction, options: CBOR.CodecOptions = CBOR
   const cddl = Schema.encodeSync(FromCDDL)(data)
   return CBOR.toCBORBytes(cddl, options)
 }
+
+/**
+ * Codec pair for a standalone `GovActionId`.
+ *
+ * It identifies a governance action everywhere one is referenced, so it is addressable on its
+ * own, but only its CDDL transform was exported.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const govActionIdToCBORHex = (input: GovActionId, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  CBOR.toCBORHex(ParseResult.encodeSync(GovActionIdFromCDDL)(input), options)
+
+/**
+ * @since 2.0.0
+ * @category parsing
+ */
+export const govActionIdFromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  ParseResult.decodeSync(GovActionIdFromCDDL)(CBOR.fromCBORHex(hex, options) as never)

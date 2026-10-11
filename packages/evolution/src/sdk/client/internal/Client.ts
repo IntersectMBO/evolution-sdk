@@ -29,6 +29,7 @@ const createAddressClient = (chain: Chain, wallet: Wallet.ReadOnlyWallet): Addre
   address: wallet.address,
   rewardAddress: wallet.rewardAddress,
   chain,
+  withProvider: (provider) => createReadOnlyClient(chain, provider, wallet),
   withBlockfrost: (config) => createReadOnlyClient(chain, Providers.blockfrost(config), wallet),
   withKoios: (config) => createReadOnlyClient(chain, Providers.koios(config), wallet),
   withKupmios: (config) => createReadOnlyClient(chain, Providers.kupmios(config), wallet),
@@ -54,6 +55,7 @@ const createOfflineSignerClient = (chain: Chain, wallet: Signing.ResolvedSignerW
     signTxs: (txs, context) => runEffectPromise(effectInterface.signTxs(txs, context)),
     signMessage: (address, payload) => runEffectPromise(effectInterface.signMessage(address, payload)),
     chain,
+    withProvider: (provider) => createSigningClient(chain, provider, wallet),
     withBlockfrost: (config) => createSigningClient(chain, Providers.blockfrost(config), wallet),
     withKoios: (config) => createSigningClient(chain, Providers.koios(config), wallet),
     withKupmios: (config) => createSigningClient(chain, Providers.kupmios(config), wallet),
@@ -151,6 +153,7 @@ const createReadClient = (chain: Chain, provider: Provider.Provider): ReadClient
 
 export const client = (chain: Chain = mainnet): ClientAssembly => ({
   chain,
+  withProvider: (provider) => createReadClient(chain, provider),
   withBlockfrost: (config) => createReadClient(chain, Providers.blockfrost(config)),
   withKoios: (config) => createReadClient(chain, Providers.koios(config)),
   withKupmios: (config) => createReadClient(chain, Providers.kupmios(config)),

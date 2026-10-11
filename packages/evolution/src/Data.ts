@@ -5,6 +5,7 @@ import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
 import * as DatumHash from "./DatumHash.js"
 import * as Numeric from "./Numeric.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 
 /**
  * Error class for Data related operations.
@@ -270,6 +271,45 @@ export const isInt = Schema.is(IntSchema)
 export const isBytes = Schema.is(ByteArray)
 
 /**
+ * A `Data` checked where it stands, with nothing rebuilt.
+ *
+ * ⚠️ **Use this for a class field or any other slot that holds an already-decoded `Data`.**
+ * {@link DataSchema} is a transforming schema, and validating a value through it returns a
+ * STRUCTURAL COPY: a list comes back as a different array holding the same elements. That is
+ * invisible until something keys on identity, and {@link OriginalBytes} does -- so a datum decoded
+ * from the wire and handed to `Redeemer.spend` arrived with its bytes and reached the encoder
+ * without them, which reframed an empty indefinite list and moved `script_data_hash`.
+ *
+ * `Schema.declare` with a type guard performs no transformation, so the value that goes in is the
+ * value that comes out.
+ *
+ * @since 2.8.0
+ * @category schemas
+ */
+export const DataValue: Schema.Schema<Data> = Schema.declare(
+  (input: unknown): input is Data =>
+    typeof input === "bigint" ||
+    input instanceof Uint8Array ||
+    isConstr(input) ||
+    (globalThis.Array.isArray(input) && input.every(isData)) ||
+    (input instanceof globalThis.Map &&
+      globalThis.Array.from(input.entries()).every(([key, value]) => isData(key) && isData(value))),
+  {
+    identifier: "Data.DataValue",
+    title: "Plutus Data, checked in place",
+    description: "A Data value validated without being rebuilt, so its provenance record survives"
+  }
+)
+
+/**
+ * Whether a value is a {@link Data}, checked structurally and without rebuilding it.
+ *
+ * @since 2.8.0
+ * @category predicates
+ */
+export const isData = (input: unknown): input is Data => Schema.is(DataValue)(input)
+
+/**
  * Creates a constructor with the specified index and data
  *
  * @since 2.0.0
@@ -521,6 +561,16 @@ const bytesToBigint = (bytes: Uint8Array): bigint => {
 
 // The layout choices that CodecOptions make for Plutus data, read once per call
 type Layout = {
+  /**
+   * Whether bytes a node arrived as outrank the representation this layout would choose.
+   *
+   * ⚠️ True for every option set except `mode: "canonical"`. Canonicalising IS a request for a
+   * new representation, and a caller passing it accepts the different hash that comes with it.
+   * Every other option set describes a house style for values the encoder is choosing bytes for,
+   * and says nothing about bytes already chosen — a datum decoded from the chain and written back
+   * must be the bytes that were hashed, or a script consumer matching on its hash stops matching.
+   */
+  keepArrival: boolean
   readonly indefiniteArrays: boolean
   readonly indefiniteMaps: boolean
   readonly sortMapKeys: boolean
@@ -531,6 +581,7 @@ type Layout = {
 const toLayout = (options: CBOR.CodecOptions): Layout =>
   options.mode === "custom"
     ? {
+        keepArrival: true,
         indefiniteArrays: options.useIndefiniteArrays,
         indefiniteMaps: options.useIndefiniteMaps,
         sortMapKeys: options.sortMapKeys,
@@ -538,6 +589,7 @@ const toLayout = (options: CBOR.CodecOptions): Layout =>
         mapsAsPairs: options.encodeMapAsPairs === true
       }
     : {
+        keepArrival: options.mode !== "canonical",
         indefiniteArrays: false,
         indefiniteMaps: false,
         sortMapKeys: true,
@@ -723,6 +775,32 @@ const writeMap = (w: Writer, layout: Layout, map: globalThis.Map<Data, Data>): v
   if (layout.indefiniteMaps) writeByte(w, 0xff)
 }
 
+/**
+ * A tag head, at the width `CBOR` writes it at.
+ *
+ * ⚠️ Every constructor tag is 24 or more — 102, 121 to 127, 1280 to 1400 — and a non-minimal
+ * option set used to refuse all of them here, on the grounds that the encoder could not write a
+ * wide tag. It can: a tag of 24 or more goes out in the four-byte `0xda` form when minimal
+ * encoding is off, which is what the tree encoder produces for the same value. Refusing instead
+ * made a legal datum unencodable under one of this package's own presets.
+ */
+const writeTagHead = (w: Writer, tag: number, minimal: boolean): void => {
+  if (tag < 24) {
+    writeByte(w, 0xc0 + tag)
+    return
+  }
+  if (minimal) {
+    writeHead(w, 6, tag)
+    return
+  }
+  reserve(w, 5)
+  writeByte(w, 0xda)
+  writeByte(w, (tag >>> 24) & 0xff)
+  writeByte(w, (tag >>> 16) & 0xff)
+  writeByte(w, (tag >>> 8) & 0xff)
+  writeByte(w, tag & 0xff)
+}
+
 // Indices 0 to 6 are tags 121 to 127, indices 7 to 127 are tags 1280 to 1400,
 // and any other index is tag 102 over the definite pair [index, fields]
 const writeConstr = (w: Writer, layout: Layout, constr: Constr): void => {
@@ -731,9 +809,7 @@ const writeConstr = (w: Writer, layout: Layout, constr: Constr): void => {
     throw new DataError({ message: `Constructor index out of range: ${index}` })
   }
   const tag = index <= 6n ? 121 + Number(index) : index <= 127n ? 1280 + Number(index) - 7 : 102
-  // Without minimal encoding the CBOR encoder cannot write a tag of 24 or more
-  if (!layout.minimal) throw new CBOR.CBORError({ message: `Tag ${tag} too large` })
-  writeHead(w, 6, tag)
+  writeTagHead(w, tag, layout.minimal)
   if (tag === 102) {
     writeByte(w, 0x82)
     writeIntHead(w, 0, index, true)
@@ -742,6 +818,18 @@ const writeConstr = (w: Writer, layout: Layout, constr: Constr): void => {
 }
 
 const writeData = (w: Writer, layout: Layout, data: Data): void => {
+  // Checked at EVERY node, not only the root: a list assembled from decoded children writes each
+  // child as it arrived while the list itself takes this layout, which is what a caller splicing
+  // encoded children needs. A `bigint` cannot carry a record (it is not an object), so a
+  // non-minimal integer header is the one arrival detail lost, and only where the integer is the
+  // root — nested, its container replays it.
+  if (layout.keepArrival && typeof data === "object" && data !== null) {
+    const arrived = OriginalBytes.get(data)
+    if (arrived !== undefined) {
+      writeBytes(w, arrived)
+      return
+    }
+  }
   if (typeof data === "bigint") writeInt(w, layout, data)
   else if (data instanceof Uint8Array) writeBoundedBytes(w, data)
   else if (Array.isArray(data)) writeList(w, layout, data)
@@ -766,18 +854,33 @@ const encodeData = (data: Data, layout: Layout): Uint8Array => {
  * @since 2.0.0
  * @category transformation
  */
-export const plutusDataToCBORValue = (data: Data): CBOR.CBOR => {
+export const plutusDataToCBORValue = (data: Data, options?: CBOR.CodecOptions): CBOR.CBOR => {
+  // Arrival bytes win over any representation this function would choose. Checked at every node,
+  // so a list assembled from decoded children re-encodes each child as it arrived while the list
+  // itself gets the default framing -- which is the whole of what a caller splicing hex by hand
+  // used to do. `bigint` cannot carry a record (it is not an object), so a non-minimal integer
+  // header is the one arrival detail lost, and only where the integer is the ROOT: nested, its
+  // container replays it. See {@link fromCBORBytes}.
+  //
+  // ⚠️ `mode: "canonical"` is the one request that outranks provenance, because canonicalising IS
+  // choosing a new representation -- a caller passing it has asked for the normalised form and
+  // accepts the different hash that comes with it. Every other option set describes a house style
+  // for values this encoder is choosing bytes for, and says nothing about bytes already chosen.
+  const keepArrival = options === undefined || options.mode !== "canonical"
+  const recurse = (child: Data): CBOR.CBOR => plutusDataToCBORValue(child, options)
+  if (keepArrival && typeof data === "object" && data !== null) {
+    const arrived = OriginalBytes.get(data)
+    if (arrived !== undefined) return CBOR.Raw.make(arrived)
+  }
   return matchData(data, {
     Map: (entries): CBOR.CBOR => {
       // PlutusData Map -> CBOR map directly (no extra tag needed for top-level maps)
-      const cborEntries = entries.map(
-        ([key, value]) => [plutusDataToCBORValue(key), plutusDataToCBORValue(value)] as const
-      )
+      const cborEntries = entries.map(([key, value]) => [recurse(key), recurse(value)] as const)
       return new Map(cborEntries)
     },
     List: (items): CBOR.CBOR => {
       // PlutusData List -> CBOR array directly (no extra tag needed for top-level arrays)
-      const cborItems = items.map(plutusDataToCBORValue)
+      const cborItems = items.map(recurse)
       return cborItems
     },
     Int: (value): CBOR.CBOR => {
@@ -792,7 +895,7 @@ export const plutusDataToCBORValue = (data: Data): CBOR.CBOR => {
     },
     Constr: (constr): CBOR.CBOR => {
       // PlutusData Constr -> CBOR tags based on index
-      const cborFields = constr.fields.map(plutusDataToCBORValue)
+      const cborFields = constr.fields.map(recurse)
       const fieldsArray = cborFields
 
       if (constr.index >= 0n && constr.index <= 6n) {
@@ -811,7 +914,10 @@ export const plutusDataToCBORValue = (data: Data): CBOR.CBOR => {
         // General constructor encoding for any uint value (tag 102)
         return CBOR.Tag.make({
           tag: 102,
-          value: [constr.index, fieldsArray]
+          // ⚠️ DEFINITE, while the fields array inside it stays indefinite. CSL 15.0.3 and CML 6.2
+          // both write `d866 82 …` here; an indefinite wrapper is this library alone. Pinned on the
+          // node because one codec option cannot say both.
+          value: CBOR.DefiniteArray.make([constr.index, fieldsArray])
         })
       }
     }
@@ -824,7 +930,18 @@ export const plutusDataToCBORValue = (data: Data): CBOR.CBOR => {
  * @since 2.0.0
  * @category transformation
  */
-export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
+export const cborValueToPlutusData = (cborValue: CBOR.CBOR, fmt?: CBOR.CBORFormat): Data => {
+  // Hold onto the bytes this node arrived as, so re-encoding it is a copy rather than a fresh
+  // decision. Only reachable when a `fmt` was threaded in -- without one there is nothing to
+  // replay and the node encodes structurally, which is the behaviour every caller had before.
+  const keep = <A extends Data>(data: A): A => {
+    if (fmt === undefined || typeof data !== "object" || data === null) return data
+    return OriginalBytes.record(data, CBOR.toCBORBytesWithFormat(cborValue, fmt))
+  }
+  const childFmt = (index: number): CBOR.CBORFormat | undefined =>
+    fmt?._tag === "array" ? fmt.children[index] : undefined
+  const taggedChildFmt = (): CBOR.CBORFormat | undefined => (fmt?._tag === "tag" ? fmt.child : undefined)
+
   // Handle bigint (uint/nint)
   if (CBOR.isInteger(cborValue)) {
     return cborValue
@@ -832,7 +949,7 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
 
   // Handle Uint8Array (bytes)
   if (CBOR.isByteArray(cborValue)) {
-    return cborValue
+    return keep(cborValue)
   }
 
   // Handle tagged values
@@ -847,8 +964,10 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
           message: `Expected array for constructor tag ${tag}, got ${typeof value}`
         })
       }
-      const fields = value.map(cborValueToPlutusData)
-      return new Constr({ index: Numeric.Uint64Make(BigInt(tag - 121)), fields })
+      const inner = taggedChildFmt()
+      const fieldFmt = (i: number) => (inner?._tag === "array" ? inner.children[i] : undefined)
+      const fields = value.map((field, i) => cborValueToPlutusData(field, fieldFmt(i)))
+      return keep(new Constr({ index: Numeric.Uint64Make(BigInt(tag - 121)), fields }))
     }
 
     // Handle alternative constructor tags (1280-1400 for indices 7-127)
@@ -858,8 +977,10 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
           message: `Expected array for constructor tag ${tag}, got ${typeof value}`
         })
       }
-      const fields = value.map(cborValueToPlutusData)
-      return new Constr({ index: Numeric.Uint64Make(BigInt(tag - 1280 + 7)), fields })
+      const inner = taggedChildFmt()
+      const fieldFmt = (i: number) => (inner?._tag === "array" ? inner.children[i] : undefined)
+      const fields = value.map((field, i) => cborValueToPlutusData(field, fieldFmt(i)))
+      return keep(new Constr({ index: Numeric.Uint64Make(BigInt(tag - 1280 + 7)), fields }))
     }
 
     // Handle general constructor tag (102)
@@ -887,8 +1008,11 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
           })
         }
 
-        const fields = fieldsValue.map(cborValueToPlutusData)
-        return new Constr({ index: Numeric.Uint64Make(indexValue), fields })
+        const wrapper = taggedChildFmt()
+        const listFmt = wrapper?._tag === "array" ? wrapper.children[1] : undefined
+        const fieldFmt = (i: number) => (listFmt?._tag === "array" ? listFmt.children[i] : undefined)
+        const fields = fieldsValue.map((field, i) => cborValueToPlutusData(field, fieldFmt(i)))
+        return keep(new Constr({ index: Numeric.Uint64Make(indexValue), fields }))
       }
     }
 
@@ -921,17 +1045,22 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
   // Handle arrays
   if (CBOR.isArray(cborValue)) {
     // Arrays are Lists
-    const items = cborValue.map(cborValueToPlutusData)
-    return items
+    const items = cborValue.map((item, i) => cborValueToPlutusData(item, childFmt(i)))
+    return keep(items)
   }
 
   // Handle Maps
   if (CBOR.isMap(cborValue)) {
     // Maps are Maps
-    const entries = Array.from(cborValue.entries()).map(
-      ([k, v]) => [cborValueToPlutusData(k), cborValueToPlutusData(v)] as const
-    )
-    return new Map(entries)
+    const entryFmt = (i: number): readonly [CBOR.CBORFormat | undefined, CBOR.CBORFormat | undefined] => {
+      const pair = fmt?._tag === "map" ? fmt.entries[i] : undefined
+      return pair === undefined ? [undefined, undefined] : pair
+    }
+    const entries = Array.from(cborValue.entries()).map(([k, v], i) => {
+      const [kf, vf] = entryFmt(i)
+      return [cborValueToPlutusData(k, kf), cborValueToPlutusData(v, vf)] as const
+    })
+    return keep(new Map(entries))
   }
 
   // Handle unsupported types
@@ -939,6 +1068,70 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
     message: `Unknown CBOR value type: ${JSON.stringify(cborValue)}`
   })
 }
+
+// ============================================================================
+// Byte-level assembly, for a caller that already holds encoded children
+// ============================================================================
+
+/**
+ * Assemble `plutus_data` from children that are ALREADY encoded, splicing their bytes.
+ *
+ * ⚠️ **Why this exists next to the typed constructors.** {@link fromCBORBytes} records the bytes
+ * every node arrived as and {@link toCBORBytes} replays them, so decoding a child and rebuilding
+ * around it is lossless for anything that can carry a record. One thing cannot: a `bigint` is not
+ * an object, so a non-minimally encoded integer (`19002a` for 42, which the ledger accepts and
+ * nothing here writes) has nowhere to keep its header width. A caller holding encoded children
+ * therefore has a choice between decoding them -- correct except for that integer -- and splicing
+ * them, which is correct for everything. These splice.
+ *
+ * Use the typed constructors ({@link list}, {@link constr}, {@link map}) when the children are
+ * values this process produced. Use these when the children came off a wire and are going back on
+ * one unchanged, which is every datum nested inside another datum.
+ *
+ * The framing matches what the typed encoder writes under the Plutus data options, so the two
+ * routes agree for any child that round-trips: non-empty lists and constructor fields are
+ * indefinite, the empty list is definite, the tag-102 wrapper is definite, and a Plutus map is
+ * definite and keeps the order it was given.
+ *
+ * @since 2.8.0
+ * @category encoding
+ */
+export const spliceList = (items: ReadonlyArray<Uint8Array>): Uint8Array =>
+  items.length === 0 ? CBOR.encodeArrayAsDefinite([]) : CBOR.encodeArrayAsIndefinite(items)
+
+/**
+ * A `Constr` over already-encoded fields, in the three tag ranges the Plutus encoding defines.
+ *
+ * ⚠️ The tag-102 wrapper `[index, fields]` is DEFINITE while the fields array inside it stays
+ * indefinite. `cardano-serialization-lib` 15.0.3 and `cardano-multiplatform-lib` 6.2 both write
+ * `d866 82 …`; no single codec option can say both, which is why the shape is written here.
+ *
+ * See {@link spliceList} for when to reach for this rather than {@link constr}.
+ *
+ * @since 2.8.0
+ * @category encoding
+ */
+export const spliceConstr = (index: bigint, fieldItems: ReadonlyArray<Uint8Array>): Uint8Array => {
+  const fields = spliceList(fieldItems)
+  if (index >= 0n && index <= 6n) return CBOR.encodeTaggedValue(Number(121n + index), fields)
+  if (index >= 7n && index <= 127n) return CBOR.encodeTaggedValue(Number(1280n + index - 7n), fields)
+  return CBOR.encodeTaggedValue(102, CBOR.encodeArrayAsDefinite([CBOR.toCBORBytes(index), fields]))
+}
+
+/**
+ * A Plutus map over already-encoded keys and values.
+ *
+ * ⚠️ Definite-framed, and the entries keep the order given: a Plutus map is NOT sorted. Sorting
+ * it is a different value as far as a script reading it by position is concerned, and a different
+ * hash either way.
+ *
+ * See {@link spliceList} for when to reach for this rather than {@link map}.
+ *
+ * @since 2.8.0
+ * @category encoding
+ */
+export const spliceMap = (entries: ReadonlyArray<readonly [Uint8Array, Uint8Array]>): Uint8Array =>
+  CBOR.encodeMapAsDefinite(entries)
 
 /**
  * Deep structural hash for Plutus Data values.
@@ -1036,6 +1229,17 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Dat
 })
 
 /**
+ * `FromCDDL` for a known option set, so the provenance rule in {@link plutusDataToCBORValue} can
+ * see which options the caller chose.
+ *
+ * ⚠️ Separate from {@link FromCDDL} rather than replacing it: the plain schema is composed into
+ * {@link FromCBORBytes}, whose own CBOR layer already carries the options, and a schema cannot be
+ * told at encode time what its caller passed.
+ *
+ * @since 2.8.0
+ * @category schemas
+ */
+/**
  * CBOR bytes transformation schema for PlutusData using CDDL.
  * Decodes through {@link FromCDDL}. Encodes as {@link toCBORBytes} does.
  *
@@ -1101,6 +1305,26 @@ export const toCBORBytes = (data: Data, options: CBOR.CodecOptions = DEFAULT_CBO
   encodeData(data, toLayout(options))
 
 /**
+ * A `plutus_data` item as CBOR hex.
+ *
+ * ⚠️ A script consumer matches a datum by its hash, so these bytes are the value: a re-encoding
+ * that differs by one byte hashes differently.
+ *
+ * Branded so that CBOR hex of one kind cannot stand in for another once it leaves the typed
+ * domain. Non-empty whole bytes is all the shape there is to check.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^([0-9a-fA-F]{2})+$/), Schema.brand("PlutusDataHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
+/**
  * Encode PlutusData to CBOR hex string, as {@link toCBORBytes} writes it.
  *
  * @since 2.0.0
@@ -1115,8 +1339,18 @@ export const toCBORHex = (data: Data, options: CBOR.CodecOptions = DEFAULT_CBOR_
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Data => {
+  // Decoded WITH its format tree, so every node remembers the bytes it arrived as and
+  // `toCBORBytes` hands them back instead of choosing a representation again. The ledger hashes
+  // what arrived: `9fff` and `80` are the same `[]` and different `script_data_hash`es.
+  //
+  // `options` is accepted for symmetry with the schema form and has no effect on this path --
+  // decoding is options-independent apart from `mapsAsObjects`, which `Data` has never supported
+  // (a Record has no branch in `cborValueToPlutusData`).
+  void options
+  const decoded = CBOR.fromCBORBytesWithFormat(bytes)
+  return cborValueToPlutusData(decoded.value, decoded.format)
+}
 
 /**
  * Decode PlutusData from CBOR hex string
@@ -1124,8 +1358,8 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DE
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DATA_DEFAULT_OPTIONS): Data =>
+  fromCBORBytes(Bytes.fromHex(hex), options)
 
 /**
  * Create a schema that transforms from a custom type to Data and provides CBOR encoding

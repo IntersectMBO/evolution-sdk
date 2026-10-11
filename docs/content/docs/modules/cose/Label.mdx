@@ -1,6 +1,7 @@
 ---
+
 title: cose/Label.ts
-nav_order: 43
+nav_order: 44
 parent: Modules
 ---
 

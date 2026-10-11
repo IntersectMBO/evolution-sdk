@@ -88,6 +88,27 @@ export const fromBytes = Schema.decodeSync(FromBytes)
  * @since 2.0.0
  * @category constructors
  */
+/**
+ * An Ed25519 signature as hex (64 bytes).
+ *
+ * Validated as well as branded: a 64-byte hex string, either case. {@link toHex} returns
+ * this type, so the kind survives leaving the typed domain.
+ *
+ * ⚠️ Branded apart from a verification key because a `vkeywitness` holds exactly those two, in
+ * that order, and transposing them yields a witness that is structurally valid and verifies
+ * against nothing.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^[0-9a-fA-F]{128}$/), Schema.brand("Ed25519SignatureHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
 
 /**
@@ -96,7 +117,9 @@ export const fromHex = Schema.decodeSync(FromHex)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+const encodeHex = Schema.encodeSync(FromHex)
+
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))
 
 /**
  * Get the underlying bytes (returns a copy for safety).

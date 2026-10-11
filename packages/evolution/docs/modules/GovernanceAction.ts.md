@@ -1,6 +1,7 @@
 ---
+
 title: GovernanceAction.ts
-nav_order: 62
+nav_order: 64
 parent: Modules
 ---
 
@@ -13,6 +14,7 @@ parent: Modules
 - [arbitrary](#arbitrary)
   - [infoArbitrary](#infoarbitrary)
 - [encoding](#encoding)
+  - [govActionIdToCBORHex](#govactionidtocborhex)
   - [toCBOR](#tocbor)
   - [toCBORHex](#tocborhex)
 - [model](#model)
@@ -20,6 +22,7 @@ parent: Modules
 - [parsing](#parsing)
   - [fromCBOR](#fromcbor)
   - [fromCBORHex](#fromcborhex)
+  - [govActionIdFromCBORHex](#govactionidfromcborhex)
 - [pattern matching](#pattern-matching)
   - [match](#match)
 - [predicates](#predicates)
@@ -128,6 +131,21 @@ Added in v2.0.0
 
 # encoding
 
+## govActionIdToCBORHex
+
+Codec pair for a standalone `GovActionId`.
+
+It identifies a governance action everywhere one is referenced, so it is addressable on its
+own, but only its CDDL transform was exported.
+
+**Signature**
+
+```ts
+export declare const govActionIdToCBORHex: (input: GovActionId, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
 ## toCBOR
 
 Encode GovernanceAction to CBOR bytes.
@@ -188,6 +206,16 @@ Parse GovernanceAction from CBOR hex string.
 
 ```ts
 export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => GovernanceAction
+```
+
+Added in v2.0.0
+
+## govActionIdFromCBORHex
+
+**Signature**
+
+```ts
+export declare const govActionIdFromCBORHex: (hex: string, options?: CBOR.CodecOptions) => GovActionId
 ```
 
 Added in v2.0.0

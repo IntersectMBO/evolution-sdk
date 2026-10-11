@@ -39,7 +39,17 @@ export class TransactionOutput extends Schema.TaggedClass<TransactionOutput>()("
     })
   ),
   datumOption: Schema.optional(DatumOption.DatumOptionSchema), // 2
-  scriptRef: Schema.optional(ScriptRef.ScriptRef) // 3
+  scriptRef: Schema.optional(ScriptRef.ScriptRef), // 3
+  /**
+   * Which CDDL form this output is written as.
+   *
+   * ⚠️ Conway accepts both the Shelley array and the Babbage map, a node takes either, and they
+   * are DIFFERENT BYTES — so a different transaction id, a different min-ada, and a different
+   * body for a hardware wallet to reconstruct. A builder that cannot say which form it means
+   * inherits whichever the legacy rule picks, which changes with whether an inline datum happens
+   * to be present.
+   */
+  encodingFormat: Schema.optional(Schema.Literal("shelley", "babbage"))
 }) {
   toJSON() {
     return {
@@ -236,9 +246,11 @@ export const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
     strict: true,
     encode: (toI) =>
       E.gen(function* () {
-        // Determine if we can use Shelley format (more compact)
-        const canUseShelleyFormat =
+        // Babbage is forced when the output carries something Shelley cannot express; otherwise
+        // an explicit `encodingFormat` decides, and only in its absence does the legacy rule apply.
+        const representableAsShelley =
           toI.scriptRef === undefined && (toI.datumOption === undefined || toI.datumOption._tag === "DatumHash")
+        const canUseShelleyFormat = representableAsShelley && toI.encodingFormat !== "babbage"
 
         if (canUseShelleyFormat) {
           // Use Shelley format (array)
@@ -288,7 +300,8 @@ export const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
               address,
               assets,
               datumOption,
-              scriptRef: undefined
+              scriptRef: undefined,
+              encodingFormat: "shelley"
             },
             { disableValidation: true }
           )
@@ -310,7 +323,8 @@ export const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
               address,
               assets,
               datumOption,
-              scriptRef
+              scriptRef,
+              encodingFormat: "babbage"
             },
             { disableValidation: true }
           )

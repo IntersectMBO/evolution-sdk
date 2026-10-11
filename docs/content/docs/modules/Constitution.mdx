@@ -1,6 +1,7 @@
 ---
+
 title: Constitution.ts
-nav_order: 40
+nav_order: 41
 parent: Modules
 ---
 
@@ -186,14 +187,7 @@ export declare const FromCBORBytes: (
 export declare const FromCBORHex: (
   options?: CBOR.CodecOptions
 ) => Schema.transform<
-  Schema.transform<
-    Schema.Schema<Uint8Array, string, never>,
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >
-  >,
+  Schema.Schema<Uint8Array, string, never>,
   Schema.transform<
     Schema.transformOrFail<
       typeof Schema.Uint8ArrayFromSelf,
