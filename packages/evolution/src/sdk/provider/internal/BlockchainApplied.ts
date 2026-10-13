@@ -5,6 +5,10 @@
  * Swagger UI on https://api.blockchain-applied.com/api_ada/v1/docs/
  * BCA is backed by cardano-db-sync, so field naming (block_index, out_sum, valid_contract, ...)
  * follows db-sync conventions rather than Blockfrost/Koios/Maestro's own vocabularies.
+ *
+ * HttpUtils hands every JSON number to the schemas as its source text, so integer fields
+ * decode with `Schema.BigInt` (from a bare number or a digit string) and decimal fields
+ * with `Schema.NumberFromString`.
  */
 
 import { Schema } from "effect"
@@ -43,10 +47,10 @@ export const Envelope = <A, I, R>(details: Schema.Schema<A, I, R>) =>
 export const PaginatedResponse = <A, I, R>(item: Schema.Schema<A, I, R>) =>
   Schema.Struct({
     data: Schema.Array(item),
-    page: Schema.Number,
-    page_size: Schema.Number,
-    total_count: Schema.Number,
-    total_pages: Schema.Number,
+    page: Schema.BigInt,
+    page_size: Schema.BigInt,
+    total_count: Schema.optional(Schema.BigInt),
+    total_pages: Schema.optional(Schema.BigInt),
     has_next: Schema.Boolean
   })
 
@@ -57,15 +61,15 @@ export const PaginatedResponse = <A, I, R>(item: Schema.Schema<A, I, R>) =>
 export const UtxoAsset = Schema.Struct({
   policy_id: Schema.String,
   asset_name: Schema.String,
-  quantity: Schema.String
+  quantity: Schema.BigInt
 })
 export interface UtxoAsset extends Schema.Schema.Type<typeof UtxoAsset> {}
 
 export const UtxoResponse = Schema.Struct({
   tx_hash: Schema.String,
-  output_index: Schema.Number,
+  output_index: Schema.BigInt,
   address: Schema.String,
-  lovelace: Schema.String,
+  lovelace: Schema.BigInt,
   assets: Schema.Array(UtxoAsset),
   datum_hash: Schema.optional(Schema.NullOr(Schema.String)),
   inline_datum: Schema.optional(Schema.NullOr(Schema.String)),
@@ -107,7 +111,7 @@ export interface DatumDetails extends Schema.Schema.Type<typeof DatumDetails> {}
 
 export const ScriptDetails = Schema.Struct({
   hash: Schema.String,
-  size: Schema.Number,
+  size: Schema.BigInt,
   type: Schema.String,
   json: Schema.Unknown,
   bytes: Schema.String,
@@ -123,10 +127,10 @@ export interface ScriptDetails extends Schema.Schema.Type<typeof ScriptDetails> 
 export const StakingResponse = Schema.Struct({
   address: Schema.String,
   pool_id: Schema.optional(Schema.NullOr(Schema.String)),
-  total_rewards: Schema.String,
-  total_withdrawn: Schema.String,
-  withdrawable_rewards: Schema.String,
-  active_epoch: Schema.optional(Schema.NullOr(Schema.Number)),
+  total_rewards: Schema.BigInt,
+  total_withdrawn: Schema.BigInt,
+  withdrawable_rewards: Schema.BigInt,
+  active_epoch: Schema.optional(Schema.NullOr(Schema.BigInt)),
   delegation_tx: Schema.optional(Schema.NullOr(Schema.String))
 })
 export interface StakingResponse extends Schema.Schema.Type<typeof StakingResponse> {}
@@ -136,24 +140,24 @@ export interface StakingResponse extends Schema.Schema.Type<typeof StakingRespon
 // ============================================================================
 
 export const ProtocolParametersResponse = Schema.Struct({
-  epoch_no: Schema.Number,
-  min_fee_a: Schema.Number,
-  min_fee_b: Schema.Number,
-  max_tx_size: Schema.Number,
-  max_val_size: Schema.Number,
-  key_deposit: Schema.String,
-  pool_deposit: Schema.String,
-  price_mem: Schema.Number,
-  price_step: Schema.Number,
-  max_tx_ex_mem: Schema.String,
-  max_tx_ex_steps: Schema.String,
+  epoch_no: Schema.BigInt,
+  min_fee_a: Schema.BigInt,
+  min_fee_b: Schema.BigInt,
+  max_tx_size: Schema.BigInt,
+  max_val_size: Schema.BigInt,
+  key_deposit: Schema.BigInt,
+  pool_deposit: Schema.BigInt,
+  price_mem: Schema.NumberFromString,
+  price_step: Schema.NumberFromString,
+  max_tx_ex_mem: Schema.BigInt,
+  max_tx_ex_steps: Schema.BigInt,
   cost_models: Schema.Unknown,
-  coins_per_utxo_size: Schema.optional(Schema.NullOr(Schema.String)),
-  collateral_percentage: Schema.optional(Schema.NullOr(Schema.Number)),
-  drep_deposit: Schema.optional(Schema.NullOr(Schema.String)),
-  gov_action_deposit: Schema.optional(Schema.NullOr(Schema.String)),
-  max_collateral_inputs: Schema.optional(Schema.NullOr(Schema.Number)),
-  min_fee_ref_script_cost_per_byte: Schema.optional(Schema.NullOr(Schema.Number))
+  coins_per_utxo_size: Schema.optional(Schema.NullOr(Schema.BigInt)),
+  collateral_percentage: Schema.optional(Schema.NullOr(Schema.BigInt)),
+  drep_deposit: Schema.optional(Schema.NullOr(Schema.BigInt)),
+  gov_action_deposit: Schema.optional(Schema.NullOr(Schema.BigInt)),
+  max_collateral_inputs: Schema.optional(Schema.NullOr(Schema.BigInt)),
+  min_fee_ref_script_cost_per_byte: Schema.optional(Schema.NullOr(Schema.NumberFromString))
 })
 export interface ProtocolParametersResponse extends Schema.Schema.Type<typeof ProtocolParametersResponse> {}
 
@@ -166,15 +170,30 @@ export const SubmitResponse = Schema.Struct({
 })
 
 export const ExUnits = Schema.Struct({
-  mem: Schema.String,
-  steps: Schema.String
+  mem: Schema.BigInt,
+  steps: Schema.BigInt
 })
 
 export const EvalRedeemerResponse = Schema.Struct({
   redeemer_tag: Schema.Literal("spend", "mint", "cert", "reward", "vote", "propose"),
-  redeemer_index: Schema.Number,
+  redeemer_index: Schema.BigInt,
   ex_units: ExUnits
 })
+
+/**
+ * A UTxO as sent in the `additional_utxos` of POST /tx/evaluate
+ */
+export interface AdditionalUtxo {
+  readonly tx_hash: string
+  readonly output_index: number
+  readonly address: string
+  readonly lovelace: string
+  readonly assets: ReadonlyArray<{ readonly policy_id: string; readonly asset_name: string; readonly quantity: string }>
+  readonly datum_hash?: string
+  readonly inline_datum?: string
+  readonly reference_script_cbor?: string
+  readonly reference_script_type?: string
+}
 
 // ============================================================================
 // Transformation utilities
@@ -204,21 +223,21 @@ const extractCostModel = (costModels: unknown, keys: ReadonlyArray<string>): Rec
 }
 
 export const transformProtocolParameters = (response: ProtocolParametersResponse): Provider.ProtocolParameters => ({
-  minFeeA: response.min_fee_a,
-  minFeeB: response.min_fee_b,
-  maxTxSize: response.max_tx_size,
-  maxValSize: response.max_val_size,
-  keyDeposit: BigInt(response.key_deposit),
-  poolDeposit: BigInt(response.pool_deposit),
-  drepDeposit: BigInt(response.drep_deposit ?? "0"),
-  govActionDeposit: BigInt(response.gov_action_deposit ?? "0"),
+  minFeeA: Number(response.min_fee_a),
+  minFeeB: Number(response.min_fee_b),
+  maxTxSize: Number(response.max_tx_size),
+  maxValSize: Number(response.max_val_size),
+  keyDeposit: response.key_deposit,
+  poolDeposit: response.pool_deposit,
+  drepDeposit: response.drep_deposit ?? 0n,
+  govActionDeposit: response.gov_action_deposit ?? 0n,
   priceMem: response.price_mem,
   priceStep: response.price_step,
-  maxTxExMem: BigInt(response.max_tx_ex_mem),
-  maxTxExSteps: BigInt(response.max_tx_ex_steps),
-  coinsPerUtxoByte: BigInt(response.coins_per_utxo_size ?? "0"),
-  collateralPercentage: response.collateral_percentage ?? 0,
-  maxCollateralInputs: response.max_collateral_inputs ?? 0,
+  maxTxExMem: response.max_tx_ex_mem,
+  maxTxExSteps: response.max_tx_ex_steps,
+  coinsPerUtxoByte: response.coins_per_utxo_size ?? 0n,
+  collateralPercentage: Number(response.collateral_percentage ?? 0n),
+  maxCollateralInputs: Number(response.max_collateral_inputs ?? 0n),
   minFeeRefScriptCostPerByte: response.min_fee_ref_script_cost_per_byte ?? 0,
   costModels: {
     PlutusV1: extractCostModel(response.cost_models, ["PlutusV1", "plutus_v1"]),
@@ -227,10 +246,10 @@ export const transformProtocolParameters = (response: ProtocolParametersResponse
   }
 })
 
-export const transformAssets = (lovelace: string, assets: ReadonlyArray<UtxoAsset>): CoreAssets.Assets => {
-  let result = CoreAssets.fromLovelace(BigInt(lovelace))
+export const transformAssets = (lovelace: bigint, assets: ReadonlyArray<UtxoAsset>): CoreAssets.Assets => {
+  let result = CoreAssets.fromLovelace(lovelace)
   for (const asset of assets) {
-    result = CoreAssets.addByHex(result, asset.policy_id, asset.asset_name, BigInt(asset.quantity))
+    result = CoreAssets.addByHex(result, asset.policy_id, asset.asset_name, asset.quantity)
   }
   return result
 }
@@ -254,15 +273,15 @@ export const transformScript = (details: { type: string; bytes: string }): Scrip
 
 export const transformDelegation = (response: StakingResponse): Provider.Delegation => ({
   poolId: response.pool_id ? PoolKeyHash.fromBech32(response.pool_id) : null,
-  rewards: BigInt(response.withdrawable_rewards)
+  rewards: response.withdrawable_rewards
 })
 
 export const transformEvalRedeemer = (redeemer: Schema.Schema.Type<typeof EvalRedeemerResponse>): EvalRedeemer => ({
   redeemer_tag: redeemer.redeemer_tag as Redeemer.RedeemerTag,
-  redeemer_index: redeemer.redeemer_index,
+  redeemer_index: Number(redeemer.redeemer_index),
   ex_units: new Redeemer.ExUnits({
-    mem: BigInt(redeemer.ex_units.mem),
-    steps: BigInt(redeemer.ex_units.steps)
+    mem: redeemer.ex_units.mem,
+    steps: redeemer.ex_units.steps
   })
 })
 

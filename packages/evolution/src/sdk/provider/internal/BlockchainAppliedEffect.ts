@@ -3,7 +3,6 @@
  * Internal module implementing all provider operations using the Effect pattern.
  */
 
-import { HttpClientError } from "@effect/platform"
 import { Effect, Option, Schedule, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
@@ -44,7 +43,7 @@ const getAddressPath = (addressOrCredential: CoreAddress.Address | Credential.Cr
   "hash" in addressOrCredential ? Credential.toBech32(addressOrCredential) : CoreAddress.toBech32(addressOrCredential)
 
 const is404 = (error: unknown): boolean =>
-  error instanceof HttpClientError.ResponseError && error.response.status === 404
+  error instanceof HttpUtils.HttpResponseError && error.status === 404
 
 // ============================================================================
 // Script / datum resolution
@@ -96,7 +95,7 @@ const resolveUtxo =
         ([scriptRef, datumOption]) =>
           new CoreUTxO.UTxO({
             transactionId: TransactionHash.fromHex(item.tx_hash),
-            index: BigInt(item.output_index),
+            index: item.output_index,
             address: CoreAddress.fromBech32(item.address),
             assets: BCA.transformAssets(item.lovelace, item.assets),
             datumOption,
@@ -277,7 +276,7 @@ export const submitTx = (baseUrl: string, token?: string) => (tx: Transaction.Tr
     Effect.catchAll(wrapError("submitTx"))
   )
 
-const toAdditionalUtxo = (utxo: CoreUTxO.UTxO): BCA.UtxoResponse => ({
+const toAdditionalUtxo = (utxo: CoreUTxO.UTxO): BCA.AdditionalUtxo => ({
   tx_hash: TransactionHash.toHex(utxo.transactionId),
   output_index: Number(utxo.index),
   address: CoreAddress.toBech32(utxo.address),
