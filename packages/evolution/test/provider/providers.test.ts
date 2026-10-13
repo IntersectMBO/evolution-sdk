@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from "vitest"
 
+import { BlockchainAppliedProvider } from "../../src/sdk/provider/BlockchainApplied.js"
 import { BlockfrostProvider } from "../../src/sdk/provider/Blockfrost.js"
 import { Koios } from "../../src/sdk/provider/Koios.js"
 import { KupmiosProvider } from "../../src/sdk/provider/Kupmios.js"
@@ -35,6 +36,8 @@ const BLOCKFROST_URL = process.env.BLOCKFROST_PREPROD_URL ?? "https://cardano-pr
 const BLOCKFROST_KEY = process.env.BLOCKFROST_PREPROD_KEY
 const MAESTRO_URL = process.env.MAESTRO_PREPROD_URL ?? "https://preprod.gomaestro-api.org/v1"
 const MAESTRO_KEY = process.env.MAESTRO_PREPROD_KEY
+const BCA_URL = process.env.BCA_PREPROD_URL ?? "https://staging.blockchain-applied.com/api_preprod/v1"
+const BCA_KEY = process.env.BCA_PREPROD_KEY
 const KUPO_URL = process.env.KUPMIOS_KUPO_URL
 const OGMIOS_URL = process.env.KUPMIOS_OGMIOS_URL
 const KUPMIOS_KUPO_KEY = process.env.KUPMIOS_KUPO_KEY
@@ -63,7 +66,9 @@ describe.skipIf(!process.env.KOIOS_PREVIEW_ENABLED)("Koios (preview)", () => {
 
 // ── Blockfrost ────────────────────────────────────────────────────────────────
 describe.skipIf(!isConfigured(BLOCKFROST_KEY, "preprodXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))("Blockfrost", () => {
-  registerConformanceTests(() => new BlockfrostProvider(BLOCKFROST_URL, BLOCKFROST_KEY), { supportsCredentialQueries: true })
+  registerConformanceTests(() => new BlockfrostProvider(BLOCKFROST_URL, BLOCKFROST_KEY), {
+    supportsCredentialQueries: true
+  })
 })
 
 // ── Maestro ───────────────────────────────────────────────────────────────────
@@ -71,10 +76,14 @@ describe.skipIf(!isConfigured(MAESTRO_KEY, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))(
   registerConformanceTests(() => new MaestroProvider(MAESTRO_URL, MAESTRO_KEY!))
 })
 
+// ── Blockchain Applied (BCA) ──────────────────────────────────────────────────
+describe.skipIf(!isConfigured(BCA_KEY, "bca_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))("BlockchainApplied", () => {
+  registerConformanceTests(() => new BlockchainAppliedProvider(BCA_URL, BCA_KEY))
+})
+
 // ── Kupmios (self-hosted or Demeter) ──────────────────────────────────────────
 describe.skipIf(
-  !isConfigured(KUPO_URL, "https://your-kupo-endpoint") ||
-    !isConfigured(OGMIOS_URL, "https://your-ogmios-endpoint")
+  !isConfigured(KUPO_URL, "https://your-kupo-endpoint") || !isConfigured(OGMIOS_URL, "https://your-ogmios-endpoint")
 )("Kupmios", () => {
   registerConformanceTests(
     () =>
