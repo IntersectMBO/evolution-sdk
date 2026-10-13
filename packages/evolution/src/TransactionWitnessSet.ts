@@ -6,6 +6,7 @@ import * as CBOR from "./CBOR.js"
 import * as PlutusData from "./Data.js"
 import * as Ed25519Signature from "./Ed25519Signature.js"
 import * as NativeScripts from "./NativeScripts.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 import * as PlutusV1 from "./PlutusV1.js"
 import * as PlutusV2 from "./PlutusV2.js"
 import * as PlutusV3 from "./PlutusV3.js"
@@ -711,8 +712,41 @@ export const arbitrary: FastCheck.Arbitrary<TransactionWitnessSet> = FastCheck.r
  * @since 2.0.0
  * @category parsing
  */
+/**
+ * Re-attach the ARRIVAL BYTES of the two witness-set fields that carry Plutus data.
+ *
+ * ⚠️ **`plutus_data` (4) and `redeemers` (5) both reframe without this.** Their decode runs
+ * through `Data.FromCDDL`, which is handed a CBOR value with no bytes behind it, so a datum
+ * carrying an empty indefinite array comes back `d87a80` where `d87a9fff` went in -- a different
+ * datum hash for key 4, and a different `script_data_hash` for key 5, which is a phase-2 failure.
+ *
+ * ⚠️ Scoped to these two fields on purpose. Recording every decoded node of every CBOR value
+ * would double the bytes retained behind a decoded UTxO set, and the rest of a witness set is
+ * keys and signatures with no framing to lose.
+ */
+const keepPlutusBytes = (witnessSet: TransactionWitnessSet, bytes: Uint8Array): TransactionWitnessSet => {
+  for (const [key, value] of CBOR.splitMapEntries(bytes)) {
+    const field = CBOR.fromCBORBytes(key)
+    if (field === 4n) {
+      const datums = witnessSet.plutusData ?? []
+      CBOR.splitArrayItems(value).forEach((arrived, i) => {
+        const datum = datums[i]
+        if (datum !== undefined && typeof datum === "object" && datum !== null) {
+          OriginalBytes.record(datum, arrived)
+        }
+      })
+    }
+    if (field === 5n && witnessSet.redeemers !== undefined) {
+      // The field's own decoder knows how to pair its entries; reuse it rather than restating the
+      // shape of a redeemer here.
+      Redeemers.keepDataBytes(witnessSet.redeemers, value)
+    }
+  }
+  return witnessSet
+}
+
 export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+  keepPlutusBytes(Schema.decodeSync(FromCBORBytes(options))(bytes), bytes)
 
 /**
  * Parse a TransactionWitnessSet from CBOR bytes and return the root format tree.
@@ -739,7 +773,7 @@ export const fromCBORBytesWithFormat = (
  * @category parsing
  */
 export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+  fromCBORBytes(Bytes.fromHex(hex), options)
 
 /**
  * Parse a TransactionWitnessSet from CBOR hex string and return the root format tree.
@@ -902,3 +936,79 @@ export const fromVKeyWitnesses = (witnesses: Array<VKeyWitness>): TransactionWit
  */
 export const fromNativeScripts = (scripts: Array<NativeScripts.NativeScript>): TransactionWitnessSet =>
   TransactionWitnessSet.make({ nativeScripts: scripts })
+
+/**
+ * Script-shaped witness fields by CDDL key, for {@link fromEncoded}. Keys 4 and 5 are not
+ * script-shaped and are handled separately there.
+ */
+const ENCODED_SCRIPT_FIELD: Record<number, readonly [string, (bytes: Uint8Array) => unknown]> = {
+  3: ["plutusV1Scripts", (b) => new PlutusV1.PlutusV1({ bytes: b })],
+  6: ["plutusV2Scripts", (b) => new PlutusV2.PlutusV2({ bytes: b })],
+  7: ["plutusV3Scripts", (b) => new PlutusV3.PlutusV3({ bytes: b })]
+}
+
+/**
+ * Assemble a witness set from parts that are already encoded.
+ *
+ * The counterpart of `TransactionBody.fromEncoded`, and needed for the same reason: a builder
+ * holds a witness set's contents as bytes, produced by whatever supplied the scripts.
+ *
+ * `fields` carries the script fields (3, 6, 7), `plutus_data` (4) and `redeemers` (5) by their
+ * CDDL key. The script fields and `plutus_data` are given as the whole encoded `#6.258` set and
+ * split into items; `redeemers` is the encoded map.
+ *
+ * ⚠️ Keys 4 and 5 are the two that are NOT script-shaped, and a version of this table that
+ * handled only the script shape made assembling the witness set of ANY Plutus transaction throw --
+ * including the sizing pass every fee estimate runs. No vector reached it because every
+ * transaction under test had been script-free.
+ *
+ * ⚠️ `plutus_data` items go through `Data.fromCBORBytes`, which records each datum's arrival
+ * bytes, so a datum re-encodes as it came. Splitting the set with `CBOR.splitArrayItems` is the
+ * other half of that: decoding the set and re-encoding its items would reframe them before the
+ * datums were ever read.
+ *
+ * @since 2.8.0
+ * @category constructors
+ */
+export const fromEncoded = (input: {
+  readonly vkeyWitnesses?: ReadonlyArray<{ readonly vkey: Uint8Array; readonly signature: Uint8Array }>
+  readonly nativeScripts?: ReadonlyArray<Uint8Array>
+  readonly bootstrapWitnesses?: ReadonlyArray<Uint8Array>
+  readonly fields?: ReadonlyArray<readonly [number, Uint8Array]>
+}): TransactionWitnessSet => {
+  const assembled: Record<string, unknown> = {
+    vkeyWitnesses: (input.vkeyWitnesses ?? []).map(
+      (w) =>
+        new VKeyWitness({
+          vkey: VKey.fromBytes(w.vkey),
+          signature: Ed25519Signature.fromBytes(w.signature)
+        })
+    ),
+    nativeScripts: (input.nativeScripts ?? []).map((b) => NativeScripts.fromCBORBytes(b)),
+    bootstrapWitnesses: (input.bootstrapWitnesses ?? []).map((b) => Bootstrap.fromCBORBytes(b))
+  }
+  for (const [key, bytes] of input.fields ?? []) {
+    if (key === 4) {
+      assembled.plutusData = CBOR.splitArrayItems(bytes).map((d) => PlutusData.fromCBORBytes(d))
+      continue
+    }
+    if (key === 5) {
+      assembled.redeemers = Redeemers.fromCBORBytesMap(bytes)
+      continue
+    }
+    const mapping = ENCODED_SCRIPT_FIELD[key]
+    if (mapping === undefined) {
+      throw new Error(`transaction witness set: key ${key} is not modelled by TransactionWitnessSet`)
+    }
+    const [field, build] = mapping
+    assembled[field] = CBOR.splitArrayItems(bytes).map((item) => build(byteStringOf(item)))
+  }
+  return new TransactionWitnessSet(assembled as ConstructorParameters<typeof TransactionWitnessSet>[0])
+}
+
+/** A script in a witness-set set arrives as its CBOR byte string, not as raw bytes. */
+const byteStringOf = (bytes: Uint8Array): Uint8Array => {
+  const node = CBOR.fromCBORBytes(bytes)
+  if (!(node instanceof Uint8Array)) throw new Error("transaction witness set: expected a CBOR byte string")
+  return node
+}

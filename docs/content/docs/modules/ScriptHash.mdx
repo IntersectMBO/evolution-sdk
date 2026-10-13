@@ -1,6 +1,7 @@
 ---
+
 title: ScriptHash.ts
-nav_order: 116
+nav_order: 120
 parent: Modules
 ---
 
@@ -15,12 +16,15 @@ parent: Modules
 - [computation](#computation)
   - [fromScript](#fromscript)
 - [encoding](#encoding)
+  - [toBech32](#tobech32)
   - [toBytes](#tobytes)
   - [toHex](#tohex)
 - [parsing](#parsing)
+  - [fromBech32](#frombech32)
   - [fromBytes](#frombytes)
   - [fromHex](#fromhex)
 - [schemas](#schemas)
+  - [FromBech32](#frombech32-1)
   - [FromBytes](#frombytes-1)
   - [FromHex](#fromhex-1)
   - [ScriptHash (class)](#scripthash-class)
@@ -70,6 +74,18 @@ Added in v2.0.0
 
 # encoding
 
+## toBech32
+
+Convert a ScriptHash to a bech32 string (script1...).
+
+**Signature**
+
+```ts
+export declare const toBech32: (a: ScriptHash, overrideOptions?: ParseOptions) => string
+```
+
+Added in v2.0.0
+
 ## toBytes
 
 Convert a ScriptHash to raw bytes.
@@ -95,6 +111,18 @@ export declare const toHex: (a: ScriptHash, overrideOptions?: ParseOptions) => s
 Added in v2.0.0
 
 # parsing
+
+## fromBech32
+
+Parse a ScriptHash from a bech32 string (script1...).
+
+**Signature**
+
+```ts
+export declare const fromBech32: (i: string, overrideOptions?: ParseOptions) => ScriptHash
+```
+
+Added in v2.0.0
 
 ## fromBytes
 
@@ -123,6 +151,23 @@ export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Scr
 Added in v2.0.0
 
 # schemas
+
+## FromBech32
+
+Schema transformer from bech32 string (script1...) to ScriptHash.
+Uses the CIP-0005 `script` prefix for script hashes.
+
+**Signature**
+
+```ts
+export declare const FromBech32: Schema.transformOrFail<
+  typeof Schema.String,
+  Schema.SchemaClass<ScriptHash, ScriptHash, never>,
+  never
+>
+```
+
+Added in v2.0.0
 
 ## FromBytes
 

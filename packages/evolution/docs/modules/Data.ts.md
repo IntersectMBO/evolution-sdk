@@ -1,6 +1,7 @@
 ---
+
 title: Data.ts
-nav_order: 50
+nav_order: 51
 parent: Modules
 ---
 
@@ -20,6 +21,10 @@ parent: Modules
   - [int](#int)
   - [list](#list)
   - [map](#map)
+- [encoding](#encoding)
+  - [spliceConstr](#spliceconstr)
+  - [spliceList](#splicelist)
+  - [spliceMap](#splicemap)
 - [equality](#equality)
   - [equals](#equals)
   - [hash](#hash)
@@ -39,11 +44,13 @@ parent: Modules
 - [model](#model)
   - [Data (type alias)](#data-type-alias)
   - [DataEncoded (type alias)](#dataencoded-type-alias)
+  - [Hex (type alias)](#hex-type-alias)
   - [List (type alias)](#list-type-alias)
   - [Map (type alias)](#map-type-alias)
 - [predicates](#predicates)
   - [isBytes](#isbytes)
   - [isConstr](#isconstr)
+  - [isData](#isdata)
   - [isInt](#isint)
   - [isList](#islist)
   - [isMap](#ismap)
@@ -53,9 +60,11 @@ parent: Modules
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
   - [DataSchema](#dataschema)
+  - [DataValue](#datavalue)
   - [FromCBORBytes](#fromcborbytes)
   - [FromCBORHex](#fromcborhex)
   - [FromCDDL](#fromcddl)
+  - [Hex](#hex)
   - [IntSchema](#intschema)
   - [ListSchema](#listschema)
   - [MapSchema](#mapschema)
@@ -105,7 +114,8 @@ Added in v2.0.0
 
 ## DEFAULT_CBOR_OPTIONS
 
-Default CBOR options for Data encoding/decoding
+Default CBOR options for Data encoding/decoding: {@link CBOR.PLUTUS_DATA_OPTIONS},
+the layout the node writes.
 
 **Signature**
 
@@ -176,6 +186,73 @@ export declare const map: (entries: Array<[key: Data, value: Data]>) => Map
 ```
 
 Added in v2.0.0
+
+# encoding
+
+## spliceConstr
+
+A `Constr` over already-encoded fields, in the three tag ranges the Plutus encoding defines.
+
+⚠️ The tag-102 wrapper `[index, fields]` is DEFINITE while the fields array inside it stays
+indefinite. `cardano-serialization-lib` 15.0.3 and `cardano-multiplatform-lib` 6.2 both write
+`d866 82 …`; no single codec option can say both, which is why the shape is written here.
+
+See {@link spliceList} for when to reach for this rather than {@link constr}.
+
+**Signature**
+
+```ts
+export declare const spliceConstr: (index: bigint, fieldItems: ReadonlyArray<Uint8Array>) => Uint8Array
+```
+
+Added in v2.8.0
+
+## spliceList
+
+Assemble `plutus_data` from children that are ALREADY encoded, splicing their bytes.
+
+⚠️ **Why this exists next to the typed constructors.** {@link fromCBORBytes} records the bytes
+every node arrived as and {@link toCBORBytes} replays them, so decoding a child and rebuilding
+around it is lossless for anything that can carry a record. One thing cannot: a `bigint` is not
+an object, so a non-minimally encoded integer (`19002a` for 42, which the ledger accepts and
+nothing here writes) has nowhere to keep its header width. A caller holding encoded children
+therefore has a choice between decoding them -- correct except for that integer -- and splicing
+them, which is correct for everything. These splice.
+
+Use the typed constructors ({@link list}, {@link constr}, {@link map}) when the children are
+values this process produced. Use these when the children came off a wire and are going back on
+one unchanged, which is every datum nested inside another datum.
+
+The framing matches what the typed encoder writes under the Plutus data options, so the two
+routes agree for any child that round-trips: non-empty lists and constructor fields are
+indefinite, the empty list is definite, the tag-102 wrapper is definite, and a Plutus map is
+definite and keeps the order it was given.
+
+**Signature**
+
+```ts
+export declare const spliceList: (items: ReadonlyArray<Uint8Array>) => Uint8Array
+```
+
+Added in v2.8.0
+
+## spliceMap
+
+A Plutus map over already-encoded keys and values.
+
+⚠️ Definite-framed, and the entries keep the order given: a Plutus map is NOT sorted. Sorting
+it is a different value as far as a script reading it by position is concerned, and a different
+hash either way.
+
+See {@link spliceList} for when to reach for this rather than {@link map}.
+
+**Signature**
+
+```ts
+export declare const spliceMap: (entries: ReadonlyArray<readonly [Uint8Array, Uint8Array]>) => Uint8Array
+```
+
+Added in v2.8.0
 
 # equality
 
@@ -326,7 +403,7 @@ Added in v2.0.0
 ## toDatumHash
 
 Compute the hash of PlutusData using blake2b-256 over its CBOR encoding.
-Defaults to CML_DATA_DEFAULT_OPTIONS (indefinite-length arrays/maps).
+Defaults to PLUTUS_DATA_OPTIONS, the node layout.
 
 **Signature**
 
@@ -428,6 +505,16 @@ export type DataEncoded =
 
 Added in v2.0.0
 
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 ## List (type alias)
 
 PlutusList type alias
@@ -477,6 +564,18 @@ export declare const isConstr: (data: unknown) => data is Constr
 ```
 
 Added in v2.0.0
+
+## isData
+
+Whether a value is a {@link Data}, checked structurally and without rebuilding it.
+
+**Signature**
+
+```ts
+export declare const isData: (input: unknown) => input is Data
+```
+
+Added in v2.8.0
 
 ## isInt
 
@@ -568,24 +667,39 @@ export declare const DataSchema: DataSchema
 
 Added in v2.0.0
 
+## DataValue
+
+A `Data` checked where it stands, with nothing rebuilt.
+
+⚠️ **Use this for a class field or any other slot that holds an already-decoded `Data`.**
+{@link DataSchema} is a transforming schema, and validating a value through it returns a
+STRUCTURAL COPY: a list comes back as a different array holding the same elements. That is
+invisible until something keys on identity, and {@link OriginalBytes} does -- so a datum decoded
+from the wire and handed to `Redeemer.spend` arrived with its bytes and reached the encoder
+without them, which reframed an empty indefinite list and moved `script_data_hash`.
+
+`Schema.declare` with a type guard performs no transformation, so the value that goes in is the
+value that comes out.
+
+**Signature**
+
+```ts
+export declare const DataValue: Schema.Schema<Data, Data, never>
+```
+
+Added in v2.8.0
+
 ## FromCBORBytes
 
 CBOR bytes transformation schema for PlutusData using CDDL.
-Transforms between CBOR bytes and Data using CDDL encoding.
+Decodes through {@link FromCDDL}. Encodes as {@link toCBORBytes} does.
 
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
   options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.transformOrFail<Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>, Schema.SchemaClass<Data, Data, never>, never>
->
+) => Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, Schema.SchemaClass<Data, Data, never>, never>
 ```
 
 Added in v2.0.0
@@ -602,14 +716,7 @@ export declare const FromCBORHex: (
   options?: CBOR.CodecOptions
 ) => Schema.transform<
   Schema.Schema<Uint8Array, string, never>,
-  Schema.transform<
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >,
-    Schema.transformOrFail<Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>, Schema.SchemaClass<Data, Data, never>, never>
-  >
+  Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, Schema.SchemaClass<Data, Data, never>, never>
 >
 ```
 
@@ -656,6 +763,24 @@ export declare const FromCDDL: Schema.transformOrFail<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A `plutus_data` item as CBOR hex.
+
+⚠️ A script consumer matches a datum by its hash, so these bytes are the value: a re-encoding
+that differs by one byte hashes differently.
+
+Branded so that CBOR hex of one kind cannot stand in for another once it leaves the typed
+domain. Non-empty whole bytes is all the shape there is to check.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "PlutusDataHex">
+```
+
+Added in v2.4.0
 
 ## IntSchema
 
@@ -725,7 +850,7 @@ Convert CBORValue to PlutusData
 **Signature**
 
 ```ts
-export declare const cborValueToPlutusData: (cborValue: CBOR.CBOR) => Data
+export declare const cborValueToPlutusData: (cborValue: CBOR.CBOR, fmt?: CBOR.CBORFormat) => Data
 ```
 
 Added in v2.0.0
@@ -761,26 +886,35 @@ Convert PlutusData to CBORValue
 **Signature**
 
 ```ts
-export declare const plutusDataToCBORValue: (data: Data) => CBOR.CBOR
+export declare const plutusDataToCBORValue: (data: Data, options?: CBOR.CodecOptions) => CBOR.CBOR
 ```
 
 Added in v2.0.0
 
 ## toCBORBytes
 
-Encode PlutusData to CBOR bytes
+Encode PlutusData to CBOR bytes.
+
+`options` choose definite or indefinite lists and maps, map key order and
+integer widths. These rules hold under every option:
+
+- A byte string over 64 bytes is written indefinite, in 64-byte chunks.
+- An integer from -2^64 to 2^64 - 1 is a CBOR integer. Outside that range it
+  is a bignum (tag 2 or 3) whose bytes follow the byte string rule.
+- A constructor index above 127 is tag 102 over a definite pair
+  `[index, fields]`; only the fields follow `options`.
 
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: Data, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (data: Data, options?: CBOR.CodecOptions) => Uint8Array
 ```
 
 Added in v2.0.0
 
 ## toCBORHex
 
-Encode PlutusData to CBOR hex string
+Encode PlutusData to CBOR hex string, as {@link toCBORBytes} writes it.
 
 **Signature**
 

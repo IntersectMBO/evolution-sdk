@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/operations/Pool.ts
-nav_order: 128
+nav_order: 132
 parent: Modules
 ---
 
@@ -33,7 +34,7 @@ Used for both new pool registration and updating existing pool parameters.
 ```ts
 export declare const createRegisterPoolProgram: (
   params: RegisterPoolParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0

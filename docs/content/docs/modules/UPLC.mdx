@@ -1,6 +1,7 @@
 ---
+
 title: UPLC.ts
-nav_order: 183
+nav_order: 188
 parent: Modules
 ---
 
@@ -357,9 +358,10 @@ Added in v2.0.0
 Create a UPLC Constant term from PlutusData.
 The data is CBOR-encoded and stored as a constant of type Data.
 
-Uses Aiken-compatible encoding (indefinite-length arrays/maps) by default,
-which matches the on-chain format. An optional `options` parameter allows
-customizing the CBOR encoding for testing or compatibility purposes.
+Encodes with PLUTUS_DATA_OPTIONS by default: the node layout, with
+indefinite-length lists and constructor fields and definite-length maps.
+This matches Aiken `cbor.serialise()`. An optional `options` parameter
+allows customizing the CBOR encoding for testing or compatibility purposes.
 
 **Signature**
 
@@ -525,9 +527,7 @@ UPLC data type (recursive for pair/list).
 
 ```ts
 export type DataType =
-  | PrimitiveDataType
-  | { readonly pair: readonly [DataType, DataType] }
-  | { readonly list: DataType }
+  PrimitiveDataType | { readonly pair: readonly [DataType, DataType] } | { readonly list: DataType }
 ```
 
 Added in v2.0.0
@@ -771,8 +771,11 @@ The function takes a CBOR-encoded script and applies each parameter by wrapping
 the script body in a series of Application nodes, where each parameter is
 converted to a UPLC Constant of type Data.
 
-Uses Aiken-compatible encoding (indefinite-length arrays/maps) by default.
-Pass custom CBOR options for compatibility with other encoding formats.
+Encodes parameters with PLUTUS_DATA_OPTIONS by default: the node layout,
+with indefinite-length lists and constructor fields and definite-length
+maps. This matches `aiken blueprint apply`, so the applied script hash
+agrees. Pass custom CBOR options for compatibility with other encoding
+formats.
 
 **Signature**
 

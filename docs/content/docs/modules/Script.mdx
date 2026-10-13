@@ -1,6 +1,7 @@
 ---
+
 title: Script.ts
-nav_order: 114
+nav_order: 118
 parent: Modules
 ---
 
@@ -13,9 +14,11 @@ parent: Modules
 - [arbitrary](#arbitrary)
   - [arbitrary](#arbitrary-1)
 - [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
   - [Script](#script)
 - [schemas](#schemas)
   - [FromCDDL](#fromcddl)
+  - [Hex](#hex)
   - [ScriptCDDL](#scriptcddl)
 - [utils](#utils)
   - [FromCBORBytes](#fromcborbytes)
@@ -46,6 +49,16 @@ export declare const arbitrary: FastCheck.Arbitrary<
 Added in v2.0.0
 
 # model
+
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
 
 ## Script
 
@@ -102,6 +115,23 @@ export declare const FromCDDL: Schema.transformOrFail<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A script's bytes as hex, parameters already applied.
+
+⚠️ The script ITSELF, not its hash. A script hash is 28 bytes; this is the whole program.
+
+Branded so that CBOR hex of one kind cannot stand in for another once it leaves the typed
+domain. Non-empty whole bytes is all the shape there is to check.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "ScriptHex">
+```
+
+Added in v2.4.0
 
 ## ScriptCDDL
 

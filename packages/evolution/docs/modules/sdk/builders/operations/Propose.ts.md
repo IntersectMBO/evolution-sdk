@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/operations/Propose.ts
-nav_order: 129
+nav_order: 133
 parent: Modules
 ---
 
@@ -31,7 +32,8 @@ Implementation:
 1. Fetches govActionDeposit from protocol parameters (like registerStake)
 2. Constructs ProposalProcedure with the fetched deposit
 3. Merges with existing proposal procedures if any
-4. No redeemers needed - proposing is not script-controlled
+4. Tracks the guardrail redeemer (propose purpose) if provided, keyed by the
+   proposal's position in proposalProcedures
 
 Note: The deposit is deducted from transaction inputs during balancing.
 
@@ -40,7 +42,7 @@ Note: The deposit is deducted from transaction inputs during balancing.
 ```ts
 export declare const createProposeProgram: (
   params: ProposeParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0

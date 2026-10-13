@@ -1,4 +1,5 @@
 ---
+
 title: Bip32PrivateKey.ts
 nav_order: 12
 parent: Modules
@@ -19,6 +20,9 @@ parent: Modules
 - [cml-compatibility](#cml-compatibility)
   - [from128XPRV](#from128xprv)
   - [to128XPRV](#to128xprv)
+- [constants](#constants)
+  - [PURPOSE_CIP1852](#purpose_cip1852)
+  - [PURPOSE_CIP1854](#purpose_cip1854)
 - [conversion](#conversion)
   - [toPrivateKey](#toprivatekey)
 - [cryptography](#cryptography)
@@ -28,9 +32,10 @@ parent: Modules
   - [toHex](#tohex)
 - [errors](#errors)
   - [Bip32PrivateKeyError (class)](#bip32privatekeyerror-class)
+- [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [schemas](#schemas)
   - [Bip32PrivateKey (class)](#bip32privatekey-class)
     - [toJSON (method)](#tojson-method)
@@ -39,11 +44,13 @@ parent: Modules
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [Hex](#hex)
 - [utils](#utils)
   - [CardanoPath](#cardanopath)
   - [Either (namespace)](#either-namespace)
   - [arbitrary](#arbitrary)
+  - [fromHex](#fromhex-1)
 
 ---
 
@@ -96,7 +103,7 @@ Create a Bip32PrivateKey from BIP39 entropy with PBKDF2 key stretching.
 **Signature**
 
 ```ts
-export declare const fromBip39Entropy: (entropy: Uint8Array, password?: string) => Bip32PrivateKey
+export declare const fromBip39Entropy: (entropy: Uint8Array, password?: Uint8Array | string) => Bip32PrivateKey
 ```
 
 Added in v2.0.0
@@ -123,6 +130,32 @@ Serialize to CML-compatible 128-byte format: [scalar(32) | iv(32) | publicKey(32
 
 ```ts
 export declare const to128XPRV: (bip32PrivateKey: Bip32PrivateKey) => Uint8Array
+```
+
+Added in v2.0.0
+
+# constants
+
+## PURPOSE_CIP1852
+
+CIP-1852, the ordinary wallet purpose.
+
+**Signature**
+
+```ts
+export declare const PURPOSE_CIP1852: 1852
+```
+
+Added in v2.0.0
+
+## PURPOSE_CIP1854
+
+CIP-1854, the multi-signature purpose: same shape, different keys, never interchangeable.
+
+**Signature**
+
+```ts
+export declare const PURPOSE_CIP1854: 1854
 ```
 
 Added in v2.0.0
@@ -176,7 +209,7 @@ Convert a Bip32PrivateKey to hex string.
 **Signature**
 
 ```ts
-export declare const toHex: (a: Bip32PrivateKey, overrideOptions?: ParseOptions) => string
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
 ```
 
 Added in v2.0.0
@@ -195,6 +228,18 @@ export declare class Bip32PrivateKeyError
 
 Added in v2.0.0
 
+# model
+
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 # parsing
 
 ## fromBytes
@@ -205,18 +250,6 @@ Parse a Bip32PrivateKey from raw bytes.
 
 ```ts
 export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) => Bip32PrivateKey
-```
-
-Added in v2.0.0
-
-## fromHex
-
-Parse a Bip32PrivateKey from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Bip32PrivateKey
 ```
 
 Added in v2.0.0
@@ -310,21 +343,39 @@ export declare const FromHex: Schema.transform<
 
 Added in v2.0.0
 
+## Hex
+
+A BIP32-Ed25519 extended PRIVATE key as hex (96 bytes: scalar, IV and chain code).
+
+Validated as well as branded: a 96-byte lowercase or uppercase hex string. {@link toHex}
+returns this type, so the kind of a hex string survives leaving the typed domain — upstream of
+this, every hash and key was an unmarked `string` once encoded.
+
+⚠️ See {@link Bip32PublicKey.Hex} for why these two carry different brands.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "Bip32PrivateKeyHex">
+```
+
+Added in v2.4.0
+
 # utils
 
 ## CardanoPath
-
-Utility functions to build Cardano BIP44 derivation indices.
-Standard path: m/1852'/1815'/account'/role/index
 
 **Signature**
 
 ```ts
 export declare const CardanoPath: {
   harden: (n: number) => number
-  indices: (account?: number, role?: 0 | 2, index?: number) => Array<number>
+  indices: (account?: number, role?: number, index?: number, purpose?: number) => Array<number>
   paymentIndices: (account?: number, index?: number) => Array<number>
   stakeIndices: (account?: number, index?: number) => Array<number>
+  drepIndices: (account?: number, index?: number) => Array<number>
+  multisigPaymentIndices: (account?: number, index?: number) => Array<number>
+  multisigStakeIndices: (account?: number, index?: number) => Array<number>
 }
 ```
 
@@ -336,4 +387,12 @@ export declare const CardanoPath: {
 
 ```ts
 export declare const arbitrary: FastCheck.Arbitrary<Bip32PrivateKey>
+```
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Bip32PrivateKey
 ```

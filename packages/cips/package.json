@@ -1,0 +1,88 @@
+{
+  "name": "@evolution-sdk/cips",
+  "version": "0.1.0",
+  "description": "Small Cardano CIP companions: wallet checksums, asset fingerprints, asset-name labels, datum metadata, royalties, token policy registration, URIs, governance metadata and identifiers, and key serialisation",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": [],
+  "tags": [
+    "typescript",
+    "cardano",
+    "blockchain",
+    "cip"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts",
+    "./internal/*": null,
+    "./*/index": null
+  },
+  "files": [
+    "src/**/*.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json && babel dist --plugins annotate-pure-calls --out-dir dist --source-maps",
+    "dev": "tsc -b tsconfig.build.json --watch",
+    "type-check": "tsc --noEmit -p tsconfig.src.json && tsc -b tsconfig.test.json",
+    "lint": "eslint \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,mjs}\"",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.4",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@evolution-sdk/evolution": "workspace:*",
+    "effect": "^3.21.1"
+  },
+  "keywords": [
+    "cardano",
+    "cip-4",
+    "cip-13",
+    "cip-14",
+    "cip-16",
+    "cip-27",
+    "cip-67",
+    "cip-68",
+    "cip-88",
+    "cip-100",
+    "cip-102",
+    "cip-105",
+    "cip-129",
+    "cip-1855",
+    "typescript",
+    "sdk"
+  ],
+  "homepage": "https://github.com/IntersectMBO/evolution-sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IntersectMBO/evolution-sdk.git",
+    "directory": "packages/cips"
+  },
+  "bugs": {
+    "url": "https://github.com/IntersectMBO/evolution-sdk/issues"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./dist/index.js",
+      "./*": "./dist/*.js",
+      "./internal/*": null,
+      "./*/index": null
+    }
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0"
+  }
+}

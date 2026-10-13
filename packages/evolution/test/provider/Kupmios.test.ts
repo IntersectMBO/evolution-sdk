@@ -11,8 +11,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as CoreAddress from "../../src/Address.js"
 import * as CoreAssets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as PlutusData from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
 import * as ScriptHash from "../../src/ScriptHash.js"
@@ -139,6 +141,23 @@ describe("Kupmios read paths", () => {
     expect(utxo!.assets.lovelace).toBe(2000000n)
     expect(CoreAssets.getByUnit(utxo!.assets, UNIT)).toBe(QUANTITY)
     expect(utxo!.datumOption?._tag).toBe("InlineDatum")
+  })
+
+  /**
+   * ⚠️ The `_tag` assertion above cannot see this: `OriginalBytes` is a side channel, not a
+   * field. A datum re-encoded from its decoded tree reframes an empty Plutus array and hashes
+   * differently, and a script consumer matches a datum BY its hash -- so cip113/cip139 report
+   * `datum_hex` only from this channel, absent rather than re-derived. A backend that drops the
+   * bytes turns that field into "unavailable" for every datum it serves.
+   */
+  it("keeps the inline datum's ORIGINAL bytes", async () => {
+    stubKupmios({ kupo: kupo() })
+
+    const [utxo] = await Effect.runPromise(KupmiosEffects.getUtxosEffect(KUPO_URL)(CoreAddress.fromBech32(ADDRESS)))
+
+    const raw = OriginalBytes.get(utxo!.datumOption as object)
+    expect(raw).toBeDefined()
+    expect(Bytes.toHex(raw!)).toBe(DATUM)
   })
 
   it("getUtxos by credential", async () => {

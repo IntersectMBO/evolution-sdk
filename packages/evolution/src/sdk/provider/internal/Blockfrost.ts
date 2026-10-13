@@ -18,6 +18,19 @@ import * as HttpUtils from "./HttpUtils.js"
 // ============================================================================
 
 /**
+ * Blockfrost `/blocks/latest`. `slot` and `height` are nullable in the schema because the
+ * Byron genesis boundary block carries neither; the chain tip always does, so a null there
+ * is a malformed response rather than a tip with an unknown slot.
+ */
+export const BlockfrostLatestBlock = Schema.Struct({
+  hash: Schema.String,
+  slot: Schema.NullOr(Schema.NumberFromString),
+  epoch: Schema.NullOr(Schema.NumberFromString),
+  height: Schema.NullOr(Schema.NumberFromString),
+  time: Schema.NumberFromString
+})
+
+/**
  * Blockfrost protocol parameters response schema
  */
 export const BlockfrostProtocolParameters = Schema.Struct({
@@ -296,12 +309,15 @@ export const transformAmounts = (amounts: ReadonlyArray<BlockfrostAmount>): Core
  * Transform Blockfrost delegation to delegation info
  */
 export const transformDelegation = (blockfrostDelegation: BlockfrostDelegation): Provider.Delegation => {
+  // `active` is Blockfrost's registration flag. It was already being parsed and dropped, which
+  // is what made a registered-but-undelegated account indistinguishable from an unknown one.
+  const registered = blockfrostDelegation.active
   if (!blockfrostDelegation.pool_id) {
-    return { poolId: null, rewards: blockfrostDelegation.withdrawable_amount }
+    return { poolId: null, rewards: blockfrostDelegation.withdrawable_amount, registered }
   }
 
   const poolId = Schema.decodeSync(PoolKeyHash.FromBech32)(blockfrostDelegation.pool_id)
-  return { poolId, rewards: blockfrostDelegation.withdrawable_amount }
+  return { poolId, rewards: blockfrostDelegation.withdrawable_amount, registered }
 }
 
 /**

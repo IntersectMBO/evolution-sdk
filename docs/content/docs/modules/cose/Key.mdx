@@ -1,6 +1,7 @@
 ---
+
 title: cose/Key.ts
-nav_order: 42
+nav_order: 43
 parent: Modules
 ---
 
@@ -33,6 +34,8 @@ Added in v2.0.0
     - [build (method)](#build-method)
 - [Schemas](#schemas)
   - [COSEKeyFromCBORBytes](#cosekeyfromcborbytes)
+- [transformation](#transformation)
+  - [publicKey](#publickey)
 
 ---
 
@@ -214,3 +217,24 @@ export declare const COSEKeyFromCBORBytes: (
 ```
 
 Added in v2.0.0
+
+# transformation
+
+## publicKey
+
+The Ed25519 public key a COSE_Key carries, or `undefined`.
+
+⚠️ `COSEKey` keeps the key in an UNTYPED header map at label -2 (RFC 8152's `x` for an OKP
+key), and {@link EdDSA25519Key} only builds in the other direction — so without this every
+consumer that reads a key hand-walks that map. Returns `undefined` rather than throwing for a
+key that carries no such header or carries something that is not a 32-byte string: these
+arrive from a counterparty, and a verifier an attacker can crash is a verifier an attacker
+controls.
+
+**Signature**
+
+```ts
+export declare const publicKey: (key: COSEKey) => VKey.VKey | undefined
+```
+
+Added in v2.3.0

@@ -1,6 +1,7 @@
 ---
+
 title: PointerAddress.ts
-nav_order: 97
+nav_order: 101
 parent: Modules
 ---
 
@@ -40,7 +41,7 @@ parent: Modules
 
 Smart constructor for creating PointerAddress instances
 
-/\*\*
+/**
 FastCheck arbitrary for generating random PointerAddress instances
 
 **Signature**

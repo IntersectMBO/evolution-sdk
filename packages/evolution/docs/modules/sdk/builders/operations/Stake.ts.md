@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/operations/Stake.ts
-nav_order: 132
+nav_order: 136
 parent: Modules
 ---
 
@@ -124,7 +125,7 @@ For script-controlled credentials, tracks redeemer for evaluation.
 ```ts
 export declare const createDeregisterStakeProgram: (
   params: DeregisterStakeParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0
@@ -147,7 +148,7 @@ For script-controlled credentials, tracks redeemer for evaluation.
 ```ts
 export declare const createRegisterAndDelegateToProgram: (
   params: RegisterAndDelegateToParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0
@@ -178,7 +179,7 @@ Requires keyDeposit from protocol parameters.
 ```ts
 export declare const createRegisterStakeProgram: (
   params: RegisterStakeParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0

@@ -2,6 +2,7 @@ import { Data } from "effect"
 
 import * as CoreAssets from "../../Assets.js"
 import type * as UTxO from "../../UTxO.js"
+import * as Cip2 from "./internal/Cip2.js"
 
 // ============================================================================
 // Error Types
@@ -28,11 +29,83 @@ export type CoinSelectionFunction = (
 ) => CoinSelectionResult
 
 // Predefined algorithm names (each maps to a concrete CoinSelectionFunction)
-export type CoinSelectionAlgorithm = "largest-first" | "random-improve" | "optimal"
+export type CoinSelectionAlgorithm = "largest-first" | "random-improve"
 
-// Factory functions for built-in algorithms
-export declare const randomImproveSelection: CoinSelectionFunction
-export declare const optimalSelection: CoinSelectionFunction
+/**
+ * Convert a UTxO's assets into the flat form CIP-2 selection reasons about.
+ */
+const toSelValue = (assets: CoreAssets.Assets): Cip2.SelValue => {
+  const flat = new Map<string, bigint>()
+  for (const unit of CoreAssets.getUnits(assets)) {
+    if (unit === "lovelace") continue
+    flat.set(unit, CoreAssets.getByUnit(assets, unit))
+  }
+  return { coin: CoreAssets.lovelaceOf(assets), assets: flat }
+}
+
+const runCip2 = (
+  availableUtxos: ReadonlyArray<UTxO.UTxO>,
+  requiredAssets: CoreAssets.Assets,
+  deterministic: boolean,
+  opts: { readonly seed?: number; readonly rng?: Cip2.Rng } = {}
+): CoinSelectionResult => {
+  const target = toSelValue(requiredAssets)
+  const multiAsset = target.assets.size > 0
+  const strategy: Cip2.Strategy = deterministic
+    ? multiAsset
+      ? "largest-first-multiasset"
+      : "largest-first"
+    : multiAsset
+      ? "random-improve-multiasset"
+      : "random-improve"
+  try {
+    const { selected } = Cip2.selectCoins(
+      availableUtxos.map((u) => ({ id: u, value: toSelValue(u.assets) })),
+      target,
+      strategy,
+      opts
+    )
+    return { selectedUtxos: selected.map((s) => s.id) }
+  } catch (cause) {
+    // Reported as this module's error so a caller handles one type, with the CIP-2 message kept.
+    throw new CoinSelectionError({
+      message: cause instanceof Error ? cause.message : String(cause),
+      cause
+    })
+  }
+}
+
+/**
+ * Random-improve coin selection (CIP-2), asset-aware.
+ *
+ * Phase 1 selects at random until the target is covered; phase 2 swaps a chosen input for a
+ * remaining one when that moves the per-input contribution closer to twice the target without
+ * exceeding three times it. The point is that an observer cannot predict which UTxOs a wallet
+ * will combine, so the default randomness is `crypto.getRandomValues` and there is no silent
+ * fallback to a predictable PRNG.
+ *
+ * Use {@link randomImproveSelectionWith} to supply a seed or your own source.
+ *
+ * @since 2.0.0
+ * @category coin-selection
+ */
+export const randomImproveSelection: CoinSelectionFunction = (availableUtxos, requiredAssets) =>
+  runCip2(availableUtxos, requiredAssets, false)
+
+/**
+ * {@link randomImproveSelection} with an explicit randomness source.
+ *
+ * ⚠️ `seed` is for tests and examples only: a fixed seed makes selection identical for every
+ * wallet holding the same UTxO set, which is the opposite of the property random-improve exists
+ * to provide.
+ *
+ * @since 2.0.0
+ * @category coin-selection
+ */
+export const randomImproveSelectionWith =
+  (opts: { readonly seed?: number; readonly rng?: Cip2.Rng }): CoinSelectionFunction =>
+  (availableUtxos, requiredAssets) =>
+    runCip2(availableUtxos, requiredAssets, false, opts)
 
 // ============================================================================
 // Largest-First Coin Selection Implementation

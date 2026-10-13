@@ -3,6 +3,8 @@ import { Effect } from "effect"
 
 import * as CoreAddress from "../src/Address.js"
 import * as CoreAssets from "../src/Assets.js"
+import * as Fees from "../src/Fees.js"
+import * as NonnegativeInterval from "../src/NonnegativeInterval.js"
 import * as PlutusV3 from "../src/PlutusV3.js"
 import * as CoreScript from "../src/Script.js"
 import {
@@ -438,6 +440,49 @@ describe("TxBuilder Fee Calculation", () => {
   // ---------------------------------------------------------------------------
   // tierRefScriptFee — direct port of cardano-ledger's tierRefScriptFee
   // ---------------------------------------------------------------------------
+  describe("scriptExecutionFee", () => {
+    // The Conway prices, exactly: neither is representable in binary floating point.
+    const priceMem = NonnegativeInterval.fromDecimal(0.0577)
+    const priceStep = NonnegativeInterval.fromDecimal(0.0000721)
+
+    it("combines the two prices BEFORE the single ceiling", () => {
+      // 0.0577 × 1,500,000 + 0.0000721 × 300,000,000 = 86,550 + 21,630 = 108,180 exactly.
+      expect(Fees.scriptExecutionFee(priceMem, priceStep, 1_500_000n, 300_000_000n)).toBe(108_180n)
+    })
+
+    it("rounds the combined total up once, not each term", () => {
+      // 0.0577 × 1 + 0.0000721 × 1 = 0.0577721 → 1. Ceiling each term separately gives 2.
+      expect(Fees.scriptExecutionFee(priceMem, priceStep, 1n, 1n)).toBe(1n)
+    })
+
+    it("charges a transaction's TOTAL units, not each redeemer separately", () => {
+      // ⚠️ The shape that was wrong before. Three redeemers, ceiling applied per term per
+      // redeemer, came out four lovelace above the ledger's figure for the same transaction —
+      // the ledger charges `ceiling(priceMem × totalMem + priceStep × totalSteps)` over the
+      // summed execution units.
+      const redeemers = [
+        { mem: 1_400_001n, steps: 300_000_001n },
+        { mem: 500_003n, steps: 120_000_007n },
+        { mem: 7_777n, steps: 9_999_991n }
+      ]
+      const totalMem = redeemers.reduce((sum, r) => sum + r.mem, 0n)
+      const totalSteps = redeemers.reduce((sum, r) => sum + r.steps, 0n)
+
+      const overTheTotal = Fees.scriptExecutionFee(priceMem, priceStep, totalMem, totalSteps)
+      const perRedeemerPerTerm = redeemers.reduce(
+        (sum, r) => sum + BigInt(Math.ceil(0.0577 * Number(r.mem))) + BigInt(Math.ceil(0.0000721 * Number(r.steps))),
+        0n
+      )
+
+      expect(overTheTotal).toBe(141_082n)
+      expect(perRedeemerPerTerm - overTheTotal).toBe(4n)
+    })
+
+    it("charges nothing for a transaction that runs no scripts", () => {
+      expect(Fees.scriptExecutionFee(priceMem, priceStep, 0n, 0n)).toBe(0n)
+    })
+  })
+
   describe("tierRefScriptFee", () => {
     const MULTIPLIER = 1.2
     const STRIDE = 25_600
@@ -469,6 +514,59 @@ describe("TxBuilder Fee Calculation", () => {
       // tier2: 25600 × 52.8 = 1,351,680
       // floor(2,478,080) = 2,478,080
       expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 51_200)).toBe(2_478_080n)
+    })
+
+    it("accumulates the tiers EXACTLY, where a double accumulation lands a lovelace low", () => {
+      // ⚠️ The reason this is rational arithmetic and not `number` arithmetic. From the third
+      // tier on the per-byte price stops being an integer (44 × 1.2 × 1.2 = 63.36), and a
+      // double accumulation drifts off the exact value. At the cost-per-byte this module
+      // defaults to when the protocol parameter is absent — 44 — it came out ONE LOVELACE
+      // BELOW the exact figure at 51 of the 204,800 permitted sizes. Below a fee minimum is a
+      // rejected transaction, not a rounding curiosity.
+      //
+      // Reproduced 2026-10-09: exact 6,057,920 vs 6,057,919 from the double accumulation.
+      expect(tierRefScriptFee(1.2, STRIDE, 44, 102_525)).toBe(6_057_920n)
+      // Two more of the 51, at other cost-per-byte values.
+      expect(tierRefScriptFee(1.2, STRIDE, 44.123, 66_950)).toBe(3_485_717n)
+      expect(tierRefScriptFee(1.2, STRIDE, 0.0577, 60_700)).toBe(4_039n)
+    })
+
+    it("reads the multiplier as the decimal it was given, not as the double it became", () => {
+      // 1.2 as a double is 1.19999999999999995559…, and the ledger's multiplier is six fifths.
+      // Over eight tiers the difference compounds, so the price is built from 6/5.
+      expect(tierRefScriptFee(1.2, STRIDE, 1, 25_600 * 2)).toBe(tierRefScriptFee("1.2" as never, STRIDE, 1, 25_600 * 2))
+      // tier1: 25600 × 1 = 25,600; tier2: 25600 × 6/5 = 30,720.
+      expect(tierRefScriptFee(1.2, STRIDE, 1, 25_600 * 2)).toBe(56_320n)
+    })
+
+    it("charges nothing for no reference scripts, rather than a base-rate minimum", () => {
+      expect(tierRefScriptFee(MULTIPLIER, STRIDE, BASE, 0)).toBe(0n)
+    })
+
+    it("keeps a fractional cost-per-byte exact", () => {
+      // A third of a lovelace per byte over 300 bytes is exactly 100 — not a float's 99.999…
+      expect(
+        Fees.refScriptFee(300n, new NonnegativeInterval.NonnegativeInterval({ numerator: 1n, denominator: 3n }))
+      ).toBe(100n)
+    })
+
+    it("is monotonic across a tier boundary", () => {
+      // A fee that dips as the size grows is the signature of a tier applied to the wrong chunk.
+      const rate = NonnegativeInterval.fromDecimal(15)
+      let previous = -1n
+      for (const size of [25_598n, 25_599n, 25_600n, 25_601n, 25_602n]) {
+        const fee = Fees.refScriptFee(size, rate)
+        expect(fee).toBeGreaterThan(previous)
+        previous = fee
+      }
+    })
+
+    it("refuses a size the ledger forbids rather than pricing it", () => {
+      // maxRefScriptSizePerTx is 200 KiB in Conway. Above it there is no valid transaction to
+      // charge for, so reporting a number would be answering a question that cannot arise.
+      const rate = NonnegativeInterval.fromDecimal(15)
+      expect(() => Fees.refScriptFee(Fees.MAX_REF_SCRIPT_SIZE, rate)).not.toThrow()
+      expect(() => Fees.refScriptFee(Fees.MAX_REF_SCRIPT_SIZE + 1n, rate)).toThrow(/Conway maximum/)
     })
 
     it("should handle four tiers with partial last", () => {

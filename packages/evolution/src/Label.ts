@@ -85,6 +85,13 @@ export const fromLabel = (label: string): number | undefined => {
     return undefined
   }
   const numHex = label.slice(1, 5)
+  // The brackets being zero does not make the middle hex, and `checksum` decodes it. Without
+  // this, any `0????000` whose middle is not hex THROWS out of a function documented to return
+  // `undefined` for an invalid label -- and the input here is an asset name read off the chain,
+  // which is exactly the untrusted thing this is asked to classify.
+  if (!/^[0-9a-fA-F]{4}$/.test(numHex)) {
+    return undefined
+  }
   const num = parseInt(numHex, 16)
   const check = label.slice(5, 7)
   return check === checksum(numHex) ? num : undefined

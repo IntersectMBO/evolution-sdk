@@ -1,6 +1,7 @@
 ---
+
 title: NonnegativeInterval.ts
-nav_order: 83
+nav_order: 86
 parent: Modules
 ---
 
@@ -10,6 +11,8 @@ parent: Modules
 
 <h2 class="text-delta">Table of contents</h2>
 
+- [constructors](#constructors)
+  - [fromDecimal](#fromdecimal)
 - [model](#model)
   - [NonnegativeInterval (class)](#nonnegativeinterval-class)
     - [toJSON (method)](#tojson-method)
@@ -23,8 +26,45 @@ parent: Modules
   - [FromCBORHex](#fromcborhex)
   - [FromCDDL](#fromcddl)
   - [arbitrary](#arbitrary)
+  - [ceilDiv](#ceildiv)
 
 ---
+
+# constructors
+
+## fromDecimal
+
+An exact rational from a decimal, with no floating-point step in between.
+
+Protocol parameters that are rationals in the ledger arrive as decimals over JSON:
+`priceMem` is `0.0577`, `treasuryCut` is `0.2`. ⚠️ **None of those is representable in
+binary floating point**, so arithmetic that goes through a `number` is arithmetic on a
+value the chain never specified — and a fee rounded from it can land below the minimum
+the node computed from the exact rational, which is a rejected transaction rather than a
+rounding curiosity.
+
+A `number` is read through its shortest round-tripping decimal (`String(0.0577)` is
+`"0.0577"`), which recovers the decimal that was written rather than the binary value it
+became: `0.0577` yields `577/10000`, not the dyadic expansion of the nearest double. Pass
+a string when the source is text, which skips the double entirely.
+
+**Signature**
+
+```ts
+export declare const fromDecimal: (value: number | string) => NonnegativeInterval
+```
+
+**Example**
+
+```typescript
+import * as NonnegativeInterval from "@evolution-sdk/evolution/NonnegativeInterval"
+
+NonnegativeInterval.fromDecimal(0.0577) // 577/10000
+NonnegativeInterval.fromDecimal("1.2") // 6/5
+NonnegativeInterval.fromDecimal(15) // 15/1
+```
+
+Added in v2.5.0
 
 # model
 
@@ -190,3 +230,15 @@ export declare const FromCDDL: Schema.transformOrFail<
 ```ts
 export declare const arbitrary: FastCheck.Arbitrary<NonnegativeInterval>
 ```
+
+## ceilDiv
+
+Ceiling division for non-negative bigints — `⌈num / den⌉` with no float in the middle.
+
+**Signature**
+
+```ts
+export declare const ceilDiv: (numerator: bigint, denominator: bigint) => bigint
+```
+
+Added in v2.5.0

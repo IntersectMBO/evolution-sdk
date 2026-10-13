@@ -1,6 +1,7 @@
 ---
+
 title: TxOut.ts
-nav_order: 179
+nav_order: 184
 parent: Modules
 ---
 
@@ -33,6 +34,7 @@ parent: Modules
   - [FromBabbageTransactionOutputCDDL](#frombabbagetransactionoutputcddl)
   - [FromCDDL](#fromcddl)
   - [FromShelleyTransactionOutputCDDL](#fromshelleytransactionoutputcddl)
+  - [makeFromCDDL](#makefromcddl)
 - [transformer](#transformer)
   - [FromCBORBytes](#fromcborbytes-1)
   - [FromCBORHex](#fromcborhex-1)
@@ -86,7 +88,7 @@ Convert TransactionOutput to CBOR bytes.
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: TransactionOutput, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (data: TransactionOutput, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
@@ -98,7 +100,7 @@ Convert TransactionOutput to CBOR hex.
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: TransactionOutput, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (data: TransactionOutput, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
@@ -259,6 +261,8 @@ Encoding logic:
 
 Decoding: Accepts both formats
 
+A new inline datum is written with `Data.DEFAULT_CBOR_OPTIONS`.
+
 **Signature**
 
 ```ts
@@ -312,17 +316,53 @@ export declare const FromShelleyTransactionOutputCDDL: Schema.transformOrFail<
 
 Added in v2.0.0
 
+## makeFromCDDL
+
+CDDL transformation schema for transaction outputs, as in {@link FromCDDL},
+that writes a new inline datum with the `plutusData` options.
+
+**Signature**
+
+```ts
+export declare const makeFromCDDL: (
+  plutusData: CBOR.CodecOptions
+) => Schema.transformOrFail<
+  Schema.Union<
+    [
+      Schema.Tuple<
+        [
+          typeof Schema.Uint8ArrayFromSelf,
+          Schema.SchemaClass<
+            bigint | readonly [bigint, ReadonlyMap<any, ReadonlyMap<any, bigint>>],
+            bigint | readonly [bigint, ReadonlyMap<any, ReadonlyMap<any, bigint>>],
+            never
+          >,
+          Schema.Element<typeof Schema.Uint8ArrayFromSelf, "?">
+        ]
+      >,
+      Schema.MapFromSelf<typeof Schema.BigIntFromSelf, Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>>
+    ]
+  >,
+  Schema.SchemaClass<TransactionOutput, TransactionOutput, never>,
+  never
+>
+```
+
+Added in v2.0.0
+
 # transformer
 
 ## FromCBORBytes
 
-CBOR bytes transformation schema for TransactionOutput.
+CBOR bytes transformation schema for TransactionOutput. A new inline datum
+is written with the `plutusData` options, the rest with the `ledger`
+options. Plain options are read as `CBOR.toTxCodecOptions` reads them.
 
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.transformOrFail<
     typeof Schema.Uint8ArrayFromSelf,
@@ -356,13 +396,14 @@ Added in v2.0.0
 
 ## FromCBORHex
 
-CBOR hex transformation schema for TransactionOutput.
+CBOR hex transformation schema for TransactionOutput, as in
+{@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
 export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.Schema<Uint8Array, string, never>,
   Schema.transform<

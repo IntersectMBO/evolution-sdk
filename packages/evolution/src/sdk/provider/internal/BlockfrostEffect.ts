@@ -35,7 +35,7 @@ import * as HttpUtils from "./HttpUtils.js"
 /**
  * Apply rate limiting to an Effect by delaying execution
  */
-const withRateLimit = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+export const withRateLimit = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
   Effect.delay(effect, "100 millis")
 
 // ============================================================================
@@ -45,7 +45,7 @@ const withRateLimit = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A
 /**
  * Create Blockfrost API headers with project ID
  */
-const createHeaders = (projectId?: string) => ({
+export const createHeaders = (projectId?: string) => ({
   ...(projectId ? { project_id: projectId } : {}),
   "Content-Type": "application/json"
 })
@@ -53,7 +53,7 @@ const createHeaders = (projectId?: string) => ({
 /**
  * Wrap errors into ProviderError
  */
-const wrapError = (operation: string) => (cause: unknown) =>
+export const wrapError = (operation: string) => (cause: unknown) =>
   Effect.fail(
     new ProviderError({
       message: `Blockfrost ${operation} failed`,
@@ -64,7 +64,7 @@ const wrapError = (operation: string) => (cause: unknown) =>
 /**
  * Check if an error is a 404 Not Found response
  */
-const is404Error = (error: unknown): boolean => {
+export const is404Error = (error: unknown): boolean => {
   if (error instanceof HttpUtils.HttpResponseError) {
     return error.status === 404
   }
@@ -225,10 +225,7 @@ const getDatumByHash =
     return withRateLimit(
       HttpUtils.get(`${baseUrl}/scripts/datum/${datumHash}/cbor`, BlockfrostDatumCbor, createHeaders(projectId))
     ).pipe(
-      Effect.map((datum) => {
-        const data = PlutusData.fromCBORHex(datum.cbor)
-        return new InlineDatum.InlineDatum({ data })
-      }),
+      Effect.map((datum) => InlineDatum.fromCBORHex(datum.cbor)),
       Effect.catchAll(wrapError("getDatumByHash"))
     )
   }
@@ -241,6 +238,22 @@ const getDatumByHash =
  * Get protocol parameters from Blockfrost API
  * Returns: (baseUrl, projectId?) => Effect<ProtocolParameters, ProviderError>
  */
+export const getTip = (baseUrl: string, projectId?: string) => () =>
+  HttpUtils.get(`${baseUrl}/blocks/latest`, Blockfrost.BlockfrostLatestBlock, createHeaders(projectId)).pipe(
+    Effect.flatMap((block) =>
+      block.slot === null
+        ? Effect.fail(new ProviderError({ cause: block, message: "Blockfrost latest block carries no slot" }))
+        : Effect.succeed({
+            slot: block.slot,
+            blockHash: block.hash,
+            epoch: block.epoch ?? undefined,
+            blockHeight: block.height ?? undefined,
+            blockTime: block.time
+          } satisfies Provider.Tip)
+    ),
+    Effect.catchAll(wrapError("getTip"))
+  )
+
 export const getProtocolParameters = (baseUrl: string, projectId?: string) =>
   withRateLimit(
     HttpUtils.get(
@@ -249,6 +262,50 @@ export const getProtocolParameters = (baseUrl: string, projectId?: string) =>
       createHeaders(projectId)
     ).pipe(Effect.map(Blockfrost.transformProtocolParameters), Effect.catchAll(wrapError("getProtocolParameters")))
   )
+
+/**
+ * One Blockfrost UTxO row to a core `UTxO`, resolving its reference script and its datum.
+ *
+ * Shared rather than inlined per member: the datum branch repeated in five places is exactly
+ * how five copies came to drop the original bytes, and a wallet-tier read wants the same
+ * resolution an ordinary `getUtxos` gets.
+ */
+export const utxoFromBlockfrost =
+  (baseUrl: string, projectId?: string) => (utxo: Blockfrost.BlockfrostUTxO, addressBech32?: string) => {
+    const fetchScript = getScriptByHash(baseUrl, projectId)
+    const fetchDatum = getDatumByHash(baseUrl, projectId)
+    const transactionId = TransactionHash.fromHex(utxo.tx_hash)
+    // Some Blockfrost listings (an account's or an asset's) carry the address on the row;
+    // a tx-scoped one does not, and the caller supplies it.
+    const address = CoreAddress.fromBech32(utxo.address === "" ? (addressBech32 ?? utxo.address) : utxo.address)
+
+    const scriptEffect = utxo.reference_script_hash
+      ? fetchScript(utxo.reference_script_hash).pipe(
+          Effect.map((s) => s as Script.Script | undefined),
+          Effect.catchAll(() => Effect.succeed(undefined))
+        )
+      : Effect.succeed(undefined)
+
+    const dataHash = utxo.data_hash
+    const datumEffect = utxo.inline_datum
+      ? Effect.succeed(InlineDatum.fromCBORHex(utxo.inline_datum))
+      : dataHash
+        ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
+        : Effect.succeed(undefined)
+
+    return Effect.all([scriptEffect, datumEffect]).pipe(
+      Effect.map(([scriptRef, datumOption]) =>
+        new CoreUTxO.UTxO({
+          transactionId,
+          index: utxo.output_index,
+          address,
+          assets: Blockfrost.transformAmounts(utxo.amount),
+          scriptRef,
+          datumOption
+        })
+      )
+    )
+  }
 
 /**
  * Get UTxOs for an address or credential with pagination support
@@ -309,11 +366,7 @@ export const getUtxos =
 
       const dataHash = utxo.data_hash
       const datumEffect = utxo.inline_datum
-        ? Effect.succeed(
-            new InlineDatum.InlineDatum({
-              data: PlutusData.fromCBORHex(utxo.inline_datum)
-            })
-          )
+        ? Effect.succeed(InlineDatum.fromCBORHex(utxo.inline_datum))
         : dataHash
           ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
           : Effect.succeed(undefined)
@@ -402,11 +455,7 @@ export const getUtxosWithUnit =
 
       const dataHash = utxo.data_hash
       const datumEffect = utxo.inline_datum
-        ? Effect.succeed(
-            new InlineDatum.InlineDatum({
-              data: PlutusData.fromCBORHex(utxo.inline_datum)
-            })
-          )
+        ? Effect.succeed(InlineDatum.fromCBORHex(utxo.inline_datum))
         : dataHash
           ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
           : Effect.succeed(undefined)
@@ -498,11 +547,7 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
 
           const dataHash = utxo.data_hash
           const datumEffect = utxo.inline_datum
-            ? Effect.succeed(
-                new InlineDatum.InlineDatum({
-                  data: PlutusData.fromCBORHex(utxo.inline_datum)
-                })
-              )
+            ? Effect.succeed(InlineDatum.fromCBORHex(utxo.inline_datum))
             : dataHash
               ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
               : Effect.succeed(undefined)
@@ -564,11 +609,7 @@ export const getUtxosByOutRef =
 
               const dataHash = output.data_hash
               const datumEffect = output.inline_datum
-                ? Effect.succeed(
-                    new InlineDatum.InlineDatum({
-                      data: PlutusData.fromCBORHex(output.inline_datum)
-                    })
-                  )
+                ? Effect.succeed(InlineDatum.fromCBORHex(output.inline_datum))
                 : dataHash
                   ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
                   : Effect.succeed(undefined)
@@ -610,8 +651,12 @@ export const getDelegation = (baseUrl: string, projectId?: string) => (rewardAdd
     HttpUtils.get(`${baseUrl}/accounts/${rewardAddress}`, Blockfrost.BlockfrostDelegation, createHeaders(projectId))
   ).pipe(
     Effect.map(Blockfrost.transformDelegation),
-    // Handle 404 - account not registered/never staked
-    Effect.catchIf(is404Error, () => Effect.succeed({ poolId: null, rewards: 0n } as Provider.Delegation)),
+    // A 404 here is not missing data: Blockfrost has no account row because the stake key was
+    // never registered, which is a definitive `registered: false` rather than an unknown.
+    Effect.catchIf(
+      is404Error,
+      () => Effect.succeed({ poolId: null, rewards: 0n, registered: false } as Provider.Delegation)
+    ),
     Effect.catchAll(wrapError("getDelegation"))
   )
 }

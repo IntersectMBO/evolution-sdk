@@ -13,11 +13,17 @@ import { Effect, Ref } from "effect"
 import * as CoreAssets from "../../../Assets.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type { CoinSelectionAlgorithm, CoinSelectionFunction } from "../CoinSelection.js"
-import { largestFirstSelection } from "../CoinSelection.js"
+import { largestFirstSelection, randomImproveSelection } from "../CoinSelection.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
 import { negatedMintAssets } from "../operations/Mint.js"
 import type { PhaseResult } from "../TransactionBuilder.js"
-import { AvailableUtxosTag, BuildOptionsTag, PhaseContextTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
+import {
+  AvailableUtxosTag,
+  BuildOptionsTag,
+  PhaseContextTag,
+  TransactionBuilderError,
+  TxContext
+} from "../TransactionBuilder.js"
 
 /**
  * Helper: Format assets for logging (BigInt-safe, truncates long unit names)
@@ -56,15 +62,7 @@ const getCoinSelectionAlgorithm = (algorithm: CoinSelectionAlgorithm): CoinSelec
     case "largest-first":
       return largestFirstSelection
     case "random-improve":
-      throw new TransactionBuilderError({
-        message: "random-improve algorithm not yet implemented",
-        cause: { algorithm }
-      })
-    case "optimal":
-      throw new TransactionBuilderError({
-        message: "optimal algorithm not yet implemented",
-        cause: { algorithm }
-      })
+      return randomImproveSelection
     default:
       throw new TransactionBuilderError({
         message: `Unknown coin selection algorithm: ${algorithm}`,

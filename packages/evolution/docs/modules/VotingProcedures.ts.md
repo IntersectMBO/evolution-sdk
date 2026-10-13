@@ -1,6 +1,7 @@
 ---
+
 title: VotingProcedures.ts
-nav_order: 188
+nav_order: 193
 parent: Modules
 ---
 
@@ -19,6 +20,9 @@ parent: Modules
 - [encoding](#encoding)
   - [toCBORBytes](#tocborbytes)
   - [toCBORHex](#tocborhex)
+  - [voterToCBORBytes](#votertocborbytes)
+  - [voterToCBORHex](#votertocborhex)
+  - [votingProcedureToCBORHex](#votingproceduretocborhex)
 - [helpers](#helpers)
   - [multiVote](#multivote)
   - [singleVote](#singlevote)
@@ -32,6 +36,9 @@ parent: Modules
 - [parsing](#parsing)
   - [fromCBORBytes](#fromcborbytes)
   - [fromCBORHex](#fromcborhex)
+  - [voterFromCBORBytes](#voterfromcborbytes)
+  - [voterFromCBORHex](#voterfromcborhex)
+  - [votingProcedureFromCBORHex](#votingprocedurefromcborhex)
 - [pattern matching](#pattern-matching)
   - [matchVote](#matchvote)
   - [matchVoter](#matchvoter)
@@ -181,6 +188,42 @@ export declare const toCBORHex: (data: VotingProcedures, options?: CBOR.CodecOpt
 
 Added in v2.0.0
 
+## voterToCBORBytes
+
+Codec pair for a standalone `Voter`.
+
+`Voter` and `VotingProcedure` are addressable on their own -- a wallet builds a vote before it
+has a `VotingProcedures` map to put it in -- but only their CDDL transforms were exported, so
+encoding one meant reaching through `Schema.encodeSync` and the CBOR writer by hand.
+
+**Signature**
+
+```ts
+export declare const voterToCBORBytes: (input: Voter, options?: CBOR.CodecOptions) => Uint8Array
+```
+
+Added in v2.0.0
+
+## voterToCBORHex
+
+**Signature**
+
+```ts
+export declare const voterToCBORHex: (input: Voter, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
+## votingProcedureToCBORHex
+
+**Signature**
+
+```ts
+export declare const votingProcedureToCBORHex: (input: VotingProcedure, options?: CBOR.CodecOptions) => string
+```
+
+Added in v2.0.0
+
 # helpers
 
 ## multiVote
@@ -302,6 +345,42 @@ Parse VotingProcedures from CBOR hex string.
 
 ```ts
 export declare const fromCBORHex: (hex: string, options?: CBOR.CodecOptions) => VotingProcedures
+```
+
+Added in v2.0.0
+
+## voterFromCBORBytes
+
+**Signature**
+
+```ts
+export declare const voterFromCBORBytes: (
+  bytes: Uint8Array,
+  options?: CBOR.CodecOptions
+) => ConstitutionalCommitteeVoter | DRepVoter | StakePoolVoter
+```
+
+Added in v2.0.0
+
+## voterFromCBORHex
+
+**Signature**
+
+```ts
+export declare const voterFromCBORHex: (
+  hex: string,
+  options?: CBOR.CodecOptions
+) => ConstitutionalCommitteeVoter | DRepVoter | StakePoolVoter
+```
+
+Added in v2.0.0
+
+## votingProcedureFromCBORHex
+
+**Signature**
+
+```ts
+export declare const votingProcedureFromCBORHex: (hex: string, options?: CBOR.CodecOptions) => VotingProcedure
 ```
 
 Added in v2.0.0

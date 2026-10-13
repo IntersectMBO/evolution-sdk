@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/TransactionBuilder.ts
-nav_order: 147
+nav_order: 151
 parent: Modules
 ---
 
@@ -50,6 +51,7 @@ double-spending. UTxOs can come from any source (wallet, DeFi protocols, other p
   - [AvailableUtxosTag (class)](#availableutxostag-class)
   - [BuildOptionsTag (class)](#buildoptionstag-class)
   - [ChangeAddressTag (class)](#changeaddresstag-class)
+  - [FullProtocolParametersTag (class)](#fullprotocolparameterstag-class)
   - [PhaseContextTag (class)](#phasecontexttag-class)
   - [ProtocolParametersTag (class)](#protocolparameterstag-class)
   - [TxBuilderConfigTag (class)](#txbuilderconfigtag-class)
@@ -71,6 +73,8 @@ double-spending. UTxOs can come from any source (wallet, DeFi protocols, other p
   - [RedeemerData (interface)](#redeemerdata-interface)
   - [TxBuilderState (interface)](#txbuilderstate-interface)
 - [utilities](#utilities)
+  - [proposalKeyToIndex](#proposalkeytoindex)
+  - [proposalToKey](#proposaltokey)
   - [voterToKey](#votertokey)
 
 ---
@@ -761,6 +765,10 @@ export interface TransactionBuilderBase {
    * Call .propose() multiple times to submit multiple proposals in one transaction.
    * Consistent with .registerStake() and .registerDRep() - no manual deposit handling.
    *
+   * ParameterChangeAction and TreasuryWithdrawalsAction with a Plutus `policyHash` run the
+   * constitution's guardrail script. Pass a `redeemer` and provide the script via
+   * .attachScript(), .readFrom() or a spent input that carries it.
+   *
    * The deposit amount is automatically deducted during transaction balancing.
    *
    * Queues a deferred operation that will be executed when build() is called.
@@ -768,15 +776,17 @@ export interface TransactionBuilderBase {
    *
    * @example
    * ```typescript
+   * import * as Data from "@evolution-sdk/Data"
    * import * as GovernanceAction from "@evolution-sdk/GovernanceAction"
    * import * as RewardAccount from "@evolution-sdk/RewardAccount"
+   * import * as ScriptHash from "@evolution-sdk/ScriptHash"
    *
    * // Submit single proposal (deposit auto-fetched)
    * await client.newTx()
    *   .propose({
    *     governanceAction: new GovernanceAction.InfoAction({}),
    *     rewardAccount: myRewardAccount,
-   *     anchor: myAnchor // or null
+   *     anchor: myAnchor
    *   })
    *   .build()
    *   .then(tx => tx.sign())
@@ -787,13 +797,29 @@ export interface TransactionBuilderBase {
    *   .propose({
    *     governanceAction: new GovernanceAction.InfoAction({}),
    *     rewardAccount: myRewardAccount,
-   *     anchor: null
+   *     anchor: myAnchor
    *   })
    *   .propose({
    *     governanceAction: new GovernanceAction.NoConfidenceAction({ govActionId: null }),
    *     rewardAccount: myRewardAccount,
    *     anchor: myOtherAnchor
    *   })
+   *   .build()
+   *   .then(tx => tx.sign())
+   *   .then(tx => tx.submit())
+   *
+   * // Treasury withdrawal checked by the constitution's guardrail script
+   * await client.newTx()
+   *   .propose({
+   *     governanceAction: new GovernanceAction.TreasuryWithdrawalsAction({
+   *       withdrawals: new Map([[myRewardAccount, 1_000_000_000n]]),
+   *       policyHash: ScriptHash.fromScript(guardrailScript)
+   *     }),
+   *     rewardAccount: myRewardAccount,
+   *     anchor: myAnchor,
+   *     redeemer: Data.constr(0n, [])
+   *   })
+   *   .attachScript({ script: guardrailScript })
    *   .build()
    *   .then(tx => tx.sign())
    *   .then(tx => tx.submit())
@@ -980,11 +1006,31 @@ Options passed to `build()` to customize a single transaction build.
 ```ts
 export interface BuildOptions {
   /**
-   * Override protocol parameters for this specific transaction build.
+   * Override protocol parameters for fee calculation.
+   *
+   * @deprecated Use `fullProtocolParameters` instead — it covers all fee-calc fields
+   * (`minFeeA`/`minFeeB` → `minFeeCoefficient`/`minFeeConstant`, `coinsPerUtxoByte`,
+   * `maxTxSize`, `priceMem`, `priceStep`, `minFeeRefScriptCostPerByte`) and is derived
+   * automatically when `fullProtocolParameters` is present.
    *
    * @since 2.0.0
    */
   readonly protocolParameters?: ProtocolParameters
+
+  /**
+   * Full protocol parameters override for all transaction build operations.
+   *
+   * When provided, ALL internal phases and operations will use these parameters
+   * instead of calling the provider's `getProtocolParameters` API. This prevents
+   * any network round-trips for protocol parameter fetching during the build.
+   *
+   * Includes all fields required for: script evaluation (cost models), stake/pool/DRep/
+   * governance action deposits, and script data hash computation. Fee-calc fields
+   * (`protocolParameters`) are also derived from this automatically.
+   *
+   * @since 2.0.0
+   */
+  readonly fullProtocolParameters?: Provider.ProtocolParameters
 
   /**
    * Coin selection strategy for automatic input selection.
@@ -1076,6 +1122,35 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly debug?: boolean
+
+  /**
+   * When `true`, `payToAddress` outputs whose lovelace is below the protocol
+   * minimum are automatically bumped up to the required minimum.
+   * When `false` or omitted (the default), under-funded outputs are used as-is.
+   *
+   * Can be overridden per-call via `PayToAddressParams.autoMinUtxo`.
+   *
+   * @since 2.0.0
+   */
+  readonly autoMinUtxo?: boolean
+
+  /**
+   * The CBOR options this transaction will be SERIALIZED with.
+   *
+   * ⚠️ Opt-in, and it must match what the caller finally encodes with. The builder returns a
+   * `Transaction`, not bytes, so the caller chooses the encoding afterwards — but
+   * `script_data_hash` and `auxiliary_data_hash` are computed over serialized bytes DURING the
+   * build, and the fee is computed from the serialized size. Left unset, all three use
+   * `CBOR.CML_DEFAULT_OPTIONS`, so a transaction later encoded canonically carries hashes taken
+   * over different bytes and the node rejects it with `PPViewHashesDontMatch`.
+   *
+   * Set it when encoding with anything other than the CML defaults — notably canonical CBOR,
+   * which is what hardware wallets require: `cardano-hw-cli` refuses to witness a transaction
+   * carrying a *fixable* issue, so a CIP-21-conformant body is necessary and not sufficient.
+   *
+   * @since 2.2.0
+   */
+  readonly codecOptions?: CBOR.CodecOptions
 }
 ```
 
@@ -1347,6 +1422,21 @@ export declare class ChangeAddressTag
 
 Added in v2.0.0
 
+## FullProtocolParametersTag (class)
+
+Context tag providing full protocol parameters (deposits, cost models, execution limits).
+
+Resolved once per build. Holds `undefined` when neither `fullProtocolParameters`
+nor a provider is available — operations that need it fail with a descriptive error.
+
+**Signature**
+
+```ts
+export declare class FullProtocolParametersTag
+```
+
+Added in v2.0.0
+
 ## PhaseContextTag (class)
 
 Context tag providing build-phase state.
@@ -1545,7 +1635,11 @@ A single deferred builder step executed during `build()`.
 **Signature**
 
 ```ts
-export type ProgramStep = Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+export type ProgramStep = Effect.Effect<
+  void,
+  TransactionBuilderError,
+  TxContext | TxBuilderConfigTag | BuildOptionsTag | ProtocolParametersTag | FullProtocolParametersTag
+>
 ```
 
 Added in v2.0.0
@@ -1561,7 +1655,7 @@ Contains callback that will be resolved after coin selection completes.
 
 ```ts
 export interface DeferredRedeemerData {
-  readonly tag: "spend" | "mint" | "cert" | "reward" | "vote"
+  readonly tag: "spend" | "mint" | "cert" | "reward" | "vote" | "propose"
   readonly deferred: DeferredRedeemer
   readonly exUnits?: {
     readonly mem: bigint
@@ -1582,14 +1676,7 @@ Build phases.
 
 ```ts
 export type Phase =
-  | "selection"
-  | "changeCreation"
-  | "feeCalculation"
-  | "balance"
-  | "evaluation"
-  | "collateral"
-  | "fallback"
-  | "complete"
+  "selection" | "changeCreation" | "feeCalculation" | "balance" | "evaluation" | "collateral" | "fallback" | "complete"
 ```
 
 Added in v2.0.0
@@ -1637,7 +1724,7 @@ Index is determined later during witness assembly based on input ordering.
 
 ```ts
 export interface RedeemerData {
-  readonly tag: "spend" | "mint" | "cert" | "reward" | "vote"
+  readonly tag: "spend" | "mint" | "cert" | "reward" | "vote" | "propose"
   readonly data: PlutusData.Data
   readonly exUnits?: {
     readonly mem: bigint
@@ -1698,6 +1785,33 @@ export interface TxBuilderState {
 Added in v2.0.0
 
 # utilities
+
+## proposalKeyToIndex
+
+Parse a proposal redeemer key back to its position in proposalProcedures.
+Returns undefined for keys that are not proposal keys.
+
+**Signature**
+
+```ts
+export declare const proposalKeyToIndex: (key: string) => number | undefined
+```
+
+Added in v2.0.0
+
+## proposalToKey
+
+Convert a proposal's position in proposalProcedures to a unique string key
+for redeemer tracking. Proposals keep insertion order in the transaction,
+so the position is also the redeemer index.
+
+**Signature**
+
+```ts
+export declare const proposalToKey: (index: number) => string
+```
+
+Added in v2.0.0
 
 ## voterToKey
 

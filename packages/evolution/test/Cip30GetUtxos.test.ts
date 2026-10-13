@@ -2,8 +2,8 @@ import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
 
 import * as CoreAddress from "../src/Address.js"
-import * as AddressEras from "../src/AddressEras.js"
 import * as AssetName from "../src/AssetName.js"
+import * as Assets from "../src/Assets.js"
 import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as DatumHash from "../src/DatumHash.js"
@@ -20,10 +20,13 @@ import * as TransactionInput from "../src/TransactionInput.js"
 import * as TransactionOutput from "../src/TransactionOutput.js"
 import * as Value from "../src/Value.js"
 
+// `TransactionOutput` is one model across both eras now, keyed on Assets rather than Value.
+const assetsOf = (value: Value.Value) =>
+  value._tag === "WithAssets" ? Assets.withMultiAsset(value.coin, value.assets) : Assets.fromLovelace(value.coin)
+
 // Build a real enterprise (testnet) address bound to a fresh key.
 const keyHash = KeyHash.fromPrivateKey(PrivateKey.fromBytes(PrivateKey.generate()))
 const addressHex = CoreAddress.toHex(new CoreAddress.Address({ networkId: 0, paymentCredential: keyHash }))
-const addressEras = AddressEras.fromHex(addressHex)
 
 // Build a CIP-30 UTxO: CBOR hex of [transaction_input, transaction_output].
 const makeCip30UtxoHex = (amount: Value.Value, index: bigint): string => {
@@ -31,8 +34,8 @@ const makeCip30UtxoHex = (amount: Value.Value, index: bigint): string => {
     { transactionId: TransactionHash.fromHex("aa".repeat(32)), index },
     { disableValidation: true }
   )
-  const output = new TransactionOutput.BabbageTransactionOutput(
-    { address: addressEras, amount },
+  const output = new TransactionOutput.TransactionOutput(
+    { address: CoreAddress.fromHex(addressHex), assets: assetsOf(amount), encodingFormat: "babbage" },
     { disableValidation: true }
   )
   const inputCBOR = CBOR.fromCBORBytes(TransactionInput.toCBORBytes(input))
@@ -85,7 +88,9 @@ describe("CIP-30 getUtxos (#414)", () => {
     const realHex =
       "82825820bb217abaca60fc0ca68c1555eca6a96d2478547818ae76ce6836133f3cc546e00182583900287a7e37219128cfb05322626daa8b19d1ad37c6779d21853f7b94177c16240714ea0e12b41a914f2945784ac494bb19573f0ca61a08afa8821af0078c21a2581c1ec85dcee27f2d90ec1f9a1e4ce74a667dc9be8b184463223f9c9601a14350584c05581c659f2917fb63f12b33667463ee575eeac1845bbc736b9c0bbc40ba82a14454534c410a"
     const utxo = cip30UtxoFromCBORHex(realHex)
-    expect(TransactionHash.toHex(utxo.transactionId)).toBe("bb217abaca60fc0ca68c1555eca6a96d2478547818ae76ce6836133f3cc546e0")
+    expect(TransactionHash.toHex(utxo.transactionId)).toBe(
+      "bb217abaca60fc0ca68c1555eca6a96d2478547818ae76ce6836133f3cc546e0"
+    )
     expect(utxo.index).toBe(1n)
     expect(utxo.assets.lovelace).toBe(4_027_026_465n)
     // base address (payment + staking) parsed
@@ -111,8 +116,13 @@ describe("CIP-30 getUtxos (#414)", () => {
       { transactionId: TransactionHash.fromHex("aa".repeat(32)), index: 0n },
       { disableValidation: true }
     )
-    const output = new TransactionOutput.BabbageTransactionOutput(
-      { address: AddressEras.fromHex(baseAddressHex), amount: value, datumOption: datumHash },
+    const output = new TransactionOutput.TransactionOutput(
+      {
+        address: CoreAddress.fromHex(baseAddressHex),
+        assets: assetsOf(value),
+        datumOption: datumHash,
+        encodingFormat: "babbage"
+      },
       { disableValidation: true }
     )
     const inputCBOR = CBOR.fromCBORBytes(TransactionInput.toCBORBytes(input))

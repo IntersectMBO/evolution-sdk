@@ -155,6 +155,12 @@ export const Literal: {
   }) as Literal<Literals>
 }
 
+/**
+ * A PlutusData array schema.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
 export interface Array<S extends Schema.Schema.Any> extends Schema.Array$<S> {}
 
 /**
@@ -162,8 +168,36 @@ export interface Array<S extends Schema.Schema.Any> extends Schema.Array$<S> {}
  *
  * @since 1.0.0
  */
-export const Array = <S extends Schema.Schema.Any>(items: S): Array<S> => Schema.Array(items)
+/**
+ * ⚠️ The three schema combinators below are named `Array`, `Map` and `Boolean`, which are also
+ * globals. They are declared under internal names and exported under the public ones, because a
+ * module-scope binding called `Array` is not only shadowing for the code written here — which is
+ * why the rest of this file says `globalThis.Array` — it also captures the bare `Array` that
+ * **Babel's own rest-parameter prologue emits**:
+ *
+ *   for (var n = arguments.length, t = new Array(n), f = 0; f < n; f++) t[f] = arguments[f]
+ *
+ * ⚠️ One consequence: `@effect/docgen` documents a NAME and cannot follow an aliased export, so
+ * this module is listed in `docgen.json`'s `exclude`. Documenting it again means a module-scope
+ * `Array` binding, which is the crash below.
+ *
+ * In `Union(...members)` that `new Array(n)` built a schema object instead of an array, so every
+ * caller of `Union` or `Variant` failed: `members.map is not a function` under a Metro bundle in
+ * Node, `TypeError: Function is not a constructor` on Hermes, and on React Native it took down
+ * the whole app. It is invisible to `node`, `bun` and `vitest`, which run the native rest
+ * parameter and never emit the prologue.
+ *
+ * Keep new module-scope declarations here from colliding with a global.
+ */
+const ArrayCombinator = <S extends Schema.Schema.Any>(items: S): Array<S> => Schema.Array(items)
+export { ArrayCombinator as Array }
 
+/**
+ * A PlutusData map schema, keyed and valued by other PlutusData schemas.
+ *
+ * @since 2.0.0
+ * @category schemas
+ */
 export interface Map<K extends Schema.Schema.Any, V extends Schema.Schema.Any>
   extends Schema.transform<
     Schema.SchemaClass<globalThis.Map<Data.Data, Data.Data>, globalThis.Map<Data.Data, Data.Data>, never>,
@@ -177,7 +211,7 @@ export interface Map<K extends Schema.Schema.Any, V extends Schema.Schema.Any>
  *
  * @since 1.0.0
  */
-export const Map = <K extends Schema.Schema.Any, V extends Schema.Schema.Any>(key: K, value: V): Map<K, V> =>
+const MapCombinator = <K extends Schema.Schema.Any, V extends Schema.Schema.Any>(key: K, value: V): Map<K, V> =>
   Schema.transform(Schema.typeSchema(Data.MapSchema), Schema.MapFromSelf({ key, value }), {
     strict: false,
     encode: (tsMap) => {
@@ -191,6 +225,8 @@ export const Map = <K extends Schema.Schema.Any, V extends Schema.Schema.Any>(ke
       return new globalThis.Map([...dataMap])
     }
   })
+
+export { MapCombinator as Map }
 
 export interface NullOr<S extends Schema.Schema.All>
   extends Schema.transform<Schema.SchemaClass<Data.Constr, Data.Constr, never>, Schema.NullOr<S>> {}
@@ -263,6 +299,7 @@ export const Boolean: Boolean = Schema.transform(
 ).annotations({
   identifier: "TSchema.BooleanFromConstr"
 })
+
 
 export interface Struct<Fields extends Schema.Struct.Fields>
   extends Schema.transform<Schema.SchemaClass<Data.Constr, Data.Constr, never>, Schema.Struct<Fields>> {}

@@ -1,6 +1,7 @@
 ---
+
 title: PrivateKey.ts
-nav_order: 104
+nav_order: 108
 parent: Modules
 ---
 
@@ -32,7 +33,7 @@ parent: Modules
   - [toHex](#tohex)
 - [errors](#errors)
   - [PrivateKeyError (class)](#privatekeyerror-class)
-    - [\_tag (property)](#_tag-property)
+    - [_tag (property)](#_tag-property)
 - [generators](#generators)
   - [generate](#generate)
   - [generateExtended](#generateextended)
@@ -282,7 +283,7 @@ export declare class PrivateKeyError {
 
 Added in v2.0.0
 
-### \_tag (property)
+### _tag (property)
 
 **Signature**
 

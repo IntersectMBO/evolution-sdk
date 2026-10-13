@@ -436,10 +436,12 @@ export const FromCDDL = Schema.transformOrFail(
             innerMap.set(assetNameBytes, amount)
           }
 
-          outerMap.set(policyIdBytes, innerMap)
+          outerMap.set(policyIdBytes, CBOR.sortByteKeyedMap(innerMap))
         }
 
-        return outerMap
+        // CIP-21 canonical order, applied here rather than by a global codec option: the same
+        // option would also reorder Plutus map keys, which must keep the order they were given.
+        return CBOR.sortByteKeyedMap(outerMap)
       }),
 
     decode: (fromA) =>

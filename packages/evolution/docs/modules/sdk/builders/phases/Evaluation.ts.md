@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/phases/Evaluation.ts
-nav_order: 138
+nav_order: 142
 parent: Modules
 ---
 
@@ -64,6 +65,6 @@ for the final transaction structure.
 export declare const executeEvaluation: () => Effect.Effect<
   PhaseResult,
   TransactionBuilderError,
-  BuildOptionsTag | TxContext | PhaseContextTag | TxBuilderConfigTag
+  BuildOptionsTag | FullProtocolParametersTag | TxContext | PhaseContextTag | TxBuilderConfigTag
 >
 ```

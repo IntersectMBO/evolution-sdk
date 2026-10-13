@@ -55,9 +55,7 @@ describe("Ogmios outbound amounts (#406)", () => {
   it("posts additionalUtxo amounts as exact unquoted integers", async () => {
     const sent = stubFetch('{"jsonrpc":"2.0","id":null,"result":[]}')
 
-    await Effect.runPromise(
-      KupmiosEffects.evaluateTxEffect("http://ogmios.test")(emptyTx, [utxoWithHugeAmounts()])
-    )
+    await Effect.runPromise(KupmiosEffects.evaluateTxEffect("http://ogmios.test")(emptyTx, [utxoWithHugeAmounts()]))
 
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain(`"lovelace":${UNSAFE_LOVELACE}`)
@@ -85,7 +83,7 @@ describe("Blockfrost outbound amounts (#455)", () => {
     const sent = stubFetch("[]")
 
     await Effect.runPromise(
-      Effect.either(BlockfrostEffect.evaluateTx("http://blockfrost.test", "key")(emptyTx, [utxoWithHugeAmounts()]))
+      Effect.either(BlockfrostEffect.evaluateTx("https://blockfrost.test", "key")(emptyTx, [utxoWithHugeAmounts()]))
     )
 
     expect(sent).toHaveLength(1)
@@ -99,14 +97,10 @@ describe("Blockfrost outbound amounts (#455)", () => {
 describe("Evaluate request bodies read back through the reader", () => {
   it("decodes the Ogmios body to the same bigint amounts", async () => {
     const sent = stubFetch('{"jsonrpc":"2.0","id":null,"result":[]}')
-    await Effect.runPromise(
-      KupmiosEffects.evaluateTxEffect("http://ogmios.test")(emptyTx, [utxoWithHugeAmounts()])
-    )
+    await Effect.runPromise(KupmiosEffects.evaluateTxEffect("http://ogmios.test")(emptyTx, [utxoWithHugeAmounts()]))
 
     stubFetch(sent[0])
-    const decoded = await Effect.runPromise(
-      HttpUtils.get("http://echo.test", Ogmios.EvaluateTransactionSchema)
-    )
+    const decoded = await Effect.runPromise(HttpUtils.get("http://echo.test", Ogmios.EvaluateTransactionSchema))
 
     const [utxo] = decoded.params.additionalUtxo
     expect(utxo.value.ada.lovelace).toBe(UNSAFE_LOVELACE)
@@ -116,13 +110,11 @@ describe("Evaluate request bodies read back through the reader", () => {
   it("decodes the Blockfrost body to the same bigint amounts", async () => {
     const sent = stubFetch("[]")
     await Effect.runPromise(
-      Effect.either(BlockfrostEffect.evaluateTx("http://blockfrost.test", "key")(emptyTx, [utxoWithHugeAmounts()]))
+      Effect.either(BlockfrostEffect.evaluateTx("https://blockfrost.test", "key")(emptyTx, [utxoWithHugeAmounts()]))
     )
 
     stubFetch(sent[0])
-    const decoded = await Effect.runPromise(
-      HttpUtils.get("http://echo.test", Blockfrost.EvaluateUtxosRequest)
-    )
+    const decoded = await Effect.runPromise(HttpUtils.get("http://echo.test", Blockfrost.EvaluateUtxosRequest))
 
     const [[, txOut]] = decoded.additionalUtxoSet
     expect(txOut.value.coins).toBe(UNSAFE_LOVELACE)

@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/operations/Governance.ts
-nav_order: 124
+nav_order: 128
 parent: Modules
 ---
 
@@ -51,7 +52,7 @@ Adds an UnregDrepCert certificate to the transaction and reclaims the deposit.
 ```ts
 export declare const createDeregisterDRepProgram: (
   params: DeregisterDRepParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0
@@ -67,7 +68,7 @@ Requires drepDeposit from protocol parameters.
 ```ts
 export declare const createRegisterDRepProgram: (
   params: RegisterDRepParams
-) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag>
+) => Effect.Effect<void, TransactionBuilderError, TxContext | TxBuilderConfigTag | FullProtocolParametersTag>
 ```
 
 Added in v2.0.0

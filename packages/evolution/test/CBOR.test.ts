@@ -939,3 +939,29 @@ describe("CBOR Implementation Tests", () => {
     })
   })
 })
+
+describe("decodeItemAt bounds-checks its offset", () => {
+  // ⚠️ Past the end `data[offset]` is `undefined`, and `(undefined >> 5) & 0x07` is 0 — so a
+  // truncated container used to decode a phantom uint 0 for every child the buffer does not hold
+  // and report a `newOffset` beyond it. A caller measuring a span from that offset slices a region
+  // the input never contained.
+  it("refuses an offset at or past the end of the buffer", () => {
+    const one = Uint8Array.from([0x01])
+    expect(() => CBOR.decodeItemWithOffset(one, 1)).toThrow(/past the end/)
+    expect(() => CBOR.decodeItemWithOffset(one, 5)).toThrow(/past the end/)
+    expect(() => CBOR.decodeItemWithOffset(new Uint8Array(0), 0)).toThrow(/past the end/)
+  })
+
+  it("does not invent the children a truncated array declares", () => {
+    // `83` declares three items; the buffer holds one.
+    expect(() => CBOR.decodeItemWithOffset(Uint8Array.from([0x83, 0x01]), 0)).toThrow(/past the end/)
+    // `a1` declares one pair; the buffer holds the key alone.
+    expect(() => CBOR.decodeItemWithOffset(Uint8Array.from([0xa1, 0x01]), 0)).toThrow(/past the end/)
+  })
+
+  it("reads an item that ends exactly at the buffer's end", () => {
+    const { item, newOffset } = CBOR.decodeItemWithOffset(Uint8Array.from([0x82, 0x01, 0x02]), 0)
+    expect(newOffset).toBe(3)
+    expect(item).toEqual([1n, 2n])
+  })
+})

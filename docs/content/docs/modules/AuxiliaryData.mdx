@@ -1,4 +1,5 @@
 ---
+
 title: AuxiliaryData.ts
 nav_order: 7
 parent: Modules
@@ -16,6 +17,7 @@ parent: Modules
 - [constructors](#constructors)
   - [conway](#conway)
   - [emptyConwayAuxiliaryData](#emptyconwayauxiliarydata)
+  - [fromEncoded](#fromencoded)
   - [shelley](#shelley)
   - [shelleyMA](#shelleyma)
 - [encoding](#encoding)
@@ -119,6 +121,30 @@ export declare const emptyConwayAuxiliaryData: () => AuxiliaryData
 
 Added in v2.0.0
 
+## fromEncoded
+
+Build `auxiliary_data` from a metadata map and native scripts that are already encoded,
+choosing the era form the way the chain's other producers do.
+
+⚠️ **The era form is part of the hash.** Bare metadata stays Shelley; anything carrying scripts
+becomes Conway (`#6.259`). Always writing Conway would change `auxiliary_data_hash`, and
+therefore the transaction id, for every metadata-only transaction -- which is most of them.
+`cardano-multiplatform-lib` makes the same choice.
+
+⚠️ A Shelley `auxiliary_data` IS its metadata map, so there is nothing to build without one.
+Passing neither throws rather than producing an `auxiliary_data` whose hash covers no metadata.
+
+**Signature**
+
+```ts
+export declare const fromEncoded: (input: {
+  readonly metadata?: Uint8Array
+  readonly nativeScripts?: ReadonlyArray<Uint8Array>
+}) => AuxiliaryData
+```
+
+Added in v2.8.0
+
 ## shelley
 
 Create a Shelley-era AuxiliaryData instance.
@@ -178,10 +204,14 @@ Added in v2.0.0
 
 Compute hash of auxiliary data (tag 259) per ledger rules.
 
+Pass the same codec options used to serialize the transaction's auxiliary
+data. Set the resulting body commitment before signing; changing encoding
+afterward can invalidate the commitment and existing signatures.
+
 **Signature**
 
 ```ts
-export declare const toHash: (aux: AuxiliaryData) => AuxiliaryDataHash.AuxiliaryDataHash
+export declare const toHash: (aux: AuxiliaryData, options?: CBOR.CodecOptions) => AuxiliaryDataHash.AuxiliaryDataHash
 ```
 
 Added in v2.0.0

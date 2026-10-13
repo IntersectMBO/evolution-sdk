@@ -1,6 +1,7 @@
 ---
+
 title: plutus/Credential.ts
-nav_order: 90
+nav_order: 94
 parent: Modules
 ---
 

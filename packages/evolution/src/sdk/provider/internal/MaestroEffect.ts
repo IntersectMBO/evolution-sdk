@@ -17,6 +17,7 @@ import * as TransactionHash from "../../../TransactionHash.js"
 import type * as TransactionInput from "../../../TransactionInput.js"
 import * as TxOut from "../../../TxOut.js"
 import type * as CoreUTxO from "../../../UTxO.js"
+import type * as Provider from "../Provider.js"
 import { ProviderError } from "../Provider.js"
 import * as HttpUtils from "./HttpUtils.js"
 import * as Maestro from "./Maestro.js"
@@ -63,6 +64,27 @@ const TIMEOUT = 10_000 // 10 seconds timeout for requests
 // ============================================================================
 // Protocol Parameters
 // ============================================================================
+
+/**
+ * Maestro reports neither the epoch nor the block time on `/chain-tip`, so both are left
+ * absent rather than fetched from a second endpoint behind the caller's back.
+ */
+export const getTip = (baseUrl: string, apiKey: string) => () =>
+  HttpUtils.get(
+    `${baseUrl}/chain-tip`,
+    Maestro.MaestroTimestampedResponse(Maestro.MaestroChainTip),
+    createHeaders(apiKey)
+  ).pipe(
+    Effect.map(
+      (response): Provider.Tip => ({
+        slot: response.data.slot,
+        blockHash: response.data.block_hash,
+        blockHeight: response.data.height
+      })
+    ),
+    Effect.timeout(TIMEOUT),
+    Effect.catchAll(wrapError("get tip"))
+  )
 
 /**
  * Get protocol parameters from Maestro

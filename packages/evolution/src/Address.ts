@@ -245,9 +245,51 @@ export const getNetworkId = (address: Address): NetworkId.NetworkId => address.n
  * @category Functions
  */
 export const fromBech32 = Schema.decodeSync(FromBech32)
-export const toBech32 = Schema.encodeSync(FromBech32)
+const encodeBech32 = Schema.encodeSync(FromBech32)
+
+export const toBech32 = (value: Parameters<typeof encodeBech32>[0]): Bech32 => Bech32.make(encodeBech32(value))
+/**
+ * An address as raw hex — NOT bech32. See {@link Bech32} for the human-facing form.
+ *
+ * Length is deliberately not pinned: an enterprise or reward address is 29 bytes, a base address
+ * 57, and a pointer address varies. What is checked is that it is non-empty whole bytes, and what
+ * is branded is that it is an address rather than some other hex.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^([0-9a-fA-F]{2})+$/), Schema.brand("AddressHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
+/**
+ * A bech32-encoded address, as a user sees it.
+ *
+ * ⚠️ Branded apart from {@link Hex}: both are strings and they are not interchangeable. Handing
+ * bech32 where raw hex belongs is a decode failure at best and a wrong address at worst.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Bech32 = Schema.String.pipe(
+  Schema.pattern(/^(addr|addr_test|stake|stake_test)1[0-9a-z]+$/),
+  Schema.brand("AddressBech32")
+)
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Bech32 = typeof Bech32.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
-export const toHex = Schema.encodeSync(FromHex)
+const encodeHex = Schema.encodeSync(FromHex)
+
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))
 export const fromBytes = Schema.decodeSync(FromBytes)
 export const toBytes = Schema.encodeSync(FromBytes)
 

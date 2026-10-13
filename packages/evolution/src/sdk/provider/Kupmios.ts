@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 
 import * as KupmiosEffects from "./internal/KupmiosEffects.js"
-import type { Provider, ProviderEffect } from "./Provider.js"
+import type { Provider, ProviderEffectWithTip } from "./Provider.js"
 
 /**
  * Kupmios provider for Cardano blockchain data access.
@@ -19,7 +19,7 @@ export class KupmiosProvider implements Provider {
     readonly kupoHeader?: Record<string, string>
   }
 
-  readonly effect: ProviderEffect
+  readonly effect: ProviderEffectWithTip
 
   constructor(
     kupoUrl: string,
@@ -35,6 +35,7 @@ export class KupmiosProvider implements Provider {
 
     this.effect = {
       getProtocolParameters: () => KupmiosEffects.getProtocolParametersEffect(this.ogmiosUrl, this.headers),
+      getTip: () => KupmiosEffects.getTipEffect(this.ogmiosUrl, this.headers),
       getUtxos: KupmiosEffects.getUtxosEffect(this.kupoUrl, this.headers),
       getUtxosWithUnit: KupmiosEffects.getUtxosWithUnitEffect(this.kupoUrl, this.headers),
       getUtxoByUnit: KupmiosEffects.getUtxoByUnitEffect(this.kupoUrl, this.headers),
@@ -48,6 +49,8 @@ export class KupmiosProvider implements Provider {
   }
 
   getProtocolParameters = () => Effect.runPromise(this.effect.getProtocolParameters())
+
+  getTip = () => Effect.runPromise(this.effect.getTip())
 
   getUtxos = (addressOrCredential: Parameters<Provider["getUtxos"]>[0]) =>
     Effect.runPromise(this.effect.getUtxos(addressOrCredential))

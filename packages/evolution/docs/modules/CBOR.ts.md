@@ -1,4 +1,5 @@
 ---
+
 title: CBOR.ts
 nav_order: 34
 parent: Modules
@@ -11,18 +12,29 @@ parent: Modules
 <h2 class="text-delta">Table of contents</h2>
 
 - [constants](#constants)
-  - [AIKEN_DEFAULT_OPTIONS](#aiken_default_options)
+  - [~~AIKEN_DEFAULT_OPTIONS~~](#aiken_default_options)
   - [CANONICAL_OPTIONS](#canonical_options)
-  - [CARDANO_NODE_DATA_OPTIONS](#cardano_node_data_options)
+  - [~~CARDANO_NODE_DATA_OPTIONS~~](#cardano_node_data_options)
   - [CBOR_ADDITIONAL_INFO](#cbor_additional_info)
   - [CBOR_MAJOR_TYPE](#cbor_major_type)
   - [CBOR_SIMPLE](#cbor_simple)
-  - [CML_DATA_DEFAULT_OPTIONS](#cml_data_default_options)
+  - [~~CML_DATA_DEFAULT_OPTIONS~~](#cml_data_default_options)
+  - [CML_DATA_DEFINITE_OPTIONS](#cml_data_definite_options)
   - [CML_DEFAULT_OPTIONS](#cml_default_options)
+  - [PLUTUS_DATA_OPTIONS](#plutus_data_options)
   - [STRUCT_FRIENDLY_OPTIONS](#struct_friendly_options)
+  - [TX_CANONICAL_OPTIONS](#tx_canonical_options)
+  - [TX_DEFAULT_OPTIONS](#tx_default_options)
 - [decoding](#decoding)
   - [decodeItemWithOffset](#decodeitemwithoffset)
+  - [decodeItemWithOffsetAndFormat](#decodeitemwithoffsetandformat)
+  - [splitArrayItems](#splitarrayitems)
+  - [splitMapEntries](#splitmapentries)
 - [encoding](#encoding)
+  - [compareByteKeys](#comparebytekeys)
+  - [encodeMapAsDefinite](#encodemapasdefinite)
+  - [encodeTaggedSet](#encodetaggedset)
+  - [sortByteKeyedMap](#sortbytekeyedmap)
   - [toCBORBytes](#tocborbytes)
   - [toCBORBytesWithFormat](#tocborbyteswithformat)
   - [toCBORHex](#tocborhex)
@@ -47,8 +59,11 @@ parent: Modules
     - [UInt (type alias)](#uint-type-alias)
   - [CodecOptions (type alias)](#codecoptions-type-alias)
   - [DecodedWithFormat (type alias)](#decodedwithformat-type-alias)
+  - [DefiniteArray](#definitearray)
   - [LengthEncoding (type alias)](#lengthencoding-type-alias)
+  - [Raw](#raw)
   - [StringEncoding (type alias)](#stringencoding-type-alias)
+  - [TxCodecOptions (type alias)](#txcodecoptions-type-alias)
 - [parsing](#parsing)
   - [fromCBORBytes](#fromcborbytes)
   - [fromCBORBytesWithFormat](#fromcborbyteswithformat)
@@ -61,6 +76,7 @@ parent: Modules
   - [Integer](#integer)
 - [transformation](#transformation)
   - [match](#match)
+  - [toTxCodecOptions](#totxcodecoptions)
 - [utils](#utils)
   - [ArraySchema](#arrayschema)
   - [ByteArray](#bytearray)
@@ -90,19 +106,14 @@ parent: Modules
 
 # constants
 
-## AIKEN_DEFAULT_OPTIONS
+## ~~AIKEN_DEFAULT_OPTIONS~~
 
-Aiken-compatible CBOR encoding options.
+Aiken `cbor.serialise()` encoding options. Same object as
+{@link PLUTUS_DATA_OPTIONS}.
 
-Matches the encoding produced by `cbor.serialise()` in Aiken:
-
-- Indefinite-length arrays (`9f...ff`)
-- Maps encoded as arrays of pairs (not CBOR maps)
-- Strings as byte arrays (major type 2, not 3)
-- Constructor tags: 121–127 for indices 0–6, then 1280+ for 7+
-
-PlutusData byte strings are chunked per the Conway `bounded_bytes` rule
-via the `BoundedBytes` CBOR node, independent of these codec options.
+Aiken writes data in the node layout: non-empty lists and constructor
+fields indefinite, `Pairs` as definite maps. Tuples are lists, so they
+encode as indefinite arrays.
 
 **Signature**
 
@@ -124,16 +135,13 @@ export declare const CANONICAL_OPTIONS: CodecOptions
 
 Added in v1.0.0
 
-## CARDANO_NODE_DATA_OPTIONS
+## ~~CARDANO_NODE_DATA_OPTIONS~~
 
-Cardano Node compatible CBOR encoding options for PlutusData
+Definite-length PlutusData encoding options. Same object as
+{@link CML_DATA_DEFINITE_OPTIONS}.
 
-Uses definite-length encoding for arrays and maps, matching the format
-produced by CML's `to_cardano_node_format().to_cbor_hex()`.
-
-Note: The on-chain format uses indefinite-length (AIKEN_DEFAULT_OPTIONS),
-but this option is useful for testing compatibility with tools that
-expect definite-length encoding.
+The name is wrong: the Cardano node writes non-empty lists and constructor
+fields indefinite. For the node layout use {@link PLUTUS_DATA_OPTIONS}.
 
 **Signature**
 
@@ -194,13 +202,19 @@ export declare const CBOR_SIMPLE: { readonly FALSE: 20; readonly TRUE: 21; reado
 
 Added in v1.0.0
 
-## CML_DATA_DEFAULT_OPTIONS
+## ~~CML_DATA_DEFAULT_OPTIONS~~
 
-Default CBOR encoding options for PlutusData.
+CBOR encoding options for PlutusData with non-empty lists, constructor
+fields and maps indefinite, map keys in the order given. This was the
+`Data` default before {@link PLUTUS_DATA_OPTIONS}.
 
-Uses indefinite-length arrays and maps. The `bounded_bytes` constraint
-(Conway CDDL: byte strings ≤ 64 bytes) is enforced at the data-type layer
-via the `BoundedBytes` CBOR node, independent of these codec options.
+It matches no tool exactly. The node, cardano-cli and Aiken write maps
+definite. CML 6.2.0 `PlutusData.to_cardano_node_format()` writes maps
+indefinite but also sorts map keys. For a constructor index above 127 the
+Plutus data encoder writes the tag 102 `[index, fields]` pair definite
+under every preset, including this one. Use it only to reproduce the bytes
+and datum hashes the SDK wrote before {@link PLUTUS_DATA_OPTIONS} became
+the default.
 
 **Signature**
 
@@ -209,6 +223,23 @@ export declare const CML_DATA_DEFAULT_OPTIONS: CodecOptions
 ```
 
 Added in v1.0.0
+
+## CML_DATA_DEFINITE_OPTIONS
+
+CBOR encoding options for PlutusData matching CML `PlutusData.to_cbor_hex()`
+on freshly built data.
+
+Uses definite-length lists, constructor fields, and maps. It differs from
+the node layout ({@link PLUTUS_DATA_OPTIONS}) by writing lists and
+constructor fields definite.
+
+**Signature**
+
+```ts
+export declare const CML_DATA_DEFINITE_OPTIONS: CodecOptions
+```
+
+Added in v2.0.0
 
 ## CML_DEFAULT_OPTIONS
 
@@ -222,6 +253,29 @@ export declare const CML_DEFAULT_OPTIONS: CodecOptions
 
 Added in v1.0.0
 
+## PLUTUS_DATA_OPTIONS
+
+CBOR encoding options for PlutusData in the layout the Cardano node writes.
+
+- Non-empty lists and constructor fields: indefinite-length (`9f...ff`)
+- Maps: definite-length
+- Empty list: `80`; empty map: `a0`
+
+The `Data` default. `Data.toCBORBytes` with these options writes the bytes
+the node writes.
+The rules that do not depend on options are applied by the Plutus data
+encoder under every preset: byte strings over 64 bytes in 64-byte chunks,
+bignums only outside -2^64 to 2^64 - 1 with their bytes chunked the same
+way, and a definite `[index, fields]` pair under tag 102.
+
+**Signature**
+
+```ts
+export declare const PLUTUS_DATA_OPTIONS: CodecOptions
+```
+
+Added in v2.0.0
+
 ## STRUCT_FRIENDLY_OPTIONS
 
 CBOR encoding options that return objects instead of Maps for Schema.Struct compatibility
@@ -230,6 +284,38 @@ CBOR encoding options that return objects instead of Maps for Schema.Struct comp
 
 ```ts
 export declare const STRUCT_FRIENDLY_OPTIONS: CodecOptions
+```
+
+Added in v2.0.0
+
+## TX_CANONICAL_OPTIONS
+
+Canonical options for a transaction: {@link CANONICAL_OPTIONS} for both
+ledger structures and Plutus data.
+
+**Signature**
+
+```ts
+export declare const TX_CANONICAL_OPTIONS: TxCodecOptions
+```
+
+Added in v2.0.0
+
+## TX_DEFAULT_OPTIONS
+
+Default options for a transaction.
+
+- `ledger` is {@link CML_DEFAULT_OPTIONS}, CML's transaction encoding: map
+  keys in insertion order, definite lengths.
+- `plutusData` is {@link PLUTUS_DATA_OPTIONS}, the `Data` default.
+
+It does not match cardano-cli, which sorts map keys and writes indefinite
+lengths above 23 entries.
+
+**Signature**
+
+```ts
+export declare const TX_DEFAULT_OPTIONS: TxCodecOptions
 ```
 
 Added in v2.0.0
@@ -253,7 +339,151 @@ export declare const decodeItemWithOffset: (
 
 Added in v2.0.0
 
+## decodeItemWithOffsetAndFormat
+
+Decode one item at `offset`, keeping the per-node encoding metadata.
+
+The format-blind {@link decodeItemWithOffset} is enough to measure or skip an item; this is for
+callers that must re-encode it byte for byte afterwards, where the definite/indefinite framing and
+head widths have to survive the round trip.
+
+**Signature**
+
+```ts
+export declare const decodeItemWithOffsetAndFormat: (
+  data: Uint8Array,
+  offset: number,
+  options?: CodecOptions
+) => { item: CBOR; format: CBORFormat; newOffset: number }
+```
+
+Added in v2.0.0
+
+## splitArrayItems
+
+Split an encoded CBOR array into the ORIGINAL bytes of each of its items.
+
+A `#6.258` tag around the array is accepted and stepped over, so a ledger set and a bare array
+are both read; the tag itself is not part of any item.
+
+⚠️ **Use this instead of decoding an array and re-encoding its items.** Decode-then-re-encode
+runs every item through an encoder, which means every item comes back in whatever shape the
+options in force describe rather than the shape it arrived in. For `plutus_data` that moves
+`script_data_hash`; for a certificate or a script it changes the transaction id. This returns
+slices of the input, so there is no encoder in the path and nothing to configure wrongly.
+
+The items are _not_ validated beyond being well-formed CBOR, because the caller is about to
+decode each one into whatever it expects.
+
+**Signature**
+
+```ts
+export declare const splitArrayItems: (bytes: Uint8Array) => ReadonlyArray<Uint8Array>
+```
+
+**Example**
+
+```ts
+import * as CBOR from "@evolution-sdk/evolution/CBOR"
+import * as Bytes from "@evolution-sdk/evolution/Bytes"
+
+// An indefinite empty Plutus constructor inside a tagged set keeps its framing.
+const items = CBOR.splitArrayItems(Bytes.fromHex("d9010281d8799f182aff"))
+// items[0] is d8799f182aff, not d87981182a
+```
+
+Added in v2.8.0
+
+## splitMapEntries
+
+Split an encoded CBOR map into the ORIGINAL bytes of each of its keys and values.
+
+The map counterpart of {@link splitArrayItems}, and the same argument applies: decoding a map
+and re-encoding its entries runs each one through whatever options are in force, which for a
+redeemer map's `plutus_data` moves `script_data_hash`.
+
+Entries come back in wire order, which for a Plutus map is the order that matters.
+
+**Signature**
+
+```ts
+export declare const splitMapEntries: (bytes: Uint8Array) => ReadonlyArray<readonly [Uint8Array, Uint8Array]>
+```
+
+Added in v2.8.0
+
 # encoding
+
+## compareByteKeys
+
+Canonical CBOR map-key order for byte-string keys: shorter keys first, then lexicographic
+(RFC 8949 §4.2.1, and CIP-21 for transaction bodies).
+
+Ledger maps keyed by bytes -- multiassets, mints -- must be written in this order for a client
+to reconstruct byte-identically the body a hardware wallet hashed in chunks. It is applied by
+the encoders that own those maps rather than by a global codec option, because the same option
+would also reorder Plutus map keys, which must keep the order they were given.
+
+**Signature**
+
+```ts
+export declare const compareByteKeys: (a: Uint8Array, b: Uint8Array) => number
+```
+
+Added in v2.0.0
+
+## encodeMapAsDefinite
+
+Encode a CBOR definite-length map from already-encoded key and value bytes.
+
+The sibling of `encodeArrayAsDefinite` for major type 5. Entries are written in the order
+given — this is the raw-bytes path, so it imposes no key ordering of its own.
+
+Together with the array and tag builders this is what lets a caller assemble a structure
+around children it must NOT re-encode: anything already in bytes (a received datum, a script,
+a redeemer) survives verbatim, where decoding it to a value and re-encoding can change its
+framing and therefore its hash.
+
+**Signature**
+
+```ts
+export declare const encodeMapAsDefinite: (entries: ReadonlyArray<readonly [Uint8Array, Uint8Array]>) => Uint8Array
+```
+
+Added in v2.0.0
+
+## encodeTaggedSet
+
+A `#6.258` set over items that are ALREADY encoded, written definite.
+
+The write direction of {@link splitArrayItems}, and the shape every ledger set takes in Conway:
+`inputs`, `certificates`, `collateral_inputs`, `required_signers`, `reference_inputs`, the
+witness-set script fields and `plutus_data`. Babbage wrote a bare array and the ledger still
+accepts it, so {@link encodeArrayAsDefinite} is the untagged form -- but the two are different
+bytes and therefore a different transaction id, which is why neither is a default and a caller
+says which it means.
+
+⚠️ The items are spliced, not re-encoded, for the reason given on {@link splitArrayItems}.
+
+**Signature**
+
+```ts
+export declare const encodeTaggedSet: (items: ReadonlyArray<Uint8Array>) => Uint8Array
+```
+
+Added in v2.8.0
+
+## sortByteKeyedMap
+
+Rebuild a byte-keyed map in canonical CBOR key order.
+
+**Signature**
+
+```ts
+export declare const sortByteKeyedMap: <V>(map: Map<Uint8Array, V>) => Map<Uint8Array, V>
+```
+
+Added in v2.0.0
 
 ## toCBORBytes
 
@@ -391,7 +621,9 @@ export type CBOR =
   | null // null value
   | undefined // undefined value
   | number // floating point numbers
-  | { _tag: "BoundedBytes"; bytes: Uint8Array }
+  | { _tag: "BoundedBytes"; bytes: Uint8Array } // PlutusData bounded byte strings (Conway CDDL bounded_bytes = bytes .size (0..64))
+  | { _tag: "DefiniteArray"; items: ReadonlyArray<CBOR> } // an array written definite whatever the codec options say
+  | { _tag: "Raw"; bytes: Uint8Array }
 ```
 
 Added in v1.0.0
@@ -526,6 +758,13 @@ export type CodecOptions =
   | {
       readonly mode: "canonical"
       readonly mapsAsObjects?: boolean
+      /**
+       * Encode every map as an array of `[key, value]` pairs.
+       *
+       * @deprecated This turns a map into a list, which is a different value
+       * with a different hash. No Plutus data encoder writes maps this way, and
+       * no option replaces it: leave it unset so maps stay maps.
+       */
       readonly encodeMapAsPairs?: boolean
     }
   | {
@@ -536,6 +775,13 @@ export type CodecOptions =
       readonly sortMapKeys: boolean
       readonly useMinimalEncoding: boolean
       readonly mapsAsObjects?: boolean
+      /**
+       * Encode every map as an array of `[key, value]` pairs.
+       *
+       * @deprecated This turns a map into a list, which is a different value
+       * with a different hash. No Plutus data encoder writes maps this way, and
+       * no option replaces it: leave it unset so maps stay maps.
+       */
       readonly encodeMapAsPairs?: boolean
     }
 ```
@@ -557,6 +803,28 @@ export type DecodedWithFormat<A> = {
 
 Added in v2.0.0
 
+## DefiniteArray
+
+`DefiniteArray` CBOR node — an array written with definite-length framing whatever the codec
+options say.
+
+Its one consumer is the **tag-102 constructor wrapper** `[index, fields]`, which is definite
+while the fields array inside it is indefinite. No single codec option can say both, and the
+wrapper's framing is not a preference: `cardano-serialization-lib` 15.0.3 and
+`cardano-multiplatform-lib` 6.2 both write `d866 82 …` for `Constr(999999, [42])`, where this
+library wrote `d866 9f … ff`. Two independent implementations against one.
+
+**Signature**
+
+```ts
+export declare const DefiniteArray: {
+  readonly make: (items: ReadonlyArray<CBOR>) => CBOR
+  readonly is: (value: CBOR) => value is { _tag: "DefiniteArray"; items: ReadonlyArray<CBOR> }
+}
+```
+
+Added in v2.0.0
+
 ## LengthEncoding (type alias)
 
 Container length encoding style captured during decode.
@@ -568,6 +836,36 @@ export type LengthEncoding = { readonly tag: "indefinite" } | { readonly tag: "d
 ```
 
 Added in v2.0.0
+
+## Raw
+
+`Raw` CBOR node — bytes that are already CBOR, written back unchanged.
+
+Every other node describes a _value_ and leaves the encoder to choose a representation. This
+one describes a representation. It exists because the ledger hashes the bytes a value arrived
+as, not a fresh encoding of it, and several of those choices are not recoverable from the
+decoded value: an empty indefinite array (`9fff`) decodes to the same `[]` as `80`, a
+chunked byte string to the same bytes as an unchunked one, a non-minimal integer header to the
+same number. Re-deriving any of them changes the hash, and for `plutus_data` inside a redeemer
+that changes `script_data_hash` and the transaction is rejected with nothing pointing back here.
+
+`Data.plutusDataToCBORValue` emits one of these for any node whose arrival bytes were recorded
+on the {@link OriginalBytes} channel, so the single encoder below handles provenance and
+structure in one pass instead of a caller splicing bytes by hand.
+
+⚠️ The bytes are not validated. A `Raw` holding something that is not well-formed CBOR produces
+a transaction that is not well-formed CBOR. Build it only from bytes a decoder returned.
+
+**Signature**
+
+```ts
+export declare const Raw: {
+  readonly make: (bytes: Uint8Array) => CBOR
+  readonly is: (value: CBOR) => value is { _tag: "Raw"; bytes: Uint8Array }
+}
+```
+
+Added in v2.8.0
 
 ## StringEncoding (type alias)
 
@@ -582,6 +880,26 @@ export type StringEncoding =
       readonly tag: "indefinite"
       readonly chunks: ReadonlyArray<{ readonly length: number; readonly byteSize: ByteSize }>
     }
+```
+
+Added in v2.0.0
+
+## TxCodecOptions (type alias)
+
+CBOR options for a transaction and the structures in it.
+
+- `ledger`: the options for ledger structures: the body, the witness set,
+  and the containers that hold datums and redeemers.
+- `plutusData`: the options for Plutus data items: new inline datums,
+  witness datums and redeemer data.
+
+**Signature**
+
+```ts
+export type TxCodecOptions = {
+  readonly ledger: CodecOptions
+  readonly plutusData: CodecOptions
+}
 ```
 
 Added in v2.0.0
@@ -718,6 +1036,21 @@ export declare const match: <R>(
 ```
 
 Added in v1.0.0
+
+## toTxCodecOptions
+
+Turns plain options into transaction options: `ledger` is the options and
+`plutusData` is the options too, except that {@link CML_DEFAULT_OPTIONS}
+gives {@link PLUTUS_DATA_OPTIONS}, as {@link TX_DEFAULT_OPTIONS} does.
+Transaction options are returned as they are.
+
+**Signature**
+
+```ts
+export declare const toTxCodecOptions: (options: TxCodecOptions | CodecOptions) => TxCodecOptions
+```
+
+Added in v2.0.0
 
 # utils
 

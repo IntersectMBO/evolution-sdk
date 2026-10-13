@@ -7,14 +7,18 @@ import * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets.js"
 import * as AuxiliaryData from "../../../AuxiliaryData.js"
 import * as Bytes from "../../../Bytes.js"
+import * as CBOR from "../../../CBOR.js"
 import type * as Certificate from "../../../Certificate.js"
 import * as CostModel from "../../../CostModel.js"
 import type * as PlutusData from "../../../Data.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as Ed25519Signature from "../../../Ed25519Signature.js"
+import * as Fees from "../../../Fees.js"
 import type * as GovernanceAction from "../../../GovernanceAction.js"
 import type * as KeyHash from "../../../KeyHash.js"
+import * as MinAda from "../../../MinAda.js"
 import * as NativeScripts from "../../../NativeScripts.js"
+import * as NonnegativeInterval from "../../../NonnegativeInterval.js"
 import type * as PlutusV1 from "../../../PlutusV1.js"
 import type * as PlutusV2 from "../../../PlutusV2.js"
 import type * as PlutusV3 from "../../../PlutusV3.js"
@@ -46,7 +50,8 @@ import {
   type TxBuilderConfigTag,
   TxContext,
   type UnfrackOptions,
-  voterToKey} from "../TransactionBuilder.js"
+  voterToKey
+} from "../TransactionBuilder.js"
 import * as Unfrack from "../Unfrack.js"
 
 // ============================================================================
@@ -151,20 +156,13 @@ export const tierRefScriptFee = (
   sizeIncrement: number,
   baseFee: number,
   totalSize: number
-): bigint => {
-  let acc = 0
-  let curTierPrice = baseFee
-  let remaining = totalSize
-
-  while (remaining >= sizeIncrement) {
-    acc += sizeIncrement * curTierPrice
-    curTierPrice *= multiplier
-    remaining -= sizeIncrement
-  }
-  acc += remaining * curTierPrice
-
-  return BigInt(Math.floor(acc))
-}
+): bigint =>
+  // Exact rationals, read from the decimals that were passed rather than from the doubles they
+  // became: the ledger's multiplier is six fifths, and `1.2` as a double is not.
+  Fees.refScriptFee(BigInt(totalSize < 0 ? 0 : totalSize), NonnegativeInterval.fromDecimal(baseFee), {
+    multiplier: NonnegativeInterval.fromDecimal(multiplier),
+    sizeIncrement: BigInt(sizeIncrement)
+  })
 
 /**
  * Calculate reference script fees using tiered pricing.
@@ -295,9 +293,7 @@ const certScriptHashHex = (certificate: Certificate.Certificate): string | undef
     case "RegDrepCert":
     case "UpdateDrepCert":
     case "UnregDrepCert":
-      return certificate.drepCredential._tag === "ScriptHash"
-        ? Bytes.toHex(certificate.drepCredential.hash)
-        : undefined
+      return certificate.drepCredential._tag === "ScriptHash" ? Bytes.toHex(certificate.drepCredential.hash) : undefined
     case "AuthCommitteeHotCert":
     case "ResignCommitteeColdCert":
       return certificate.committeeColdCredential._tag === "ScriptHash"
@@ -338,67 +334,65 @@ const makeIsNativeScript =
  * @since 2.0.0
  * @category validation
  */
-export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(
-  function* () {
-    const stateRef = yield* TxContext
-    const state = yield* Ref.get(stateRef)
+export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(function* () {
+  const stateRef = yield* TxContext
+  const state = yield* Ref.get(stateRef)
 
-    if (!state.votingProcedures || state.votingProcedures.procedures.size === 0) {
-      return
-    }
+  if (!state.votingProcedures || state.votingProcedures.procedures.size === 0) {
+    return
+  }
 
-    // Resolve whether the script for a given hash is native.
-    const isNativeScript = makeIsNativeScript(state)
+  // Resolve whether the script for a given hash is native.
+  const isNativeScript = makeIsNativeScript(state)
 
-    const votersMissingRedeemer: Array<string> = []
-    const nativeVoterRedeemerKeys: Array<string> = []
+  const votersMissingRedeemer: Array<string> = []
+  const nativeVoterRedeemerKeys: Array<string> = []
 
-    for (const voter of state.votingProcedures.procedures.keys()) {
-      const scriptHashHex = voterScriptHashHex(voter)
-      if (scriptHashHex === undefined) continue 
+  for (const voter of state.votingProcedures.procedures.keys()) {
+    const scriptHashHex = voterScriptHashHex(voter)
+    if (scriptHashHex === undefined) continue
 
-      const voterKey = voterToKey(voter)
-      const hasRedeemer = state.redeemers.has(voterKey) || state.deferredRedeemers.has(voterKey)
-      const native = isNativeScript(scriptHashHex)
+    const voterKey = voterToKey(voter)
+    const hasRedeemer = state.redeemers.has(voterKey) || state.deferredRedeemers.has(voterKey)
+    const native = isNativeScript(scriptHashHex)
 
-      if (native === true) {
-        if (hasRedeemer) nativeVoterRedeemerKeys.push(voterKey)
-      } else {
-        if (!hasRedeemer) votersMissingRedeemer.push(voterKey)
-      }
-    }
-
-    if (votersMissingRedeemer.length > 0) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message:
-            `Redeemer required for ${votersMissingRedeemer.length} non-native-script voter(s): ` +
-            `${votersMissingRedeemer.join(", ")}. ` +
-            `If a voter is a native (multisig) script, attach it via .attachScript() ` +
-            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
-            `if it is a Plutus script, supply a redeemer.`,
-          cause: votersMissingRedeemer
-        })
-      )
-    }
-
-    if (nativeVoterRedeemerKeys.length > 0) {
-      yield* Effect.logDebug(
-        `[Vote] Ignoring redeemer(s) supplied for native-script voter(s): ${nativeVoterRedeemerKeys.join(", ")}. ` +
-          `Native scripts are satisfied by vkey witnesses, not redeemers.`
-      )
-      yield* Ref.update(stateRef, (s) => {
-        const redeemers = new Map(s.redeemers)
-        const deferredRedeemers = new Map(s.deferredRedeemers)
-        for (const key of nativeVoterRedeemerKeys) {
-          redeemers.delete(key)
-          deferredRedeemers.delete(key)
-        }
-        return { ...s, redeemers, deferredRedeemers }
-      })
+    if (native === true) {
+      if (hasRedeemer) nativeVoterRedeemerKeys.push(voterKey)
+    } else {
+      if (!hasRedeemer) votersMissingRedeemer.push(voterKey)
     }
   }
-)
+
+  if (votersMissingRedeemer.length > 0) {
+    return yield* Effect.fail(
+      new TransactionBuilderError({
+        message:
+          `Redeemer required for ${votersMissingRedeemer.length} non-native-script voter(s): ` +
+          `${votersMissingRedeemer.join(", ")}. ` +
+          `If a voter is a native (multisig) script, attach it via .attachScript() ` +
+          `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
+          `if it is a Plutus script, supply a redeemer.`,
+        cause: votersMissingRedeemer
+      })
+    )
+  }
+
+  if (nativeVoterRedeemerKeys.length > 0) {
+    yield* Effect.logDebug(
+      `[Vote] Ignoring redeemer(s) supplied for native-script voter(s): ${nativeVoterRedeemerKeys.join(", ")}. ` +
+        `Native scripts are satisfied by vkey witnesses, not redeemers.`
+    )
+    yield* Ref.update(stateRef, (s) => {
+      const redeemers = new Map(s.redeemers)
+      const deferredRedeemers = new Map(s.deferredRedeemers)
+      for (const key of nativeVoterRedeemerKeys) {
+        redeemers.delete(key)
+        deferredRedeemers.delete(key)
+      }
+      return { ...s, redeemers, deferredRedeemers }
+    })
+  }
+})
 
 /**
  * Validate redeemer requirements for script-controlled certificates: the DRep
@@ -410,66 +404,64 @@ export const validateVoterRedeemers: Effect.Effect<void, TransactionBuilderError
  * @since 2.0.0
  * @category validation
  */
-export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(
-  function* () {
-    const stateRef = yield* TxContext
-    const state = yield* Ref.get(stateRef)
+export const validateCertRedeemers: Effect.Effect<void, TransactionBuilderError, TxContext> = Effect.gen(function* () {
+  const stateRef = yield* TxContext
+  const state = yield* Ref.get(stateRef)
 
-    if (state.certificates.length === 0) {
-      return
-    }
+  if (state.certificates.length === 0) {
+    return
+  }
 
-    const isNativeScript = makeIsNativeScript(state)
+  const isNativeScript = makeIsNativeScript(state)
 
-    const certsMissingRedeemer: Array<string> = []
-    const nativeCertRedeemerKeys: Array<string> = []
+  const certsMissingRedeemer: Array<string> = []
+  const nativeCertRedeemerKeys: Array<string> = []
 
-    for (const certificate of state.certificates) {
-      const scriptHashHex = certScriptHashHex(certificate)
-      if (scriptHashHex === undefined) continue
+  for (const certificate of state.certificates) {
+    const scriptHashHex = certScriptHashHex(certificate)
+    if (scriptHashHex === undefined) continue
 
-      const certKey = `cert:${scriptHashHex}`
-      const hasRedeemer = state.redeemers.has(certKey) || state.deferredRedeemers.has(certKey)
-      const native = isNativeScript(scriptHashHex)
+    const certKey = `cert:${scriptHashHex}`
+    const hasRedeemer = state.redeemers.has(certKey) || state.deferredRedeemers.has(certKey)
+    const native = isNativeScript(scriptHashHex)
 
-      if (native === true) {
-        if (hasRedeemer) nativeCertRedeemerKeys.push(certKey)
-      } else {
-        if (!hasRedeemer) certsMissingRedeemer.push(certKey)
-      }
-    }
-
-    if (certsMissingRedeemer.length > 0) {
-      return yield* Effect.fail(
-        new TransactionBuilderError({
-          message:
-            `Redeemer required for ${certsMissingRedeemer.length} non-native-script certificate(s): ` +
-            `${certsMissingRedeemer.join(", ")}. ` +
-            `If the certificate's credential is a native (multisig) script, attach it via .attachScript() ` +
-            `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
-            `if it is a Plutus script, supply a redeemer.`,
-          cause: certsMissingRedeemer
-        })
-      )
-    }
-
-    if (nativeCertRedeemerKeys.length > 0) {
-      yield* Effect.logDebug(
-        `[Cert] Ignoring redeemer(s) supplied for native-script certificate(s): ${nativeCertRedeemerKeys.join(", ")}. ` +
-          `Native scripts are satisfied by vkey witnesses, not redeemers.`
-      )
-      yield* Ref.update(stateRef, (s) => {
-        const redeemers = new Map(s.redeemers)
-        const deferredRedeemers = new Map(s.deferredRedeemers)
-        for (const key of nativeCertRedeemerKeys) {
-          redeemers.delete(key)
-          deferredRedeemers.delete(key)
-        }
-        return { ...s, redeemers, deferredRedeemers }
-      })
+    if (native === true) {
+      if (hasRedeemer) nativeCertRedeemerKeys.push(certKey)
+    } else {
+      if (!hasRedeemer) certsMissingRedeemer.push(certKey)
     }
   }
-)
+
+  if (certsMissingRedeemer.length > 0) {
+    return yield* Effect.fail(
+      new TransactionBuilderError({
+        message:
+          `Redeemer required for ${certsMissingRedeemer.length} non-native-script certificate(s): ` +
+          `${certsMissingRedeemer.join(", ")}. ` +
+          `If the certificate's credential is a native (multisig) script, attach it via .attachScript() ` +
+          `(or provide it through a reference or spent input) so it is recognized and no redeemer is needed; ` +
+          `if it is a Plutus script, supply a redeemer.`,
+        cause: certsMissingRedeemer
+      })
+    )
+  }
+
+  if (nativeCertRedeemerKeys.length > 0) {
+    yield* Effect.logDebug(
+      `[Cert] Ignoring redeemer(s) supplied for native-script certificate(s): ${nativeCertRedeemerKeys.join(", ")}. ` +
+        `Native scripts are satisfied by vkey witnesses, not redeemers.`
+    )
+    yield* Ref.update(stateRef, (s) => {
+      const redeemers = new Map(s.redeemers)
+      const deferredRedeemers = new Map(s.deferredRedeemers)
+      for (const key of nativeCertRedeemerKeys) {
+        redeemers.delete(key)
+        deferredRedeemers.delete(key)
+      }
+      return { ...s, redeemers, deferredRedeemers }
+    })
+  }
+})
 
 /**
  * Return the guardrail policy hash (hex) a governance action must run, if any.
@@ -605,7 +597,11 @@ export const assembleTransaction = (
   inputs: ReadonlyArray<TransactionInput.TransactionInput>,
   outputs: ReadonlyArray<TxOut.TransactionOutput>,
   fee: bigint
-): Effect.Effect<Transaction.Transaction, TransactionBuilderError, TxContext | TxBuilderConfigTag | BuildOptionsTag | FullProtocolParametersTag> =>
+): Effect.Effect<
+  Transaction.Transaction,
+  TransactionBuilderError,
+  TxContext | TxBuilderConfigTag | BuildOptionsTag | FullProtocolParametersTag
+> =>
   Effect.gen(function* () {
     // Get state ref to access scripts and redeemers
     const stateRef = yield* TxContext
@@ -647,8 +643,7 @@ export const assembleTransaction = (
 
     // Convert reference inputs from UTxOs to TransactionInputs (only if there are any)
     let referenceInputs:
-      | readonly [TransactionInput.TransactionInput, ...Array<TransactionInput.TransactionInput>]
-      | undefined
+      readonly [TransactionInput.TransactionInput, ...Array<TransactionInput.TransactionInput>] | undefined
     if (state.referenceInputs.length > 0) {
       const refInputs = buildTransactionInputs(state.referenceInputs)
       referenceInputs = refInputs as readonly [
@@ -682,6 +677,10 @@ export const assembleTransaction = (
           break
       }
     }
+
+    // The options this transaction will be serialized with. Everything that hashes or measures
+    // serialized bytes below has to agree with them; see BuildOptions.codecOptions.
+    const codecOptions = (yield* BuildOptionsTag).codecOptions ?? CBOR.CML_DEFAULT_OPTIONS
 
     // Build redeemers array from state FIRST (needed for scriptDataHash)
     const redeemers: Array<Redeemer.Redeemer> = []
@@ -943,10 +942,15 @@ export const assembleTransaction = (
       // Compute the hash of script data (redeemers + optional datums + cost models)
       // Use the same concrete Redeemers type that goes into the witness set
       redeemersConcrete = Redeemers.makeRedeemerMap(redeemers)
+      // ⚠️ Hashed under the options this transaction will be SERIALIZED with. The hash covers
+      // the serialized redeemers and datums, so computing it under the CML defaults while the
+      // caller encodes canonically yields a hash over different bytes, which the node rejects
+      // as PPViewHashesDontMatch.
       scriptDataHash = Redeemers.toScriptDataHash(
         redeemersConcrete,
         costModels,
-        plutusDataArray.length > 0 ? plutusDataArray : undefined
+        plutusDataArray.length > 0 ? plutusDataArray : undefined,
+        codecOptions
       )
       yield* Effect.logDebug(`[Assembly] Computed scriptDataHash: ${scriptDataHash.hash.toString()}`)
     }
@@ -1002,7 +1006,8 @@ export const assembleTransaction = (
     // Compute auxiliary data hash if auxiliary data is present
     let auxiliaryDataHash: ReturnType<typeof AuxiliaryData.toHash> | undefined
     if (state.auxiliaryData) {
-      auxiliaryDataHash = AuxiliaryData.toHash(state.auxiliaryData)
+      // Same rule as the script data hash: hashed over the bytes this will be serialized as.
+      auxiliaryDataHash = AuxiliaryData.toHash(state.auxiliaryData, codecOptions)
       yield* Effect.logDebug(`[Assembly] Computed auxiliaryDataHash: ${auxiliaryDataHash.toString()}`)
     }
 
@@ -1046,6 +1051,14 @@ export const assembleTransaction = (
       auxiliaryData: state.auxiliaryData ?? null
     })
 
+    // The hashes above were computed under `codecOptions`, so the transaction has to be
+    // SERIALIZED under them wherever it goes next. Every provider submits with a bare
+    // `Transaction.toCBORBytes(tx)`, which would otherwise re-encode under the CML defaults and
+    // send bytes whose hashes do not match.
+    if (codecOptions !== CBOR.CML_DEFAULT_OPTIONS) {
+      Transaction.setIntendedCodecOptions(transaction, codecOptions)
+    }
+
     return transaction
   }).pipe(
     Effect.mapError(
@@ -1068,8 +1081,10 @@ export const assembleTransaction = (
  * @since 2.0.0
  * @category fee-calculation
  */
-export const calculateTransactionSize = (transaction: Transaction.Transaction): number =>
-  Transaction.toCBORBytes(transaction).length
+export const calculateTransactionSize = (
+  transaction: Transaction.Transaction,
+  options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS
+): number => Transaction.toCBORBytes(transaction, options).length
 
 /**
  * Calculate minimum transaction fee based on protocol parameters.
@@ -1428,8 +1443,7 @@ export const calculateFeeIteratively = (
     // Build referenceInputs for size estimation
     // Reference inputs add to transaction size and must be included in fee calculation
     let referenceInputsForFee:
-      | readonly [TransactionInput.TransactionInput, ...Array<TransactionInput.TransactionInput>]
-      | undefined
+      readonly [TransactionInput.TransactionInput, ...Array<TransactionInput.TransactionInput>] | undefined
     if (state.referenceInputs.length > 0) {
       const refInputs = buildTransactionInputs(state.referenceInputs)
       referenceInputsForFee = refInputs as readonly [
@@ -1480,8 +1494,9 @@ export const calculateFeeIteratively = (
         auxiliaryData: state.auxiliaryData ?? null
       })
 
-      // Calculate size
-      const size = calculateTransactionSize(transaction)
+      // Calculate size UNDER THE SERIALIZATION OPTIONS, because the fee is a function of the
+      // serialized length and the caller may not be encoding with the CML defaults.
+      const size = calculateTransactionSize(transaction, buildOptions.codecOptions ?? CBOR.CML_DEFAULT_OPTIONS)
 
       // Calculate base fee from serialized transaction size
       // Note: reference script fees are a separate additive component, NOT included in base fee
@@ -1493,12 +1508,26 @@ export const calculateFeeIteratively = (
       // Calculate ExUnits cost from redeemers (if pricing available)
       let exUnitsCost = 0n
       if (protocolParams.priceMem && protocolParams.priceStep) {
+        // ⚠️ The ledger charges `ceiling(priceMem * totalMem + priceStep * totalSteps)` over the
+        // transaction's TOTAL execution units: one ceiling, over one exact rational sum. Ceiling
+        // each term of each redeemer separately — as this did — adds up to two lovelace per
+        // redeemer of rounding that the chain never asked for, and does it in floating point
+        // over prices (`0.0577`, `0.0000721`) that binary cannot represent at all.
+        let totalMem = 0n
+        let totalSteps = 0n
         for (const [_, redeemerData] of redeemers) {
           if (redeemerData.exUnits) {
-            const memCost = BigInt(Math.ceil(protocolParams.priceMem * Number(redeemerData.exUnits.mem)))
-            const stepsCost = BigInt(Math.ceil(protocolParams.priceStep * Number(redeemerData.exUnits.steps)))
-            exUnitsCost += memCost + stepsCost
+            totalMem += redeemerData.exUnits.mem
+            totalSteps += redeemerData.exUnits.steps
           }
+        }
+        if (totalMem > 0n || totalSteps > 0n) {
+          exUnitsCost = Fees.scriptExecutionFee(
+            NonnegativeInterval.fromDecimal(protocolParams.priceMem),
+            NonnegativeInterval.fromDecimal(protocolParams.priceStep),
+            totalMem,
+            totalSteps
+          )
         }
       }
 
@@ -1667,27 +1696,6 @@ export const calculateLeftoverAssets = (params: {
 }
 
 /**
- * Constant overhead in bytes for a UTxO entry in the ledger state.
- * Accounts for the transaction hash (32 bytes) and output index that are
- * part of the UTxO key but not serialized in the transaction output itself.
- *
- * @see Babbage ledger spec: utxoEntrySizeWithoutVal = 160
- * @since 2.0.0
- * @category constants
- */
-const UTXO_ENTRY_OVERHEAD_BYTES = 160n
-
-/**
- * Maximum iterations for exact min-UTxO fixed-point solving.
- * In practice this converges in 1-3 iterations because only lovelace CBOR
- * width changes can affect output size.
- *
- * @since 2.0.0
- * @category constants
- */
-const MAX_MIN_UTXO_ITERATIONS = 10
-
-/**
  * Calculate minimum ADA required for a UTxO based on its actual CBOR size.
  * Uses the Babbage/Conway-era formula: coinsPerUtxoByte * (160 + serializedOutputSize).
  *
@@ -1708,40 +1716,20 @@ export const calculateMinimumUtxoLovelace = (params: {
   scriptRef?: CoreScript.Script
   coinsPerUtxoByte: bigint
 }): Effect.Effect<bigint, TransactionBuilderError> =>
-  Effect.gen(function* () {
-    const calculateRequiredLovelace = (lovelace: bigint): bigint => {
-      const assetsForSizing = CoreAssets.withLovelace(params.assets, lovelace)
-
-      const tempOutput = makeTxOutput({
-        address: params.address,
-        assets: assetsForSizing,
-        datum: params.datum,
-        scriptRef: params.scriptRef
-      })
-
-      const cborBytes = TxOut.toCBORBytes(tempOutput)
-
-      return params.coinsPerUtxoByte * (UTXO_ENTRY_OVERHEAD_BYTES + BigInt(cborBytes.length))
-    }
-
-    // Exact fixed-point solve for minUTxO:
-    // required = f(lovelace), where f uses serialized size that depends on lovelace.
-    // We iterate until required value stabilizes.
-    let currentLovelace = 0n
-
-    for (let i = 0; i < MAX_MIN_UTXO_ITERATIONS; i++) {
-      const requiredLovelace = calculateRequiredLovelace(currentLovelace)
-      if (requiredLovelace === currentLovelace) {
-        return requiredLovelace
-      }
-      currentLovelace = requiredLovelace
-    }
-
-    return yield* Effect.fail(
-      new TransactionBuilderError({
-        message: `Minimum UTxO calculation did not converge within ${MAX_MIN_UTXO_ITERATIONS} iterations`
-      })
-    )
+  Effect.try({
+    // One implementation, in MinAda, so a wallet balancing outside this builder cannot drift
+    // from what the builder itself requires.
+    try: () =>
+      MinAda.forOutput(
+        makeTxOutput({
+          address: params.address,
+          assets: params.assets,
+          datum: params.datum,
+          scriptRef: params.scriptRef
+        }),
+        params.coinsPerUtxoByte
+      ),
+    catch: (cause) => new TransactionBuilderError({ message: `Minimum UTxO calculation failed: ${String(cause)}` })
   })
 
 /**

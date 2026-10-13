@@ -2,9 +2,10 @@ import { blake2b } from "@noble/hashes/blake2.js"
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
-import * as PlutusData from "../src/Data.js"
+import * as Data from "../src/Data.js"
 import * as DatumOption from "../src/DatumOption.js"
 import * as InlineDatum from "../src/InlineDatum.js"
+import * as OriginalBytes from "../src/OriginalBytes.js"
 import * as PrivateKey from "../src/PrivateKey.js"
 import * as Transaction from "../src/Transaction.js"
 import * as TransactionOutput from "../src/TransactionOutput.js"
@@ -109,13 +110,45 @@ describe("inline datum keeps its original bytes", () => {
     })
   }
 
-  it("a new InlineDatum with the same Data uses the default encoding", () => {
-    const option = "8201d818" + bstr("d8799fbf0102ffff")
-    const decoded = DatumOption.fromCBORHex(option)
+  // Where the guarantee actually lives, now that a decoded `Data` carries its own arrival bytes.
+  //
+  // The wrapper's record is no longer the only thing standing between a wallet and a reframed
+  // datum: `Data.fromCBORBytes` records at every node, so rebuilding the wrapper around the same
+  // `Data` keeps the arrival too. Both routes are asserted because they fail differently — the
+  // wrapper's record covers a `Data` built by hand, the `Data`'s own record covers a wrapper
+  // built by hand, and a wallet does both.
+  it("a rebuilt InlineDatum keeps the arrival, because the Data inside it remembers", () => {
+    const definite = "8201d818" + bstr("d8799fa10102ff")
+    const decoded = DatumOption.fromCBORHex(definite)
     if (!InlineDatum.isInlineDatum(decoded)) throw new Error("expected an inline datum")
-    const edited = new InlineDatum.InlineDatum({ data: decoded.data })
-    const expected = "8201d818" + bstr(PlutusData.toCBORHex(decoded.data))
-    expect(expected).toBe("8201d818" + bstr("d8799fa10102ff"))
-    expect(DatumOption.toCBORHex(edited)).toBe(expected)
+
+    // Decoded and re-encoded: byte for byte, because the arrival bytes came with it.
+    expect(DatumOption.toCBORHex(decoded)).toBe(definite)
+
+    // Rebuilt from the same Data with nothing recorded ON THE WRAPPER: still byte for byte. The
+    // definite map `a10102` survives where the default options would have written `bf0102ff`.
+    const bare = new InlineDatum.InlineDatum({ data: decoded.data })
+    expect(DatumOption.toCBORHex(bare)).toBe(definite)
+
+    // Rebuilt WITH the bytes recorded on the wrapper as well: unchanged, and the route that still
+    // matters when the `Data` was assembled rather than decoded.
+    const recorded = OriginalBytes.record(
+      new InlineDatum.InlineDatum({ data: decoded.data }),
+      fromHex("d8799fa10102ff")
+    )
+    expect(DatumOption.toCBORHex(recorded)).toBe(definite)
+  })
+
+  // The complement: a `Data` this process built gets the default framing, which is what makes the
+  // arrival record a record of arrival rather than a sticky encoding preference.
+  //
+  // ⚠️ The expected bytes follow `PLUTUS_DATA_OPTIONS` — indefinite fields (`9f`), DEFINITE maps
+  // (`a1`). They read `bf…ff` while this package's datum default was the CML option set, and the
+  // framing a hand-built datum takes is the default's to decide, not this test's.
+  it("a hand-built Data writes the default framing", () => {
+    const built = new InlineDatum.InlineDatum({
+      data: Data.constr(0n, [new Map<Data.Data, Data.Data>([[1n, 2n]])])
+    })
+    expect(DatumOption.toCBORHex(built)).toBe("8201d818" + bstr("d8799fa10102ff"))
   })
 })

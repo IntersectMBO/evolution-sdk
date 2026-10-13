@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/RedeemerBuilder.ts
-nav_order: 142
+nav_order: 146
 parent: Modules
 ---
 
@@ -26,11 +27,15 @@ Added in v2.0.0
 <h2 className="text-delta">Table of contents</h2>
 
 - [types](#types)
+  - [BatchRedeemer (interface)](#batchredeemer-interface)
   - [BatchRedeemerBuilder (interface)](#batchredeemerbuilder-interface)
   - [BatchRedeemerFn (type alias)](#batchredeemerfn-type-alias)
+  - [DeferredRedeemer (type alias)](#deferredredeemer-type-alias)
   - [IndexedInput (interface)](#indexedinput-interface)
   - [RedeemerArg (type alias)](#redeemerarg-type-alias)
+  - [SelfRedeemer (interface)](#selfredeemer-interface)
   - [SelfRedeemerFn (type alias)](#selfredeemerfn-type-alias)
+  - [StaticRedeemer (interface)](#staticredeemer-interface)
 - [utils](#utils)
   - [isBatchBuilder](#isbatchbuilder)
   - [isSelfFn](#isselffn)
@@ -39,6 +44,22 @@ Added in v2.0.0
 ---
 
 # types
+
+## BatchRedeemer (interface)
+
+A redeemer built once from several script inputs once their final indexes are known.
+
+**Signature**
+
+```ts
+export interface BatchRedeemer {
+  readonly _tag: "batch"
+  readonly fn: BatchRedeemerFn
+  readonly inputs: ReadonlyArray<UTxO.UTxO>
+}
+```
+
+Added in v2.0.0
 
 ## BatchRedeemerBuilder (interface)
 
@@ -72,6 +93,18 @@ Use when multiple inputs need coordinated redeemer values.
 
 ```ts
 export type BatchRedeemerFn = (inputs: ReadonlyArray<IndexedInput>) => Data.Data
+```
+
+Added in v2.0.0
+
+## DeferredRedeemer (type alias)
+
+A redeemer whose data may depend on the final input indexes, resolved after coin selection.
+
+**Signature**
+
+```ts
+export type DeferredRedeemer = StaticRedeemer | SelfRedeemer | BatchRedeemer
 ```
 
 Added in v2.0.0
@@ -120,6 +153,21 @@ export type RedeemerArg = Data.Data | SelfRedeemerFn | BatchRedeemerBuilder
 
 Added in v2.0.0
 
+## SelfRedeemer (interface)
+
+A redeemer built per script input once its final index is known.
+
+**Signature**
+
+```ts
+export interface SelfRedeemer {
+  readonly _tag: "self"
+  readonly fn: SelfRedeemerFn
+}
+```
+
+Added in v2.0.0
+
 ## SelfRedeemerFn (type alias)
 
 Self-mode function: constructs a redeemer for a single script input.
@@ -131,6 +179,21 @@ The same function is invoked for each script UTxO in the collection.
 
 ```ts
 export type SelfRedeemerFn = (input: IndexedInput) => Data.Data
+```
+
+Added in v2.0.0
+
+## StaticRedeemer (interface)
+
+A redeemer whose data is known when the transaction is built.
+
+**Signature**
+
+```ts
+export interface StaticRedeemer {
+  readonly _tag: "static"
+  readonly data: Data.Data
+}
 ```
 
 Added in v2.0.0

@@ -14,7 +14,6 @@ import * as Transaction from "../src/Transaction.js"
 import * as TransactionBody from "../src/TransactionBody.js"
 import * as TransactionHash from "../src/TransactionHash.js"
 import * as TransactionInput from "../src/TransactionInput.js"
-import * as TransactionOutput from "../src/TransactionOutput.js"
 import * as TransactionWitnessSet from "../src/TransactionWitnessSet.js"
 import * as TxOut from "../src/TxOut.js"
 import * as VKey from "../src/VKey.js"
@@ -116,16 +115,6 @@ describe.each(optionSets)("under %s", (_, options, plutusData) => {
   it.each(datums)("TxOut writes a new inline datum with %s as Data does", (_, data) => {
     const output = TxOut.fromCBORHex(TxOut.toCBORHex(outputWith(data), options), ledger)
     expect(Bytes.toHex(OriginalBytes.get(output.datumOption!)!)).toBe(Data.toCBORHex(data, plutusData))
-  })
-
-  it.each(datums)("TransactionOutput writes a new inline datum with %s as Data does", (_, data) => {
-    // A new datum in an output decoded by the era-split module
-    const decoded = TransactionOutput.fromCBORHex(TxOut.toCBORHex(outputWith(data)))
-    const output = new TransactionOutput.BabbageTransactionOutput({
-      ...decoded,
-      datumOption: new InlineDatum.InlineDatum({ data })
-    })
-    expect(TransactionOutput.toCBORHex(output, options)).toContain("d818" + bstr(Data.toCBORHex(data, plutusData)))
   })
 
   it("TransactionBody and Transaction write every new inline datum as Data does", () => {

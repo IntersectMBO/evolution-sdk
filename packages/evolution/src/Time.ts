@@ -14,6 +14,19 @@ import type { UnixTime } from "./UnixTime.js"
 import { now as nowFn } from "./UnixTime.js"
 
 /**
+ * ⚠️ `SLOT_CONFIG_NETWORK.Custom` ships as all zeros, to be filled in for an emulator or devnet.
+ * Used unfilled, a `slotLength` of 0 makes `unixTimeToSlot` divide by zero and return a slot of
+ * `Infinity`, or `0n` under BigInt semantics -- a number, either way, where there is no answer.
+ */
+const assertInDomain = (slotConfig: SlotConfig): void => {
+  if (slotConfig.slotLength <= 0) {
+    throw new Error(
+      `slot configuration has a slotLength of ${slotConfig.slotLength}; the Custom config must be filled in before use`
+    )
+  }
+}
+
+/**
  * Convert a slot number to Unix time (in milliseconds).
  *
  * @param slot - The slot number to convert
@@ -33,6 +46,17 @@ import { now as nowFn } from "./UnixTime.js"
  * ```
  */
 export const slotToUnixTime = (slot: Slot, slotConfig: SlotConfig): UnixTime => {
+  assertInDomain(slotConfig)
+  // ⚠️ A `SlotConfig` describes ONE era with ONE slot length -- its own fields say "Shelley era".
+  // Below `zeroSlot` the arithmetic silently extrapolates that slot length backwards through a
+  // region where it did not hold: mainnet slot 0 is Byron, where slots were 20s, and this
+  // returned a timestamp 988 DAYS late rather than refusing. A wrong date is worse than no date,
+  // because nothing downstream can tell it from a real one.
+  if (slot < slotConfig.zeroSlot) {
+    throw new Error(
+      `slot ${slot} is before this configuration's first slot (${slotConfig.zeroSlot}); it belongs to an earlier era with a different slot length`
+    )
+  }
   const msAfterBegin = (slot - slotConfig.zeroSlot) * BigInt(slotConfig.slotLength)
   return slotConfig.zeroTime + msAfterBegin
 }
@@ -58,6 +82,14 @@ export const slotToUnixTime = (slot: Slot, slotConfig: SlotConfig): UnixTime => 
  * ```
  */
 export const unixTimeToSlot = (unixTime: UnixTime, slotConfig: SlotConfig): Slot => {
+  assertInDomain(slotConfig)
+  // Same reason as `slotToUnixTime`: before `zeroTime` this configuration does not describe the
+  // chain, and floor division would hand back a plausible slot from an era it knows nothing of.
+  if (unixTime < slotConfig.zeroTime) {
+    throw new Error(
+      `unix time ${unixTime} is before this configuration's start (${slotConfig.zeroTime}); it belongs to an earlier era with a different slot length`
+    )
+  }
   const timePassed = unixTime - slotConfig.zeroTime
   const slotsPassed = timePassed / BigInt(slotConfig.slotLength)
   return slotsPassed + slotConfig.zeroSlot

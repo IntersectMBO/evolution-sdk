@@ -8,9 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as Address from "../../src/Address.js"
 import * as Assets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as Data from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
+import * as Maestro from "../../src/sdk/provider/internal/Maestro.js"
 import * as MaestroEffect from "../../src/sdk/provider/internal/MaestroEffect.js"
 import * as Transaction from "../../src/Transaction.js"
 import * as TransactionHash from "../../src/TransactionHash.js"
@@ -240,5 +243,28 @@ describe("Maestro getDatum and awaitTx", () => {
     )
 
     expect(confirmed).toBe(true)
+  })
+})
+
+describe("Maestro datum options", () => {
+  /**
+   * ⚠️ `OriginalBytes` is a side channel, not a field, so an equality check on the decoded tree
+   * passes whether or not the wire bytes were kept. A datum re-encoded from its tree reframes an
+   * empty Plutus array and hashes differently, and a script consumer matches a datum BY its hash
+   * -- so cip113/cip139 report `datum_hex` only from this channel, absent rather than re-derived.
+   */
+  it("keeps an inline datum's ORIGINAL bytes", () => {
+    const datum = Maestro.transformDatumOption({ type: "inline", bytes: "d87980", hash: "" } as never)
+
+    expect(datum?._tag).toBe("InlineDatum")
+    const raw = OriginalBytes.get(datum as object)
+    expect(raw).toBeDefined()
+    expect(Bytes.toHex(raw!)).toBe("d87980")
+  })
+
+  it("reads a hash-only datum as a DatumHash, with no bytes to keep", () => {
+    const hash = "9e478573ab81ea7a8e31891ce0648b81229f408d596a3483e6f4f9b92d3cf710"
+    const datum = Maestro.transformDatumOption({ type: "hash", bytes: null, hash } as never)
+    expect(datum?._tag).toBe("DatumHash")
   })
 })

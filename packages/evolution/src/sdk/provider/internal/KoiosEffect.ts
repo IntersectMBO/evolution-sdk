@@ -21,6 +21,9 @@ import * as HttpUtils from "./HttpUtils.js"
 import * as _Koios from "./Koios.js"
 import * as _Ogmios from "./Ogmios.js"
 
+/** Re-exported from the leaf both query tiers import, so neither has to reach for the other. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = _Koios.DEFAULT_REQUEST_TIMEOUT_MS
+
 /**
  * Wrap errors into ProviderError
  */
@@ -32,228 +35,260 @@ const wrapError = (operation: string) => (cause: unknown) =>
     })
   )
 
-export const getProtocolParameters = (baseUrl: string, token?: string) =>
+export const getProtocolParameters = (
+  baseUrl: string,
+  token?: _Koios.TokenSource,
+  timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS
+) =>
   Effect.gen(function* () {
     const url = `${baseUrl}/epoch_params?limit=1&order=epoch_no.desc`
     const schema = Schema.Array(_Koios.ProtocolParametersSchema)
-    const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+    const bearerToken = _Koios.authHeader(token)
     const [result] = yield* pipe(
-      HttpUtils.get(url, schema, bearerToken),
-      Effect.timeout(10_000),
+      HttpUtils.get(url, schema, bearerToken, timeoutMs),
       Effect.catchAll(wrapError("getProtocolParameters"))
     )
 
-    return {
-      minFeeA: Number(result.min_fee_a),
-      minFeeB: Number(result.min_fee_b),
-      maxTxSize: Number(result.max_tx_size),
-      maxValSize: Number(result.max_val_size),
-      keyDeposit: result.key_deposit,
-      poolDeposit: result.pool_deposit,
-      drepDeposit: result.drep_deposit,
-      govActionDeposit: result.gov_action_deposit,
-      priceMem: result.price_mem,
-      priceStep: result.price_step,
-      maxTxExMem: result.max_tx_ex_mem,
-      maxTxExSteps: result.max_tx_ex_steps,
-      coinsPerUtxoByte: result.coins_per_utxo_size,
-      collateralPercentage: Number(result.collateral_percent),
-      maxCollateralInputs: Number(result.max_collateral_inputs),
-      minFeeRefScriptCostPerByte: result.min_fee_ref_script_cost_per_byte,
-      costModels: {
-        PlutusV1: Object.fromEntries(
-          result.cost_models.PlutusV1.map((value, index) => [index.toString(), Number(value)])
-        ),
-        PlutusV2: Object.fromEntries(
-          result.cost_models.PlutusV2.map((value, index) => [index.toString(), Number(value)])
-        ),
-        PlutusV3: Object.fromEntries(
-          result.cost_models.PlutusV3.map((value, index) => [index.toString(), Number(value)])
-        )
-      }
-    }
+    return _Koios.toProtocolParameters(result)
   })
+
+export const getTip =
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  () =>
+    pipe(
+      HttpUtils.get(`${baseUrl}/tip`, Schema.Array(_Koios.TipSchema), _Koios.authHeader(token), timeoutMs),
+      Effect.flatMap((rows) =>
+        rows.length === 0
+          ? Effect.fail(new Provider.ProviderError({ cause: "Empty tip", message: "Koios returned no tip" }))
+          : Effect.succeed(rows[0])
+      ),
+      Effect.map((row): Provider.Tip => ({
+        slot: row.abs_slot,
+        blockHash: row.hash,
+        epoch: row.epoch_no,
+        blockHeight: row.block_no ?? undefined,
+        blockTime: row.block_time ?? undefined
+      })),
+      Effect.catchAll(wrapError("getTip"))
+    )
 
 const getUtxosForAddressOrCredential = (
   baseUrl: string,
   addressOrCredential: CoreAddress.Address | Credential.Credential,
-  token?: string
+  token?: _Koios.TokenSource,
+  timeoutMs?: number
 ) => {
-  const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+  const headers = _Koios.authHeader(token)
   if (!("hash" in addressOrCredential)) {
-    return _Koios.getUtxosEffect(baseUrl, CoreAddress.toBech32(addressOrCredential), headers)
+    return _Koios.getUtxosEffect(baseUrl, CoreAddress.toBech32(addressOrCredential), headers, timeoutMs)
   }
-  return _Koios.getCredentialUtxosEffect(baseUrl, Credential.toHex(addressOrCredential), headers)
+  // ⚠️ This arm PAGES. The ceiling has to reach the per-page request, which is why it travels
+  // down rather than being wrapped around the call: one address is one request, one credential
+  // can be several, and the old whole-operation timeout treated them the same.
+  return _Koios.getCredentialUtxosEffect(baseUrl, Credential.toHex(addressOrCredential), headers, timeoutMs)
 }
 
 export const getUtxos =
-  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) =>
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (addressOrCredential: CoreAddress.Address | Credential.Credential) =>
     pipe(
-      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token),
-      Effect.timeout(10_000),
+      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token, timeoutMs),
       Effect.catchAll(wrapError("getUtxos"))
     )
 
 export const getUtxosWithUnit =
-  (baseUrl: string, token?: string) =>
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
   (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) =>
     pipe(
-      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token),
+      getUtxosForAddressOrCredential(baseUrl, addressOrCredential, token, timeoutMs),
       Effect.map((utxos) =>
         utxos.filter((utxo) => {
           const units = CoreAssets.getUnits(utxo.assets)
           return units.length > 0 && units.includes(unit)
         })
       ),
-      Effect.timeout(10_000),
       Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
 
-export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string) =>
-  pipe(
-    Effect.sync(() => AssetsUnit.fromUnit(unit)),
-    Effect.flatMap(({ assetName, policyId }) => {
-      const policyIdHex = PolicyId.toHex(policyId)
-      const assetNameHex = assetName ? Bytes.toHex(assetName.bytes) : ""
-      const url = `${baseUrl}/asset_addresses?_asset_policy=${policyIdHex}&_asset_name=${assetNameHex}`
-      const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+export const getUtxoByUnit =
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (unit: string) =>
+    pipe(
+      Effect.sync(() => AssetsUnit.fromUnit(unit)),
+      Effect.flatMap(({ assetName, policyId }) => {
+        const policyIdHex = PolicyId.toHex(policyId)
+        const assetNameHex = assetName ? Bytes.toHex(assetName.bytes) : ""
+        const url = `${baseUrl}/asset_addresses?_asset_policy=${policyIdHex}&_asset_name=${assetNameHex}`
+        const bearerToken = _Koios.authHeader(token)
 
-      return pipe(
-        HttpUtils.get(url, Schema.Array(_Koios.AssetAddressSchema), bearerToken),
-        Effect.flatMap((addresses) =>
-          addresses.length === 0
-            ? Effect.fail(new Provider.ProviderError({ cause: "Unit not found", message: "Unit not found" }))
-            : Effect.succeed(addresses)
-        ),
-        Effect.flatMap((addresses) =>
-          addresses.length > 1
-            ? Effect.fail(
-                new Provider.ProviderError({
-                  cause: "Multiple addresses found",
-                  message: "Unit needs to be an NFT or only held by one address."
-                })
-              )
-            : Effect.succeed(addresses[0])
-        ),
-        Effect.flatMap((address) => _Koios.getUtxosEffect(baseUrl, address.payment_address, bearerToken)),
-        Effect.map((utxos) =>
-          utxos.filter((utxo) => {
-            const units = CoreAssets.getUnits(utxo.assets)
-            return units.length > 0 && units.includes(unit)
-          })
-        ),
-        Effect.flatMap((utxos) =>
-          utxos.length > 1
-            ? Effect.fail(
-                new Provider.ProviderError({
-                  cause: "Multiple UTxOs found",
-                  message: "Unit needs to be an NFT or only held by one address."
-                })
-              )
-            : Effect.succeed(utxos[0])
+        return pipe(
+          HttpUtils.get(url, Schema.Array(_Koios.AssetAddressSchema), bearerToken, timeoutMs),
+          Effect.flatMap((addresses) =>
+            addresses.length === 0
+              ? Effect.fail(new Provider.ProviderError({ cause: "Unit not found", message: "Unit not found" }))
+              : Effect.succeed(addresses)
+          ),
+          Effect.flatMap((addresses) =>
+            addresses.length > 1
+              ? Effect.fail(
+                  new Provider.ProviderError({
+                    cause: "Multiple addresses found",
+                    message: "Unit needs to be an NFT or only held by one address."
+                  })
+                )
+              : Effect.succeed(addresses[0])
+          ),
+          Effect.flatMap((address) => _Koios.getUtxosEffect(baseUrl, address.payment_address, bearerToken)),
+          Effect.map((utxos) =>
+            utxos.filter((utxo) => {
+              const units = CoreAssets.getUnits(utxo.assets)
+              return units.length > 0 && units.includes(unit)
+            })
+          ),
+          Effect.flatMap((utxos) =>
+            utxos.length > 1
+              ? Effect.fail(
+                  new Provider.ProviderError({
+                    cause: "Multiple UTxOs found",
+                    message: "Unit needs to be an NFT or only held by one address."
+                  })
+                )
+              : Effect.succeed(utxos[0])
+          )
         )
-      )
-    }),
-    Effect.timeout(10_000),
-    Effect.catchAll(wrapError("getUtxoByUnit"))
-  )
+      }),
+      Effect.catchAll(wrapError("getUtxoByUnit"))
+    )
+
+/**
+ * `/utxo_info`, as the indexer answers it: every requested outpoint it can resolve, with the
+ * `is_spent` flag intact.
+ *
+ * This is the read both outpoint members are built from — {@link getUtxosByOutRef} filters it
+ * and {@link resolveOutRefs} does not, so the request and its decoding exist once.
+ */
+const utxoInfoRows =
+  (operation: string) =>
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
+    pipe(
+      HttpUtils.postJson(
+        `${baseUrl}/utxo_info`,
+        {
+          _utxo_refs: [
+            ...new Set(inputs.map((input) => `${TransactionHash.toHex(input.transactionId)}#${input.index}`))
+          ],
+          _extended: true
+        },
+        Schema.Array(_Koios.CredentialUTxOSchema),
+        _Koios.authHeader(token),
+        timeoutMs
+      ),
+      Effect.catchAll(wrapError(operation))
+    )
 
 export const getUtxosByOutRef =
-  (baseUrl: string, token?: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
+    Effect.map(
+      utxoInfoRows("getUtxosByOutRef")(baseUrl, token, timeoutMs)(inputs),
+      // ⚠️ `/utxo_info` resolves SPENT outputs as readily as unspent ones, so the rows
+      // have to be filtered: this method's name promises UTxOs, and handing a consumed
+      // output to the builder produces a transaction the node rejects. An outpoint that
+      // is gone is simply absent from the answer, which the builder reports as a missing
+      // input rather than discovering at submit time. A caller asking about liveness wants
+      // `resolveOutRefs`, which keeps the row and the flag.
+      (rows) => rows.filter((u) => u.is_spent !== true).map(_Koios.extendedRowToUTxO)
+    )
+
+/**
+ * The same resolution, unfiltered and flagged — see `ProviderEffect.resolveOutRefs`.
+ *
+ * `is_spent` is optional on the row shape because `/credential_utxos` only carries it with
+ * `_extended`; this request always asks for it, so an absent flag here means the indexer did
+ * not answer the question rather than that the output is live.
+ */
+export const resolveOutRefs =
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (inputs: ReadonlyArray<TransactionInput.TransactionInput>) =>
+    Effect.map(utxoInfoRows("resolveOutRefs")(baseUrl, token, timeoutMs)(inputs), (rows) =>
+      rows.map((row) => ({
+        utxo: _Koios.extendedRowToUTxO(row),
+        ...(row.is_spent === undefined ? {} : { spent: row.is_spent })
+      }))
+    )
+
+export const getDelegation =
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (rewardAddress: CoreRewardAddress.RewardAddress) =>
     Effect.gen(function* () {
-      const url = `${baseUrl}/utxo_info`
       const body = {
-        _utxo_refs: [
-          ...new Set(inputs.map((input) => `${TransactionHash.toHex(input.transactionId)}#${input.index}`))
-        ],
-        _extended: true
+        _stake_addresses: [rewardAddress]
       }
-      const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+      const url = `${baseUrl}/account_info`
+      const bearerToken = _Koios.authHeader(token)
 
-      const results = yield* pipe(
-        HttpUtils.postJson(url, body, Schema.Array(_Koios.CredentialUTxOSchema), bearerToken),
-        Effect.timeout(10_000),
-        Effect.catchAll(wrapError("getUtxosByOutRef"))
+      const result = yield* pipe(
+        HttpUtils.postJson(url, body, Schema.Array(_Koios.AccountInfoSchema), bearerToken, timeoutMs),
+        Effect.flatMap((result) =>
+          result.length === 0
+            ? Effect.fail(
+                new Provider.ProviderError({
+                  cause: "No delegation found",
+                  message: "No Delegation Found by Reward Address"
+                })
+              )
+            : Effect.succeed(result[0])
+        ),
+        Effect.catchAll(wrapError("getDelegation"))
       )
 
-      return results.map((u) =>
-        _Koios.toUTxO(
-          {
-            tx_hash: u.tx_hash,
-            tx_index: u.tx_index,
-            block_time: 0n,
-            block_height: null,
-            value: u.value,
-            datum_hash: u.datum_hash,
-            inline_datum: u.inline_datum,
-            reference_script: u.reference_script,
-            asset_list: u.asset_list
-          },
-          u.address
-        )
-      )
+      return {
+        poolId: result.delegated_pool ? Schema.decodeSync(PoolKeyHash.FromBech32)(result.delegated_pool) : null,
+        rewards: result.rewards_available,
+        // Koios reports `registered` / `not registered`. Absent rather than guessed if a deployment
+        // does not send the field at all.
+        registered: result.status === undefined ? undefined : result.status === "registered"
+      } satisfies Provider.Delegation
     })
 
-export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress: CoreRewardAddress.RewardAddress) =>
-  Effect.gen(function* () {
-    const body = {
-      _stake_addresses: [rewardAddress]
-    }
-    const url = `${baseUrl}/account_info`
-    const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+export const getDatum =
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (datumHash: DatumHash.DatumHash) =>
+    Effect.gen(function* () {
+      const datumHashHex = Bytes.toHex(datumHash.hash)
+      const body = {
+        _datum_hashes: [datumHashHex]
+      }
+      const url = `${baseUrl}/datum_info`
+      const bearerToken = _Koios.authHeader(token)
 
-    const result = yield* pipe(
-      HttpUtils.postJson(url, body, Schema.Array(_Koios.AccountInfoSchema), bearerToken),
-      Effect.flatMap((result) =>
-        result.length === 0
-          ? Effect.fail(
-              new Provider.ProviderError({
-                cause: "No delegation found",
-                message: "No Delegation Found by Reward Address"
-              })
-            )
-          : Effect.succeed(result[0])
-      ),
-      Effect.timeout(10_000),
-      Effect.catchAll(wrapError("getDelegation"))
-    )
+      const result = yield* pipe(
+        HttpUtils.postJson(url, body, Schema.Array(_Koios.DatumInfo), bearerToken, timeoutMs),
+        Effect.flatMap((result) =>
+          result.length === 0
+            ? Effect.fail(
+                new Provider.ProviderError({
+                  cause: "No datum found",
+                  message: "No Datum Found by Datum Hash"
+                })
+              )
+            : Effect.succeed(result[0])
+        ),
+        Effect.catchAll(wrapError("getDatum"))
+      )
 
-    return {
-      poolId: result.delegated_pool ? Schema.decodeSync(PoolKeyHash.FromBech32)(result.delegated_pool) : null,
-      rewards: result.rewards_available
-    } satisfies Provider.Delegation
-  })
+      return Schema.decodeSync(PlutusData.FromCBORHex())(result.bytes)
+    })
 
-export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHash.DatumHash) =>
-  Effect.gen(function* () {
-    const datumHashHex = Bytes.toHex(datumHash.hash)
-    const body = {
-      _datum_hashes: [datumHashHex]
-    }
-    const url = `${baseUrl}/datum_info`
-    const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
-
-    const result = yield* pipe(
-      HttpUtils.postJson(url, body, Schema.Array(_Koios.DatumInfo), bearerToken),
-      Effect.flatMap((result) =>
-        result.length === 0
-          ? Effect.fail(
-              new Provider.ProviderError({
-                cause: "No datum found",
-                message: "No Datum Found by Datum Hash"
-              })
-            )
-          : Effect.succeed(result[0])
-      ),
-      Effect.timeout(10_000),
-      Effect.catchAll(wrapError("getDatum"))
-    )
-
-    return Schema.decodeSync(PlutusData.FromCBORHex())(result.bytes)
-  })
-
+/**
+ * ⚠️ **Two different ceilings, and they are not interchangeable.** `timeoutMs` bounds each poll's
+ * request; `timeout` bounds the whole wait across many polls. Folding one into the other would
+ * either cap a confirmation wait at a single request's worth — reporting an unconfirmed
+ * transaction as a provider failure — or leave each poll able to hang for the entire wait.
+ */
 export const awaitTx =
-  (baseUrl: string, token?: string) =>
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
   (txHash: TransactionHash.TransactionHash, checkInterval = 20000, timeout = 160_000) =>
     Effect.gen(function* () {
       const txHashHex = TransactionHash.toHex(txHash)
@@ -261,10 +296,10 @@ export const awaitTx =
         _tx_hashes: [txHashHex]
       }
       const url = `${baseUrl}/tx_info`
-      const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+      const bearerToken = _Koios.authHeader(token)
 
       const result = yield* pipe(
-        HttpUtils.postJson(url, body, Schema.Array(_Koios.TxConfirmationSchema), bearerToken),
+        HttpUtils.postJson(url, body, Schema.Array(_Koios.TxConfirmationSchema), bearerToken, timeoutMs),
         Effect.repeat({
           schedule: Schedule.exponential(checkInterval),
           until: (result) => result.length > 0
@@ -279,23 +314,24 @@ export const awaitTx =
       return result
     })
 
-export const submitTx = (baseUrl: string, token?: string) => (tx: Transaction.Transaction) =>
-  Effect.gen(function* () {
-    const txCborBytes = Transaction.toCBORBytes(tx)
-    const url = `${baseUrl}/submittx`
-    const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+export const submitTx =
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
+  (tx: Transaction.Transaction) =>
+    Effect.gen(function* () {
+      const txCborBytes = Transaction.toCBORBytes(tx)
+      const url = `${baseUrl}/submittx`
+      const bearerToken = _Koios.authHeader(token)
 
-    const result = yield* pipe(
-      HttpUtils.postUint8Array(url, txCborBytes, _Koios.TxHashSchema, bearerToken),
-      Effect.timeout(10_000),
-      Effect.catchAll(wrapError("submitTx"))
-    )
+      const result = yield* pipe(
+        HttpUtils.postUint8Array(url, txCborBytes, _Koios.TxHashSchema, bearerToken, timeoutMs),
+        Effect.catchAll(wrapError("submitTx"))
+      )
 
-    return Schema.decodeSync(TransactionHash.FromHex)(result)
-  })
+      return Schema.decodeSync(TransactionHash.FromHex)(result)
+    })
 
 export const evaluateTx =
-  (baseUrl: string, token?: string) =>
+  (baseUrl: string, token?: _Koios.TokenSource, timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS) =>
   (
     tx: Transaction.Transaction,
     additionalUTxOs?: Array<CoreUTxO.UTxO>
@@ -314,12 +350,11 @@ export const evaluateTx =
         id: null
       }
       const schema = _Ogmios.JSONRPCSchema(Schema.Array(_Ogmios.RedeemerSchema))
-      const bearerToken = token ? { Authorization: `Bearer ${token}` } : undefined
+      const bearerToken = _Koios.authHeader(token)
 
       const { result } = yield* pipe(
         Schema.encode(_Ogmios.EvaluateTransactionSchema)(data),
-        Effect.flatMap((body) => HttpUtils.postJson(url, body, schema, bearerToken)),
-        Effect.timeout(10_000),
+        Effect.flatMap((body) => HttpUtils.postJson(url, body, schema, bearerToken, timeoutMs)),
         Effect.catchAll(wrapError("evaluateTx"))
       )
 

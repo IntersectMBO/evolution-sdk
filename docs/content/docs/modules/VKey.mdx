@@ -1,6 +1,7 @@
 ---
+
 title: VKey.ts
-nav_order: 187
+nav_order: 192
 parent: Modules
 ---
 
@@ -15,13 +16,14 @@ parent: Modules
   - [verify](#verify)
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
+- [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [predicates](#predicates)
   - [isVKey](#isvkey)
 - [schemas](#schemas)
+  - [Hex](#hex)
   - [VKey (class)](#vkey-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
@@ -32,7 +34,9 @@ parent: Modules
   - [arbitrary](#arbitrary)
 - [utils](#utils)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -78,17 +82,17 @@ export declare const toBytes: (a: VKey, overrideOptions?: ParseOptions) => Uint8
 
 Added in v2.0.0
 
-## toHex
+# model
 
-Convert a VKey to a hex string.
+## Hex (type alias)
 
 **Signature**
 
 ```ts
-export declare const toHex: (a: VKey, overrideOptions?: ParseOptions) => string
+export type Hex = typeof Hex.Type
 ```
 
-Added in v2.0.0
+Added in v2.4.0
 
 # parsing
 
@@ -101,19 +105,6 @@ Expects exactly 32 bytes.
 
 ```ts
 export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) => VKey
-```
-
-Added in v2.0.0
-
-## fromHex
-
-Parse a VKey from a hex string.
-Expects exactly 64 hex characters (32 bytes).
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => VKey
 ```
 
 Added in v2.0.0
@@ -133,6 +124,24 @@ export declare const isVKey: (u: unknown, overrideOptions?: ParseOptions | numbe
 Added in v2.0.0
 
 # schemas
+
+## Hex
+
+An Ed25519 verification key as hex (32 bytes).
+
+Validated as well as branded: a 32-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ Not the 64-byte BIP32 extended form: a verifier handed the extended form where this belongs
+fails on every signature. See {@link Bip32PublicKey.Hex}.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "VKeyHex">
+```
+
+Added in v2.4.0
 
 ## VKey (class)
 
@@ -225,4 +234,20 @@ export declare const FromHex: Schema.transform<
   Schema.filter<Schema.Schema<Uint8Array, string, never>>,
   Schema.transform<Schema.SchemaClass<Uint8Array, Uint8Array, never>, Schema.SchemaClass<VKey, VKey, never>>
 >
+```
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => VKey
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
 ```

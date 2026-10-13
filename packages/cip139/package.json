@@ -1,0 +1,79 @@
+{
+  "name": "@evolution-sdk/cip139",
+  "version": "0.1.0",
+  "description": "CIP-139 Universal Query Layer: the full-data wallet read surface over any Evolution provider",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": [],
+  "tags": [
+    "typescript",
+    "cardano",
+    "cip-139",
+    "query-layer"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts",
+    "./internal/*": null,
+    "./*/index": null
+  },
+  "files": [
+    "src/**/*.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json && babel dist --plugins annotate-pure-calls --out-dir dist --source-maps",
+    "dev": "tsc -b tsconfig.build.json --watch",
+    "type-check": "tsc --noEmit -p tsconfig.src.json && tsc -b tsconfig.test.json",
+    "lint": "eslint \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,mjs}\"",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.4",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@evolution-sdk/evolution": "workspace:*",
+    "@evolution-sdk/canonical": "workspace:*",
+    "@evolution-sdk/review": "workspace:*",
+    "effect": "^3.21.1"
+  },
+  "keywords": [
+    "cardano",
+    "cip-139",
+    "cip-116",
+    "query-layer",
+    "cip-30",
+    "wallet",
+    "typescript",
+    "sdk"
+  ],
+  "homepage": "https://github.com/IntersectMBO/evolution-sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IntersectMBO/evolution-sdk.git",
+    "directory": "packages/cip139"
+  },
+  "bugs": {
+    "url": "https://github.com/IntersectMBO/evolution-sdk/issues"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./dist/index.js",
+      "./*": "./dist/*.js",
+      "./internal/*": null,
+      "./*/index": null
+    }
+  }
+}

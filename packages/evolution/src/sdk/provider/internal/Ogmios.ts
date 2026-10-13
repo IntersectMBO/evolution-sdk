@@ -22,6 +22,15 @@ export const JSONRPCSchema = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
     result: schema
   }).annotations({ identifier: "JSONRPCSchema" })
 
+/** `queryLedgerState/tip`: the slot and header hash the ledger is at. No height, no time. */
+export const TipSchema = Schema.Struct({
+  slot: Schema.NumberFromString,
+  id: Schema.String
+})
+
+/** `queryLedgerState/epoch`: the epoch number, as a bare value. */
+export const EpochSchema = Schema.NumberFromString
+
 const LovelaceAsset = Schema.Struct({
   lovelace: Schema.BigInt
 })

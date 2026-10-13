@@ -855,7 +855,7 @@ export const CDDLSchema = Schema.Union(
     CBOR.Integer, // cost (coin)
     UnitInterval.CDDLSchema, // margin
     CBOR.ByteArray, // reward_account (bytes)
-    Schema.Array(CBOR.ByteArray), // pool_owners (array of addr_keyhash bytes)
+    PoolParams.PoolOwnersCDDL, // pool_owners (set<addr_keyhash>, written #6.258)
     Schema.Array(Schema.encodedSchema(Relay.FromCDDL)), // relays
     Schema.NullOr(Schema.encodedSchema(PoolMetadata.FromCDDL)) // pool_metadata
   ),
@@ -916,8 +916,22 @@ export const FromCDDL = Schema.transformOrFail(CDDLSchema, Schema.typeSchema(Cer
         }
         case "PoolRegistration": {
           const poolParamsCDDL = yield* ParseResult.encodeEither(PoolParams.FromCDDL)(toA.poolParams)
-          // Spread encoded PoolParams fields directly into the certificate tuple (flattening)
-          return [3n, ...poolParamsCDDL] as const
+          // Spread encoded PoolParams fields directly into the certificate tuple (flattening).
+          // PoolParams has already tagged pool_owners `#6.258`; this tuple carries the plain array
+          // and re-tags at its own encode boundary, so unwrap it rather than tagging twice.
+          const [operator, vrfKeyhash, pledge, cost, margin, rewardAccount, owners, relays, metadata] = poolParamsCDDL
+          return [
+            3n,
+            operator,
+            vrfKeyhash,
+            pledge,
+            cost,
+            margin,
+            rewardAccount,
+            PoolParams.poolOwnersArray(owners),
+            relays,
+            metadata
+          ] as const
         }
         case "PoolRetirement": {
           const poolKeyHashBytes = yield* ParseResult.encodeEither(PoolKeyHash.FromBytes)(toA.poolKeyHash)

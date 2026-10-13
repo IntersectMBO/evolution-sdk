@@ -1,4 +1,5 @@
 ---
+
 title: AuxiliaryDataHash.ts
 nav_order: 8
 parent: Modules
@@ -21,7 +22,6 @@ Added in v2.0.0
   - [arbitrary](#arbitrary-1)
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
 - [model](#model)
   - [AuxiliaryDataHash (class)](#auxiliarydatahash-class)
     - [toJSON (method)](#tojson-method)
@@ -29,16 +29,20 @@ Added in v2.0.0
     - [[Inspectable.NodeInspectSymbol] (method)](#inspectablenodeinspectsymbol-method)
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [predicates](#predicates)
   - [isAuxiliaryDataHash](#isauxiliarydatahash)
+- [schemas](#schemas)
+  - [Hex](#hex)
 - [utils](#utils)
   - [BytesSchema](#bytesschema)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
   - [HexSchema](#hexschema)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -66,18 +70,6 @@ Encode AuxiliaryDataHash to bytes.
 
 ```ts
 export declare const toBytes: (a: AuxiliaryDataHash, overrideOptions?: ParseOptions) => Uint8Array
-```
-
-Added in v2.0.0
-
-## toHex
-
-Encode AuxiliaryDataHash to hex string.
-
-**Signature**
-
-```ts
-export declare const toHex: (a: AuxiliaryDataHash, overrideOptions?: ParseOptions) => string
 ```
 
 Added in v2.0.0
@@ -137,6 +129,16 @@ toString(): string
 [Hash.symbol](): number
 ```
 
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 # parsing
 
 ## fromBytes
@@ -147,18 +149,6 @@ Parse AuxiliaryDataHash from bytes.
 
 ```ts
 export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) => AuxiliaryDataHash
-```
-
-Added in v2.0.0
-
-## fromHex
-
-Parse AuxiliaryDataHash from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => AuxiliaryDataHash
 ```
 
 Added in v2.0.0
@@ -179,6 +169,25 @@ export declare const isAuxiliaryDataHash: (
 ```
 
 Added in v2.0.0
+
+# schemas
+
+## Hex
+
+An auxiliary-data hash as hex.
+
+Validated as well as branded: a 32-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ Same shape as a transaction hash and a datum hash.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "AuxiliaryDataHashHex">
+```
+
+Added in v2.4.0
 
 # utils
 
@@ -230,4 +239,20 @@ export declare const HexSchema: Schema.transform<
     Schema.SchemaClass<AuxiliaryDataHash, AuxiliaryDataHash, never>
   >
 >
+```
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => AuxiliaryDataHash
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
 ```

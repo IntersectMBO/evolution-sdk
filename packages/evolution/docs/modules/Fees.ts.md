@@ -1,0 +1,96 @@
+---
+
+title: Fees.ts
+nav_order: 62
+parent: Modules
+---
+
+## Fees overview
+
+The Conway fee components the linear `minFeeA * size + minFeeB` does not cover.
+
+A transaction carrying redeemers or reference scripts owes these on top of the linear fee, and
+a builder that charges only the linear part underpays — the node then rejects it.
+
+⚠️ Every value here is computed in exact rational arithmetic. The execution prices and the
+tier multiplier are rationals in the ledger and decimals on the wire, and `0.0577`,
+`0.0000721` and `1.2` are none of them representable in binary floating point — so a fee that
+passes through a `number` is a fee computed from a value the chain never specified.
+
+Added in v2.5.0
+
+---
+
+<h2 class="text-delta">Table of contents</h2>
+
+- [constants](#constants)
+  - [MAX_REF_SCRIPT_SIZE](#max_ref_script_size)
+- [fee-calculation](#fee-calculation)
+  - [refScriptFee](#refscriptfee)
+  - [scriptExecutionFee](#scriptexecutionfee)
+
+---
+
+# constants
+
+## MAX_REF_SCRIPT_SIZE
+
+The Conway reference-script ceiling: `maxRefScriptSizePerTx`, 200 KiB.
+
+Hardcoded in the Conway era and a protocol parameter from Dijkstra on. A transaction above it
+is invalid, so there is no fee to report for one.
+
+**Signature**
+
+```ts
+export declare const MAX_REF_SCRIPT_SIZE: 204800n
+```
+
+Added in v2.5.0
+
+# fee-calculation
+
+## refScriptFee
+
+Conway tiered reference-script fee, over exact rationals.
+
+The base rate applies to the first `sizeIncrement` bytes and is multiplied by `multiplier`
+for each tier after it, with a single `floor` of the accumulated total at the end — which is
+what the ledger does. The accumulation never passes through a `number`, because from the
+third tier on the per-byte price stops being an integer and a double drifts off the exact
+value by enough to land a lovelace under the fee minimum.
+
+Defaults are the Conway constants: 1.2× per 25,600 bytes.
+
+**Signature**
+
+```ts
+export declare const refScriptFee: (
+  totalSize: bigint,
+  costPerByte: NonnegativeInterval.NonnegativeInterval,
+  options?: { readonly multiplier?: NonnegativeInterval.NonnegativeInterval; readonly sizeIncrement?: bigint }
+) => bigint
+```
+
+Added in v2.5.0
+
+## scriptExecutionFee
+
+Conway script-execution fee: `⌈priceMem * totalMem + priceStep * totalSteps⌉`.
+
+The two prices are combined BEFORE the single ceiling, which is what the ledger's
+`txscriptfee` does over a transaction's total execution units — so this is not the sum of two
+independently rounded terms, and not a per-redeemer sum of those either.
+
+**Signature**
+
+```ts
+export declare const scriptExecutionFee: (
+  priceMem: NonnegativeInterval.NonnegativeInterval,
+  priceStep: NonnegativeInterval.NonnegativeInterval,
+  totalMem: bigint,
+  totalSteps: bigint
+) => bigint
+```
+
+Added in v2.5.0

@@ -1,6 +1,7 @@
 ---
+
 title: ScriptRef.ts
-nav_order: 117
+nav_order: 121
 parent: Modules
 ---
 
@@ -172,7 +173,7 @@ Added in v2.0.0
 
 ## FromCBORBytes
 
-/\*\*
+/**
 CBOR bytes transformation schema for ScriptRef.
 
 **Signature**

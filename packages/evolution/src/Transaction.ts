@@ -3,7 +3,6 @@ import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema
 import * as AuxiliaryData from "./AuxiliaryData.js"
 import * as Bytes from "./Bytes.js"
 import * as CBOR from "./CBOR.js"
-import * as PlutusData from "./Data.js"
 import * as TransactionBody from "./TransactionBody.js"
 import * as TransactionWitnessSet from "./TransactionWitnessSet.js"
 
@@ -113,7 +112,7 @@ const encodeArray = (items: ReadonlyArray<Uint8Array>, options: CBOR.CodecOption
  */
 export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
   const txOptions = CBOR.toTxCodecOptions(options)
-  const { ledger, plutusData } = txOptions
+  const { ledger } = txOptions
   return Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.typeSchema(Transaction), {
     strict: true,
     decode: (bytes, parseOptions) =>
@@ -121,18 +120,23 @@ export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions =
     encode: (tx, parseOptions, ast) =>
       Eff.flatMap(ParseResult.encode(FromCDDL)(tx, parseOptions), (tuple) =>
         ParseResult.try({
-          // The body and the witness set write their Plutus data with their
-          // own options, so the tuple is joined from its encoded items. The
-          // tuple holds the body with its inline datums in the default layout.
+          // The tuple is joined from its encoded items rather than encoded as a whole, because
+          // two of the four have to be written by the module that owns them: the witness set
+          // writes its Plutus data with its own options, and the BODY replays the bytes it was
+          // decoded from.
+          //
+          // ⚠️ The body is why this is not cosmetic. Encoding the body's CBOR map structurally
+          // reinstates the `#6.258` input-set tag on a body that arrived with a bare array —
+          // three bytes, a different transaction id, under a signature covering the other one.
+          // `TransactionBody.toCBORBytes` consults the arrival record; `CBOR.toCBORBytes` on the
+          // already-decoded map cannot.
           try: () =>
             encodeArray(
-              tuple.map((item, i) =>
-                i === 0 && plutusData !== PlutusData.DEFAULT_CBOR_OPTIONS
-                  ? TransactionBody.toCBORBytes(tx.body, txOptions)
-                  : i === 1
-                    ? TransactionWitnessSet.toCBORBytes(tx.witnessSet, txOptions)
-                    : CBOR.toCBORBytes(item, ledger)
-              ),
+              tuple.map((item, i) => {
+                if (i === 0) return TransactionBody.toCBORBytes(tx.body, txOptions)
+                if (i === 1) return TransactionWitnessSet.toCBORBytes(tx.witnessSet, txOptions)
+                return CBOR.toCBORBytes(item, ledger)
+              }),
               ledger
             ),
           catch: (error) =>
@@ -172,6 +176,68 @@ export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = C
  * WeakMap ensures the format is garbage-collected with the Transaction.
  */
 const formatCache = new WeakMap<Transaction, CBOR.CBORFormat>()
+
+/**
+ * The codec options a transaction is MEANT to be serialized with.
+ *
+ * ⚠️ Set by the builder when `BuildOptions.codecOptions` asks for an encoding other than the CML
+ * defaults, and consulted by the default `toCBORBytes` / `toCBORHex` path. Without it, a
+ * transaction built for canonical encoding would still be serialized with the CML defaults by
+ * every caller that does not pass options — including all four providers on submit, which call
+ * `toCBORBytes(tx)` — and the `script_data_hash` and `auxiliary_data_hash` computed during the
+ * build would be hashes over bytes nobody ever sends. The node rejects that.
+ *
+ * WeakMap, so it is collected with the Transaction.
+ *
+ * @since 2.2.0
+ */
+const intendedOptionsCache = new WeakMap<Transaction, CBOR.CodecOptions>()
+
+/**
+ * Record the options this transaction is meant to be serialized with.
+ *
+ * Intended for builders: a transaction whose hashes were computed under non-default options must
+ * be encoded under those same options wherever it goes next.
+ *
+ * @since 2.2.0
+ * @category encoding
+ */
+export const setIntendedCodecOptions = (data: Transaction, options: CBOR.CodecOptions): void => {
+  intendedOptionsCache.set(data, options)
+}
+
+/**
+ * The options this transaction is meant to be serialized with, if any were recorded.
+ *
+ * @since 2.2.0
+ * @category encoding
+ */
+export const getIntendedCodecOptions = (data: Transaction): CBOR.CodecOptions | undefined =>
+  intendedOptionsCache.get(data)
+
+/**
+ * Assemble a signed transaction from a body and auxiliary data that are already encoded.
+ *
+ * The body arrives as bytes because that is what was hashed and signed: decoding it and
+ * re-encoding it is how a co-signed transaction acquires a different id than the one its first
+ * signature covers. {@link fromCBORBytes} on `TransactionBody` records the arrival bytes, so the
+ * body this carries re-encodes exactly, and `isValid` defaults to the only value a wallet submits.
+ *
+ * @since 2.8.0
+ * @category constructors
+ */
+export const fromEncoded = (input: {
+  readonly body: Uint8Array
+  readonly witnessSet: TransactionWitnessSet.TransactionWitnessSet
+  readonly auxiliaryData?: Uint8Array
+  readonly isValid?: boolean
+}): Transaction =>
+  new Transaction({
+    body: TransactionBody.fromCBORBytes(input.body),
+    witnessSet: input.witnessSet,
+    isValid: input.isValid ?? true,
+    auxiliaryData: input.auxiliaryData === undefined ? null : AuxiliaryData.fromCBORBytes(input.auxiliaryData)
+  })
 
 // `CBOR.CML_DEFAULT_OPTIONS` passed explicitly acts as the default
 const isDefault = (options: CBOR.TxCodecOptions | CBOR.CodecOptions): boolean =>
@@ -240,6 +306,10 @@ export const toCBORBytes = (
   if (!isDefault(options)) {
     return Schema.encodeSync(FromCBORBytes(options))(data)
   }
+  // A transaction built for a specific encoding carries hashes computed under it, so the default
+  // path must honour that rather than silently re-encoding with the CML defaults.
+  const intended = intendedOptionsCache.get(data)
+  if (intended !== undefined) return Schema.encodeSync(FromCBORBytes(intended))(data)
   const cached = formatCache.get(data)
   if (cached) return toCBORBytesWithFormat(data, cached)
   return Schema.encodeSync(FromCBORBytes(options))(data)
@@ -249,6 +319,10 @@ export const toCBORHex = (data: Transaction, options: CBOR.TxCodecOptions | CBOR
   if (!isDefault(options)) {
     return Schema.encodeSync(FromCBORHex(options))(data)
   }
+  // A transaction built for a specific encoding carries hashes computed under it, so the default
+  // path must honour that rather than silently re-encoding with the CML defaults.
+  const intended = intendedOptionsCache.get(data)
+  if (intended !== undefined) return Schema.encodeSync(FromCBORHex(intended))(data)
   const cached = formatCache.get(data)
   if (cached) return toCBORHexWithFormat(data, cached)
   return Schema.encodeSync(FromCBORHex(options))(data)
@@ -365,8 +439,20 @@ export const addVKeyWitnessesHex = (
 // Raw body bytes extraction
 // ============================================================================
 
-/** Skip a CBOR item header and return its byte width. */
-const cborHeaderSize = (data: Uint8Array, offset: number): number => {
+/**
+ * The byte width of the CBOR item header at `offset`.
+ *
+ * Paired with {@link CBOR.decodeItemWithOffset} this is what slices an element out of a CBOR
+ * array **byte-exactly** — `decodeItemWithOffset` gives the end of an item, this gives the start
+ * of the first one inside a container. `extractBodyBytes` is one such slice; a wallet that
+ * reviews a transaction before signing needs the same for the witness set and the auxiliary
+ * data, and a re-encode is not a substitute because a span that differs by one byte is a
+ * different transaction id.
+ *
+ * @since 2.2.0
+ * @category utils
+ */
+export const cborHeaderSize = (data: Uint8Array, offset: number): number => {
   const additionalInfo = data[offset] & 0x1f
   if (additionalInfo < 24) return 1
   if (additionalInfo === CBOR.CBOR_ADDITIONAL_INFO.DIRECT) return 2

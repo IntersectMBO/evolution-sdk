@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 
 import * as MaestroEffect from "./internal/MaestroEffect.js"
-import type { Provider, ProviderEffect } from "./Provider.js"
+import type { Provider, ProviderEffectWithTip } from "./Provider.js"
 
 /**
  * Maestro provider for Cardano blockchain data access.
@@ -13,7 +13,7 @@ import type { Provider, ProviderEffect } from "./Provider.js"
  * @category constructors
  */
 export class MaestroProvider implements Provider {
-  readonly effect: ProviderEffect
+  readonly effect: ProviderEffectWithTip
 
   constructor(
     private readonly baseUrl: string,
@@ -22,6 +22,7 @@ export class MaestroProvider implements Provider {
   ) {
     this.effect = {
       getProtocolParameters: () => MaestroEffect.getProtocolParameters(this.baseUrl, this.apiKey),
+      getTip: MaestroEffect.getTip(this.baseUrl, this.apiKey),
       getUtxos: MaestroEffect.getUtxos(this.baseUrl, this.apiKey),
       getUtxosWithUnit: MaestroEffect.getUtxosWithUnit(this.baseUrl, this.apiKey),
       getUtxosByOutRef: MaestroEffect.getUtxosByOutRef(this.baseUrl, this.apiKey),
@@ -35,6 +36,8 @@ export class MaestroProvider implements Provider {
   }
 
   getProtocolParameters = () => Effect.runPromise(this.effect.getProtocolParameters())
+
+  getTip = () => Effect.runPromise(this.effect.getTip())
 
   getUtxos = (addressOrCredential: Parameters<Provider["getUtxos"]>[0]) =>
     Effect.runPromise(this.effect.getUtxos(addressOrCredential))

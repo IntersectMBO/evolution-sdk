@@ -1,6 +1,7 @@
 ---
+
 title: sdk/provider/Kupmios.ts
-nav_order: 155
+nav_order: 159
 parent: Modules
 ---
 
@@ -14,6 +15,7 @@ parent: Modules
   - [KupmiosProvider (class)](#kupmiosprovider-class)
     - [effect (property)](#effect-property)
     - [getProtocolParameters (property)](#getprotocolparameters-property)
+    - [getTip (property)](#gettip-property)
     - [getUtxos (property)](#getutxos-property)
     - [getUtxosWithUnit (property)](#getutxoswithunit-property)
     - [getUtxoByUnit (property)](#getutxobyunit-property)
@@ -56,7 +58,7 @@ Added in v2.0.0
 **Signature**
 
 ```ts
-readonly effect: ProviderEffect
+readonly effect: ProviderEffectWithTip
 ```
 
 ### getProtocolParameters (property)
@@ -65,6 +67,14 @@ readonly effect: ProviderEffect
 
 ```ts
 getProtocolParameters: () => Promise<ProtocolParameters>
+```
+
+### getTip (property)
+
+**Signature**
+
+```ts
+getTip: () => Promise<Tip>
 ```
 
 ### getUtxos (property)

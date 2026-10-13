@@ -1,6 +1,7 @@
 ---
+
 title: sdk/builders/operations/Vote.ts
-nav_order: 134
+nav_order: 138
 parent: Modules
 ---
 

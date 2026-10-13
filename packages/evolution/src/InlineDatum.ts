@@ -1,6 +1,8 @@
 import { Equal, Hash, Inspectable, Schema } from "effect"
 
+import * as Bytes from "./Bytes.js"
 import * as PlutusData from "./Data.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 
 /**
  * Schema for InlineDatum representing inline plutus data embedded directly in the transaction output.
@@ -59,6 +61,34 @@ export class InlineDatum extends Schema.TaggedClass<InlineDatum>()("InlineDatum"
  * @category testing
  */
 export const arbitrary = PlutusData.arbitrary.map((data) => new InlineDatum({ data }))
+
+/**
+ * An inline datum from the CBOR a backend sent, KEEPING those bytes.
+ *
+ * ⚠️ **Use this, not the constructor, for any datum that came off a wire.** `new InlineDatum(…)`
+ * records nothing, so the datum's only remaining representation is the decoded tree -- and
+ * re-deriving bytes from a tree reframes an EMPTY indefinite array (`9fff` becomes `80`), which
+ * changes the hash. A script consumer matches a datum BY its hash, and `cip113`/`cip139` report
+ * `datum_hex` only from the `OriginalBytes` channel, absent rather than re-derived.
+ *
+ * Every provider that reads a datum off a backend goes through here, so "the bytes survive" is
+ * one decision in one place rather than four copies that can each be forgotten -- which is how
+ * three of those four came to drop them.
+ *
+ * @since 2.7.0
+ * @category constructors
+ */
+export const fromCBORHex = (hex: string): InlineDatum =>
+  OriginalBytes.record(new InlineDatum({ data: PlutusData.fromCBORHex(hex) }), Bytes.fromHex(hex))
+
+/**
+ * As {@link fromCBORHex}, for bytes already decoded from the wire.
+ *
+ * @since 2.7.0
+ * @category constructors
+ */
+export const fromCBORBytes = (bytes: Uint8Array): InlineDatum =>
+  OriginalBytes.record(new InlineDatum({ data: PlutusData.fromCBORBytes(bytes) }), bytes)
 
 /**
  * Type guard to check if a value is an InlineDatum.

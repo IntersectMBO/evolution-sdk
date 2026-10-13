@@ -1,4 +1,5 @@
 ---
+
 title: Address.ts
 nav_order: 1
 parent: Modules
@@ -37,8 +38,14 @@ Added in v2.0.0
   - [getStakingCredential](#getstakingcredential)
   - [hasStakingCredential](#hasstakingcredential)
   - [isEnterprise](#isenterprise)
+- [model](#model-1)
+  - [Bech32 (type alias)](#bech32-type-alias)
+  - [Hex (type alias)](#hex-type-alias)
 - [predicates](#predicates)
   - [isScript](#isscript)
+- [schemas](#schemas)
+  - [Bech32](#bech32)
+  - [Hex](#hex)
 - [utils](#utils-1)
   - [fromBytes](#frombytes-1)
   - [fromHex](#fromhex-1)
@@ -336,6 +343,28 @@ export declare const isEnterprise: (address: Address) => boolean
 
 Added in v2.0.0
 
+# model
+
+## Bech32 (type alias)
+
+**Signature**
+
+```ts
+export type Bech32 = typeof Bech32.Type
+```
+
+Added in v2.4.0
+
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
+
 # predicates
 
 ## isScript
@@ -349,6 +378,39 @@ export declare const isScript: (address: Address) => boolean
 ```
 
 Added in v2.0.0
+
+# schemas
+
+## Bech32
+
+A bech32-encoded address, as a user sees it.
+
+⚠️ Branded apart from {@link Hex}: both are strings and they are not interchangeable. Handing
+bech32 where raw hex belongs is a decode failure at best and a wrong address at worst.
+
+**Signature**
+
+```ts
+export declare const Bech32: Schema.brand<Schema.filter<typeof Schema.String>, "AddressBech32">
+```
+
+Added in v2.4.0
+
+## Hex
+
+An address as raw hex — NOT bech32. See {@link Bech32} for the human-facing form.
+
+Length is deliberately not pinned: an enterprise or reward address is 29 bytes, a base address
+57, and a pointer address varies. What is checked is that it is non-empty whole bytes, and what
+is branded is that it is an address rather than some other hex.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "AddressHex">
+```
+
+Added in v2.4.0
 
 # utils
 
@@ -373,7 +435,7 @@ export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => Add
 **Signature**
 
 ```ts
-export declare const toBech32: (a: Address, overrideOptions?: ParseOptions) => string
+export declare const toBech32: (value: Parameters<typeof encodeBech32>[0]) => Bech32
 ```
 
 ## toBytes
@@ -389,5 +451,5 @@ export declare const toBytes: (a: Address, overrideOptions?: ParseOptions) => Ui
 **Signature**
 
 ```ts
-export declare const toHex: (a: Address, overrideOptions?: ParseOptions) => string
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
 ```

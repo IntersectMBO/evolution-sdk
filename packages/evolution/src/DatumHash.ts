@@ -116,6 +116,26 @@ export const fromBytes = Schema.decodeSync(FromBytes)
  * @since 2.0.0
  * @category parsing
  */
+/**
+ * A datum hash as hex.
+ *
+ * Validated as well as branded: a 32-byte hex string, either case. {@link toHex} returns
+ * this type, so the kind survives leaving the typed domain.
+ *
+ * ⚠️ Same shape as a transaction hash. A script consumer matches a datum by this value, so the
+ * two being interchangeable as `string` was a real hazard.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^[0-9a-fA-F]{64}$/), Schema.brand("DatumHashHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
 export const fromHex = Schema.decodeSync(FromHex)
 
 /**
@@ -132,4 +152,6 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @since 2.0.0
  * @category encoding
  */
-export const toHex = Schema.encodeSync(FromHex)
+const encodeHex = Schema.encodeSync(FromHex)
+
+export const toHex = (value: Parameters<typeof encodeHex>[0]): Hex => Hex.make(encodeHex(value))

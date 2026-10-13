@@ -1,6 +1,7 @@
 ---
+
 title: sdk/client/Chain.ts
-nav_order: 150
+nav_order: 154
 parent: Modules
 ---
 

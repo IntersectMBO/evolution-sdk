@@ -1,6 +1,7 @@
 ---
+
 title: Redeemers.ts
-nav_order: 110
+nav_order: 114
 parent: Modules
 ---
 
@@ -15,12 +16,14 @@ parent: Modules
 - [constructors](#constructors)
   - [makeRedeemerMap](#makeredeemermap)
 - [encoding](#encoding)
+  - [spliceMap](#splicemap)
   - [toCBORBytes](#tocborbytes)
   - [toCBORBytesMap](#tocborbytesmap)
   - [toCBORHex](#tocborhex)
   - [toCBORHexMap](#tocborhexmap)
 - [hashing](#hashing)
   - [toScriptDataHash](#toscriptdatahash)
+  - [toScriptDataHashFromEncoded](#toscriptdatahashfromencoded)
 - [model](#model)
   - [RedeemerArray (class)](#redeemerarray-class)
     - [toArray (method)](#toarray-method)
@@ -61,6 +64,8 @@ parent: Modules
   - [Redeemers](#redeemers)
 - [utilities](#utilities)
   - [keyToString](#keytostring)
+- [utils](#utils)
+  - [keepDataBytes](#keepdatabytes)
 
 ---
 
@@ -94,6 +99,37 @@ Added in v2.0.0
 
 # encoding
 
+## spliceMap
+
+A Conway redeemer MAP over data that is already encoded: `{[tag, index] => [data, ex_units]}`.
+
+⚠️ **The data is spliced, not re-encoded.** Going through {@link Redeemer.Redeemer} means going
+through `Data`, and while `Data` keeps the bytes it was decoded from, one thing it cannot keep
+is the header width of an integer that IS the whole datum -- a `bigint` is not an object and
+has nowhere to carry the record. A redeemer whose bytes change moves `script_data_hash`, which
+is a phase-2 failure on chain, so the path that takes bytes keeps them.
+
+⚠️ The keys are sorted bytewise over their ENCODED form, which is what the ledger requires of a
+map it reconstructs. The five arrays are positional and must be the same length: a short one
+used to encode `undefined` as a redeemer field, which changed the hash and failed at the node
+with nothing pointing back here.
+
+**Signature**
+
+```ts
+export declare const spliceMap: (
+  entries: ReadonlyArray<{
+    readonly tag: number
+    readonly index: bigint
+    readonly data: Uint8Array
+    readonly mem: bigint
+    readonly steps: bigint
+  }>
+) => Uint8Array
+```
+
+Added in v2.8.0
+
 ## toCBORBytes
 
 Encode to CBOR bytes (array format).
@@ -101,7 +137,7 @@ Encode to CBOR bytes (array format).
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: RedeemerArray, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (data: RedeemerArray, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
@@ -113,7 +149,7 @@ Encode to CBOR bytes (map format).
 **Signature**
 
 ```ts
-export declare const toCBORBytesMap: (data: RedeemerMap, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytesMap: (data: RedeemerMap, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
@@ -125,7 +161,7 @@ Encode to CBOR hex string (array format).
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: RedeemerArray, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (data: RedeemerArray, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
@@ -137,7 +173,7 @@ Encode to CBOR hex string (map format).
 **Signature**
 
 ```ts
-export declare const toCBORHexMap: (data: RedeemerMap, options?: CBOR.CodecOptions) => string
+export declare const toCBORHexMap: (data: RedeemerMap, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
@@ -157,6 +193,9 @@ The payload format per CDDL spec is raw concatenation (not a CBOR structure):
 redeemers_bytes || datums_bytes || language_views_bytes
 ```
 
+The redeemers and datums are hashed as `TransactionWitnessSet.toCBORBytes`
+writes them under `options`.
+
 **Signature**
 
 ```ts
@@ -164,11 +203,40 @@ export declare const toScriptDataHash: (
   redeemers: Redeemers,
   costModels: CostModel.CostModels,
   datums?: ReadonlyArray<Data.Data>,
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => ScriptDataHash.ScriptDataHash
 ```
 
 Added in v2.0.0
+
+## toScriptDataHashFromEncoded
+
+`script_data_hash` over redeemers and datums that are already encoded.
+
+`script_data_hash = blake2b256(redeemers ‖ datums ‖ language_views)`, with the Conway special
+case that no redeemers but datums present hashes `A0 ‖ datums ‖ A0`.
+
+⚠️ **The bytes-level sibling of {@link toScriptDataHash}, and the one a wallet wants.** That one
+re-encodes the redeemers and the datums from their decoded values, which is correct only as far
+as those values can carry their arrival bytes. This takes the bytes the transaction will
+actually carry, so the hash is over what gets signed rather than over a re-derivation of it.
+Only `languageViewsEncoding` needs the typed model, because the PlutusV1 indefinite quirk lives
+there, and it is shared rather than restated.
+
+`datums` absent and `datums` empty are DIFFERENT: absent omits the field, which is the Conway
+special case's precondition.
+
+**Signature**
+
+```ts
+export declare const toScriptDataHashFromEncoded: (
+  redeemers: Uint8Array,
+  datums: Uint8Array | undefined,
+  costModels: CostModel.CostModels
+) => ScriptDataHash.ScriptDataHash
+```
+
+Added in v2.8.0
 
 # model
 
@@ -505,33 +573,19 @@ Added in v2.0.0
 
 ## FromCBORBytes
 
-CBOR bytes schema for array format.
+CBOR bytes schema for array format. Each redeemer is written as
+`Redeemer.FromCBORBytes(options)` writes it, the array with the `ledger`
+options. Plain options are read as `CBOR.toTxCodecOptions` reads them.
 
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.transformOrFail<
-    Schema.Array$<
-      Schema.Tuple<
-        [
-          Schema.SchemaClass<bigint, bigint, never>,
-          Schema.SchemaClass<bigint, bigint, never>,
-          Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-          Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-        ]
-      >
-    >,
-    Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
-    never
-  >
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => Schema.transformOrFail<
+  typeof Schema.Uint8ArrayFromSelf,
+  Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
+  never
 >
 ```
 
@@ -539,30 +593,19 @@ Added in v2.0.0
 
 ## FromCBORBytesMap
 
-CBOR bytes schema for map format.
+CBOR bytes schema for map format. Each redeemer's data is written with the
+`plutusData` options, the rest with the `ledger` options. Plain options are
+read as `CBOR.toTxCodecOptions` reads them.
 
 **Signature**
 
 ```ts
 export declare const FromCBORBytesMap: (
-  options?: CBOR.CodecOptions
-) => Schema.transform<
-  Schema.transformOrFail<
-    typeof Schema.Uint8ArrayFromSelf,
-    Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-    never
-  >,
-  Schema.transformOrFail<
-    Schema.MapFromSelf<
-      Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
-      Schema.Tuple2<
-        Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-        Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-      >
-    >,
-    Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
-    never
-  >
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+) => Schema.transformOrFail<
+  typeof Schema.Uint8ArrayFromSelf,
+  Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
+  never
 >
 ```
 
@@ -576,29 +619,13 @@ CBOR hex schema for array format.
 
 ```ts
 export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.Schema<Uint8Array, string, never>,
-  Schema.transform<
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >,
-    Schema.transformOrFail<
-      Schema.Array$<
-        Schema.Tuple<
-          [
-            Schema.SchemaClass<bigint, bigint, never>,
-            Schema.SchemaClass<bigint, bigint, never>,
-            Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-            Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-          ]
-        >
-      >,
-      Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
-      never
-    >
+  Schema.transformOrFail<
+    typeof Schema.Uint8ArrayFromSelf,
+    Schema.SchemaClass<RedeemerArray, RedeemerArray, never>,
+    never
   >
 >
 ```
@@ -613,27 +640,10 @@ CBOR hex schema for map format.
 
 ```ts
 export declare const FromCBORHexMap: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.Schema<Uint8Array, string, never>,
-  Schema.transform<
-    Schema.transformOrFail<
-      typeof Schema.Uint8ArrayFromSelf,
-      Schema.declare<CBOR.CBOR, CBOR.CBOR, readonly [], never>,
-      never
-    >,
-    Schema.transformOrFail<
-      Schema.MapFromSelf<
-        Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>,
-        Schema.Tuple2<
-          Schema.Schema<CBOR.CBOR, CBOR.CBOR, never>,
-          Schema.Tuple2<typeof Schema.BigIntFromSelf, typeof Schema.BigIntFromSelf>
-        >
-      >,
-      Schema.SchemaClass<RedeemerMap, RedeemerMap, never>,
-      never
-    >
-  >
+  Schema.transformOrFail<typeof Schema.Uint8ArrayFromSelf, Schema.SchemaClass<RedeemerMap, RedeemerMap, never>, never>
 >
 ```
 
@@ -731,3 +741,28 @@ export declare const keyToString: ([tag, index]: RedeemerKey) => string
 ```
 
 Added in v2.0.0
+
+# utils
+
+## keepDataBytes
+
+Re-attach each redeemer's ARRIVAL BYTES to its decoded `data`.
+
+⚠️ **Without this, decoding a redeemer map and re-encoding it silently reframes the data.** The
+decode goes through `Data.FromCDDL`, which receives a CBOR value with no bytes behind it, so a
+datum carrying an empty indefinite array comes back as `d87a80` where `d87a9fff` went in. Three
+bytes, a different `script_data_hash`, and a PHASE-2 FAILURE at the node -- and the failure is
+invisible locally, because the hash the builder computed over the spliced bytes and the
+redeemers it then embedded disagree only once the node recomputes it.
+
+The bytes are SLICED from the input rather than replayed from a format tree, and paired with the
+decoded redeemers positionally: both are in wire order, and a Plutus map keeps the order it was
+given.
+
+**Signature**
+
+```ts
+export declare const keepDataBytes: <A extends Redeemers>(redeemers: A, bytes: Uint8Array) => A
+```
+
+Added in v2.8.0

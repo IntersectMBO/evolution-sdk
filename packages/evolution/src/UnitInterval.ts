@@ -198,8 +198,13 @@ export const toBigDecimal = (interval: UnitInterval) =>
  */
 export const fromBigDecimal = (value: BigDecimal.BigDecimal): UnitInterval => {
   const normalized = BigDecimal.normalize(value)
+  // `normalize` strips trailing zeros by DECREMENTING the scale, so 5000 arrives as
+  // {value: 5n, scale: -3}. Clamping the scale to zero without rescaling the numerator
+  // reads that as 5/1.
+  const numerator = normalized.scale < 0
+    ? normalized.value * BigInt(10) ** BigInt(-normalized.scale)
+    : normalized.value
   const denominator = BigInt(10) ** BigInt(Math.max(0, normalized.scale))
-  const numerator = normalized.value
 
   return new UnitInterval({ numerator, denominator })
 }
@@ -213,3 +218,39 @@ export const fromBigDecimal = (value: BigDecimal.BigDecimal): UnitInterval => {
 export const arbitrary = FastCheck.bigInt({ min: 1n, max: 1000000n }).chain((denominator) =>
   FastCheck.bigInt({ min: 0n, max: denominator }).map((numerator) => new UnitInterval({ numerator, denominator }))
 )
+
+/**
+ * Parse UnitInterval from CBOR bytes.
+ *
+ * @since 2.0.0
+ * @category parsing
+ */
+export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  Schema.decodeSync(FromCBORBytes(options))(bytes)
+
+/**
+ * Parse UnitInterval from a CBOR hex string.
+ *
+ * @since 2.0.0
+ * @category parsing
+ */
+export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  Schema.decodeSync(FromCBORHex(options))(hex)
+
+/**
+ * Convert UnitInterval to CBOR bytes.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORBytes = (input: UnitInterval, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  Schema.encodeSync(FromCBORBytes(options))(input)
+
+/**
+ * Convert UnitInterval to a CBOR hex string.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORHex = (input: UnitInterval, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
+  Schema.encodeSync(FromCBORHex(options))(input)

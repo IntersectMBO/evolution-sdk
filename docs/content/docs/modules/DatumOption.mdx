@@ -1,6 +1,7 @@
 ---
+
 title: DatumOption.ts
-nav_order: 53
+nav_order: 54
 parent: Modules
 ---
 
@@ -26,6 +27,7 @@ parent: Modules
   - [FromCBORBytes](#fromcborbytes-1)
   - [FromCBORHex](#fromcborhex-1)
   - [FromCDDL](#fromcddl)
+  - [makeFromCDDL](#makefromcddl)
 - [testing](#testing)
   - [arbitrary](#arbitrary)
 - [utils](#utils)
@@ -74,7 +76,7 @@ Convert DatumOption to CBOR bytes.
 **Signature**
 
 ```ts
-export declare const toCBORBytes: (data: DatumOption, options?: CBOR.CodecOptions) => any
+export declare const toCBORBytes: (data: DatumOption, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => any
 ```
 
 Added in v2.0.0
@@ -86,7 +88,7 @@ Convert DatumOption to CBOR hex.
 **Signature**
 
 ```ts
-export declare const toCBORHex: (data: DatumOption, options?: CBOR.CodecOptions) => string
+export declare const toCBORHex: (data: DatumOption, options?: CBOR.TxCodecOptions | CBOR.CodecOptions) => string
 ```
 
 Added in v2.0.0
@@ -161,11 +163,15 @@ Added in v2.0.0
 CBOR bytes transformation schema for DatumOption.
 Transforms between Uint8Array and DatumOption using CBOR encoding.
 
+A new inline datum is written with the `plutusData` options, the rest with
+the `ledger` options. Plain options are read as `CBOR.toTxCodecOptions`
+reads them.
+
 **Signature**
 
 ```ts
 export declare const FromCBORBytes: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.transformOrFail<
     typeof Schema.Uint8ArrayFromSelf,
@@ -196,14 +202,13 @@ Added in v2.0.0
 
 ## FromCBORHex
 
-CBOR hex transformation schema for DatumOption.
-Transforms between hex string and DatumOption using CBOR encoding.
+CBOR hex transformation schema for DatumOption, as in {@link FromCBORBytes}.
 
 **Signature**
 
 ```ts
 export declare const FromCBORHex: (
-  options?: CBOR.CodecOptions
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ) => Schema.transform<
   Schema.Schema<Uint8Array, string, never>,
   Schema.transform<
@@ -245,10 +250,44 @@ Where:
 - [0, Bytes32] represents a datum hash (tag 0 with 32-byte hash)
 - [1, #6.24(bytes)] represents inline data (tag 1 with CBOR tag 24 containing plutus data as bytes)
 
+A new inline datum is written with `Data.DEFAULT_CBOR_OPTIONS`.
+
 **Signature**
 
 ```ts
 export declare const FromCDDL: Schema.transformOrFail<
+  Schema.Union<
+    [
+      Schema.Tuple2<Schema.Literal<[0n]>, typeof Schema.Uint8ArrayFromSelf>,
+      Schema.Tuple2<
+        Schema.Literal<[1n]>,
+        Schema.TaggedStruct<"Tag", { tag: Schema.Literal<[24]>; value: typeof Schema.Uint8ArrayFromSelf }>
+      >
+    ]
+  >,
+  Schema.SchemaClass<
+    DatumHash.DatumHash | InlineDatum.InlineDatum,
+    DatumHash.DatumHash | InlineDatum.InlineDatum,
+    never
+  >,
+  never
+>
+```
+
+Added in v2.0.0
+
+## makeFromCDDL
+
+CDDL schema for DatumOption, as in {@link FromCDDL}, that writes a new
+inline datum with the `plutusData` options. A decoded inline datum keeps
+its original bytes.
+
+**Signature**
+
+```ts
+export declare const makeFromCDDL: (
+  plutusData: CBOR.CodecOptions
+) => Schema.transformOrFail<
   Schema.Union<
     [
       Schema.Tuple2<Schema.Literal<[0n]>, typeof Schema.Uint8ArrayFromSelf>,

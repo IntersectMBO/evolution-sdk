@@ -99,11 +99,12 @@ const retrieveDatumEffect =
         return yield* pipe(
           HttpUtils.get(pattern, schema, kupoHeader),
           Effect.flatMap(Effect.fromNullable),
-          Effect.map((result) => {
-            // Parse the datum hex string to PlutusData
-            const data = PlutusData.fromCBORHex(result.datum)
-            return new InlineDatum.InlineDatum({ data })
-          }),
+          Effect.map((result) =>
+            // ⚠️ The bytes the backend sent are RECORDED, not just decoded. A datum re-encoded
+            // from its tree reframes an empty Plutus array and hashes differently, and
+            // cip113/cip139 report `datum_hex` only from this channel.
+            InlineDatum.fromCBORHex(result.datum)
+          ),
           Effect.retry(Schedule.compose(Schedule.exponential(50), Schedule.recurs(5))),
           Effect.timeout(5_000),
           Effect.catchAll(wrapError("retrieveDatum"))
@@ -185,6 +186,46 @@ const kupmiosUtxosToUtxos =
       { concurrency: 10 }
     )
   }
+
+/**
+ * Ogmios reports the tip's slot and header hash, and the epoch, as two separate ledger-state
+ * queries; neither carries a block height or a block time. The epoch is worth the second
+ * round trip because nothing else on this provider exposes it.
+ */
+export const getTipEffect = Effect.fn("getTip")(function* (
+  ogmiosUrl: string,
+  headers?: { ogmiosHeader?: Record<string, string> }
+) {
+  const query = (method: string) => ({ jsonrpc: "2.0", method, params: {}, id: null }) as const
+
+  const [tip, epoch] = yield* pipe(
+    Effect.all(
+      [
+        HttpUtils.postJson(
+          ogmiosUrl,
+          query("queryLedgerState/tip"),
+          Ogmios.JSONRPCSchema(Ogmios.TipSchema),
+          headers?.ogmiosHeader
+        ),
+        HttpUtils.postJson(
+          ogmiosUrl,
+          query("queryLedgerState/epoch"),
+          Ogmios.JSONRPCSchema(Ogmios.EpochSchema),
+          headers?.ogmiosHeader
+        )
+      ],
+      { concurrency: 2 }
+    ),
+    Effect.timeout(TIMEOUT),
+    Effect.catchAll(wrapError("getTip"))
+  )
+
+  return {
+    slot: tip.result.slot,
+    blockHash: tip.result.id,
+    epoch: epoch.result
+  } satisfies Provider.Tip
+})
 
 // Exported effect functions used by KupmiosProvider
 export const getProtocolParametersEffect = Effect.fn("getProtocolParameters")(function* (
@@ -453,7 +494,10 @@ export const getDelegationEffect = (ogmiosUrl: string, headers?: { ogmiosHeader?
             Effect.mapError((cause) => new Provider.ProviderError({ cause, message: "Kupmios getDelegation failed" }))
           )
         : null,
-      rewards: delegation?.rewards?.ada?.lovelace ?? 0n
+      rewards: delegation?.rewards?.ada?.lovelace ?? 0n,
+      // `queryLedgerState/rewardAccountSummaries` returns a row only for an account the ledger
+      // knows, so presence IS registration and absence is its negation, not a missing answer.
+      registered: delegation !== null
     }
   })
 

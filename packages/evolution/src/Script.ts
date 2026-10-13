@@ -118,6 +118,25 @@ export const FromCBORHex = (options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTION
   Schema.compose(Schema.Uint8ArrayFromHex, FromCBORBytes(options))
 
 /**
+ * A script's bytes as hex, parameters already applied.
+ *
+ * ⚠️ The script ITSELF, not its hash. A script hash is 28 bytes; this is the whole program.
+ *
+ * Branded so that CBOR hex of one kind cannot stand in for another once it leaves the typed
+ * domain. Non-empty whole bytes is all the shape there is to check.
+ *
+ * @since 2.4.0
+ * @category schemas
+ */
+export const Hex = Schema.String.pipe(Schema.pattern(/^([0-9a-fA-F]{2})+$/), Schema.brand("ScriptHex"))
+
+/**
+ * @since 2.4.0
+ * @category model
+ */
+export type Hex = typeof Hex.Type
+
+/**
  * FastCheck arbitrary for Script.
  *
  * @since 2.0.0

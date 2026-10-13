@@ -1,6 +1,7 @@
 ---
+
 title: ScriptDataHash.ts
-nav_order: 115
+nav_order: 119
 parent: Modules
 ---
 
@@ -14,8 +15,8 @@ parent: Modules
   - [arbitrary](#arbitrary-1)
 - [encoding](#encoding)
   - [toBytes](#tobytes)
-  - [toHex](#tohex)
 - [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
   - [ScriptDataHash (class)](#scriptdatahash-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
@@ -24,12 +25,15 @@ parent: Modules
     - [[Hash.symbol] (method)](#hashsymbol-method)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [predicates](#predicates)
   - [isScriptDataHash](#isscriptdatahash)
 - [schemas](#schemas)
   - [FromBytes](#frombytes-1)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [Hex](#hex)
+- [utils](#utils)
+  - [fromHex](#fromhex-1)
+  - [toHex](#tohex)
 
 ---
 
@@ -61,19 +65,17 @@ export declare const toBytes: (a: ScriptDataHash, overrideOptions?: ParseOptions
 
 Added in v2.0.0
 
-## toHex
+# model
 
-Encode ScriptDataHash to hex string.
+## Hex (type alias)
 
 **Signature**
 
 ```ts
-export declare const toHex: (a: ScriptDataHash, overrideOptions?: ParseOptions) => string
+export type Hex = typeof Hex.Type
 ```
 
-Added in v2.0.0
-
-# model
+Added in v2.4.0
 
 ## ScriptDataHash (class)
 
@@ -151,18 +153,6 @@ export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) 
 
 Added in v2.0.0
 
-## fromHex
-
-Parse ScriptDataHash from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => ScriptDataHash
-```
-
-Added in v2.0.0
-
 # predicates
 
 ## isScriptDataHash
@@ -211,3 +201,38 @@ export declare const FromHex: Schema.transform<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A script-data hash as hex.
+
+Validated as well as branded: a 32-byte hex string, either case. {@link toHex} returns
+this type, so the kind survives leaving the typed domain.
+
+⚠️ Same shape as a transaction hash and a datum hash.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "ScriptDataHashHex">
+```
+
+Added in v2.4.0
+
+# utils
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => ScriptDataHash
+```
+
+## toHex
+
+**Signature**
+
+```ts
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
+```

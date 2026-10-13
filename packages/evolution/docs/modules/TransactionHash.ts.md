@@ -1,6 +1,7 @@
 ---
+
 title: TransactionHash.ts
-nav_order: 171
+nav_order: 177
 parent: Modules
 ---
 
@@ -15,13 +16,15 @@ parent: Modules
 - [encoding](#encoding)
   - [toBytes](#tobytes)
   - [toHex](#tohex)
+- [model](#model)
+  - [Hex (type alias)](#hex-type-alias)
 - [parsing](#parsing)
   - [fromBytes](#frombytes)
-  - [fromHex](#fromhex)
 - [predicates](#predicates)
   - [isTransactionHash](#istransactionhash)
 - [schemas](#schemas)
   - [FromBytes](#frombytes-1)
+  - [Hex](#hex)
   - [TransactionHash (class)](#transactionhash-class)
     - [toJSON (method)](#tojson-method)
     - [toString (method)](#tostring-method)
@@ -29,7 +32,8 @@ parent: Modules
     - [[Equal.symbol] (method)](#equalsymbol-method)
     - [[Hash.symbol] (method)](#hashsymbol-method)
 - [utils](#utils)
-  - [FromHex](#fromhex-1)
+  - [FromHex](#fromhex)
+  - [fromHex](#fromhex-1)
 
 ---
 
@@ -68,10 +72,22 @@ Encode TransactionHash to hex string.
 **Signature**
 
 ```ts
-export declare const toHex: (a: TransactionHash, overrideOptions?: ParseOptions) => string
+export declare const toHex: (value: Parameters<typeof encodeHex>[0]) => Hex
 ```
 
 Added in v2.0.0
+
+# model
+
+## Hex (type alias)
+
+**Signature**
+
+```ts
+export type Hex = typeof Hex.Type
+```
+
+Added in v2.4.0
 
 # parsing
 
@@ -83,18 +99,6 @@ Parse TransactionHash from bytes.
 
 ```ts
 export declare const fromBytes: (i: Uint8Array, overrideOptions?: ParseOptions) => TransactionHash
-```
-
-Added in v2.0.0
-
-## fromHex
-
-Parse TransactionHash from hex string.
-
-**Signature**
-
-```ts
-export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => TransactionHash
 ```
 
 Added in v2.0.0
@@ -129,6 +133,25 @@ export declare const FromBytes: Schema.transform<
 ```
 
 Added in v2.0.0
+
+## Hex
+
+A transaction hash as hex.
+
+Validated as well as branded: a 32-byte lowercase or uppercase hex string. {@link toHex}
+returns this type, so the kind of a hex string survives leaving the typed domain — upstream of
+this, every hash and key was an unmarked `string` once encoded.
+
+⚠️ Branded apart from every other 32-byte hash hex. They are the same shape, and the type
+system is the only thing standing between a transaction hash and a datum hash.
+
+**Signature**
+
+```ts
+export declare const Hex: Schema.brand<Schema.filter<typeof Schema.String>, "TransactionHashHex">
+```
+
+Added in v2.4.0
 
 ## TransactionHash (class)
 
@@ -197,4 +220,12 @@ export declare const FromHex: Schema.transform<
     Schema.SchemaClass<TransactionHash, TransactionHash, never>
   >
 >
+```
+
+## fromHex
+
+**Signature**
+
+```ts
+export declare const fromHex: (i: string, overrideOptions?: ParseOptions) => TransactionHash
 ```

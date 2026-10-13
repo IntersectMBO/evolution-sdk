@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import * as CoreAssets from "../src/Assets.js"
-import { CoinSelectionError, largestFirstSelection } from "../src/sdk/builders/CoinSelection.js"
+import {
+  CoinSelectionError,
+  largestFirstSelection,
+  randomImproveSelection,
+  randomImproveSelectionWith
+} from "../src/sdk/builders/CoinSelection.js"
 import type * as CoreUTxO from "../src/UTxO.js"
 import { createCoreTestUtxo } from "./utils/utxo-helpers.js"
 
@@ -383,5 +388,69 @@ describe("Largest-First Coin Selection", () => {
       expect(result.selectedUtxos).toHaveLength(1)
       expect(CoreAssets.lovelaceOf(result.selectedUtxos[0].assets)).toBe(15_000_000n)
     })
+  })
+})
+
+/**
+ * Random-improve (CIP-2). The algorithm itself is covered in `Cip2.test.ts`; what matters here
+ * is the adapter over `UTxO` and `Assets`: that a selection covers the target, that the UTxOs
+ * handed back are the ones passed in, and that failures arrive as this module's error.
+ */
+describe("Random-Improve Coin Selection", () => {
+  const pool: ReadonlyArray<CoreUTxO.UTxO> = [
+    createCoreTestUtxo({ lovelace: 1_000_000n, index: 0 }),
+    createCoreTestUtxo({ lovelace: 5_000_000n, index: 1 }),
+    createCoreTestUtxo({ lovelace: 10_000_000n, index: 2 }),
+    createCoreTestUtxo({ lovelace: 2_000_000n, index: 3 })
+  ]
+
+  const totalLovelace = (utxos: ReadonlyArray<CoreUTxO.UTxO>): bigint =>
+    utxos.reduce((acc, u) => acc + CoreAssets.lovelaceOf(u.assets), 0n)
+
+  it("covers the required amount", () => {
+    const result = randomImproveSelection(pool, CoreAssets.fromLovelace(6_000_000n))
+    expect(totalLovelace(result.selectedUtxos)).toBeGreaterThanOrEqual(6_000_000n)
+  })
+
+  it("selects only from the pool it was given, without duplicates", () => {
+    const result = randomImproveSelection(pool, CoreAssets.fromLovelace(6_000_000n))
+    const keys = result.selectedUtxos.map((u) => `${u.index}`)
+    expect(new Set(keys).size).toBe(keys.length)
+    for (const utxo of result.selectedUtxos) expect(pool).toContain(utxo)
+  })
+
+  it("is reproducible under an explicit seed", () => {
+    const seeded = randomImproveSelectionWith({ seed: 42 })
+    const a = seeded(pool, CoreAssets.fromLovelace(6_000_000n)).selectedUtxos.map((u) => u.index)
+    const b = seeded(pool, CoreAssets.fromLovelace(6_000_000n)).selectedUtxos.map((u) => u.index)
+    expect(a).toEqual(b)
+  })
+
+  it("covers a target naming a native asset as well as lovelace", () => {
+    const unit = "a0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d4484f534b59"
+    const withToken: ReadonlyArray<CoreUTxO.UTxO> = [
+      ...pool,
+      createCoreTestUtxo({ lovelace: 2_000_000n, index: 4, nativeAssets: { [unit]: 50n } })
+    ]
+    // Built through the same helper as the pool, so the unit key matches what `getUnits` emits.
+    const required = createCoreTestUtxo({ lovelace: 3_000_000n, index: 9, nativeAssets: { [unit]: 10n } }).assets
+
+    const result = randomImproveSelection(withToken, required)
+
+    const tokenTotal = result.selectedUtxos.reduce((acc, u) => acc + CoreAssets.getByUnit(u.assets, unit), 0n)
+    expect(tokenTotal).toBeGreaterThanOrEqual(10n)
+    expect(totalLovelace(result.selectedUtxos)).toBeGreaterThanOrEqual(3_000_000n)
+  })
+
+  it("reports an uncoverable target as a CoinSelectionError", () => {
+    expect(() => randomImproveSelection(pool, CoreAssets.fromLovelace(999_000_000n))).toThrow(CoinSelectionError)
+  })
+
+  it("covers the target across many seeds, not just a lucky one", () => {
+    const seeds = Array.from({ length: 50 }, (_, i) => i)
+    for (const seed of seeds) {
+      const result = randomImproveSelectionWith({ seed })(pool, CoreAssets.fromLovelace(7_000_000n))
+      expect(totalLovelace(result.selectedUtxos)).toBeGreaterThanOrEqual(7_000_000n)
+    }
   })
 })

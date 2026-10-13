@@ -1,6 +1,7 @@
 ---
+
 title: ProposalProcedure.ts
-nav_order: 105
+nav_order: 109
 parent: Modules
 ---
 
@@ -68,7 +69,7 @@ proposal_procedure = [
   deposit : coin,
   reward_account : reward_account,
   governance_action : governance_action,
-  anchor : anchor / null
+  anchor : anchor
 ]
 
 governance_action = [action_type, action_data]
@@ -216,7 +217,7 @@ export declare const CDDLSchema: Schema.Tuple<
       | readonly [6n],
       never
     >,
-    Schema.NullOr<Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>>
+    Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>
   ]
 >
 ```
@@ -278,7 +279,7 @@ export declare const FromCBORBytes: (
           | readonly [6n],
           never
         >,
-        Schema.NullOr<Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>>
+        Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>
       ]
     >,
     Schema.SchemaClass<ProposalProcedure, ProposalProcedure, never>,
@@ -346,7 +347,7 @@ export declare const FromCBORHex: (
             | readonly [6n],
             never
           >,
-          Schema.NullOr<Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>>
+          Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>
         ]
       >,
       Schema.SchemaClass<ProposalProcedure, ProposalProcedure, never>,
@@ -405,7 +406,7 @@ export declare const FromCDDL: Schema.transformOrFail<
         | readonly [6n],
         never
       >,
-      Schema.NullOr<Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>>
+      Schema.Tuple2<typeof Schema.String, typeof Schema.Uint8ArrayFromSelf>
     ]
   >,
   Schema.SchemaClass<ProposalProcedure, ProposalProcedure, never>,
