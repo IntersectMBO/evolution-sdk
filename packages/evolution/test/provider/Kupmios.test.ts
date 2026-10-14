@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { Effect } from "effect"
+import { Effect, Exit, Schema } from "effect"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as CoreAddress from "../../src/Address.js"
@@ -17,6 +17,8 @@ import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
 import * as ScriptHash from "../../src/ScriptHash.js"
 import * as KupmiosEffects from "../../src/sdk/provider/internal/KupmiosEffects.js"
+import * as Kupo from "../../src/sdk/provider/internal/Kupo.js"
+import * as Provider from "../../src/sdk/provider/Provider.js"
 import * as Transaction from "../../src/Transaction.js"
 import * as TransactionHash from "../../src/TransactionHash.js"
 import * as TransactionInput from "../../src/TransactionInput.js"
@@ -290,5 +292,94 @@ describe("Kupmios integers past 2^53", () => {
       18446744073709551615n,
       18446744073709551615n
     ])
+  })
+})
+
+describe("Kupmios responses the SDK cannot represent", () => {
+  // A Byron-era address exactly as Kupo writes it: base58, not bech32 (the
+  // output address in Kupo's golden vector test/vectors/golden/1.json)
+  const BYRON_ADDRESS = "Ae2tdPwUPEZ834WsZU3C2Fn9vsZF5oGt2SBGXRvNFH8uPkbSScTpMKHxNc9"
+  const SCRIPT_HASH = "bdc22da682cd9aceed5fd48914789fc98c94abc79fed8b40cb8c4314"
+
+  /** Kupo `/matches` body for one UTxO at the given address / script hash */
+  const matchesWith = (address: string, scriptHash: string | null) => `[{
+  "transaction_index": 0,
+  "transaction_id": "${TX_HASH}",
+  "output_index": 0,
+  "address": "${address}",
+  "value": {"coins": 2000000, "assets": {}},
+  "datum_hash": null,
+  "script_hash": ${scriptHash === null ? "null" : `"${scriptHash}"`},
+  "created_at": {"slot_no": 56486181, "header_hash": "d25ac5572bedeba724d8c8178a5b6dcf95b75992970dab7145403cfbc44f9809"},
+  "spent_at": null
+}]`
+
+  /** Render an error and its whole `cause` chain; the top message alone is generic */
+  const renderChain = (error: unknown): string => {
+    const parts: Array<string> = []
+    let current: unknown = error
+    while (current instanceof Error) {
+      parts.push(`${current.name}: ${current.message}`)
+      current = (current as { cause?: unknown }).cause
+    }
+    return parts.join("\n")
+  }
+
+  it("fails with a ProviderError, not a defect, for a Byron (base58) address", async () => {
+    stubKupmios({ kupo: { "/matches/": matchesWith(BYRON_ADDRESS, null) } })
+
+    const exit = await Effect.runPromiseExit(KupmiosEffects.getUtxosEffect(KUPO_URL)(CoreAddress.fromBech32(ADDRESS)))
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      // A defect here would be Cause.Die: an unhandled throw, not a provider failure
+      expect(exit.cause._tag).toBe("Fail")
+      if (exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(Provider.ProviderError)
+        expect(renderChain(exit.cause.error)).toMatch(/Byron/)
+        expect(renderChain(exit.cause.error)).toMatch(/base58/)
+      }
+    }
+  })
+
+  it("decodes the plutus:v4 language literal Kupo v2.12 can return", () => {
+    const decoded = Schema.decodeUnknownSync(Kupo.ScriptSchema)({ language: "plutus:v4", script: "010203" })
+
+    expect(decoded?.language).toBe("plutus:v4")
+  })
+
+  it("fails with a ProviderError naming plutus:v4 as unsupported, not a schema parse error", async () => {
+    stubKupmios({
+      kupo: {
+        "/matches/": matchesWith(ADDRESS, SCRIPT_HASH),
+        [`/scripts/${SCRIPT_HASH}`]: `{"language":"plutus:v4","script":"010203"}`
+      }
+    })
+
+    const exit = await Effect.runPromiseExit(KupmiosEffects.getUtxosEffect(KUPO_URL)(CoreAddress.fromBech32(ADDRESS)))
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      expect(exit.cause._tag).toBe("Fail")
+      if (exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(Provider.ProviderError)
+        expect(renderChain(exit.cause.error)).toMatch(/plutus:v4/)
+        expect(renderChain(exit.cause.error)).toMatch(/not supported/)
+        expect(renderChain(exit.cause.error)).not.toMatch(/ParseError|Expected/)
+      }
+    }
+  })
+
+  it("still resolves a plutus:v3 reference script", async () => {
+    stubKupmios({
+      kupo: {
+        "/matches/": matchesWith(ADDRESS, SCRIPT_HASH),
+        [`/scripts/${SCRIPT_HASH}`]: `{"language":"plutus:v3","script":"010203"}`
+      }
+    })
+
+    const [utxo] = await Effect.runPromise(KupmiosEffects.getUtxosEffect(KUPO_URL)(CoreAddress.fromBech32(ADDRESS)))
+
+    expect(utxo!.scriptRef?._tag).toBe("PlutusV3")
   })
 })

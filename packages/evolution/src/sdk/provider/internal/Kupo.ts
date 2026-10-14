@@ -31,7 +31,7 @@ export interface UTxO extends S.Schema.Type<typeof UTxOSchema> {}
 
 export const ScriptSchema = S.NullOr(
   S.Struct({
-    language: S.Literal("native", "plutus:v1", "plutus:v2", "plutus:v3"),
+    language: S.Literal("native", "plutus:v1", "plutus:v2", "plutus:v3", "plutus:v4"),
     script: S.String
   })
 )
