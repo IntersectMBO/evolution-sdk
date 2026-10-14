@@ -799,10 +799,16 @@ const withAddedFormats = (decoded: CBOR.CBORFormat, fresh: CBOR.CBORFormat): CBO
       return { ...decoded, keyOrder, entries }
     }
     case "array": {
-      // A set decoded untagged is written tagged; it takes the tag format
-      // only when items are added
+      // A set decoded untagged keeps its untagged form when items are added
+      // (#574): the decoded items keep their formats and the added items
+      // take theirs from the fresh tree's inner array.
       if (fresh._tag === "tag" && fresh.child._tag === "array" && fresh.child.children.length > decoded.children.length) {
-        return { ...fresh, child: withAddedFormats(decoded, fresh.child) }
+        return {
+          ...decoded,
+          children: fresh.child.children.map((child, i) =>
+            i < decoded.children.length ? withAddedFormats(decoded.children[i], child) : child
+          )
+        }
       }
       if (fresh._tag !== "array") return decoded
       return {
