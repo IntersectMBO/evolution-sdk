@@ -336,6 +336,37 @@ export const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
 export const FromCDDL = makeFromCDDL(PlutusData.DEFAULT_CBOR_OPTIONS)
 
 /**
+ * Re-express an encoded output in the form its captured format records.
+ *
+ * The schema encoder above picks the legacy array form whenever there is no
+ * script ref and the datum is absent or a hash — even when the output was
+ * decoded from the post-Alonzo map form. The captured format node says map
+ * while the encoder produces an array, so the format is dropped for that
+ * output and the re-encoded body bytes (and transaction id) change (#577).
+ * When the format node for an output is a map and the encoded form is an
+ * array, rebuild the map form so the format replays: keys 0 and 1 take the
+ * address and value as they are, and a bare datum hash becomes the
+ * datum_option encoding `[0, hash]`. Any other combination — an array
+ * format, an already-map encoding, a script ref or inline datum added by
+ * an edit — is returned unchanged, so freshly built transactions and edits
+ * that move to the map form keep today's behaviour.
+ *
+ * @since 2.0.0
+ * @category transformation
+ */
+export const withCapturedForm = (encoded: CBOR.CBOR, format: CBOR.CBORFormat): CBOR.CBOR => {
+  if (format._tag !== "map" || !Array.isArray(encoded)) return encoded
+  if (encoded.length < 2 || encoded.length > 3) return encoded
+  const outputMap = new Map<bigint, CBOR.CBOR>()
+  outputMap.set(0n, encoded[0])
+  outputMap.set(1n, encoded[1])
+  if (encoded.length === 3) {
+    outputMap.set(2n, [0n, encoded[2]])
+  }
+  return outputMap
+}
+
+/**
  * CBOR bytes transformation schema for TransactionOutput. A new inline datum
  * is written with the `plutusData` options, the rest with the `ledger`
  * options. Plain options are read as `CBOR.toTxCodecOptions` reads them.

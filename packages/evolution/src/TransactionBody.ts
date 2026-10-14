@@ -623,6 +623,53 @@ export const fromCBORHexWithFormat = (
 }
 
 /**
+ * Align the encoded outputs (key 1) and collateral return (key 16) with
+ * their captured format nodes.
+ *
+ * Entries are matched positionally, the same way the format-guided encoder
+ * consumes them. An output the decoder read in the post-Alonzo map form has
+ * a map node in the format tree, but the schema encoder writes the legacy
+ * array form whenever the output has no script ref — the shape mismatch
+ * drops the format and changes the body bytes (#577). Outputs whose format
+ * node is a map are rebuilt in map form via {@link TxOut.withCapturedForm};
+ * every other entry is returned untouched, and the input map is returned
+ * as-is when nothing changed.
+ *
+ * @since 2.0.0
+ * @category conversion
+ */
+export const alignOutputsWithFormat = (
+  cborMap: Map<bigint, CBOR.CBOR>,
+  format: CBOR.CBORFormat
+): Map<bigint, CBOR.CBOR> => {
+  if (format._tag !== "map") return cborMap
+  let aligned: Map<bigint, CBOR.CBOR> | undefined
+  let index = 0
+  for (const [key, value] of cborMap) {
+    const entry = format.entries[index]
+    index += 1
+    if (entry === undefined) break
+    const valueFormat = entry[1]
+    let next: CBOR.CBOR | undefined
+    if (key === 1n && valueFormat._tag === "array" && Array.isArray(value)) {
+      const outputs = value.map((output, i) => {
+        const child = valueFormat.children[i]
+        return child !== undefined && Array.isArray(output) ? TxOut.withCapturedForm(output, child) : output
+      })
+      if (outputs.some((output, i) => output !== value[i])) next = outputs
+    } else if (key === 16n && Array.isArray(value)) {
+      const converted = TxOut.withCapturedForm(value, valueFormat)
+      if (converted !== value) next = converted
+    }
+    if (next !== undefined) {
+      aligned ??= new Map(cborMap)
+      aligned.set(key, next)
+    }
+  }
+  return aligned ?? cborMap
+}
+
+/**
  * Convert a TransactionBody to CBOR bytes using an explicit root format tree.
  *
  * @since 2.0.0
@@ -633,7 +680,7 @@ export const toCBORBytesWithFormat = (
   format: CBOR.CBORFormat
 ): Uint8Array => {
   const cborMap = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORBytesWithFormat(cborMap, format)
+  return CBOR.toCBORBytesWithFormat(alignOutputsWithFormat(cborMap, format), format)
 }
 
 /**
@@ -647,7 +694,7 @@ export const toCBORHexWithFormat = (
   format: CBOR.CBORFormat
 ): string => {
   const cborMap = Schema.encodeSync(FromCDDL)(data)
-  return CBOR.toCBORHexWithFormat(cborMap, format)
+  return CBOR.toCBORHexWithFormat(alignOutputsWithFormat(cborMap, format), format)
 }
 
 // ============================================================================
