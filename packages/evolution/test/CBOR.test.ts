@@ -937,5 +937,40 @@ describe("CBOR Implementation Tests", () => {
         }).not.toThrow()
       })
     })
+
+    describe("Declared length bounds (malformed input)", () => {
+      it("rejects a definite array whose declared length exceeds the remaining bytes", () => {
+        // 0x9a declares 65536 elements with a 4-byte length; no element bytes follow
+        expect(() => CBOR.fromCBORHex("9a00010000")).toThrowError("Insufficient data for array")
+      })
+
+      it("rejects the tagged huge array from the report without allocating it", () => {
+        // tag(24) wrapping an array declaring ~2.1 billion elements in 7 bytes total
+        expect(() => CBOR.fromCBORHex("d8799a7fffffff")).toThrowError(CBOR.CBORError)
+      })
+
+      it("rejects a definite map whose declared entries exceed the remaining bytes", () => {
+        // 0xba declares 65536 entries; each entry needs at least 2 bytes (key + value)
+        expect(() => CBOR.fromCBORHex("ba00010000")).toThrowError("Insufficient data for map")
+      })
+
+      it("rejects a truncated array whose elements run past the end of the input", () => {
+        // declares 2 elements but only 1 element byte remains
+        expect(() => CBOR.fromCBORHex("8201")).toThrowError("Insufficient data for array")
+      })
+
+      it("rejects an oversized declared length on the format-tracking path too", () => {
+        expect(() => CBOR.fromCBORHexWithFormat("9a00010000")).toThrowError("Insufficient data for array")
+      })
+
+      it("still rejects an oversized byte string (pre-existing guard)", () => {
+        expect(() => CBOR.fromCBORHex("5a7fffffff")).toThrowError(CBOR.CBORError)
+      })
+
+      it("still decodes arrays and maps that exactly fill the remaining bytes", () => {
+        expect(CBOR.fromCBORHex("83010203")).toEqual([1n, 2n, 3n])
+        expect(CBOR.fromCBORHex("a10102")).toEqual(new Map([[1n, 2n]]))
+      })
+    })
   })
 })

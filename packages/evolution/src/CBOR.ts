@@ -2076,6 +2076,17 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
     return { item: arr, newOffset: cur, format: { _tag: "array", length: { tag: "indefinite" }, children: childFormats } }
   } else {
     const { bytesRead, length } = decodeLengthAt(data, offset)
+    // Bound the declared length before allocating or looping: every element
+    // needs at least 1 byte, so a length beyond the remaining bytes is
+    // malformed. Mirrors the byte string guard in decodeBytesAt; without it a
+    // tiny input declaring billions of elements drives a fatal heap OOM,
+    // because reads past the end of the buffer decode as 0n instead of throwing.
+    const remaining = data.length - (offset + bytesRead)
+    if (length > remaining) {
+      throw new CBORError({
+        message: `Insufficient data for array: declared length ${length} exceeds the ${remaining} remaining byte(s)`
+      })
+    }
     let cur = offset + bytesRead
     const arr: Array<CBOR> = new Array(length)
     if (track === "none") {
@@ -2130,6 +2141,15 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
     return { item: map, newOffset: cur, format: { _tag: "map", length: { tag: "indefinite" }, keyOrder: keyOrderBytes, entries: entryFormats } }
   } else {
     const { bytesRead, length } = decodeLengthAt(data, offset)
+    // Bound the declared length before looping: every entry needs at least
+    // 2 bytes (key + value), so an entry count beyond half the remaining
+    // bytes is malformed. Same guard as the array branch above.
+    const remaining = data.length - (offset + bytesRead)
+    if (length * 2 > remaining) {
+      throw new CBORError({
+        message: `Insufficient data for map: declared length ${length} entries needs at least ${length * 2} byte(s) but only ${remaining} remain`
+      })
+    }
     let cur = offset + bytesRead
     const map = isObj ? ({} as Record<string, CBOR>) : new Map<CBOR, CBOR>()
     if (track === "none") {
