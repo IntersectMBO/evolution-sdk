@@ -13,8 +13,10 @@ import * as CoreAddress from "../../src/Address.js"
 import * as CoreAssets from "../../src/Assets.js"
 import * as PlutusData from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
+import * as NativeScripts from "../../src/NativeScripts.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
 import * as ScriptHash from "../../src/ScriptHash.js"
+import * as Koios from "../../src/sdk/provider/internal/Koios.js"
 import * as KoiosEffect from "../../src/sdk/provider/internal/KoiosEffect.js"
 import * as Transaction from "../../src/Transaction.js"
 import * as TransactionHash from "../../src/TransactionHash.js"
@@ -360,5 +362,95 @@ describe("Koios integers past 2^53", () => {
       18446744073709551615n,
       18446744073709551615n
     ])
+  })
+})
+
+describe("Koios native reference scripts (#571)", () => {
+  const ADDRESS = "addr_test1wz7uytdxstxe4nhdtl2gj9rcnlyce99tc707mz6qewxyx9qac0urr"
+  const KEY_HASH_A = "11111111111111111111111111111111111111111111111111111111"
+  const KEY_HASH_B = "22222222222222222222222222222222222222222222222222222222"
+  // Hand-encoded CBOR (oracle): all [ sig A, any [ sig B, before 5000 ] ]
+  const ALL_CBOR =
+    "8201828200581c111111111111111111111111111111111111111111111111111111118202828200581c222222222222222222222222222222222222222222222222222222228205191388"
+  // blake2b-224 over 0x00 || ALL_CBOR, computed independently of the SDK
+  const ALL_HASH = "1e56db9744a29f4e9816340ea3a9400d8cab7acb9db37e5f7d7c1167"
+  const SIG_A_CBOR = "8200581c11111111111111111111111111111111111111111111111111111111"
+  const SIG_A_HASH = "5334c8c55ec6518f2e262da617d3170bf0722f43813d64dbaf0ff0b9"
+  const ALL_VALUE = {
+    type: "all",
+    scripts: [
+      { type: "sig", keyHash: KEY_HASH_A },
+      {
+        type: "any",
+        scripts: [
+          { type: "sig", keyHash: KEY_HASH_B },
+          { type: "before", slot: 5000 }
+        ]
+      }
+    ]
+  }
+
+  const utxoWith = (reference_script: Koios.ReferenceScript | null): Koios.UTxO => ({
+    tx_hash: "708cde0e74986ea1f5a9621dc9fc4c0042d83833fa708b7e2fa66f120af72331",
+    tx_index: 0n,
+    block_time: 0n,
+    block_height: null,
+    value: 2000000n,
+    datum_hash: null,
+    inline_datum: null,
+    reference_script,
+    asset_list: []
+  })
+
+  it("rebuilds a timelock reference script from its value when bytes are null", () => {
+    const utxo = Koios.toUTxO(
+      utxoWith({ hash: ALL_HASH, size: 74n, type: "timelock", bytes: null, value: ALL_VALUE }),
+      ADDRESS
+    )
+
+    expect(utxo.scriptRef).toBeInstanceOf(NativeScripts.NativeScript)
+    expect(NativeScripts.toCBORHex(utxo.scriptRef as NativeScripts.NativeScript)).toBe(ALL_CBOR)
+    expect(ScriptHash.toHex(ScriptHash.fromScript(utxo.scriptRef!))).toBe(ALL_HASH)
+  })
+
+  it("rebuilds a multisig reference script from its value when bytes are null", () => {
+    const utxo = Koios.toUTxO(
+      utxoWith({
+        hash: SIG_A_HASH,
+        size: 32n,
+        type: "multisig",
+        bytes: null,
+        value: { type: "sig", keyHash: KEY_HASH_A }
+      }),
+      ADDRESS
+    )
+
+    expect(utxo.scriptRef).toBeInstanceOf(NativeScripts.NativeScript)
+    expect(NativeScripts.toCBORHex(utxo.scriptRef as NativeScripts.NativeScript)).toBe(SIG_A_CBOR)
+  })
+
+  it("decodes a multisig reference script from bytes when they are present", () => {
+    const utxo = Koios.toUTxO(
+      utxoWith({ hash: SIG_A_HASH, size: 32n, type: "multisig", bytes: SIG_A_CBOR, value: null }),
+      ADDRESS
+    )
+
+    expect(utxo.scriptRef).toBeInstanceOf(NativeScripts.NativeScript)
+    expect(NativeScripts.toCBORHex(utxo.scriptRef as NativeScripts.NativeScript)).toBe(SIG_A_CBOR)
+  })
+
+  it("throws when the rebuilt script does not match the reported hash", () => {
+    expect(() =>
+      Koios.toUTxO(utxoWith({ hash: SIG_A_HASH, size: 74n, type: "timelock", bytes: null, value: ALL_VALUE }), ADDRESS)
+    ).toThrow(/hash mismatch/)
+  })
+
+  it("throws instead of silently dropping a native script whose value is malformed", () => {
+    expect(() =>
+      Koios.toUTxO(
+        utxoWith({ hash: SIG_A_HASH, size: 32n, type: "timelock", bytes: null, value: { type: "sig" } }),
+        ADDRESS
+      )
+    ).toThrow(/native reference script/)
   })
 })
