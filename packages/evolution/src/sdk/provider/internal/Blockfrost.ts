@@ -27,28 +27,33 @@ export const BlockfrostProtocolParameters = Schema.Struct({
   key_deposit: Schema.BigInt,
   min_utxo: Schema.optional(Schema.BigInt),
   max_tx_size: Schema.BigInt,
-  max_val_size: Schema.optional(Schema.BigInt),
+  // The Blockfrost OpenAPI spec marks the fields below nullable: a `null` must
+  // decode (to null) instead of failing the whole response; the transform's
+  // `?? 0n` / `|| 0` defaults then apply.
+  max_val_size: Schema.optionalWith(Schema.BigInt, { nullable: true }),
   utxo_cost_per_word: Schema.optional(Schema.BigInt),
-  cost_models: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.Record({ key: Schema.String, value: Schema.BigInt }) })
+  cost_models: Schema.optionalWith(
+    Schema.Record({ key: Schema.String, value: Schema.Record({ key: Schema.String, value: Schema.BigInt }) }),
+    { nullable: true }
   ),
-  cost_models_raw: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.Array(Schema.BigInt) })
+  cost_models_raw: Schema.optionalWith(
+    Schema.Record({ key: Schema.String, value: Schema.Array(Schema.BigInt) }),
+    { nullable: true }
   ),
-  price_mem: Schema.optional(Schema.NumberFromString),
-  price_step: Schema.optional(Schema.NumberFromString),
-  max_tx_ex_mem: Schema.optional(Schema.BigInt),
-  max_tx_ex_steps: Schema.optional(Schema.BigInt),
-  max_block_ex_mem: Schema.optional(Schema.BigInt),
-  max_block_ex_steps: Schema.optional(Schema.BigInt),
+  price_mem: Schema.optionalWith(Schema.NumberFromString, { nullable: true }),
+  price_step: Schema.optionalWith(Schema.NumberFromString, { nullable: true }),
+  max_tx_ex_mem: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  max_tx_ex_steps: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  max_block_ex_mem: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  max_block_ex_steps: Schema.optionalWith(Schema.BigInt, { nullable: true }),
   max_block_size: Schema.BigInt,
-  collateral_percent: Schema.optional(Schema.BigInt),
-  max_collateral_inputs: Schema.optional(Schema.BigInt),
-  coins_per_utxo_size: Schema.optional(Schema.BigInt),
-  min_fee_ref_script_cost_per_byte: Schema.optional(Schema.NumberFromString),
+  collateral_percent: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  max_collateral_inputs: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  coins_per_utxo_size: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  min_fee_ref_script_cost_per_byte: Schema.optionalWith(Schema.NumberFromString, { nullable: true }),
   // Conway era governance parameters
-  drep_deposit: Schema.optional(Schema.BigInt),
-  gov_action_deposit: Schema.optional(Schema.BigInt)
+  drep_deposit: Schema.optionalWith(Schema.BigInt, { nullable: true }),
+  gov_action_deposit: Schema.optionalWith(Schema.BigInt, { nullable: true })
 })
 
 export type BlockfrostProtocolParameters = Schema.Schema.Type<typeof BlockfrostProtocolParameters>
