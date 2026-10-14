@@ -3,7 +3,7 @@
  * shape of the Maestro v1 API, so every integer is checked to decode exactly as a bigint,
  * including bare JSON numbers past 2^53.
  */
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as Address from "../../src/Address.js"
@@ -125,6 +125,72 @@ describe("Maestro getProtocolParameters", () => {
 
     expect(params.minFeeRefScriptCostPerByte).toBe(15.5)
   })
+
+  it("accepts a missing plutus_v3 cost model and maps it to an empty model", async () => {
+    // The Maestro spec requires only plutus_v1 and plutus_v2 (#570)
+    stubFetch({ [`${BASE_URL}/protocol-parameters`]: body.replace(/,\s*"plutus_v3":\[[^\]]*\]/, "") })
+
+    const params = await Effect.runPromise(MaestroEffect.getProtocolParameters(BASE_URL, API_KEY))
+
+    expect(params.costModels.PlutusV3).toEqual({})
+    expect(params.costModels.PlutusV1[0]).toBe(100788)
+  })
+
+  it("accepts a null plutus_v3 cost model and maps it to an empty model", async () => {
+    stubFetch({
+      [`${BASE_URL}/protocol-parameters`]: body.replace(/"plutus_v3":\[[^\]]*\]/, '"plutus_v3":null')
+    })
+
+    const params = await Effect.runPromise(MaestroEffect.getProtocolParameters(BASE_URL, API_KEY))
+
+    expect(params.costModels.PlutusV3).toEqual({})
+  })
+
+  it("fails with a clear error naming the field when a required deposit is null or missing", async () => {
+    /** Render an error and its whole `cause` chain; the top message alone is generic */
+    const renderChain = (error: unknown): string => {
+      const parts: Array<string> = []
+      let current: unknown = error
+      while (current instanceof Error) {
+        parts.push(`${current.name}: ${current.message}`)
+        current = (current as { cause?: unknown }).cause
+      }
+      return parts.join("\n")
+    }
+    const cases: Array<[string, string]> = [
+      [
+        "delegate_representative_deposit",
+        body.replace(
+          '"delegate_representative_deposit":{"ada":{"lovelace":500000000}}',
+          '"delegate_representative_deposit":null'
+        )
+      ],
+      [
+        "governance_action_deposit",
+        body.replace(/"governance_action_deposit":\{"ada":\{"lovelace":100000000000\}\},/, "")
+      ],
+      [
+        "min_fee_reference_scripts",
+        body.replace(/"min_fee_reference_scripts":\{[^}]*\},/, '"min_fee_reference_scripts":null,')
+      ]
+    ]
+    for (const [field, payload] of cases) {
+      stubFetch({ [`${BASE_URL}/protocol-parameters`]: payload })
+
+      const exit = await Effect.runPromiseExit(MaestroEffect.getProtocolParameters(BASE_URL, API_KEY))
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        // A defect here would be Cause.Die: an unhandled throw, not a provider failure
+        expect(exit.cause._tag).toBe("Fail")
+        if (exit.cause._tag === "Fail") {
+          // The schema ParseError also names the field, so assert the deliberate
+          // wording — a bare decode failure is exactly what #570 asks to replace
+          expect(renderChain(exit.cause.error)).toContain(`required field "${field}"`)
+        }
+      }
+    }
+  })
 })
 
 describe("Maestro UTxO queries", () => {
@@ -145,6 +211,34 @@ describe("Maestro UTxO queries", () => {
     expect(utxos.map((u) => u.index)).toEqual([0n, 1n])
     expect(utxos[0].assets).toEqual(expectedAssets(45000000000000001n, 18446744073709551615n))
     expect(utxos[1].assets).toEqual(expectedAssets(4810000000n, 1n))
+  })
+
+  it("getUtxos accepts UTxOs with the datum and reference_script keys missing, and a page with no next_cursor key", async () => {
+    // The Maestro spec marks datum, reference_script and next_cursor optional/nullable (#570);
+    // the existing fixtures always send them (as null), so a missing key must decode the same way
+    const bare = UTXO_0.replace(',"datum":null,"reference_script":null', "")
+    stubFetch({ [utxosUrl]: `{"data":[${bare}],${lastUpdated}}` })
+
+    const utxos = await Effect.runPromise(
+      MaestroEffect.getUtxos(BASE_URL, API_KEY)(Address.fromBech32(PREPROD_ADDRESS_BECH32))
+    )
+
+    expect(utxos).toHaveLength(1)
+    expect(utxos[0].assets).toEqual(expectedAssets(45000000000000001n, 18446744073709551615n))
+    expect(utxos[0].datumOption).toBeUndefined()
+    expect(utxos[0].scriptRef).toBeUndefined()
+  })
+
+  it("getUtxos accepts a datum whose bytes and json keys are missing", async () => {
+    const withDatum = `{"tx_hash":"${PREPROD_TX_HASH_HEX}","index":3,"assets":[{"unit":"lovelace","amount":"2000000"}],"address":"${PREPROD_ADDRESS_BECH32}","datum":{"type":"hash","hash":"${PREPROD_DATUM_HASH_HEX}"},"reference_script":null,"txout_cbor":null}`
+    stubFetch({ [utxosUrl]: `{"data":[${withDatum}],"next_cursor":null,${lastUpdated}}` })
+
+    const utxos = await Effect.runPromise(
+      MaestroEffect.getUtxos(BASE_URL, API_KEY)(Address.fromBech32(PREPROD_ADDRESS_BECH32))
+    )
+
+    expect(utxos).toHaveLength(1)
+    expect(utxos[0].datumOption).toEqual(DatumHash.fromHex(PREPROD_DATUM_HASH_HEX))
   })
 
   it("getUtxosWithUnit keeps only UTxOs holding the unit", async () => {
@@ -202,6 +296,19 @@ describe("Maestro getDelegation", () => {
     )
 
     expect(delegation).toEqual({ poolId: PoolKeyHash.fromBech32(POOL_ID), rewards: 9007199254740993n })
+  })
+
+  it("accepts an account with the delegated_pool key missing", async () => {
+    // The Maestro spec marks delegated_pool optional/nullable (#570)
+    stubFetch({
+      [`${BASE_URL}/accounts/${PREPROD_STAKE_ADDRESS_BECH32}`]: `{"data":{"registered":true,"rewards_available":42,"stake_address":"${PREPROD_STAKE_ADDRESS_BECH32}"},${lastUpdated}}`
+    })
+
+    const delegation = await Effect.runPromise(
+      MaestroEffect.getDelegation(BASE_URL, API_KEY)(PREPROD_STAKE_ADDRESS_BECH32)
+    )
+
+    expect(delegation).toEqual({ poolId: null, rewards: 42n })
   })
 })
 

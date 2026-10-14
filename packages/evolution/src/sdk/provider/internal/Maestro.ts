@@ -54,16 +54,25 @@ export const MaestroProtocolParameters = Schema.Struct({
       lovelace: Schema.BigInt
     })
   }),
-  delegate_representative_deposit: Schema.Struct({
-    ada: Schema.Struct({
-      lovelace: Schema.BigInt
-    })
-  }),
-  governance_action_deposit: Schema.Struct({
-    ada: Schema.Struct({
-      lovelace: Schema.BigInt
-    })
-  }),
+  // The Maestro spec marks these two deposits optional/nullable (#570); the public
+  // ProtocolParameters type requires them, so transformProtocolParameters fails with
+  // a clear error naming the field when one arrives null or missing (no default exists)
+  delegate_representative_deposit: Schema.optionalWith(
+    Schema.Struct({
+      ada: Schema.Struct({
+        lovelace: Schema.BigInt
+      })
+    }),
+    { nullable: true }
+  ),
+  governance_action_deposit: Schema.optionalWith(
+    Schema.Struct({
+      ada: Schema.Struct({
+        lovelace: Schema.BigInt
+      })
+    }),
+    { nullable: true }
+  ),
   script_execution_prices: Schema.Struct({
     memory: Schema.String, // rational format "numerator/denominator"
     cpu: Schema.String // rational format "numerator/denominator"
@@ -75,13 +84,18 @@ export const MaestroProtocolParameters = Schema.Struct({
   min_utxo_deposit_coefficient: Schema.BigInt,
   collateral_percentage: Schema.BigInt,
   max_collateral_inputs: Schema.BigInt,
-  min_fee_reference_scripts: Schema.Struct({
-    base: Schema.NumberFromString
-  }),
+  min_fee_reference_scripts: Schema.optionalWith(
+    Schema.Struct({
+      base: Schema.NumberFromString
+    }),
+    { nullable: true }
+  ),
   plutus_cost_models: Schema.Struct({
     plutus_v1: Schema.Array(Schema.BigInt),
     plutus_v2: Schema.Array(Schema.BigInt),
-    plutus_v3: Schema.Array(Schema.BigInt)
+    // The spec requires only plutus_v1 and plutus_v2 (#570); a missing/null v3
+    // maps to an empty cost model in transformProtocolParameters
+    plutus_v3: Schema.optionalWith(Schema.Array(Schema.BigInt), { nullable: true })
   })
 })
 
@@ -99,8 +113,9 @@ export const MaestroAsset = Schema.Struct({
 export const MaestroDatumOption = Schema.Struct({
   type: Schema.Literal("hash", "inline"),
   hash: Schema.String,
-  bytes: Schema.NullOr(Schema.String),
-  json: Schema.NullOr(Schema.Unknown)
+  // The spec marks datum bytes (and its json rendering) optional/nullable (#570)
+  bytes: Schema.optionalWith(Schema.String, { nullable: true }),
+  json: Schema.optionalWith(Schema.Unknown, { nullable: true })
 })
 
 /**
@@ -131,15 +146,17 @@ export const MaestroUTxO = Schema.Struct({
   index: Schema.BigInt,
   assets: Schema.Array(MaestroAsset),
   address: Schema.String,
-  datum: Schema.NullOr(MaestroDatumOption),
-  reference_script: Schema.NullOr(MaestroScript)
+  // Both are optional/nullable in the spec (#570); the transforms already accept null
+  datum: Schema.optionalWith(MaestroDatumOption, { nullable: true }),
+  reference_script: Schema.optionalWith(MaestroScript, { nullable: true })
 })
 
 /**
  * Maestro delegation/account response schema
  */
 export const MaestroDelegation = Schema.Struct({
-  delegated_pool: Schema.NullOr(Schema.String),
+  // Optional/nullable in the spec (#570); transformDelegation already maps null to poolId: null
+  delegated_pool: Schema.optionalWith(Schema.String, { nullable: true }),
   rewards_available: Schema.BigInt
 })
 
@@ -169,7 +186,8 @@ export const MaestroTimestampedResponse = <A, I>(dataSchema: Schema.Schema<A, I>
 export const MaestroPaginatedResponse = <A, I>(dataSchema: Schema.Schema<A, I>) =>
   Schema.Struct({
     data: Schema.Array(dataSchema),
-    next_cursor: Schema.NullOr(Schema.String),
+    // Optional/nullable in the spec (#570); the pagination loop already stops on a falsy cursor
+    next_cursor: Schema.optionalWith(Schema.String, { nullable: true }),
     last_updated: Schema.Struct({
       timestamp: Schema.String,
       block_slot: Schema.BigInt,
@@ -208,6 +226,21 @@ export const parseDecimalFromRational = (rationalStr: string): number => {
 }
 
 /**
+ * The Maestro spec marks these protocol parameters optional/nullable, but the public
+ * ProtocolParameters type requires them and no honest default exists (a deposit of 0
+ * would be a silent wrong value). Fail with a clear error naming the field, per #570;
+ * MaestroEffect.getProtocolParameters converts this throw into a ProviderError.
+ */
+const requireProtocolParameter = <T>(value: T | null | undefined, field: string): T => {
+  if (value === null || value === undefined) {
+    throw new Error(
+      `Maestro protocol parameters: required field "${field}" arrived null or missing, and the public ProtocolParameters type has no default for it`
+    )
+  }
+  return value
+}
+
+/**
  * Transform Maestro protocol parameters to Evolution SDK format
  */
 export const transformProtocolParameters = (
@@ -220,8 +253,12 @@ export const transformProtocolParameters = (
     maxValSize: Number(maestroParams.max_value_size.bytes),
     keyDeposit: maestroParams.stake_credential_deposit.ada.lovelace,
     poolDeposit: maestroParams.stake_pool_deposit.ada.lovelace,
-    drepDeposit: maestroParams.delegate_representative_deposit.ada.lovelace,
-    govActionDeposit: maestroParams.governance_action_deposit.ada.lovelace,
+    drepDeposit: requireProtocolParameter(
+      maestroParams.delegate_representative_deposit,
+      "delegate_representative_deposit"
+    ).ada.lovelace,
+    govActionDeposit: requireProtocolParameter(maestroParams.governance_action_deposit, "governance_action_deposit").ada
+      .lovelace,
     priceMem: parseDecimalFromRational(maestroParams.script_execution_prices.memory),
     priceStep: parseDecimalFromRational(maestroParams.script_execution_prices.cpu),
     maxTxExMem: maestroParams.max_execution_units_per_transaction.memory,
@@ -229,7 +266,10 @@ export const transformProtocolParameters = (
     coinsPerUtxoByte: maestroParams.min_utxo_deposit_coefficient,
     collateralPercentage: Number(maestroParams.collateral_percentage),
     maxCollateralInputs: Number(maestroParams.max_collateral_inputs),
-    minFeeRefScriptCostPerByte: maestroParams.min_fee_reference_scripts.base,
+    minFeeRefScriptCostPerByte: requireProtocolParameter(
+      maestroParams.min_fee_reference_scripts,
+      "min_fee_reference_scripts"
+    ).base,
     costModels: {
       PlutusV1: Object.fromEntries(
         maestroParams.plutus_cost_models.plutus_v1.map((value, index) => [index.toString(), Number(value)])
@@ -238,7 +278,7 @@ export const transformProtocolParameters = (
         maestroParams.plutus_cost_models.plutus_v2.map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV3: Object.fromEntries(
-        maestroParams.plutus_cost_models.plutus_v3.map((value, index) => [index.toString(), Number(value)])
+        (maestroParams.plutus_cost_models.plutus_v3 ?? []).map((value, index) => [index.toString(), Number(value)])
       )
     }
   }
