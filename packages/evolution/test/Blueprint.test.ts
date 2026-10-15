@@ -161,4 +161,91 @@ describe("Blueprint", () => {
       expect(code).not.toContain('TSchema.Literal("Void" as const, { index: 0 })')
     })
   })
+
+  describe("Codegen - escaping untrusted blueprint strings (#412)", () => {
+    const decode = (input: unknown) => Schema.decodeUnknownSync(PlutusBlueprint)(input)
+    const basePreamble = { version: "1.0.0", plutusVersion: "v3" }
+
+    it("keeps a preamble title inside the header comment (no */ breakout)", () => {
+      const payload = "globalThis.__pwned = 1"
+      const blueprint = decode({
+        preamble: { ...basePreamble, title: `x */\n${payload}\n/*` },
+        validators: [],
+        definitions: {}
+      })
+      const code = generateTypeScript(blueprint, createCodegenConfig())
+      const beforePayload = code.slice(0, code.indexOf(payload))
+      // The header comment must still be open when the payload text appears:
+      // no comment terminator may precede it.
+      expect(beforePayload).not.toContain("*/")
+      expect(code).toContain("Generated from Blueprint:")
+    })
+
+    it("keeps a definition title inside its JSDoc comment", () => {
+      const payload = "globalThis.__pwned = 2"
+      const blueprint = decode({
+        preamble: { ...basePreamble, title: "t" },
+        validators: [],
+        definitions: {
+          Evil: { title: `y */\n${payload}\n/*`, dataType: "integer" }
+        }
+      })
+      const code = generateTypeScript(blueprint, createCodegenConfig())
+      const beforePayload = code.slice(0, code.indexOf(payload))
+      // The comment holding this title is the last one opened before the
+      // payload; it must not have been terminated by the title itself.
+      const itsComment = beforePayload.slice(beforePayload.lastIndexOf("/**"))
+      expect(itsComment).not.toContain("*/")
+    })
+
+    it("emits validator title/hash/compiledCode as escaped string literals", () => {
+      const evilTitle = `evil"; ${"globalThis.__pwned = 3"}; //`
+      const evilHash = `h"\n${"globalThis.__pwned = 4"}`
+      const blueprint = decode({
+        preamble: { ...basePreamble, title: "t" },
+        validators: [{ title: evilTitle, hash: evilHash, compiledCode: `c"; evil` }],
+        definitions: {}
+      })
+      const code = generateTypeScript(blueprint, createCodegenConfig())
+      expect(code).toContain(`title: ${JSON.stringify(evilTitle)},`)
+      expect(code).toContain(`hash: ${JSON.stringify(evilHash)},`)
+      expect(code).toContain(`compiledCode: ${JSON.stringify(`c"; evil`)},`)
+      expect(code).not.toContain(`title: "${evilTitle}",`)
+    })
+
+    it("emits a constructor tag as an escaped string literal", () => {
+      const tag = `Bad"; globalThis.__pwned = 5; //`
+      const blueprint = decode({
+        preamble: { ...basePreamble, title: "t" },
+        validators: [],
+        definitions: {
+          Choice: {
+            title: "Choice",
+            anyOf: [{ dataType: "constructor", title: tag, index: 0, fields: [] }]
+          }
+        }
+      })
+      const code = generateTypeScript(blueprint, createCodegenConfig())
+      expect(code).toContain(`TSchema.Literal(${JSON.stringify(tag)} as const)`)
+      expect(code).not.toContain(`TSchema.Literal("${tag}"`)
+    })
+
+    it("quotes a field title that is not a valid identifier", () => {
+      const blueprint = decode({
+        preamble: { ...basePreamble, title: "t" },
+        validators: [],
+        definitions: {
+          Rec: {
+            title: "Rec",
+            dataType: "constructor",
+            index: 0,
+            fields: [{ title: "not an identifier", schema: { dataType: "integer" } }]
+          }
+        }
+      })
+      const code = generateTypeScript(blueprint, createCodegenConfig())
+      expect(code).toContain(`"not an identifier": TSchema.Integer`)
+      expect(code).not.toContain(`not an identifier: TSchema.Integer`)
+    })
+  })
 })
