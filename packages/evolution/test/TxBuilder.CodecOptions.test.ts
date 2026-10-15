@@ -8,7 +8,9 @@ import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Data from "../src/Data.js"
+import * as NativeScripts from "../src/NativeScripts.js"
 import * as Redeemers from "../src/Redeemers.js"
+import * as ScriptHash from "../src/ScriptHash.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { preprod } from "../src/sdk/client/index.js"
 import * as Transaction from "../src/Transaction.js"
@@ -414,6 +416,28 @@ describe("BuildOptions.codecOptions: minimum UTxO", () => {
       }
     })
     expect(bundles).toBe(2)
+  })
+})
+
+describe("BuildOptions.codecOptions: native scripts", () => {
+  const script = NativeScripts.makeScriptPubKey(walletAddress.paymentCredential.hash)
+  const policy = ScriptHash.toHex(ScriptHash.fromScript(script))
+  const mintBuild = (codecOptions: CBOR.TxCodecOptions | CBOR.CodecOptions) => {
+    const { provider } = makeStubProvider()
+    return makeTxBuilder({ chain: preprod, wallet, provider })
+      .attachScript({ script })
+      .mintAssets({ assets: CoreAssets.fromRecord({ [policy + "41"]: 5n }) })
+      .build({ changeAddress: walletAddress, availableUtxos: walletUtxos, fullProtocolParameters: FULL_PP, codecOptions })
+  }
+
+  it("writes a native script with the bytes its hash covers", async () => {
+    const tx = await (await mintBuild(CBOR.TX_CANONICAL_OPTIONS)).toTransaction()
+    expect(hex(Transaction.toCBORBytes(tx))).toContain(NativeScripts.toCBORHex(script))
+  })
+
+  it("fails when the options write a native script with other bytes", async () => {
+    // Indefinite arrays change the native script bytes, and the ledger hashes the written bytes
+    await expect(mintBuild(CBOR.CML_DATA_DEFAULT_OPTIONS)).rejects.toThrow(policy)
   })
 })
 

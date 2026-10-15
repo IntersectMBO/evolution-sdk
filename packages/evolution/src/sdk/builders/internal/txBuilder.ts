@@ -680,6 +680,21 @@ export const assembleTransaction = (
           plutusV3Scripts.push(coreScript)
           break
         case "NativeScript":
+          // The ledger hashes the written bytes, and the script hash covers the default encoding
+          if (
+            codecOptions !== undefined &&
+            !Bytes.equals(
+              NativeScripts.toCBORBytes(coreScript, CBOR.toTxCodecOptions(codecOptions).ledger),
+              NativeScripts.toCBORBytes(coreScript)
+            )
+          ) {
+            return yield* Effect.fail(
+              new TransactionBuilderError({
+                message: `codecOptions write native script ${scriptHash} with other bytes than its script hash covers`,
+                cause: { scriptHash }
+              })
+            )
+          }
           nativeScripts.push(coreScript)
           break
       }

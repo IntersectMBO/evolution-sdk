@@ -611,6 +611,11 @@ export interface BuildOptions {
    * When omitted, or set to `CBOR.TX_DEFAULT_OPTIONS` or
    * `CBOR.CML_DEFAULT_OPTIONS`, the transaction has the default encoding.
    *
+   * The build fails when these options write a native script in the
+   * witness set with other bytes than the default options, as options with
+   * indefinite arrays do. The ledger hashes the written bytes, so the script
+   * would no longer match its script hash.
+   *
    * For a transaction that cardano-hw-cli witnesses, use
    * `CBOR.TX_HW_CLI_OPTIONS`. Before it witnesses a transaction,
    * cardano-hw-cli checks that the map keys are in bytewise order, and
