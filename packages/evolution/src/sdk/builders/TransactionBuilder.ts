@@ -611,6 +611,11 @@ export interface BuildOptions {
    * When omitted, or set to `CBOR.TX_DEFAULT_OPTIONS` or
    * `CBOR.CML_DEFAULT_OPTIONS`, the transaction has the default encoding.
    *
+   * For a transaction that cardano-hw-cli witnesses, use
+   * `CBOR.TX_HW_CLI_OPTIONS`. Before it witnesses a transaction,
+   * cardano-hw-cli checks that the map keys are in bytewise order, and
+   * `CBOR.TX_CANONICAL_OPTIONS` writes them in length-first order.
+   *
    * @example
    * ```typescript
    * import * as CBOR from "@evolution-sdk/evolution/CBOR"
