@@ -16,6 +16,18 @@ import type { Label } from "./Label.js"
 import { labelFromInt, labelFromText } from "./Label.js"
 import { fnv32a } from "./Utils.js"
 
+/**
+ * Original protected-header bytes captured at decode time, keyed by the
+ * decoded COSESign1. The protected header is a `bstr` whose exact bytes are
+ * what the signature covers (RFC 9052), so `signedData()` and re-encoding
+ * must replay the received bytes rather than a canonical re-encode of the
+ * parsed HeaderMap — a signer whose encoding is non-minimal would otherwise
+ * have a valid signature rejected. Mirrors the `formatCache` pattern in
+ * Transaction.ts: only the default codec options populate the cache, and
+ * the WeakMap lets the bytes be garbage-collected with the instance.
+ */
+const protectedBytesCache = new WeakMap<COSESign1, Uint8Array>()
+
 // ============================================================================
 // COSESign1
 // ============================================================================
@@ -68,12 +80,20 @@ export class COSESign1 extends Schema.Class<COSESign1>("COSESign1")({
    * @category Accessors
    */
   signedData(externalAad: Uint8Array = new Uint8Array(), externalPayload?: Uint8Array): Uint8Array {
-    // Encode protected headers to CBOR
-    const protectedCbor =
-      this.headers.protected.headers.size === 0
-        ? new Map()
-        : new Map(Array.from(this.headers.protected.headers.entries()).map(([label, value]) => [label.value, value]))
-    const protectedBytes = Schema.encodeSync(CBOR.FromBytes(CBOR.CML_DEFAULT_OPTIONS))(protectedCbor)
+    // Replay the received protected-header bytes when this instance was
+    // decoded from CBOR: those bytes, not a re-encode, are what was signed.
+    const preservedBytes = protectedBytesCache.get(this)
+    let protectedBytes: Uint8Array
+    if (preservedBytes !== undefined) {
+      protectedBytes = preservedBytes
+    } else {
+      // Encode protected headers to CBOR
+      const protectedCbor =
+        this.headers.protected.headers.size === 0
+          ? new Map()
+          : new Map(Array.from(this.headers.protected.headers.entries()).map(([label, value]) => [label.value, value]))
+      protectedBytes = Schema.encodeSync(CBOR.FromBytes(CBOR.CML_DEFAULT_OPTIONS))(protectedCbor)
+    }
 
     // Use external payload if provided, otherwise use internal payload
     const payloadToUse =
@@ -202,11 +222,21 @@ export const COSESign1FromCBORBytes = (options: CBOR.CodecOptions = CBOR.CML_DEF
       const signature = new Ed25519Signature.Ed25519Signature({ bytes: signatureBytes }, { disableValidation: true })
 
       const headers = headersNew(protectedResult.right, unprotectedResult.right)
-      return ParseResult.succeed(new COSESign1({ headers, payload, signature }, { disableValidation: true }))
+      const coseSign1 = new COSESign1({ headers, payload, signature }, { disableValidation: true })
+      // Preserve the received protected-header bytes for signedData() and
+      // re-encoding. Non-default codec options opt out, as in Transaction.ts:
+      // custom options imply the caller wants re-canonicalization.
+      if (options === CBOR.CML_DEFAULT_OPTIONS) {
+        protectedBytesCache.set(coseSign1, new Uint8Array(protectedBytes))
+      }
+      return ParseResult.succeed(coseSign1)
     },
     encode: (coseSign1) => {
-      // Encode protected headers to bytes
-      const protectedBytes = Schema.encodeSync(HeaderMapFromCBORBytes(options))(coseSign1.headers.protected)
+      // Replay the preserved protected-header bytes when available so a
+      // decode/encode round trip reproduces the original encoding.
+      const preservedBytes = options === CBOR.CML_DEFAULT_OPTIONS ? protectedBytesCache.get(coseSign1) : undefined
+      const protectedBytes =
+        preservedBytes ?? Schema.encodeSync(HeaderMapFromCBORBytes(options))(coseSign1.headers.protected)
 
       // Encode unprotected headers to Map (not bytes!)
       const unprotectedCbor = new Map<CBOR.CBOR, CBOR.CBOR>()
