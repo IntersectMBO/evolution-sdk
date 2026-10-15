@@ -3,12 +3,18 @@ import { blake2b } from "@noble/hashes/blake2.js"
 import * as Interop from "cardano-hw-interop-lib"
 import { Effect } from "effect"
 
+import * as CoreAssets from "../src/Assets.js"
 import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
 import * as Redeemers from "../src/Redeemers.js"
+import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
+import { preprod } from "../src/sdk/client/index.js"
 import * as Transaction from "../src/Transaction.js"
+import * as TransactionHash from "../src/TransactionHash.js"
 import * as TransactionWitnessSet from "../src/TransactionWitnessSet.js"
+import * as TxOut from "../src/TxOut.js"
+import * as CoreUTxO from "../src/UTxO.js"
 import * as VKey from "../src/VKey.js"
 import golden from "./golden/build-codec-default.golden.json"
 import {
@@ -22,6 +28,7 @@ import {
   makeStubEvaluator,
   makeStubProvider,
   wallet,
+  walletAddress,
   walletUtxos
 } from "./utils/codec-build-helpers.js"
 
@@ -35,10 +42,21 @@ const costModels = new CostModel.CostModels({
   PlutusV3: new CostModel.CostModel({ costs: Object.values(FULL_PP.costModels.PlutusV3).map(BigInt) })
 })
 
-// Byte spans of the items of the definite array, or the keys and values of
-// the definite map, that starts at `start`
+// Byte spans of the items of the array, or the keys and values of the map,
+// that starts at `start`
 const itemSpans = (bytes: Uint8Array, start: number): Array<Uint8Array> => {
   const info = bytes[start]! & 0x1f
+  if (info === 31) {
+    // Indefinite length: items up to the break byte
+    const spans: Array<Uint8Array> = []
+    let offset = start + 1
+    while (bytes[offset] !== 0xff) {
+      const { newOffset } = CBOR.decodeItemWithOffset(bytes, offset)
+      spans.push(bytes.subarray(offset, newOffset))
+      offset = newOffset
+    }
+    return spans
+  }
   expect(info).toBeLessThan(28)
   const extra = info < 24 ? 0 : 2 ** (info - 24)
   let length = info < 24 ? info : 0
@@ -213,6 +231,59 @@ describe("BuildOptions.codecOptions: canonical options", () => {
       const { builtBytes, submitted } = await runCanonical(c, CBOR.TX_CANONICAL_OPTIONS)
       for (const bytes of [builtBytes, ...submitted]) expect(Interop.validateTx(Buffer.from(bytes))).toEqual([])
     }
+  })
+})
+
+describe("BuildOptions.codecOptions: minimum UTxO", () => {
+  it("gives unfracked change outputs the minimum UTxO of their written size", async () => {
+    // Indefinite arrays and maps write an output with tokens larger than the default does
+    const options = CBOR.CML_DATA_DEFAULT_OPTIONS
+    const utxo = new CoreUTxO.UTxO({
+      transactionId: TransactionHash.fromHex("d".repeat(64)),
+      index: 0n,
+      address: walletAddress,
+      assets: CoreAssets.fromRecord({
+        lovelace: 300_000_000n,
+        ["e".repeat(56) + "41"]: 1_000n,
+        ["f".repeat(56) + "01"]: 1n,
+        ["f".repeat(56) + "02"]: 1n
+      })
+    })
+    const { provider } = makeStubProvider()
+    const built = await makeTxBuilder({ chain: preprod, wallet, provider })
+      .payToAddress({ address: walletAddress, assets: CoreAssets.fromLovelace(5_000_000n) })
+      .build({
+        changeAddress: walletAddress,
+        availableUtxos: [utxo],
+        fullProtocolParameters: FULL_PP,
+        codecOptions: options,
+        unfrack: {}
+      })
+    const tx = await built.toTransaction()
+    const bytes = Transaction.toCBORBytes(tx)
+    expect(hex(bytes)).toBe(hex(Transaction.toCBORBytes(tx, options)))
+
+    // The output bytes as the transaction writes them
+    const [bodyBytes] = itemSpans(bytes, 0)
+    const entries = itemSpans(bodyBytes!, 0)
+    const outputsAt = entries.findIndex((k, j) => j % 2 === 0 && k.length === 1 && k[0] === 1)
+    const written = itemSpans(entries[outputsAt + 1]!, 0)
+    expect(written).toHaveLength(tx.body.outputs.length)
+
+    const minimum = (size: number) => FULL_PP.coinsPerUtxoByte * (160n + BigInt(size))
+    let bundles = 0
+    tx.body.outputs.forEach((output, i) => {
+      const size = written[i]!.length
+      expect(hex(written[i]!)).toBe(hex(TxOut.toCBORBytes(output, options)))
+      expect(output.assets.lovelace >= minimum(size)).toBe(true)
+      if (!CoreAssets.hasOnlyLovelace(output.assets)) {
+        // A bundle holds exactly its minimum, which a size from the default encoding misses
+        bundles++
+        expect(output.assets.lovelace).toBe(minimum(size))
+        expect(TxOut.toCBORBytes(output).length).toBeLessThan(size)
+      }
+    })
+    expect(bundles).toBe(2)
   })
 })
 

@@ -69,7 +69,8 @@ const createChangeOutputs = (
       changeAddress,
       leftoverAfterFee,
       unfrackOptions,
-      coinsPerUtxoByte
+      coinsPerUtxoByte,
+      buildOptions.codecOptions
     ).pipe(
       Effect.mapError(
         (err) =>
@@ -204,7 +205,8 @@ export const executeChangeCreation = (): Effect.Effect<
       const sendAllMinUtxo = yield* calculateMinimumUtxoLovelace({
         address: state.sendAllTo,
         assets: tentativeLeftover,
-        coinsPerUtxoByte: protocolParams.coinsPerUtxoByte
+        coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+        codecOptions: buildOptions.codecOptions
       })
 
       if (leftoverLovelace < sendAllMinUtxo) {
@@ -261,7 +263,8 @@ export const executeChangeCreation = (): Effect.Effect<
     const minLovelaceForSingle = yield* calculateMinimumUtxoLovelace({
       address: changeAddress,
       assets: tentativeLeftover,
-      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+      codecOptions: buildOptions.codecOptions
     })
 
     if (leftoverLovelace < minLovelaceForSingle) {

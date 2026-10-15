@@ -1772,6 +1772,9 @@ export const calculateMinimumUtxoLovelace = (params: {
  * 5. Roll up or subdivide ADA-only UTxOs
  * 6. Return multiple change outputs for optimal wallet structure
  *
+ * Outputs are sized with `codecOptions` when given, the options the
+ * transaction is encoded with.
+ *
  * @since 2.0.0
  * @category change
  */
@@ -1780,9 +1783,10 @@ export const createChangeOutput = (params: {
   changeAddress: CoreAddress.Address
   coinsPerUtxoByte: bigint
   unfrackOptions?: UnfrackOptions
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 }): Effect.Effect<ReadonlyArray<TxOut.TransactionOutput>, TransactionBuilderError> =>
   Effect.gen(function* () {
-    const { changeAddress, coinsPerUtxoByte, leftoverAssets, unfrackOptions } = params
+    const { changeAddress, codecOptions, coinsPerUtxoByte, leftoverAssets, unfrackOptions } = params
 
     // If no leftover, no change needed
     if (CoreAssets.isEmpty(leftoverAssets)) {
@@ -1796,7 +1800,8 @@ export const createChangeOutput = (params: {
         changeAddress,
         leftoverAssets,
         unfrackOptions,
-        coinsPerUtxoByte
+        coinsPerUtxoByte,
+        codecOptions
       ).pipe(
         Effect.mapError(
           (error) =>
@@ -1816,7 +1821,8 @@ export const createChangeOutput = (params: {
     const minLovelace = yield* calculateMinimumUtxoLovelace({
       address: changeAddress,
       assets: leftoverAssets,
-      coinsPerUtxoByte
+      coinsPerUtxoByte,
+      codecOptions
     })
 
     // Check if we have enough lovelace for change

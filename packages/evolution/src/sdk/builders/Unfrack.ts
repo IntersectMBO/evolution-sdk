@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect"
 
 import type * as CoreAddress from "../../Address.js"
 import * as CoreAssets from "../../Assets.js"
+import type * as CBOR from "../../CBOR.js"
 import type * as TxOut from "../../TxOut.js"
 import { calculateMinimumUtxoLovelace, makeTxOutput } from "./internal/txBuilder.js"
 import type { UnfrackOptions } from "./TransactionBuilder.js"
@@ -117,7 +118,8 @@ export interface TokenBundle {
 const calculateBundleMinUTxO = (
   bundleTokens: ReadonlyArray<TokenInfo>,
   changeAddress: CoreAddress.Address,
-  coinsPerUtxoByte: bigint
+  coinsPerUtxoByte: bigint,
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ): Effect.Effect<bigint, Error, never> =>
   Effect.gen(function* () {
     // Build Assets object with the bundle tokens using CoreAssets
@@ -133,7 +135,8 @@ const calculateBundleMinUTxO = (
     const minUtxo = yield* calculateMinimumUtxoLovelace({
       address: changeAddress,
       assets: bundleAssets,
-      coinsPerUtxoByte
+      coinsPerUtxoByte,
+      codecOptions
     })
 
     return minUtxo
@@ -141,13 +144,15 @@ const calculateBundleMinUTxO = (
 
 /**
  * Calculate bundles based on unfrack configuration
- * Now calculates proper minUTxO for each bundle using CBOR
+ * Now calculates proper minUTxO for each bundle using CBOR, encoded with
+ * `codecOptions` when given
  */
 export const calculateTokenBundles = (
   tokens: ReadonlyArray<TokenInfo>,
   options: UnfrackOptions,
   changeAddress: CoreAddress.Address,
-  coinsPerUtxoByte: bigint
+  coinsPerUtxoByte: bigint,
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ): Effect.Effect<ReadonlyArray<TokenBundle>, Error, never> =>
   Effect.gen(function* () {
     const bundleSize = options.tokens?.bundleSize ?? 10
@@ -166,7 +171,7 @@ export const calculateTokenBundles = (
       const fungiblesByPolicy = groupByPolicy(fungibles)
 
       for (const [_, policyTokens] of fungiblesByPolicy) {
-        const minUtxo = yield* calculateBundleMinUTxO(policyTokens, changeAddress, coinsPerUtxoByte)
+        const minUtxo = yield* calculateBundleMinUTxO(policyTokens, changeAddress, coinsPerUtxoByte, codecOptions)
         bundles.push({
           tokens: policyTokens,
           adaAmount: minUtxo
@@ -174,7 +179,7 @@ export const calculateTokenBundles = (
       }
     } else {
       // Bundle fungibles with standard bundling rules
-      const fungibleBundles = yield* bundleTokensWithRules(fungibles, bundleSize, changeAddress, coinsPerUtxoByte)
+      const fungibleBundles = yield* bundleTokensWithRules(fungibles, bundleSize, changeAddress, coinsPerUtxoByte, codecOptions)
       bundles.push(...fungibleBundles)
     }
 
@@ -184,7 +189,7 @@ export const calculateTokenBundles = (
       const nftsByPolicy = groupByPolicy(nfts)
 
       for (const [_, policyNfts] of nftsByPolicy) {
-        const minUtxo = yield* calculateBundleMinUTxO(policyNfts, changeAddress, coinsPerUtxoByte)
+        const minUtxo = yield* calculateBundleMinUTxO(policyNfts, changeAddress, coinsPerUtxoByte, codecOptions)
         bundles.push({
           tokens: policyNfts,
           adaAmount: minUtxo
@@ -192,7 +197,7 @@ export const calculateTokenBundles = (
       }
     } else {
       // Bundle NFTs with standard bundling rules
-      const nftBundles = yield* bundleTokensWithRules(nfts, bundleSize, changeAddress, coinsPerUtxoByte)
+      const nftBundles = yield* bundleTokensWithRules(nfts, bundleSize, changeAddress, coinsPerUtxoByte, codecOptions)
       bundles.push(...nftBundles)
     }
 
@@ -209,7 +214,8 @@ const bundleTokensWithRules = (
   tokens: ReadonlyArray<TokenInfo>,
   bundleSize: number,
   changeAddress: CoreAddress.Address,
-  coinsPerUtxoByte: bigint
+  coinsPerUtxoByte: bigint,
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ): Effect.Effect<ReadonlyArray<TokenBundle>, Error, never> =>
   Effect.gen(function* () {
     const bundles: Array<TokenBundle> = []
@@ -219,7 +225,7 @@ const bundleTokensWithRules = (
     for (const [_, policyTokens] of tokensByPolicy) {
       if (policyTokens.length <= bundleSize) {
         // All tokens from this policy fit in one bundle
-        const minUtxo = yield* calculateBundleMinUTxO(policyTokens, changeAddress, coinsPerUtxoByte)
+        const minUtxo = yield* calculateBundleMinUTxO(policyTokens, changeAddress, coinsPerUtxoByte, codecOptions)
         bundles.push({
           tokens: policyTokens,
           adaAmount: minUtxo
@@ -228,7 +234,7 @@ const bundleTokensWithRules = (
         // Split into multiple bundles
         for (let i = 0; i < policyTokens.length; i += bundleSize) {
           const bundleTokens = policyTokens.slice(i, i + bundleSize)
-          const minUtxo = yield* calculateBundleMinUTxO(bundleTokens, changeAddress, coinsPerUtxoByte)
+          const minUtxo = yield* calculateBundleMinUTxO(bundleTokens, changeAddress, coinsPerUtxoByte, codecOptions)
           bundles.push({
             tokens: bundleTokens,
             adaAmount: minUtxo
@@ -346,6 +352,9 @@ export type UnfrackResult = {
  * If either check fails, fall back to spreading the remaining ADA across token bundles.
  * This ensures all outputs are always valid.
  *
+ * Outputs are sized with `codecOptions` when given, the options the
+ * transaction is encoded with.
+ *
  * @since 2.0.0
  * @category builders
  */
@@ -353,7 +362,8 @@ export const createUnfrackedChangeOutputs = (
   changeAddress: CoreAddress.Address,
   changeAssets: CoreAssets.Assets,
   options: UnfrackOptions = {},
-  coinsPerUtxoByte: bigint
+  coinsPerUtxoByte: bigint,
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 ): Effect.Effect<ReadonlyArray<TxOut.TransactionOutput>, Error, never> => {
   return Effect.gen(function* () {
     // Extract config values from options, applying defaults
@@ -378,7 +388,8 @@ export const createUnfrackedChangeOutputs = (
         const adaMinUTxO = yield* calculateMinimumUtxoLovelace({
           address: changeAddress,
           assets: CoreAssets.fromLovelace(1_000_000n), // Use 1 ADA for minUTxO estimation
-          coinsPerUtxoByte
+          coinsPerUtxoByte,
+          codecOptions
         })
 
         yield* Effect.logDebug(`[Unfrack] ADA-only output minUTxO: ${adaMinUTxO}`)
@@ -467,7 +478,8 @@ export const createUnfrackedChangeOutputs = (
         const minUTxO = yield* calculateMinimumUtxoLovelace({
           address: changeAddress,
           assets: CoreAssets.merge(bundleAssets, CoreAssets.fromLovelace(1_000_000n)), // Add 1 ADA for calculation
-          coinsPerUtxoByte
+          coinsPerUtxoByte,
+          codecOptions
         })
 
         bundles.push({
@@ -490,7 +502,8 @@ export const createUnfrackedChangeOutputs = (
           const minUTxO = yield* calculateMinimumUtxoLovelace({
             address: changeAddress,
             assets: CoreAssets.merge(bundleAssets, CoreAssets.fromLovelace(1_000_000n)), // Add 1 ADA for calculation
-            coinsPerUtxoByte
+            coinsPerUtxoByte,
+            codecOptions
           })
 
           bundles.push({
@@ -538,7 +551,8 @@ export const createUnfrackedChangeOutputs = (
       const adaMinUTxO = yield* calculateMinimumUtxoLovelace({
         address: changeAddress,
         assets: CoreAssets.fromLovelace(remaining),
-        coinsPerUtxoByte
+        coinsPerUtxoByte,
+        codecOptions
       })
 
       yield* Effect.logDebug(`[Unfrack] ADA output minUTxO: ${adaMinUTxO}`)

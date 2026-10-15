@@ -267,7 +267,8 @@ export const executeCollateral = (): Effect.Effect<
       assets: returnAssets,
       datum: undefined, // No datum for collateral return
       scriptRef: undefined, // No script reference
-      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+      codecOptions: buildOptions.codecOptions
     })
 
     if (returnLovelace < minUtxo) {

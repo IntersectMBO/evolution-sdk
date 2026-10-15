@@ -602,11 +602,11 @@ export interface BuildOptions {
 
   /**
    * CBOR options to encode the transaction with. The fee, the size limit,
-   * the minimum UTxO of outputs with Plutus data, the script data hash and
-   * the auxiliary data hash are computed over this encoding, and the built
-   * and signed transactions are written with it, also when a provider
-   * submits them. Plain options are read as `CBOR.toTxCodecOptions` reads
-   * them.
+   * the minimum UTxO of payment, change and collateral return outputs, the
+   * script data hash and the auxiliary data hash are computed over this
+   * encoding, and the built and signed transactions are written with it,
+   * also when a provider submits them. Plain options are read as
+   * `CBOR.toTxCodecOptions` reads them.
    *
    * When omitted, or set to `CBOR.TX_DEFAULT_OPTIONS` or
    * `CBOR.CML_DEFAULT_OPTIONS`, the transaction has the default encoding.
