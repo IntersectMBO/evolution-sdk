@@ -16,6 +16,35 @@ import { Label, labelFromInt, labelFromText } from "./Label.js"
 // ============================================================================
 
 /**
+ * Set a header entry by logical label.
+ *
+ * `Label` equality is structural, but a JS `Map` compares keys by reference,
+ * so a plain `set` with a freshly built label would insert a duplicate entry
+ * for a label that is already present. Remove any structurally equal key
+ * first so the new entry is the only one for that label.
+ */
+const setLabel = (headers: Map<Label, CBOR.CBOR>, label: Label, value: CBOR.CBOR): void => {
+  for (const key of headers.keys()) {
+    if (Equal.equals(key, label)) {
+      headers.delete(key)
+    }
+  }
+  headers.set(label, value)
+}
+
+/**
+ * Look up a header entry by logical label, comparing labels structurally.
+ */
+const getLabel = (headers: ReadonlyMap<Label, CBOR.CBOR>, label: Label): CBOR.CBOR | undefined => {
+  for (const [key, value] of headers.entries()) {
+    if (Equal.equals(key, label)) {
+      return value
+    }
+  }
+  return undefined
+}
+
+/**
  * Map of COSE header labels to values (RFC 8152).
  *
  * @since 2.0.0
@@ -44,7 +73,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
     if (!(that instanceof HeaderMap)) return false
     if (this.headers.size !== that.headers.size) return false
     for (const [key, value] of this.headers.entries()) {
-      const otherValue = that.headers.get(key)
+      const otherValue = getLabel(that.headers, key)
       if (otherValue === undefined || !Equal.equals(value, otherValue)) return false
     }
     return true
@@ -66,7 +95,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setAlgorithmId(alg: AlgorithmId): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(labelFromInt(1n), BigInt(alg))
+    setLabel(newHeaders, labelFromInt(1n), BigInt(alg))
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
@@ -95,7 +124,8 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
   setCriticality(labels: ReadonlyArray<Label>): this {
     const newHeaders = new Map(this.headers)
     // Store as array of label values
-    newHeaders.set(
+    setLabel(
+      newHeaders,
       labelFromInt(2n),
       labels.map((l) => l.value)
     )
@@ -133,7 +163,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setKeyId(kid: Uint8Array): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(labelFromInt(4n), kid)
+    setLabel(newHeaders, labelFromInt(4n), kid)
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
@@ -161,7 +191,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setContentType(contentType: Label): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(labelFromInt(3n), contentType.value)
+    setLabel(newHeaders, labelFromInt(3n), contentType.value)
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
@@ -191,7 +221,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setInitVector(iv: Uint8Array): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(labelFromInt(5n), iv)
+    setLabel(newHeaders, labelFromInt(5n), iv)
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
@@ -219,7 +249,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setPartialInitVector(piv: Uint8Array): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(labelFromInt(6n), piv)
+    setLabel(newHeaders, labelFromInt(6n), piv)
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
@@ -247,7 +277,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    */
   setHeader(label: Label, value: CBOR.CBOR): this {
     const newHeaders = new Map(this.headers)
-    newHeaders.set(label, value)
+    setLabel(newHeaders, label, value)
     return new HeaderMap({ headers: newHeaders }, { disableValidation: true }) as this
   }
 
@@ -258,7 +288,7 @@ export class HeaderMap extends Schema.Class<HeaderMap>("HeaderMap")({
    * @category Accessors
    */
   header(label: Label): CBOR.CBOR | undefined {
-    return this.headers.get(label)
+    return getLabel(this.headers, label)
   }
 
   /**
