@@ -34,6 +34,7 @@ import type * as CoreAddress from "../../Address.js"
 import type * as CoreAssets from "../../Assets.js"
 import type * as AuxiliaryData from "../../AuxiliaryData.js"
 import * as Bytes from "../../Bytes.js"
+import type * as CBOR from "../../CBOR.js"
 import type * as Certificate from "../../Certificate.js"
 import type * as Coin from "../../Coin.js"
 import type * as CostModel from "../../CostModel.js"
@@ -598,6 +599,31 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly autoMinUtxo?: boolean
+
+  /**
+   * CBOR options to encode the transaction with. The fee, the size limit,
+   * the minimum UTxO of outputs with Plutus data, the script data hash and
+   * the auxiliary data hash are computed over this encoding, and the built
+   * and signed transactions are written with it, also when a provider
+   * submits them. Plain options are read as `CBOR.toTxCodecOptions` reads
+   * them.
+   *
+   * When omitted, or set to `CBOR.TX_DEFAULT_OPTIONS` or
+   * `CBOR.CML_DEFAULT_OPTIONS`, the transaction has the default encoding.
+   *
+   * @example
+   * ```typescript
+   * import * as CBOR from "@evolution-sdk/evolution/CBOR"
+   *
+   * const signBuilder = await client
+   *   .newTx()
+   *   .payToAddress({ address, assets })
+   *   .build({ codecOptions: CBOR.TX_CANONICAL_OPTIONS })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 }
 
 // ============================================================================

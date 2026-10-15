@@ -325,10 +325,10 @@ export const makeSigningWalletEffect = (
           referenceUtxos
         })
 
-        const txHash =
-          typeof txOrHex === "string"
-            ? TransactionBody.toHashFromBytes(Transaction.extractBodyBytes(Bytes.fromHex(txOrHex)))
-            : TransactionBody.toHash(tx.body)
+        // Sign the body bytes the transaction is written with
+        const txHash = TransactionBody.toHashFromBytes(
+          Transaction.extractBodyBytes(typeof txOrHex === "string" ? Bytes.fromHex(txOrHex) : Transaction.toCBORBytes(tx))
+        )
 
         const message = txHash.hash
         const witnesses: Array<TransactionWitnessSet.VKeyWitness> = []

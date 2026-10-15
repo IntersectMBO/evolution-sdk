@@ -173,6 +173,39 @@ export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = C
  */
 const formatCache = new WeakMap<Transaction, CBOR.CBORFormat>()
 
+// Options recorded with `withCodecOptions`, used when a caller passes none
+const optionsCache = new WeakMap<Transaction, CBOR.TxCodecOptions>()
+
+/**
+ * Record the codec options for a transaction and return it. The transaction
+ * is then encoded with these options when the caller passes none, so code
+ * that writes it with the default options, such as a provider, writes the
+ * bytes these options give. Options passed explicitly, other than
+ * `CBOR.TX_DEFAULT_OPTIONS` and `CBOR.CML_DEFAULT_OPTIONS`, and the encoding
+ * captured when the transaction was decoded take precedence.
+ *
+ * @example
+ * ```typescript
+ * import * as CBOR from "@evolution-sdk/evolution/CBOR"
+ * import * as Transaction from "@evolution-sdk/evolution/Transaction"
+ *
+ * declare const tx: Transaction.Transaction
+ * const recorded = Transaction.withCodecOptions(tx, CBOR.TX_CANONICAL_OPTIONS)
+ * // Same bytes as Transaction.toCBORHex(tx, CBOR.TX_CANONICAL_OPTIONS)
+ * const hex = Transaction.toCBORHex(recorded)
+ * ```
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const withCodecOptions = (
+  tx: Transaction,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions
+): Transaction => {
+  optionsCache.set(tx, CBOR.toTxCodecOptions(options))
+  return tx
+}
+
 // `CBOR.CML_DEFAULT_OPTIONS` passed explicitly acts as the default
 const isDefault = (options: CBOR.TxCodecOptions | CBOR.CodecOptions): boolean =>
   options === CBOR.TX_DEFAULT_OPTIONS || options === CBOR.CML_DEFAULT_OPTIONS
@@ -242,7 +275,7 @@ export const toCBORBytes = (
   }
   const cached = formatCache.get(data)
   if (cached) return toCBORBytesWithFormat(data, cached)
-  return Schema.encodeSync(FromCBORBytes(options))(data)
+  return Schema.encodeSync(FromCBORBytes(optionsCache.get(data) ?? options))(data)
 }
 
 export const toCBORHex = (data: Transaction, options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS): string => {
@@ -251,7 +284,7 @@ export const toCBORHex = (data: Transaction, options: CBOR.TxCodecOptions | CBOR
   }
   const cached = formatCache.get(data)
   if (cached) return toCBORHexWithFormat(data, cached)
-  return Schema.encodeSync(FromCBORHex(options))(data)
+  return Schema.encodeSync(FromCBORHex(optionsCache.get(data) ?? options))(data)
 }
 
 /**
@@ -425,6 +458,8 @@ export const addVKeyWitnesses = (
   // Transfer cached format so toCBORHex/toCBORBytes preserves encoding
   const fmt = formatCache.get(tx)
   if (fmt) formatCache.set(result, fmt)
+  const recorded = optionsCache.get(tx)
+  if (recorded) optionsCache.set(result, recorded)
   return result
 }
 
