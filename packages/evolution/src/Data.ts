@@ -524,6 +524,7 @@ type Layout = {
   readonly indefiniteArrays: boolean
   readonly indefiniteMaps: boolean
   readonly sortMapKeys: boolean
+  readonly bytewiseKeys: boolean
   readonly minimal: boolean
   readonly mapsAsPairs: boolean
 }
@@ -534,6 +535,7 @@ const toLayout = (options: CBOR.CodecOptions): Layout =>
         indefiniteArrays: options.useIndefiniteArrays,
         indefiniteMaps: options.useIndefiniteMaps,
         sortMapKeys: options.sortMapKeys,
+        bytewiseKeys: options.keyOrder === "bytewise",
         minimal: options.useMinimalEncoding,
         mapsAsPairs: options.encodeMapAsPairs === true
       }
@@ -541,6 +543,7 @@ const toLayout = (options: CBOR.CodecOptions): Layout =>
         indefiniteArrays: false,
         indefiniteMaps: false,
         sortMapKeys: true,
+        bytewiseKeys: options.keyOrder === "bytewise",
         minimal: true,
         mapsAsPairs: options.encodeMapAsPairs === true
       }
@@ -672,6 +675,7 @@ const writeList = (w: Writer, layout: Layout, items: ReadonlyArray<Data>): void 
 }
 
 // Shorter encoded keys first, then bytewise, as the CBOR encoder sorts map keys
+// in length-first order
 const compareEncodedKeys = (a: readonly [Uint8Array, Uint8Array], b: readonly [Uint8Array, Uint8Array]): number => {
   const x = a[0]
   const y = b[0]
@@ -680,6 +684,21 @@ const compareEncodedKeys = (a: readonly [Uint8Array, Uint8Array], b: readonly [U
     if (x[i] !== y[i]) return x[i] - y[i]
   }
   return 0
+}
+
+// Encoded keys bytewise, a key that is a prefix of another first, as the CBOR
+// encoder sorts map keys in bytewise order
+const compareEncodedKeysBytewise = (
+  a: readonly [Uint8Array, Uint8Array],
+  b: readonly [Uint8Array, Uint8Array]
+): number => {
+  const x = a[0]
+  const y = b[0]
+  const length = Math.min(x.length, y.length)
+  for (let i = 0; i < length; i++) {
+    if (x[i] !== y[i]) return x[i] - y[i]
+  }
+  return x.length - y.length
 }
 
 const writeMap = (w: Writer, layout: Layout, map: globalThis.Map<Data, Data>): void => {
@@ -709,7 +728,7 @@ const writeMap = (w: Writer, layout: Layout, map: globalThis.Map<Data, Data>): v
   else throw new CBOR.CBORError({ message: `Map too long: ${size} entries` })
   if (layout.sortMapKeys) {
     const entries = Array.from(map, ([key, value]) => [encodeData(key, layout), encodeData(value, layout)] as const)
-    entries.sort(compareEncodedKeys)
+    entries.sort(layout.bytewiseKeys ? compareEncodedKeysBytewise : compareEncodedKeys)
     for (const [key, value] of entries) {
       writeBytes(w, key)
       writeBytes(w, value)
