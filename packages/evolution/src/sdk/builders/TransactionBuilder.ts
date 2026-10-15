@@ -38,6 +38,7 @@ import type * as CBOR from "../../CBOR.js"
 import type * as Certificate from "../../Certificate.js"
 import type * as Coin from "../../Coin.js"
 import type * as CostModel from "../../CostModel.js"
+import type * as Credential from "../../Credential.js"
 import type * as PlutusData from "../../Data.js"
 import type * as KeyHash from "../../KeyHash.js"
 import type * as Mint from "../../Mint.js"
@@ -764,6 +765,27 @@ export type ProgramStep = Effect.Effect<
 // ============================================================================
 
 /**
+ * Compare two credentials in the ledger's `Ord Credential` order: the
+ * script-hash constructor sorts before the key-hash constructor, then by
+ * hash bytes. This is the order the ledger uses to position a key in the
+ * withdrawals / voting-procedures maps when it resolves a redeemer pointer
+ * (`indexOf`), so redeemer indices must be assigned in this order — NOT in
+ * serialized-byte order (a reward account's header byte puts key-hash
+ * credentials first, the opposite of `Ord Credential`).
+ *
+ * @since 2.0.0
+ * @category utilities
+ */
+export const compareCredentials = (a: Credential.Credential, b: Credential.Credential): number => {
+  const rankA = a._tag === "ScriptHash" ? 0 : 1
+  const rankB = b._tag === "ScriptHash" ? 0 : 1
+  if (rankA !== rankB) return rankA - rankB
+  const aHex = Bytes.toHex(a.hash)
+  const bHex = Bytes.toHex(b.hash)
+  return aHex < bHex ? -1 : aHex > bHex ? 1 : 0
+}
+
+/**
  * Convert a Voter to a unique string key for redeemer tracking.
  *
  * @since 2.0.0
@@ -772,13 +794,16 @@ export type ProgramStep = Effect.Effect<
 export const voterToKey = (voter: VotingProcedures.Voter): string => {
   switch (voter._tag) {
     case "ConstitutionalCommitteeVoter":
-      return `cc:${Bytes.toHex(voter.credential.hash)}`
+      // The middle segment is the credential's rank in `Ord Credential`
+      // (0 = script hash, 1 = key hash), so sorting keys as strings
+      // reproduces the ledger's voter order: type-first, then hash.
+      return `cc:${voter.credential._tag === "ScriptHash" ? 0 : 1}:${Bytes.toHex(voter.credential.hash)}`
     case "DRepVoter":
       switch (voter.drep._tag) {
         case "KeyHashDRep":
-          return `drep:${Bytes.toHex(voter.drep.keyHash.hash)}`
+          return `drep:1:${Bytes.toHex(voter.drep.keyHash.hash)}`
         case "ScriptHashDRep":
-          return `drep:${Bytes.toHex(voter.drep.scriptHash.hash)}`
+          return `drep:0:${Bytes.toHex(voter.drep.scriptHash.hash)}`
         default:
           return `drep:${voter.drep._tag}`
       }

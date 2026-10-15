@@ -40,6 +40,7 @@ import type * as VotingProcedures from "../../../VotingProcedures.js"
 import * as Withdrawals from "../../../Withdrawals.js"
 import {
   BuildOptionsTag,
+  compareCredentials,
   FullProtocolParametersTag,
   proposalKeyToIndex,
   proposalToKey,
@@ -615,10 +616,12 @@ const makeRedeemerIndexer = (
     }
   }
 
-  // Reward redeemers: the withdrawal's position in sorted order
+  // Reward redeemers: the withdrawal's position in ledger Ord Credential
+  // order (script-hash credentials before key-hash, then hash bytes) — a
+  // hash-only sort disagrees with the ledger whenever the two interleave
   const sortedWithdrawalHexes = globalThis.Array.from(state.withdrawals.keys())
+    .sort((a, b) => compareCredentials(a.stakeCredential, b.stakeCredential))
     .map((rewardAccount) => Bytes.toHex(rewardAccount.stakeCredential.hash))
-    .sort((a, b) => a.localeCompare(b))
 
   // Vote redeemers: the voter's position among the sorted voter keys
   const sortedVoterKeys = state.votingProcedures
@@ -650,7 +653,7 @@ const makeRedeemerIndexer = (
         // Key format: `reward:{credentialHex}`
         return found(sortedWithdrawalHexes.indexOf(key.slice(7)))
       case "vote":
-        // Key format: `drep:{credentialHex}` | `cc:{credentialHex}` | `pool:{poolKeyHashHex}`
+        // Key format: `drep:{ordRank}:{credentialHex}` | `cc:{ordRank}:{credentialHex}` | `pool:{poolKeyHashHex}`
         return sortedVoterKeys ? found(sortedVoterKeys.indexOf(key)) : undefined
       case "propose": {
         // Key format: `propose:{index}`; proposals keep insertion order

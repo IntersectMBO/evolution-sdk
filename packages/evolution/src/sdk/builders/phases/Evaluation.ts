@@ -21,6 +21,7 @@ import { assembleTransaction } from "../internal/txBuilder.js"
 import type { IndexedInput } from "../RedeemerBuilder.js"
 import {
   BuildOptionsTag,
+  compareCredentials,
   type DeferredRedeemerData,
   type EvaluationContext,
   EvaluationError,
@@ -419,14 +420,13 @@ export const executeEvaluation = (): Effect.Effect<
     }
 
     // Build withdrawal index mapping: index → "reward:{credentialHex}"
-    // Withdrawals are sorted by credential hash for canonical ordering
+    // Withdrawals are ordered by ledger Ord Credential (script-hash
+    // credentials before key-hash, then hash bytes), matching assembly
     const withdrawalIndexMapping = new Map<number, string>()
     if (updatedState.withdrawals.size > 0) {
-      const sortedWithdrawals = Array.from(updatedState.withdrawals.entries()).sort((a, b) => {
-        const aHex = Bytes.toHex(a[0].stakeCredential.hash)
-        const bHex = Bytes.toHex(b[0].stakeCredential.hash)
-        return aHex.localeCompare(bHex)
-      })
+      const sortedWithdrawals = Array.from(updatedState.withdrawals.entries()).sort((a, b) =>
+        compareCredentials(a[0].stakeCredential, b[0].stakeCredential)
+      )
 
       for (let i = 0; i < sortedWithdrawals.length; i++) {
         const [rewardAccount] = sortedWithdrawals[i]!
@@ -437,8 +437,8 @@ export const executeEvaluation = (): Effect.Effect<
       }
     }
 
-    // Build vote index mapping: index → "drep:{credentialHex}" | "cc:{credentialHex}" | "pool:{poolKeyHashHex}"
-    // Votes are sorted by voter key lexicographically (matching CBOR sorting)
+    // Build vote index mapping: index → "drep:{ordRank}:{credentialHex}" | "cc:{ordRank}:{credentialHex}" | "pool:{poolKeyHashHex}"
+    // Voter keys encode the ledger's Ord Voter order, so a string sort reproduces it
     const voteIndexMapping = new Map<number, string>()
     if (updatedState.votingProcedures) {
       const voters = Array.from(updatedState.votingProcedures.procedures.keys())
