@@ -1072,7 +1072,7 @@ export const internalEncodeSync = (value: CBOR, options: CodecOptions = CML_DEFA
     "_tag" in value &&
     (value as { _tag: unknown })._tag === "BoundedBytes"
   ) {
-    return encodeBoundedBytesSync((value as { _tag: "BoundedBytes"; bytes: Uint8Array }).bytes)
+    return encodeBoundedBytesSync((value as { _tag: "BoundedBytes"; bytes: Uint8Array }).bytes, resolvedFmt)
   }
   if (
     typeof value === "object" &&
@@ -1232,8 +1232,50 @@ const writeChunkHeader = (buf: Uint8Array, pos: number, len: number): number => 
  * depend on `CodecOptions` — the rule is always applied.
  */
 const BOUNDED_BYTES_CHUNK_SIZE = 64
-const encodeBoundedBytesSync = (value: Uint8Array): Uint8Array => {
+const encodeBoundedBytesSync = (value: Uint8Array, fmt?: CBORFormat): Uint8Array => {
   const length = value.length
+  // Replay the captured encoding when it still fits the value: a definite
+  // header keeps its width (values over 64 bytes cannot be definite under
+  // the bounded rule, so those fall through to chunking), and an indefinite
+  // chunk layout is kept only when its chunk sizes add up to the value's
+  // length and no chunk is over 64 bytes — a stale layout is never reused.
+  const encoding = fmt?._tag === "bytes" ? fmt.encoding : undefined
+  if (encoding !== undefined) {
+    if (encoding.tag === "indefinite") {
+      let total = 0
+      let fits = true
+      for (const chunk of encoding.chunks) {
+        if (chunk.length > BOUNDED_BYTES_CHUNK_SIZE) fits = false
+        total += chunk.length
+      }
+      if (fits && total === length) {
+        let totalSize = 2 // 0x5f + 0xff
+        for (const chunk of encoding.chunks) {
+          totalSize += encodeIntHeader(2, BigInt(chunk.length), chunk.byteSize).length + chunk.length
+        }
+        const result = new Uint8Array(totalSize)
+        let pos = 0
+        result[pos++] = 0x5f
+        let srcOffset = 0
+        for (const chunk of encoding.chunks) {
+          const header = encodeIntHeader(2, BigInt(chunk.length), chunk.byteSize)
+          result.set(header, pos)
+          pos += header.length
+          result.set(value.subarray(srcOffset, srcOffset + chunk.length), pos)
+          pos += chunk.length
+          srcOffset += chunk.length
+        }
+        result[pos] = 0xff
+        return result
+      }
+    } else if (length <= BOUNDED_BYTES_CHUNK_SIZE) {
+      const header = encodeIntHeader(2, BigInt(length), encoding.byteSize)
+      const out = new Uint8Array(header.length + length)
+      out.set(header, 0)
+      out.set(value, header.length)
+      return out
+    }
+  }
   if (length === 0) return new Uint8Array([0x40])
   if (length <= BOUNDED_BYTES_CHUNK_SIZE) {
     // Definite-length encoding
@@ -1437,12 +1479,15 @@ const encodeTextSync = (value: string, options: CodecOptions, fmt?: CBORFormat):
 const encodeArraySync = (value: ReadonlyArray<CBOR>, options: CodecOptions, fmt?: CBORFormat): Uint8Array => {
   const length = value.length
 
-  // Fast path for empty arrays
+  const arrayFmt = fmt?._tag === "array" ? fmt : undefined
+
+  // Empty arrays still carry a captured encoding: an indefinite length
+  // stays indefinite and a definite header keeps its width.
   if (length === 0) {
+    if (arrayFmt?.length?.tag === "indefinite") return new Uint8Array([0x9f, 0xff])
+    if (arrayFmt?.length !== undefined) return encodeIntHeader(4, 0n, arrayFmt.length.byteSize)
     return new Uint8Array([0x80])
   }
-
-  const arrayFmt = fmt?._tag === "array" ? fmt : undefined
 
   // Use format metadata if available
   if (arrayFmt?.length !== undefined) {
@@ -1494,8 +1539,13 @@ const encodeMapEntriesSync = (pairs: Array<[CBOR, CBOR]>, options: CodecOptions,
     return encodeArraySync(pairArrays, options)
   }
 
-  // Fast path for empty maps
-  if (length === 0) return new Uint8Array([0xa0])
+  // Empty maps still carry a captured encoding: an indefinite length
+  // stays indefinite and a definite header keeps its width.
+  if (length === 0) {
+    if (mapFmt?.length?.tag === "indefinite") return new Uint8Array([0xbf, 0xff])
+    if (mapFmt?.length !== undefined) return encodeIntHeader(5, 0n, mapFmt.length.byteSize)
+    return new Uint8Array([0xa0])
+  }
 
   // Encode each pair (with per-entry formats if format is available, otherwise canonical)
   let encodedPairs: Array<{ encodedKey: Uint8Array; encodedValue: Uint8Array }>

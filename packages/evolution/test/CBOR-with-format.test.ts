@@ -14,6 +14,10 @@ const ENCODING_VECTORS = [
   { name: "array indefinite length", hex: "9f0102ff" },
   { name: "map indefinite length", hex: "bf01020304ff" },
   { name: "tag non-minimal width (tag 24 as uint8)", hex: "d81800" },
+  { name: "array empty indefinite length", hex: "9fff" },
+  { name: "map empty indefinite length", hex: "bfff" },
+  { name: "array empty 2-byte length header", hex: "9800" },
+  { name: "uint written as a bignum (tag 2)", hex: "c24101" },
   { name: "map non-canonical key order", hex: "a2036163016161" },
   { name: "nested mixed encodings", hex: "a205a182000082d8798082186418c803d901028143010203" }
 ] as const
@@ -84,6 +88,72 @@ describe("CBOR WithFormat — hand-crafted format injection", () => {
     expect(CBOR.toCBORHexWithFormat([1n, 2n], fmt)).toBe("9f0102ff")
   })
 
+  it("empty array keeps a captured indefinite length", () => {
+    const fmt: CBOR.CBORFormat = { _tag: "array", length: { tag: "indefinite" }, children: [] }
+    expect(CBOR.toCBORHexWithFormat([], fmt)).toBe("9fff")
+  })
+
+  it("empty array keeps a captured 2-byte length header", () => {
+    const fmt: CBOR.CBORFormat = { _tag: "array", length: { tag: "definite", byteSize: 1 }, children: [] }
+    expect(CBOR.toCBORHexWithFormat([], fmt)).toBe("9800")
+  })
+
+  it("empty map keeps a captured indefinite length", () => {
+    const fmt: CBOR.CBORFormat = { _tag: "map", length: { tag: "indefinite" }, entries: [] }
+    expect(CBOR.toCBORHexWithFormat(new Map(), fmt)).toBe("bfff")
+  })
+})
+
+describe("CBOR WithFormat — BoundedBytes captured encodings (#576)", () => {
+  it("keeps a captured 2-byte length header", () => {
+    const fmt: CBOR.CBORFormat = { _tag: "bytes", encoding: { tag: "definite", byteSize: 1 } }
+    const value = CBOR.BoundedBytes.make(new Uint8Array([0xcc, 0xcc, 0xcc]))
+    expect(CBOR.toCBORHexWithFormat(value, fmt)).toBe("5803cccccc")
+  })
+
+  it("keeps a captured chunk layout that still fits the value", () => {
+    const fmt: CBOR.CBORFormat = {
+      _tag: "bytes",
+      encoding: {
+        tag: "indefinite",
+        chunks: [
+          { length: 2, byteSize: 0 },
+          { length: 1, byteSize: 0 }
+        ]
+      }
+    }
+    const value = CBOR.BoundedBytes.make(new Uint8Array([1, 2, 3]))
+    expect(CBOR.toCBORHexWithFormat(value, fmt)).toBe("5f4201024103ff")
+  })
+
+  it("does not reuse a chunk layout whose sizes do not add up to the value length", () => {
+    const fmt: CBOR.CBORFormat = {
+      _tag: "bytes",
+      encoding: {
+        tag: "indefinite",
+        chunks: [
+          { length: 2, byteSize: 0 },
+          { length: 2, byteSize: 0 }
+        ]
+      }
+    }
+    const value = CBOR.BoundedBytes.make(new Uint8Array([1, 2, 3]))
+    // Stale layout (2 + 2 over a 3-byte value) falls back to the definite form.
+    expect(CBOR.toCBORHexWithFormat(value, fmt)).toBe("43010203")
+  })
+
+  it("does not reuse a chunk layout with a chunk over 64 bytes", () => {
+    const fmt: CBOR.CBORFormat = {
+      _tag: "bytes",
+      encoding: { tag: "indefinite", chunks: [{ length: 65, byteSize: 1 }] }
+    }
+    const value = CBOR.BoundedBytes.make(new Uint8Array(65).fill(1))
+    // Falls back to the bounded rule: a 64-byte chunk plus a 1-byte chunk.
+    expect(CBOR.toCBORHexWithFormat(value, fmt)).toBe(`5f5840${"01".repeat(64)}4101ff`)
+  })
+})
+
+describe("CBOR WithFormat — captured key order", () => {
   it("captured format round-trips correctly for map with non-canonical key order", () => {
     // key 3 (0x03) before key 1 (0x01) — non-canonical order
     const hex = "a2036163016161"

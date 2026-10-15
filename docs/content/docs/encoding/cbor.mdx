@@ -34,7 +34,7 @@ if (CBOR.isArray(value)) {
   const len = value.length // 3
 }
 
-// Re-encode to hex (canonical by default)
+// Re-encode to hex (the default keeps the original map order)
 const hex = CBOR.toCBORHex(value) // "83010203"
 
 // Or to bytes
