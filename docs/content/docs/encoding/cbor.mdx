@@ -122,7 +122,8 @@ The plain `toCBORHex`/`toCBORBytes` APIs accept a `CodecOptions` argument that c
 | Preset | Use when |
 |--------|----------|
 | `CML_DEFAULT_OPTIONS` *(default)* | General Cardano use — definite lengths, minimal integer encoding |
-| `CANONICAL_OPTIONS` | RFC 8949 canonical: sorted keys, minimal encoding |
+| `CANONICAL_OPTIONS` | Canonical CBOR as CIP-21 specifies: map keys length-first (RFC 7049 Section 3.9), minimal encoding |
+| `HW_CLI_OPTIONS` | `CANONICAL_OPTIONS` with `keyOrder: "bytewise"`: map keys in bytewise order (RFC 8949 Section 4.2.1), which cardano-hw-cli checks before it witnesses a transaction. `TX_HW_CLI_OPTIONS` applies it to a whole transaction |
 | `PLUTUS_DATA_OPTIONS` | Plutus data in the node layout: indefinite lists and constructor fields, definite maps. The default for `Data` encoding, `UPLC.applyParamsToScript` and `UPLC.dataConstant`; matches `cardano-cli`, Aiken `cbor.serialise()`, and `aiken blueprint apply` |
 | `CML_DATA_DEFAULT_OPTIONS` | Deprecated. Indefinite lists, constructor fields and maps, keys in insertion order. The `Data` default before `PLUTUS_DATA_OPTIONS`; use it only to reproduce datum bytes and hashes the SDK wrote before. It matches no tool exactly: CML `PlutusData.to_cardano_node_format()` also sorts map keys |
 | `CML_DATA_DEFINITE_OPTIONS` | Matches CML `PlutusData.to_cbor_hex()` on new data: definite lists and maps |
