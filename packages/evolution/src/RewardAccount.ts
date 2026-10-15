@@ -77,13 +77,20 @@ export const FromBytes = Schema.transformOrFail(
         result.set(stakeCredentialBytes, 1)
         return yield* ParseResult.succeed(result)
       }),
-    decode: (_, __, ___, fromA) =>
+    decode: (_, __, ast, fromA) =>
       Eff.gen(function* () {
         const header = fromA[0]
         // Extract network ID from the lower 4 bits
         const networkId = header & 0b00001111
         // Extract address type from the upper 4 bits (bits 4-7)
         const addressType = header >> 4
+
+        // RewardAccount (CIP-19): only header types 14 (stake key) and 15 (script) are reward types
+        if (addressType !== 0b1110 && addressType !== 0b1111) {
+          return yield* ParseResult.fail(
+            new ParseResult.Type(ast, fromA, `Invalid reward address type: ${addressType}`)
+          )
+        }
 
         const isStakeKey = (addressType & 0b0001) === 0
         const stakeCredential: Credential.Credential = isStakeKey
@@ -123,17 +130,30 @@ export const FromBech32 = Schema.transformOrFail(Schema.String, Schema.typeSchem
     }),
   decode: (fromA, _, ast) =>
     Eff.gen(function* () {
-      const result = yield* Eff.try({
+      const decoded = yield* Eff.try({
         try: () => {
           // Note: `as any` needed because bech32.decode expects template literal type `${Prefix}1${string}`
           // but Schema provides plain string. Consider using decodeToBytes which accepts string.
-          const decoded = bech32.decode(fromA as any, false)
-          const bytes = bech32.fromWords(decoded.words)
-          return new Uint8Array(bytes)
+          const result = bech32.decode(fromA as any, false)
+          return { prefix: result.prefix, bytes: new Uint8Array(bech32.fromWords(result.words)) }
         },
         catch: () => new ParseResult.Type(ast, fromA, `Failed to decode Bech32: ${fromA}`)
       })
-      return yield* ParseResult.decode(FromBytes)(result)
+      // Reject non-stake prefixes (e.g. addr / addr_test payment addresses)
+      if (decoded.prefix !== "stake" && decoded.prefix !== "stake_test") {
+        return yield* ParseResult.fail(
+          new ParseResult.Type(ast, fromA, `Invalid reward account prefix: ${decoded.prefix}`)
+        )
+      }
+      const rewardAccount = yield* ParseResult.decode(FromBytes)(decoded.bytes)
+      // Prefix must agree with the network in the header (testnet -> stake_test)
+      const expectedPrefix = rewardAccount.networkId === 0 ? "stake_test" : "stake"
+      if (decoded.prefix !== expectedPrefix) {
+        return yield* ParseResult.fail(
+          new ParseResult.Type(ast, fromA, `Prefix ${decoded.prefix} does not match network ${rewardAccount.networkId}`)
+        )
+      }
+      return rewardAccount
     })
 }).annotations({
   identifier: "RewardAccount.FromBech32",
