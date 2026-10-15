@@ -7,11 +7,13 @@ import * as CoreAssets from "../src/Assets.js"
 import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as CostModel from "../src/CostModel.js"
+import * as Data from "../src/Data.js"
 import * as Redeemers from "../src/Redeemers.js"
 import { makeTxBuilder } from "../src/sdk/builders/TransactionBuilder.js"
 import { preprod } from "../src/sdk/client/index.js"
 import * as Transaction from "../src/Transaction.js"
 import * as TransactionHash from "../src/TransactionHash.js"
+import type * as TransactionMetadatum from "../src/TransactionMetadatum.js"
 import * as TransactionWitnessSet from "../src/TransactionWitnessSet.js"
 import * as TxOut from "../src/TxOut.js"
 import * as CoreUTxO from "../src/UTxO.js"
@@ -133,6 +135,9 @@ const checkWritten = (bytes: Uint8Array, options: CBOR.TxCodecOptions | CBOR.Cod
   return decoded
 }
 
+// The reasons validateTx of cardano-hw-interop-lib gives, the canonical check of cardano-hw-cli
+const hwCheck = (bytes: Uint8Array) => Interop.validateTx(Buffer.from(bytes)).map((error) => error.reason)
+
 // Every vkey witness signs blake2b over the written body bytes
 const checkSignatures = (bytes: Uint8Array) => {
   const message = blake2b(Transaction.extractBodyBytes(bytes), { dkLen: 32 })
@@ -191,7 +196,8 @@ describe("BuildOptions.codecOptions: default options", () => {
 describe("BuildOptions.codecOptions: canonical options", () => {
   const variants = [
     ["TX_CANONICAL_OPTIONS", CBOR.TX_CANONICAL_OPTIONS],
-    ["CANONICAL_OPTIONS", CBOR.CANONICAL_OPTIONS]
+    ["CANONICAL_OPTIONS", CBOR.CANONICAL_OPTIONS],
+    ["TX_HW_CLI_OPTIONS", CBOR.TX_HW_CLI_OPTIONS]
   ] as const
 
   for (const [name, options] of variants) {
@@ -227,10 +233,134 @@ describe("BuildOptions.codecOptions: canonical options", () => {
 
   it("passes validateTx of cardano-hw-interop-lib for Plutus builds, built and signed", async () => {
     expect(PLUTUS_CASES.length).toBeGreaterThan(4)
-    for (const c of PLUTUS_CASES) {
-      const { builtBytes, submitted } = await runCanonical(c, CBOR.TX_CANONICAL_OPTIONS)
-      for (const bytes of [builtBytes, ...submitted]) expect(Interop.validateTx(Buffer.from(bytes))).toEqual([])
+    for (const options of [CBOR.TX_CANONICAL_OPTIONS, CBOR.TX_HW_CLI_OPTIONS]) {
+      for (const c of PLUTUS_CASES) {
+        const { builtBytes, submitted } = await runCanonical(c, options)
+        for (const bytes of [builtBytes, ...submitted]) expect(hwCheck(bytes)).toEqual([])
+      }
     }
+  })
+})
+
+describe("BuildOptions.codecOptions: TX_HW_CLI_OPTIONS", () => {
+  // The two key orders sort these maps differently. Length-first puts -1 (20)
+  // before 1000 (1903e8), and "a" (6161) before 1000; bytewise puts 1000 first.
+  const keyedData = Data.map([
+    [1000n, 1n],
+    [-1n, 2n]
+  ])
+  const keyedMetadata = new Map<TransactionMetadatum.TransactionMetadatum, TransactionMetadatum.TransactionMetadatum>([
+    [1000n, "x"],
+    ["a", "y"]
+  ])
+  // 24 wallet inputs sort before the script input, so its spend redeemer has
+  // index 24 or more: key 820018xx, which length-first puts after mint 0 (820100)
+  const walletInputs = Array.from(
+    { length: 24 },
+    (_, i) =>
+      new CoreUTxO.UTxO({
+        transactionId: TransactionHash.fromHex("1".repeat(64)),
+        index: BigInt(i),
+        address: walletAddress,
+        assets: CoreAssets.fromLovelace(2_000_000n)
+      })
+  )
+  const payments = [{ lovelace: 3_000_000n }]
+  const plain = Data.int(1n)
+
+  // The redeemer keys in the order the witness set writes them
+  const writtenRedeemerKeys = (bytes: Uint8Array) => {
+    const entries = itemSpans(itemSpans(bytes, 0)[1]!, 0)
+    const at = entries.findIndex((k, j) => j % 2 === 0 && k.length === 1 && k[0] === 5)
+    return itemSpans(entries[at + 1]!, 0)
+      .filter((_, j) => j % 2 === 0)
+      .map(hex)
+  }
+  const checkRedeemerOrder = (bytes: Uint8Array) => {
+    const redeemers = Transaction.fromCBORBytes(bytes, CBOR.CANONICAL_OPTIONS).witnessSet.redeemers!.toArray()
+    const spend = redeemers.find((r) => r.tag === "spend")!
+    expect(spend.index >= 24n).toBe(true)
+    expect(redeemers.find((r) => r.tag === "mint")!.index).toBe(0n)
+    // Spend (tag 0) comes first although its key is the longer one
+    const keys = writtenRedeemerKeys(bytes)
+    expect(keys).toHaveLength(2)
+    expect(keys[0]!.startsWith("820018")).toBe(true)
+    expect(keys[1]).toBe("820100")
+  }
+  const checkDataMap = (bytes: Uint8Array) => expect(hex(bytes)).toContain("a21903e8012002")
+  const checkMetadataMap = (bytes: Uint8Array) => expect(hex(bytes)).toContain("a21903e8617861616179")
+
+  const cases: ReadonlyArray<readonly [string, BuildCase, ReadonlyArray<(bytes: Uint8Array) => void>]> = [
+    [
+      "a spend redeemer at index 24 or more next to a mint redeemer at index 0",
+      {
+        inputs: walletInputs,
+        payments,
+        spend: { datum: plain, redeemer: plain },
+        mints: [{ script: 0, amount: 1n, redeemer: plain }]
+      },
+      [checkRedeemerOrder]
+    ],
+    [
+      "a redeemer map with keys 1000 and -1",
+      { payments, spend: { datum: plain, redeemer: keyedData }, mints: [] },
+      [checkDataMap]
+    ],
+    [
+      'metadata with keys 1000 and "a"',
+      { payments, spend: { datum: plain, redeemer: plain }, mints: [], metadata: keyedMetadata },
+      [checkMetadataMap]
+    ],
+    [
+      "all three in one transaction",
+      {
+        inputs: walletInputs,
+        payments: [{ lovelace: 3_000_000n, datum: keyedData }],
+        spend: { datum: keyedData, redeemer: keyedData },
+        mints: [{ script: 0, amount: 1n, redeemer: keyedData }],
+        metadata: keyedMetadata
+      },
+      [checkRedeemerOrder, checkDataMap, checkMetadataMap]
+    ]
+  ]
+
+  for (const [name, c, checks] of cases) {
+    it(`${name}: built, signed and assembled bytes pass validateTx, and the body hashes cover them`, async () => {
+      const { built, builtBytes, evaluated, fakeBytes, submitted } = await runCanonical(c, CBOR.TX_HW_CLI_OPTIONS)
+      const txHash = built.chainResult().txHash
+
+      checkWritten(builtBytes, CBOR.TX_HW_CLI_OPTIONS, fakeBytes)
+      expect(hwCheck(builtBytes)).toEqual([])
+      for (const check of checks) check(builtBytes)
+      for (const bytes of evaluated) checkWritten(bytes, CBOR.TX_HW_CLI_OPTIONS)
+
+      // Signed, assembled, and signed with a given witness set. The fee is
+      // checked against the size with fake witnesses: fake redeemers take the
+      // indices 0, 1 and so on, so a redeemer index of 24 or more is written
+      // one byte longer than the fee estimate counts.
+      expect(submitted).toHaveLength(3)
+      for (const bytes of submitted) {
+        expect(hwCheck(bytes)).toEqual([])
+        checkWritten(bytes, CBOR.TX_HW_CLI_OPTIONS, fakeBytes)
+        for (const check of checks) check(bytes)
+        expect(bodyId(bytes)).toBe(bodyId(builtBytes))
+        expect(bodyId(bytes)).toBe(txHash)
+        checkSignatures(bytes)
+      }
+
+      // The same build with keys in length-first order fails the check
+      const canonical = await runCanonical(c, CBOR.TX_CANONICAL_OPTIONS)
+      expect(hwCheck(canonical.builtBytes)).toEqual(["CBOR is not canonical"])
+      for (const bytes of canonical.submitted) expect(hwCheck(bytes)).toEqual(["CBOR is not canonical"])
+    })
+  }
+
+  it("HW_CLI_OPTIONS builds the bytes TX_HW_CLI_OPTIONS builds", async () => {
+    const [, c] = cases[cases.length - 1]!
+    const tx = await runCanonical(c, CBOR.TX_HW_CLI_OPTIONS)
+    const plainOptions = await runCanonical(c, CBOR.HW_CLI_OPTIONS)
+    expect(hex(plainOptions.builtBytes)).toBe(hex(tx.builtBytes))
+    expect(plainOptions.submitted.map(hex)).toEqual(tx.submitted.map(hex))
   })
 })
 

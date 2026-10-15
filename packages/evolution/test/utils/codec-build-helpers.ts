@@ -112,6 +112,8 @@ const randomMetadata = (random: Random): TransactionMetadatum.TransactionMetadat
   ])
 
 export type BuildCase = {
+  /** Wallet UTxOs spent next to the ones coin selection picks. */
+  readonly inputs?: ReadonlyArray<CoreUTxO.UTxO>
   readonly payments: ReadonlyArray<{ readonly lovelace: bigint; readonly datum?: Data.Data }>
   readonly spend?: { readonly datum: Data.Data; readonly redeemer: Data.Data }
   readonly mints: ReadonlyArray<{ readonly script: number; readonly amount: bigint; readonly redeemer: Data.Data }>
@@ -220,6 +222,7 @@ export const buildCase = (
   codecOptions: CBOR.TxCodecOptions | CBOR.CodecOptions | undefined
 ): Promise<SignBuilder> => {
   let builder = makeTxBuilder({ chain: preprod, wallet, provider })
+  if (c.inputs !== undefined) builder = builder.collectFrom({ inputs: c.inputs })
   if (c.spend !== undefined) {
     builder = builder
       .collectFrom({ inputs: [scriptUtxo(c.spend.datum)], redeemer: c.spend.redeemer })
