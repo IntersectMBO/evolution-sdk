@@ -377,7 +377,7 @@ export const makeSigningWalletEffect = (
         // bytes can never be a bare transaction-body hash / VKey witness. Return
         // the COSE_Sign1 hex, matching the CIP-30 wallet path.
         const signed = SignData.signData(addressHex, payloadBytes, signingKey)
-        return { payload, signature: Bytes.toHex(signed.signature) }
+        return { payload, signature: Bytes.toHex(signed.signature), key: Bytes.toHex(signed.key) }
       })
   }
 

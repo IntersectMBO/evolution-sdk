@@ -261,7 +261,7 @@ export const cip30Wallet =
           try: () => api.signData(addressHex, payload),
           catch: (cause) => new Wallet.WalletError({ message: "User rejected message signing", cause })
         })
-        return { payload, signature: result.signature }
+        return { payload, signature: result.signature, key: result.key }
       }),
     signTxs: (txs: ReadonlyArray<Transaction.Transaction | string>, _context?: { utxos?: ReadonlyArray<CoreUTxO.UTxO> }) =>
       Effect.gen(function* () {
