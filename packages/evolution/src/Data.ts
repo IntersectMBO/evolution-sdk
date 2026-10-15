@@ -1110,13 +1110,39 @@ export const toCBORHex = (data: Data, options: CBOR.CodecOptions = DEFAULT_CBOR_
   Bytes.toHex(toCBORBytes(data, options))
 
 /**
+ * Internal cache that associates a decoded datum with a copy of the bytes it
+ * was decoded from. The ledger hashes a datum over its original bytes, so
+ * {@link toDatumHash} replays these bytes instead of hashing a re-encode,
+ * which can differ from the source (definite vs indefinite containers,
+ * non-minimal integer or length headers). Mirrors the format cache in
+ * Transaction.ts.
+ *
+ * Only object datums can be WeakMap keys: a bare integer datum is a bigint
+ * and falls back to hashing its re-encode. The WeakMap ensures the bytes are
+ * garbage-collected with the datum.
+ */
+const sourceBytesCache = new WeakMap<object, Uint8Array>()
+
+// `DEFAULT_CBOR_OPTIONS` passed explicitly acts as the default
+const isDefault = (options: CBOR.CodecOptions): boolean => options === DEFAULT_CBOR_OPTIONS
+
+const cacheSourceBytes = (data: Data, bytes: Uint8Array): Data => {
+  if (typeof data === "object" && data !== null) sourceBytesCache.set(data, bytes.slice())
+  return data
+}
+
+/**
  * Decode PlutusData from CBOR bytes
  *
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data => {
+  const data = Schema.decodeSync(FromCBORBytes(options))(bytes)
+  // Non-default options signal the caller wants the re-encode on later
+  // hashing, so skip the cache — as Transaction.fromCBORBytes does.
+  return isDefault(options) ? cacheSourceBytes(data, bytes) : data
+}
 
 /**
  * Decode PlutusData from CBOR hex string
@@ -1124,8 +1150,10 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DE
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data => {
+  const data = Schema.decodeSync(FromCBORHex(options))(hex)
+  return isDefault(options) ? cacheSourceBytes(data, Bytes.fromHex(hex)) : data
+}
 
 /**
  * Create a schema that transforms from a custom type to Data and provides CBOR encoding
@@ -1149,7 +1177,10 @@ export const withSchema = <A, I extends Data>(
 
 /**
  * Compute the hash of PlutusData using blake2b-256 over its CBOR encoding.
- * Defaults to PLUTUS_DATA_OPTIONS, the node layout.
+ * Defaults to PLUTUS_DATA_OPTIONS, the node layout. A datum decoded by
+ * {@link fromCBORBytes} or {@link fromCBORHex} with the default options
+ * hashes the bytes it was decoded from, as the ledger does, even when those
+ * bytes are not the encoding this module would write for the value.
  *
  * @since 2.0.0
  * @category hashing
@@ -1174,7 +1205,11 @@ export const toDatumHash = (
   data: Data,
   options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS
 ): DatumHash.DatumHash => {
-  const bytes = toCBORBytes(data, options)
+  // A datum decoded with the default options hashes the bytes it was decoded
+  // from — the hash the ledger computes — not a re-encode of the value.
+  const cached =
+    isDefault(options) && typeof data === "object" && data !== null ? sourceBytesCache.get(data) : undefined
+  const bytes = cached ?? toCBORBytes(data, options)
   const digest = blake2b(bytes, { dkLen: 32 })
   return new DatumHash.DatumHash({ hash: digest })
 }
