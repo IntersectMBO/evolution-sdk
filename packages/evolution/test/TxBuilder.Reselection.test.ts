@@ -95,13 +95,15 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Strict expectations with deterministic values
-      expect(size).toBe(290) // Exact transaction size with 1 witness (Shelley format saves 4 bytes)
-      expect(validation.actualFee).toBe(168_141n) // Exact deterministic fee
+      // Size is the ledger size (#179): the 3-element size-computation
+      // encoding without isValid — one byte less than the full encoding.
+      expect(size).toBe(289) // Exact transaction size with 1 witness
+      expect(validation.actualFee).toBe(168_097n) // Exact deterministic fee: 44 * 289 + 155,381
 
       // Verify exact output amounts
       expect(tx.body.outputs[0].assets.lovelace).toBe(2_000_000n) // Payment output
-      // Change: 10M - 2M payment - 168,141 fee = 7,831,859
-      expect(tx.body.outputs[1].assets.lovelace).toBe(7_831_859n) // Change output (exact deterministic value)
+      // Change: 10M - 2M payment - 168,097 fee = 7,831,903
+      expect(tx.body.outputs[1].assets.lovelace).toBe(7_831_903n) // Change output (exact deterministic value)
     })
 
     it("should trigger re-selection with tight balance", async () => {
@@ -151,12 +153,12 @@ describe("TxBuilder Re-selection Loop", () => {
       const size = calculateTransactionSize(txWithFakeWitnesses)
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
-      expect(size).toBe(326) // 2 inputs, 1 witness, 2 outputs (Shelley format saves 4 bytes)
-      expect(validation.actualFee).toBe(169_725n) // Fee for 2-input TX
+      expect(size).toBe(325) // 2 inputs, 1 witness, 2 outputs (ledger size, #179)
+      expect(validation.actualFee).toBe(169_681n) // Fee for 2-input TX: 44 * 325 + 155,381
 
       // Verify exact output amounts - reselection creates proper change output
       expect(tx.body.outputs[0].assets.lovelace).toBe(2_000_000n) // Payment output
-      expect(tx.body.outputs[1].assets.lovelace).toBe(1_030_275n) // Change output (3.2M - 2M - 169,725 fee)
+      expect(tx.body.outputs[1].assets.lovelace).toBe(1_030_319n) // Change output (3.2M - 2M - 169,681 fee)
     })
 
     it("should throw error when insufficient total funds", async () => {
@@ -217,11 +219,11 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Strict expectations with deterministic values
-      expect(size).toBe(225) // Exact transaction size with 1 witness, drainTo (Shelley format saves 2 bytes)
-      expect(validation.actualFee).toBe(165_281n) // Exact fee: 225*44 + 155_381
+      expect(size).toBe(224) // Exact transaction size with 1 witness, drainTo (ledger size, #179)
+      expect(validation.actualFee).toBe(165_237n) // Exact fee: 224*44 + 155_381
 
       // Verify exact output amount (payment + drained leftover)
-      expect(tx.body.outputs[0].assets.lovelace).toBe(2_004_719n) // 2_170_000 - 165_281 fee
+      expect(tx.body.outputs[0].assets.lovelace).toBe(2_004_763n) // 2_170_000 - 165_237 fee
     })
 
     it("should create change output instead of using drainTo when leftover contains native assets", async () => {
@@ -328,13 +330,13 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(size).toBeLessThanOrEqual(PROTOCOL_PARAMS.maxTxSize)
 
       // Strict expectations with deterministic values
-      expect(size).toBe(509) // Exact transaction size with 2 witnesses, multi-asset (Shelley format saves 4 bytes)
-      expect(validation.actualFee).toBe(177_777n) // Exact fee: 509*44 + 155_381
+      expect(size).toBe(508) // Exact transaction size with 2 witnesses, multi-asset (ledger size, #179)
+      expect(validation.actualFee).toBe(177_733n) // Exact fee: 508*44 + 155_381
 
       // Verify exact output amounts (payment output)
       expect(tx.body.outputs[0].assets.lovelace).toBe(2_000_000n)
-      // Change output: 5M - 2M - 177,777 fee = 2,822,223
-      expect(tx.body.outputs[1].assets.lovelace).toBe(2_822_223n)
+      // Change output: 5M - 2M - 177,733 fee = 2,822,267
+      expect(tx.body.outputs[1].assets.lovelace).toBe(2_822_267n)
     })
 
     it("should trigger coin selection when native assets are missing from inputs", async () => {
@@ -431,16 +433,16 @@ describe("TxBuilder Re-selection Loop", () => {
       // With corrected minUTxO calculation, builder picks 4 UTxOs (8M total)
       // to cover 5M payment, fees, and valid change output requirements
       // Strict expectations with deterministic values
-      expect(size).toBe(398) // Exact transaction size with 1 witness, 4 inputs
-      expect(validation.actualFee).toBe(172_893n) // Exact fee: 398*44 + 155_381
+      expect(size).toBe(397) // Exact transaction size with 1 witness, 4 inputs (ledger size, #179)
+      expect(validation.actualFee).toBe(172_849n) // Exact fee: 397*44 + 155_381
 
       // Verify transaction structure
       const tx = await signBuilder.toTransaction()
       expect(tx.body.inputs.length).toBe(4) // Coin selection picked 4 UTxOs
       expect(tx.body.outputs.length).toBe(2) // Payment + change
       expect(tx.body.outputs[0].assets.lovelace).toBe(5_000_000n) // Payment
-      // Change: 8M - 5M - 172,893 fee = 2,827,107
-      expect(tx.body.outputs[1].assets.lovelace).toBe(2_827_107n)
+      // Change: 8M - 5M - 172,849 fee = 2,827,151
+      expect(tx.body.outputs[1].assets.lovelace).toBe(2_827_151n)
     })
 
     it("should pass size check with 2 different addresses (2 witnesses)", async () => {
@@ -475,16 +477,16 @@ describe("TxBuilder Re-selection Loop", () => {
       const validation = await assertFeeValid(txWithFakeWitnesses, PROTOCOL_PARAMS)
 
       // Strict expectations with deterministic values
-      expect(size).toBe(427) // Exact transaction size with 2 witnesses, 2 inputs (2 outputs save 4 bytes)
-      expect(validation.actualFee).toBe(174_169n) // Exact fee: 427*44 + 155_381
+      expect(size).toBe(426) // Exact transaction size with 2 witnesses, 2 inputs (ledger size, #179)
+      expect(validation.actualFee).toBe(174_125n) // Exact fee: 426*44 + 155_381
 
       // Verify transaction structure
       const tx = await signBuilder.toTransaction()
       expect(tx.body.inputs.length).toBe(2)
       expect(tx.body.outputs.length).toBe(2) // Payment + change
       expect(tx.body.outputs[0].assets.lovelace).toBe(6_000_000n) // Payment
-      // Change: 10M total - 6M payment - 174,169 fee = 3,825,831
-      expect(tx.body.outputs[1].assets.lovelace).toBe(3_825_831n)
+      // Change: 10M total - 6M payment - 174,125 fee = 3,825,875
+      expect(tx.body.outputs[1].assets.lovelace).toBe(3_825_875n)
     })
 
     it("should reject transaction exceeding size limit (many unique addresses)", async () => {
@@ -592,7 +594,7 @@ describe("TxBuilder Re-selection Loop", () => {
       expect(tx.body.outputs[0].assets.lovelace).toBe(2_500_000n)
 
       // Change output: 3.9M total - 2.5M payment - actual fee = change
-      expect(tx.body.outputs[1].assets.lovelace).toBe(1_227_107n)
+      expect(tx.body.outputs[1].assets.lovelace).toBe(1_227_151n)
     })
 
     it("should trigger multiple reselection attempts with cascading fee increases", async () => {
@@ -754,7 +756,7 @@ describe("TxBuilder Reselection After Change", () => {
     expect(10_000_000n).toBe(totalOutput + tx.body.fee)
 
     // Fee should be exact
-    expect(tx.body.fee).toBe(168_141n)
+    expect(tx.body.fee).toBe(168_097n)
   })
 
   /**
@@ -802,7 +804,7 @@ describe("TxBuilder Reselection After Change", () => {
     const totalOutput = tx.body.outputs.reduce((sum, out) => sum + out.assets.lovelace, 0n)
     expect(totalInput).toBe(totalOutput + tx.body.fee)
 
-    expect(tx.body.fee).toBe(171_309n)
+    expect(tx.body.fee).toBe(171_265n)
   })
 
   /**
@@ -852,7 +854,7 @@ describe("TxBuilder Reselection After Change", () => {
     expect(changeOutput.assets.lovelace).toBe(expectedChange)
 
     // Fee should be exact (larger than minFeeConstant due to change output with native assets)
-    expect(tx.body.fee).toBe(169_989n)
+    expect(tx.body.fee).toBe(169_945n)
   })
 
   /**
@@ -899,6 +901,6 @@ describe("TxBuilder Reselection After Change", () => {
 
     // Change output should exist with exact value
     const changeOutput = tx.body.outputs[1]
-    expect(changeOutput.assets.lovelace).toBe(1_230_275n)
+    expect(changeOutput.assets.lovelace).toBe(1_230_319n)
   })
 })

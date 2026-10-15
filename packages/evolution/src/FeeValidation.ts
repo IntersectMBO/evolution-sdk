@@ -103,8 +103,12 @@ export const validateTransactionFee = (
       })
     : transaction
 
-  // 3. Serialize transaction to CBOR to get exact size
-  const cborBytes = Transaction.toCBORBytes(txToMeasure)
+  // 3. Serialize transaction the way the ledger computes its size
+  // (toCBORForSizeComputation: [body, witnessSet, auxiliaryData], the
+  // isValid flag omitted) to get the exact size the ledger's fee rule
+  // uses. The full 4-element encoding is one byte longer, which would
+  // overstate the minimum fee by minFeeCoefficient lovelace.
+  const cborBytes = Transaction.toCBORBytesForSizeComputation(txToMeasure)
   const txSizeBytes = cborBytes.length
 
   // 4. Calculate minimum required fee using Cardano protocol formula

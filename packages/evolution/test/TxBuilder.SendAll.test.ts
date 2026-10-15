@@ -222,7 +222,7 @@ describe("TxBuilder SendAll", () => {
       const tx = await signBuilder.toTransaction()
 
       // Fee is deterministic for a 2-input, 1-output transaction
-      expect(tx.body.fee).toBe(166_865n)
+      expect(tx.body.fee).toBe(166_821n) // Ledger size without isValid (#179)
     })
   })
 })

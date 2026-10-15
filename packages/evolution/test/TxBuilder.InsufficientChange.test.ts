@@ -124,13 +124,13 @@ describe("Fallback Tier 3: onInsufficientChange Strategy", () => {
     // Verify: Transaction balances (inputs = outputs + fee)
     // Strict deterministic values
     expect(tx.body.outputs[0].assets.lovelace).toBe(2_000_000n) // Payment amount
-    expect(tx.body.fee).toBe(165_281n) // Deterministic fee (uses efficient Shelley format)
+    expect(tx.body.fee).toBe(165_237n) // Deterministic fee (ledger size without isValid, #179)
 
     // Verify leftover is burned
     const inputTotal = utxo.assets.lovelace // 2_170_000n
     const outputTotal = tx.body.outputs[0].assets.lovelace // 2_000_000n
-    const leftover = inputTotal - outputTotal - tx.body.fee // 2_170_000 - 2_000_000 - 165_281 = 4_719
-    expect(leftover).toBe(4_719n) // Exact leftover amount that was "burned" (becomes excess)
+    const leftover = inputTotal - outputTotal - tx.body.fee // 2_170_000 - 2_000_000 - 165_237 = 4_763
+    expect(leftover).toBe(4_763n) // Exact leftover amount that was "burned" (becomes excess)
   })
 })
 
@@ -162,12 +162,12 @@ describe("Fallback Precedence: drainTo before onInsufficientChange", () => {
     // Assert: Transaction succeeds using drainTo
     expect(tx.body.inputs.length).toBe(1)
     expect(tx.body.outputs.length).toBe(1) // Leftover merged into payment output
-    expect(tx.body.fee).toBe(165_281n) // Deterministic fee (uses efficient Shelley format)
+    expect(tx.body.fee).toBe(165_237n) // Deterministic fee (ledger size without isValid, #179)
 
     // Verify: Leftover was drained into first output (not burned)
     const firstOutput = tx.body.outputs[0]
-    // Payment (2M) + drained leftover (4_719) = 2_004_719
-    expect(firstOutput.assets.lovelace).toBe(2_004_719n)
+    // Payment (2M) + drained leftover (4_763) = 2_004_763
+    expect(firstOutput.assets.lovelace).toBe(2_004_763n)
   })
 })
 
@@ -197,7 +197,7 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
     // Assert: Change output created successfully
     expect(tx.body.inputs.length).toBe(1)
     expect(tx.body.outputs.length).toBe(2) // Payment + change
-    expect(tx.body.fee).toBe(168_141n) // Deterministic fee (2 outputs with Shelley format)
+    expect(tx.body.fee).toBe(168_097n) // Deterministic fee (ledger size without isValid, #179)
 
     // Verify outputs
     const paymentOutput = tx.body.outputs[0]
@@ -205,8 +205,8 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
 
     expect(paymentOutput.assets.lovelace).toBe(10_000_000n)
     expect(Address.toBech32(changeOutput.address)).toBe(CHANGE_ADDRESS)
-    // Change: 100M - 10M payment - 168_141 fee = 89_831_859
-    expect(changeOutput.assets.lovelace).toBe(89_831_859n)
+    // Change: 100M - 10M payment - 168_097 fee = 89_831_903
+    expect(changeOutput.assets.lovelace).toBe(89_831_903n)
   })
 
   it("should handle exact amount with drainTo without triggering fallbacks", async () => {
@@ -233,12 +233,12 @@ describe("Normal Path: Sufficient Change (No Fallbacks)", () => {
     // Assert: Single output with drained leftover
     expect(tx.body.inputs.length).toBe(1)
     expect(tx.body.outputs.length).toBe(1) // Payment with drained change
-    expect(tx.body.fee).toBe(165_281n) // Deterministic fee (uses efficient Shelley format)
+    expect(tx.body.fee).toBe(165_237n) // Deterministic fee (ledger size without isValid, #179)
 
     // Verify: Output has payment + leftover
     const output = tx.body.outputs[0]
-    // 2_170_000 - 165_281 = 2_004_719
-    expect(output.assets.lovelace).toBe(2_004_719n)
+    // 2_170_000 - 165_237 = 2_004_763
+    expect(output.assets.lovelace).toBe(2_004_763n)
   })
 })
 
@@ -282,11 +282,11 @@ describe("Edge Cases", () => {
     // Assert: Transaction built successfully with drainTo
     expect(tx.body.inputs.length).toBe(2)
     expect(tx.body.outputs.length).toBe(1) // Drained into output[0]
-    expect(tx.body.fee).toBe(166_865n) // Deterministic fee for 2 inputs, 1 output (Shelley format)
+    expect(tx.body.fee).toBe(166_821n) // Deterministic fee for 2 inputs, 1 output (ledger size, #179)
 
     // Verify the output has the drained amount
-    // Total: 2_200_000 - 166_865 fee = 2_033_135
-    expect(tx.body.outputs[0].assets.lovelace).toBe(2_033_135n)
+    // Total: 2_200_000 - 166_821 fee = 2_033_179
+    expect(tx.body.outputs[0].assets.lovelace).toBe(2_033_179n)
   })
 
   it("should respect burn strategy with very small leftover amounts", async () => {
@@ -316,7 +316,7 @@ describe("Edge Cases", () => {
     expect(tx.body.outputs[0].assets.lovelace).toBe(2_000_000n)
 
     // Verify: Fee is deterministic
-    expect(tx.body.fee).toBe(165_281n) // Uses efficient Shelley format
+    expect(tx.body.fee).toBe(165_237n) // Ledger size without isValid (#179)
   })
 })
 

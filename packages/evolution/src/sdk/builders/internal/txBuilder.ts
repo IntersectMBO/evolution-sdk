@@ -1035,7 +1035,14 @@ export const assembleTransaction = (
 
 /**
  * Calculate the size of a transaction in bytes for fee estimation.
- * Uses CBOR serialization to get accurate size, with `options` when given.
+ *
+ * This is the ledger's size (`toCBORForSizeComputation`): the
+ * 3-element `[body, witnessSet, auxiliaryData]` serialization with the
+ * `isValid` flag omitted. The ledger uses that one size for both the
+ * minimum fee and the `maxTxSize` check, so measuring the full
+ * 4-element encoding would overstate the size by one byte and the fee
+ * by `minFeeCoefficient` lovelace on every transaction. The size is
+ * measured with `options` when given, as the full encoding would be.
  *
  * @since 2.0.0
  * @category fee-calculation
@@ -1043,7 +1050,7 @@ export const assembleTransaction = (
 export const calculateTransactionSize = (
   transaction: Transaction.Transaction,
   options?: CBOR.TxCodecOptions | CBOR.CodecOptions
-): number => Transaction.toCBORBytes(transaction, options).length
+): number => Transaction.toCBORBytesForSizeComputation(transaction, options).length
 
 /**
  * Calculate minimum transaction fee based on protocol parameters.

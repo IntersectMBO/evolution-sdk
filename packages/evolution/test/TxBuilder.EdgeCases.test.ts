@@ -252,12 +252,12 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
 
       // Change ADA must meet minUTxO (corrected Babbage/Conway formula with 160-byte overhead)
       const changeAda = changeOutput.assets.lovelace
-      expect(changeAda).toBe(1_148_515n)
+      expect(changeAda).toBe(1_148_559n) // 44 lovelace higher: the fee fell by 44 with the ledger size (#179)
     }
 
     // Fee validation
     const fee = tx.body.fee
-    expect(fee).toBe(171_485n)
+    expect(fee).toBe(171_441n) // 44 lovelace lower: ledger size without isValid (#179)
   })
 
   it("maximum asset name lengths at minUTxO boundary", async () => {
@@ -319,7 +319,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
 
     // Strict ADA validation: exact value from deterministic transaction
     const changeAda = changeOutput.assets.lovelace
-    expect(changeAda).toBe(3_825_655n) // 6M - 2M - 174,345 fee (431 bytes with Shelley format)
+    expect(changeAda).toBe(3_825_699n) // 6M - 2M - 174,301 fee (430 bytes, ledger size without isValid, #179)
 
     // Strict asset validation
     expect(changeOutput.assets.multiAsset).toBeDefined()
@@ -342,7 +342,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
 
     // Fee validation
     const fee = tx.body.fee
-    expect(fee).toBe(174_345n) // 431 bytes * 44 + 155_381 (Shelley format saves 4 bytes)
+    expect(fee).toBe(174_301n) // 430 bytes * 44 + 155_381 (ledger size without isValid, #179)
   })
 
   it("fee oscillation through 3 reselection attempts", async () => {
@@ -416,7 +416,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
 
     // Change must be >= minUTxO (corrected Babbage/Conway with native asset)
     const changeAda = changeOutput.assets.lovelace
-    expect(changeAda).toBe(1_225_391n)
+    expect(changeAda).toBe(1_225_435n) // 44 lovelace higher: the fee fell by 44 with the ledger size (#179)
 
     // Change should have the native asset token
     expect(changeOutput.assets.multiAsset).toBeDefined()
@@ -438,7 +438,7 @@ describe("TxBuilder P0 Edge Cases - MinUTxO Boundary Precision", () => {
 
     // Fee validation
     const fee = tx.body.fee
-    expect(fee).toBe(174_609n)
+    expect(fee).toBe(174_565n) // 44 lovelace lower: ledger size without isValid (#179)
 
     // Balance equation must hold after reselection attempts
     const utxoMap = new Map(utxos.map((u) => [u.transactionId, u.assets.lovelace]))

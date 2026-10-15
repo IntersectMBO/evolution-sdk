@@ -36,7 +36,9 @@ import {
   walletUtxos
 } from "./utils/codec-build-helpers.js"
 
-// The goldens were recorded before the build option existed
+// The goldens were recorded before the build option existed.
+// Re-recorded with the ledger size computation (#179): every fee is
+// 44 lovelace lower, because the size now excludes the isValid flag.
 const CASES = makeCases(585, golden.length)
 const PLUTUS_CASES = CASES.filter((c) => c.spend !== undefined || c.mints.length > 0)
 
@@ -90,7 +92,9 @@ const concat = (...parts: ReadonlyArray<Uint8Array>) => {
 /**
  * Checks bytes written for a canonical build: they are the encoding of their
  * own content, the body hashes cover the written witness set and auxiliary
- * data, and the fee covers the size of `sizedBytes`.
+ * data, and the fee covers the ledger size of `sizedBytes` — its size
+ * computation (`toCBORForSizeComputation`, #179), which is the full
+ * encoding without the one-byte `isValid` flag.
  */
 const checkWritten = (bytes: Uint8Array, options: CBOR.TxCodecOptions | CBOR.CodecOptions, sizedBytes = bytes) => {
   const decoded = Transaction.fromCBORBytes(bytes, CBOR.CANONICAL_OPTIONS)
@@ -130,7 +134,7 @@ const checkWritten = (bytes: Uint8Array, options: CBOR.TxCodecOptions | CBOR.Cod
     steps += Number(r.exUnits.steps)
   }
   const minFee =
-    FULL_PP.minFeeA * sizedBytes.length +
+    FULL_PP.minFeeA * (sizedBytes.length - 1) +
     FULL_PP.minFeeB +
     Math.ceil(FULL_PP.priceMem * mem + FULL_PP.priceStep * steps)
   expect(body.fee >= BigInt(minFee)).toBe(true)
