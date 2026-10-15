@@ -1,6 +1,4 @@
-import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as CBOR from "@evolution-sdk/evolution/CBOR"
-import type * as CostModel from "@evolution-sdk/evolution/CostModel"
 import * as Redeemer from "@evolution-sdk/evolution/Redeemer"
 import * as Script from "@evolution-sdk/evolution/Script"
 import * as ScriptRef from "@evolution-sdk/evolution/ScriptRef"
@@ -11,47 +9,44 @@ import * as TransactionInput from "@evolution-sdk/evolution/TransactionInput"
 import * as TxOut from "@evolution-sdk/evolution/TxOut"
 import type * as UTxO from "@evolution-sdk/evolution/UTxO"
 import { Effect, Schema } from "effect"
-import ScalusLib from "scalus"
+import { evaluator } from "scalus"
+
+/** EvaluationContext carries no protocol version, so cost against mainnet's (van Rossem). */
+const PROTOCOL_MAJOR_VERSION = 11
+
+/** Scalus names a redeemer's purpose as the ledger CDDL does; Evolution uses lower case. */
+const TAGS: Record<string, Redeemer.RedeemerTag> = {
+  Spend: "spend",
+  Mint: "mint",
+  Cert: "cert",
+  Reward: "reward",
+  Voting: "vote",
+  Proposing: "propose"
+}
 
 /**
- * Build CBOR-encoded map of TransactionInput → TransactionOutput from UTxOs.
+ * The UTxO as CIP-30's `[input, output]` pair, which `evaluator.evaluateTx` reads directly.
  *
- * Uses FromCDDL schemas to get CBOR values directly, avoiding wasteful
- * bytes → CBOR → bytes roundtrip encoding.
+ * FromCDDL gives the CBOR values without a bytes round trip, so the pair is built from the
+ * transaction types rather than re-encoded.
  */
-function buildUtxoMapCBOR(utxos: ReadonlyArray<UTxO.UTxO>): Uint8Array {
-  const utxoMap = new Map<CBOR.CBOR, CBOR.CBOR>()
-
-  for (const utxo of utxos) {
-    // Use FromCDDL to get CBOR values directly (no double encoding)
-    const txInput = new TransactionInput.TransactionInput({
-      transactionId: utxo.transactionId,
-      index: utxo.index
-    })
-    const inputCBOR = Schema.encodeSync(TransactionInput.FromCDDL)(txInput)
-
-    const scriptRef = utxo.scriptRef ? new ScriptRef.ScriptRef({ bytes: Script.toCBOR(utxo.scriptRef) }) : undefined
-    const txOut = new TxOut.TransactionOutput({
-      address: utxo.address,
-      assets: utxo.assets,
-      datumOption: utxo.datumOption,
-      scriptRef
-    })
-    const outputCBOR = Schema.encodeSync(TxOut.FromCDDL)(txOut)
-
-    utxoMap.set(inputCBOR, outputCBOR)
-  }
-
-  return CBOR.toCBORBytes(utxoMap, CBOR.CML_DEFAULT_OPTIONS)
-}
-
-function decodeCostModels(costModels: CostModel.CostModels): Array<Array<number>> {
-  // Scalus expects a flattened representation of the cost models as number arrays
-  const plutusV1 = costModels.PlutusV1.costs.map((c: bigint) => Number(c))
-  const plutusV2 = costModels.PlutusV2.costs.map((c: bigint) => Number(c))
-  const plutusV3 = costModels.PlutusV3.costs.map((c: bigint) => Number(c))
-  return [plutusV1, plutusV2, plutusV3]
-}
+const toPair = (utxo: UTxO.UTxO): Uint8Array =>
+  CBOR.toCBORBytes(
+    [
+      Schema.encodeSync(TransactionInput.FromCDDL)(
+        new TransactionInput.TransactionInput({ transactionId: utxo.transactionId, index: utxo.index })
+      ),
+      Schema.encodeSync(TxOut.FromCDDL)(
+        new TxOut.TransactionOutput({
+          address: utxo.address,
+          assets: utxo.assets,
+          datumOption: utxo.datumOption,
+          scriptRef: utxo.scriptRef ? new ScriptRef.ScriptRef({ bytes: Script.toCBOR(utxo.scriptRef) }) : undefined
+        })
+      )
+    ],
+    CBOR.CML_DEFAULT_OPTIONS
+  )
 
 export function makeEvaluator(): TransactionBuilder.Evaluator {
   return {
@@ -60,98 +55,43 @@ export function makeEvaluator(): TransactionBuilder.Evaluator {
       additionalUtxos: ReadonlyArray<UTxO.UTxO> | undefined,
       context: TransactionBuilder.EvaluationContext
     ) =>
-      Effect.gen(function* () {
-        yield* Effect.logDebug("[Scalus UPLC] Starting evaluation")
-
-        // Serialize transaction to CBOR bytes
-        const txBytes = Transaction.toCBORBytes(tx)
-
-        yield* Effect.logDebug(`[Scalus UPLC] Transaction CBOR bytes: ${txBytes.length}`)
-
-        const utxos = additionalUtxos ?? []
-        yield* Effect.logDebug(`[Scalus UPLC] Additional UTxOs: ${utxos.length}`)
-
-        // Build UTxO map CBOR
-        const utxosBytes = buildUtxoMapCBOR(utxos)
-        yield* Effect.logDebug(`[Scalus UPLC] UTxO map CBOR bytes: ${utxosBytes.length}`)
-        yield* Effect.logDebug(`[Scalus UPLC] UTxO map CBOR hex: ${Bytes.toHex(utxosBytes)}`)
-
-        const { slotLength, zeroSlot, zeroTime } = context.slotConfig
-
-        yield* Effect.logDebug(
-          `[Scalus UPLC] Slot config - zeroTime: ${zeroTime}, zeroSlot: ${zeroSlot}, slotLength: ${slotLength}`
-        )
-
-        const costModels: Array<Array<number>> = decodeCostModels(context.costModels)
-        yield* Effect.logDebug(
-          `[Scalus UPLC] Cost models - V1: ${costModels[0].length}, V2: ${costModels[1].length}, V3: ${costModels[2].length} costs`
-        )
-        yield* Effect.logDebug(
-          `[Scalus UPLC] Max execution - steps: ${context.maxTxExSteps}, mem: ${context.maxTxExMem}`
-        )
-
-        // Scalus-specific slot config
-        const slotConfig = new ScalusLib.SlotConfig(Number(zeroTime), Number(zeroSlot), slotLength)
-
-        yield* Effect.logDebug("[Scalus UPLC] Calling evalPlutusScripts...")
-        const redeemers = yield* Effect.try({
-          try: () => ScalusLib.Scalus.evalPlutusScripts(txBytes, utxosBytes, slotConfig, costModels),
-          catch: (error) => {
-            // Scalus error messages and evaluation logs, if any, are available to form an exception
-            const errorObj = error as any
-            const msg: string = errorObj?.message ?? "Unknown evaluation error"
-
-            return new TransactionBuilder.EvaluationError({
-              cause: error,
-              message: msg,
-              failures: []
-            })
-          }
-        })
-
-        yield* Effect.logDebug(`[Scalus UPLC] Evaluation successful - ${redeemers.length} redeemer(s) returned`)
-
-        // Check if redeemers array is empty
-        if (redeemers.length === 0) {
-          return yield* new TransactionBuilder.EvaluationError({
-            message: "Scalus evaluation returned no redeemers",
+      Effect.try({
+        try: () =>
+          evaluator
+            .evaluateTx(
+              Transaction.toCBORBytes(tx),
+              (additionalUtxos ?? []).map(toPair),
+              context.slotConfig,
+              {
+                PlutusV1: context.costModels.PlutusV1.costs,
+                PlutusV2: context.costModels.PlutusV2.costs,
+                PlutusV3: context.costModels.PlutusV3.costs
+              },
+              PROTOCOL_MAJOR_VERSION,
+              // The ledger limits a transaction's scripts together, so the evaluator does too: one
+              // that does not fit fails here rather than on submission.
+              { memory: context.maxTxExMem, steps: context.maxTxExSteps }
+            )
+            .map((redeemer): EvalRedeemer.EvalRedeemer => {
+              const tag = TAGS[redeemer.tag]
+              // An unknown tag is an error, not a default: a tag added upstream must not silently
+              // become a spend redeemer and mis-price a different script.
+              if (!tag) throw new Error(`Unknown Scalus redeemer tag "${redeemer.tag}"`)
+              return {
+                redeemer_tag: tag,
+                redeemer_index: redeemer.index,
+                ex_units: new Redeemer.ExUnits({
+                  mem: BigInt(redeemer.budget.memory),
+                  steps: BigInt(redeemer.budget.steps)
+                })
+              }
+            }),
+        catch: (error) =>
+          new TransactionBuilder.EvaluationError({
+            cause: error,
+            message: error instanceof Error ? error.message : "Unknown evaluation error",
             failures: []
           })
-        }
-
-        // Transform Scalus redeemers to Evolution format and check for zero execution units
-        const evalRedeemers: Array<EvalRedeemer.EvalRedeemer> = []
-        for (const r of redeemers) {
-          const mem = BigInt(r.budget.memory)
-          const steps = BigInt(r.budget.steps)
-
-          // Check if execution units are zero (indicates evaluation failure)
-          if (mem === 0n && steps === 0n) {
-            return yield* Effect.fail(
-              new TransactionBuilder.EvaluationError({
-                message: `Scalus evaluation returned zero execution units for redeemer ${r.tag}:${r.index}`,
-                failures: []
-              })
-            )
-          }
-
-          const tagMap: Record<string, Redeemer.RedeemerTag> = {
-            Spend: "spend",
-            Mint: "mint",
-            Cert: "cert",
-            Reward: "reward",
-            Voting: "vote",
-            Proposing: "propose"
-          }
-
-          evalRedeemers.push({
-            redeemer_tag: tagMap[r.tag] || "spend",
-            redeemer_index: r.index,
-            ex_units: new Redeemer.ExUnits({ mem, steps })
-          })
-        }
-
-        return evalRedeemers
       })
   }
 }
