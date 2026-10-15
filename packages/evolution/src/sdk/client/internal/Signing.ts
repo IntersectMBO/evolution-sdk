@@ -70,7 +70,18 @@ const computeRequiredKeyHashesSync = (params: {
   }
 
   if (params.referenceUtxos) {
+    // Only reference UTxOs this transaction actually references can require a
+    // signer for it. Callers may hand over a wider set (batch signing fetches
+    // the union of every transaction's reference inputs); counting scripts
+    // from UTxOs belonging to other transactions would add witnesses this
+    // transaction never asked for (#483).
+    const referenced = new Set(
+      (params.tx.body.referenceInputs ?? []).map((ref) => `${TransactionHash.toHex(ref.transactionId)}#${ref.index}`)
+    )
     for (const utxo of params.referenceUtxos) {
+      if (!referenced.has(CoreUTxO.toOutRefString(utxo))) {
+        continue
+      }
       if (utxo.scriptRef && utxo.scriptRef._tag === "NativeScript") {
         const keyHashes = extractKeyHashesFromNativeScript(utxo.scriptRef.script)
         for (const keyHash of keyHashes) {
@@ -219,6 +230,7 @@ export const signTxsWithAutoFetch = (
     // Collect all reference inputs across all transactions and fetch them once
     const seen = new Set<string>()
     const allRefInputs: Array<TransactionBody.TransactionBody["inputs"][number]> = []
+    const decodedTxs: Array<Transaction.Transaction> = []
     for (const txOrHex of txs) {
       const tx =
         typeof txOrHex === "string"
@@ -228,6 +240,7 @@ export const signTxsWithAutoFetch = (
               )
             )
           : txOrHex
+      decodedTxs.push(tx)
       if (tx.body.referenceInputs) {
         for (const ref of tx.body.referenceInputs) {
           const key = `${ref.transactionId}#${ref.index}`
@@ -252,7 +265,21 @@ export const signTxsWithAutoFetch = (
       )
     }
 
-    return yield* wallet.effect.signTxs(txs, { ...context, referenceUtxos })
+    // Sign each transaction with only its own reference UTxOs, matching the
+    // single-transaction path: the combined fetch above is an optimisation,
+    // not a licence for one transaction's reference scripts to add witnesses
+    // to another transaction in the batch (#483).
+    return yield* Effect.all(
+      txs.map((txOrHex, index) => {
+        const referenced = new Set(
+          (decodedTxs[index].body.referenceInputs ?? []).map(
+            (ref) => `${TransactionHash.toHex(ref.transactionId)}#${ref.index}`
+          )
+        )
+        const scopedReferenceUtxos = referenceUtxos.filter((utxo) => referenced.has(CoreUTxO.toOutRefString(utxo)))
+        return wallet.effect.signTx(txOrHex, { ...context, referenceUtxos: scopedReferenceUtxos })
+      })
+    )
   })
 
 export const signWithAutoFetch = (
