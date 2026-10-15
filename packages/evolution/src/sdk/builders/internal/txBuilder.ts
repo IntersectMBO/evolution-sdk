@@ -633,7 +633,8 @@ const makeRedeemerIndexer = (
         return mintIndexMap.get(key)
       case "cert": {
         // Key format: `cert:{credentialHex}`, matched against the stake
-        // credential or the DRep credential of each certificate in order
+        // credential, the DRep credential or the committee cold credential
+        // of each certificate in order
         const credentialHex = key.slice(5)
         for (let i = 0; i < state.certificates.length; i++) {
           const cert = state.certificates[i]!
@@ -642,6 +643,9 @@ const makeRedeemerIndexer = (
           }
           if ("drepCredential" in cert && cert.drepCredential) {
             if (Bytes.toHex((cert.drepCredential as { hash: Uint8Array }).hash) === credentialHex) return i
+          }
+          if ("committeeColdCredential" in cert && cert.committeeColdCredential) {
+            if (Bytes.toHex((cert.committeeColdCredential as { hash: Uint8Array }).hash) === credentialHex) return i
           }
         }
         return undefined

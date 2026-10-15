@@ -416,6 +416,13 @@ export const executeEvaluation = (): Effect.Effect<
         certIndexMapping.set(i, key)
         yield* Effect.logDebug(`[Evaluation] Cert ${i} maps to drep credential: ${key}`)
       }
+      // Handle committee certificates (committeeColdCredential): AuthCommitteeHotCert, ResignCommitteeColdCert
+      else if ("committeeColdCredential" in cert && cert.committeeColdCredential) {
+        const credHex = Bytes.toHex(cert.committeeColdCredential.hash)
+        const key = `cert:${credHex}`
+        certIndexMapping.set(i, key)
+        yield* Effect.logDebug(`[Evaluation] Cert ${i} maps to committee cold credential: ${key}`)
+      }
     }
 
     // Build withdrawal index mapping: index → "reward:{credentialHex}"
