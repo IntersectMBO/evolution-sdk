@@ -31,12 +31,17 @@ export type Payload = string | Uint8Array
 /**
  * Signed message containing the original payload and its cryptographic signature.
  *
+ * Mirrors the CIP-30 `DataSignature` shape: `signature` is the hex-encoded
+ * COSE_Sign1 and `key` is the hex-encoded COSE_Key, so a consumer can verify
+ * the signature without obtaining the public key some other way.
+ *
  * @since 2.0.0
  * @category model
  */
 export interface SignedMessage {
   readonly payload: Payload
   readonly signature: string
+  readonly key: string
 }
 
 /**
