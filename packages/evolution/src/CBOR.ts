@@ -1904,6 +1904,12 @@ const bytesReadToByteSize = (bytesRead: number): ByteSize =>
   bytesRead <= 1 ? 0 : bytesRead === 2 ? 1 : bytesRead === 3 ? 2 : 4
 
 const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+  // An offset at or past the end means the input is truncated: `data[offset]`
+  // would be `undefined`, which bit-shifts to major type 0 and silently
+  // decodes as the integer 0 instead of failing.
+  if (offset >= data.length) {
+    throw new CBORError({ message: `Insufficient data: expected a CBOR item at offset ${offset}` })
+  }
   const firstByte = data[offset]
   const majorType = (firstByte >> 5) & 0x07
   let result: DecodeAtResult
@@ -2017,7 +2023,9 @@ const decodeLengthAt = (data: Uint8Array, offset: number): { length: number; byt
   } else if (additionalInfo === 26) {
     if (data.length < offset + 5) throw new CBORError({ message: "Insufficient data for 4-byte length" })
     return {
-      length: (data[offset + 1] << 24) | (data[offset + 2] << 16) | (data[offset + 3] << 8) | data[offset + 4],
+      // `>>> 0` keeps the result unsigned: without it a length with the top
+      // bit set (e.g. 0xffffffff) reads as a negative number.
+      length: ((data[offset + 1] << 24) | (data[offset + 2] << 16) | (data[offset + 3] << 8) | data[offset + 4]) >>> 0,
       bytesRead: 5
     }
   }
@@ -2143,6 +2151,12 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
   } else {
     const { bytesRead, length } = decodeLengthAt(data, offset)
     let cur = offset + bytesRead
+    // Every item takes at least one byte, so a declared length larger than
+    // the bytes left is impossible. Reject it before `new Array(length)`
+    // turns a lying header into a huge allocation.
+    if (length > data.length - cur) {
+      throw new CBORError({ message: `Insufficient data: array declares ${length} items with ${data.length - cur} bytes left` })
+    }
     const arr: Array<CBOR> = new Array(length)
     if (track === "none") {
       for (let i = 0; i < length; i++) {
@@ -2197,6 +2211,12 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
   } else {
     const { bytesRead, length } = decodeLengthAt(data, offset)
     let cur = offset + bytesRead
+    // Every key and value takes at least one byte, so a declared pair count
+    // needing more than the bytes left is impossible; reject it up front
+    // instead of looping (or allocating) on a lying header.
+    if (length * 2 > data.length - cur) {
+      throw new CBORError({ message: `Insufficient data: map declares ${length} pairs with ${data.length - cur} bytes left` })
+    }
     const map = isObj ? ({} as Record<string, CBOR>) : new Map<CBOR, CBOR>()
     if (track === "none") {
       for (let i = 0; i < length; i++) {

@@ -417,6 +417,66 @@ describe("CBOR Implementation Tests", () => {
     })
   })
 
+  describe("CBOR Decoder Bounds (issue #661)", () => {
+    it("should reject a declared array length larger than the input instead of allocating for it", () => {
+      // Array of 2^31 - 1 items with no items present. Before the fix this
+      // aborted the process with a heap out-of-memory that try/catch cannot stop.
+      expect(() => {
+        CBOR.fromCBORHex("9a7fffffff")
+      }).toThrowError(CBOR.CBORError)
+
+      expect(() => {
+        CBOR.fromCBORHexWithFormat("9a7fffffff")
+      }).toThrowError(CBOR.CBORError)
+    })
+
+    it("should reject a declared map length larger than the input", () => {
+      expect(() => {
+        CBOR.fromCBORHex("ba7fffffff") // 2^31 - 1 pairs, none present
+      }).toThrowError(CBOR.CBORError)
+
+      // 0xffffffff as a 4-byte length used to read as -1 through signed
+      // 32-bit shifts and slip past the loop entirely.
+      expect(() => {
+        CBOR.fromCBORHex("baffffffff")
+      }).toThrowError(CBOR.CBORError)
+    })
+
+    it("should reject definite collections whose items run past the end", () => {
+      expect(() => {
+        CBOR.fromCBORHex("8300") // declares 3 items, holds 1
+      }).toThrowError(CBOR.CBORError)
+
+      expect(() => {
+        CBOR.fromCBORHex("81") // declares 1 item, holds none
+      }).toThrowError(CBOR.CBORError)
+
+      expect(() => {
+        CBOR.fromCBORHex("a100") // declares 1 pair, holds only a key
+      }).toThrowError(CBOR.CBORError)
+    })
+
+    it("should reject an item that starts at the end of the input", () => {
+      // Tag 0 with no tagged item after it: the nested decode begins exactly
+      // at the end of the input, which used to decode as the integer 0.
+      expect(() => {
+        CBOR.fromCBORHex("c0")
+      }).toThrowError(CBOR.CBORError)
+
+      expect(() => {
+        CBOR.fromCBORHex("81c0") // same, nested inside a 1-item array
+      }).toThrowError(CBOR.CBORError)
+    })
+
+    it("should still decode well-formed collections at the boundary", () => {
+      expect(CBOR.fromCBORHex("83010203")).toEqual([1n, 2n, 3n])
+      expect(CBOR.fromCBORHex("a10102")).toEqual(new Map([[1n, 2n]]))
+      // 24 items announced with a 1-byte length header, all present
+      const items = Array.from({ length: 24 }, () => "00").join("")
+      expect(CBOR.fromCBORHex(`9818${items}`)).toEqual(Array.from({ length: 24 }, () => 0n))
+    })
+  })
+
   describe("RFC 8949 CBOR Test Vectors", () => {
     // Test vectors from https://github.com/cbor/test-vectors/blob/master/appendix_a.json
     // These are the official CBOR specification test cases from RFC 8949 Appendix A
