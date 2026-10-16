@@ -128,7 +128,7 @@ const getScriptEffect =
           Effect.flatMap(Effect.fromNullable),
           Effect.retry(Schedule.compose(Schedule.exponential(50), Schedule.recurs(5))),
           Effect.timeout(5_000),
-          Effect.map(({ language, script }): CoreScript.Script => {
+          Effect.flatMap(({ language, script }): Effect.Effect<CoreScript.Script, Provider.ProviderError> => {
             // Convert script hex to bytes - Kupo returns scripts already properly encoded
             const scriptBytes = Bytes.fromHex(script)
 
@@ -136,21 +136,30 @@ const getScriptEffect =
             switch (language) {
               case "native": {
                 // Parse the native script from CBOR
-                return NativeScripts.fromCBORBytes(scriptBytes)
+                return Effect.succeed(NativeScripts.fromCBORBytes(scriptBytes))
               }
               case "plutus:v1": {
                 // Kupo returns scripts in single CBOR-encoded format (59xxxx...)
                 // which is the correct format for PlutusV1/V2/V3 bytes field
-                return new PlutusV1.PlutusV1({ bytes: scriptBytes })
+                return Effect.succeed(new PlutusV1.PlutusV1({ bytes: scriptBytes }))
               }
               case "plutus:v2": {
-                return new PlutusV2.PlutusV2({ bytes: scriptBytes })
+                return Effect.succeed(new PlutusV2.PlutusV2({ bytes: scriptBytes }))
               }
               case "plutus:v3": {
-                return new PlutusV3.PlutusV3({ bytes: scriptBytes })
+                return Effect.succeed(new PlutusV3.PlutusV3({ bytes: scriptBytes }))
               }
               default:
-                throw new Error(`Unknown script language: ${language}`)
+                // Kupo can return languages this SDK does not model yet —
+                // "plutus:v4" since Kupo v2.12. Fail with a ProviderError
+                // instead of throwing, which would surface as a defect that
+                // callers cannot handle as a provider failure.
+                return Effect.fail(
+                  new Provider.ProviderError({
+                    message: `Kupmios getScript failed: script language "${language}" is not supported yet`,
+                    cause: new Error(`Unsupported script language: ${language}`)
+                  })
+                )
             }
           }),
           Effect.catchAll(wrapError("getScript"))
@@ -168,18 +177,34 @@ const kupmiosUtxosToUtxos =
       (utxo) => {
         return pipe(
           Effect.all([getDatum(utxo.datum_type, utxo.datum_hash), getScript(utxo.script_hash)]),
-          Effect.map(([datumOption, scriptRef]): CoreUTxO.UTxO => {
-            const transactionId = TransactionHash.fromHex(utxo.transaction_id)
-            const address = CoreAddress.fromBech32(utxo.address)
-            return new CoreUTxO.UTxO({
-              transactionId,
-              index: utxo.output_index,
-              address,
-              assets: toAssets(utxo.value),
-              datumOption,
-              scriptRef
-            })
-          })
+          Effect.flatMap(([datumOption, scriptRef]) =>
+            // Kupo writes Byron-era addresses in base58, not bech32. Decoding
+            // one with fromBech32 throws, and a throw inside Effect.map would
+            // surface as a defect; fail with a ProviderError instead, which
+            // callers can handle as a provider failure.
+            Effect.try({
+              try: () => CoreAddress.fromBech32(utxo.address),
+              catch: (cause) =>
+                new Provider.ProviderError({
+                  message:
+                    `Kupmios: cannot decode the address "${utxo.address}" returned by Kupo as a bech32 Shelley ` +
+                    `address. Kupo writes Byron-era addresses in base58, and Byron addresses are not supported`,
+                  cause
+                })
+            }).pipe(
+              Effect.map(
+                (address): CoreUTxO.UTxO =>
+                  new CoreUTxO.UTxO({
+                    transactionId: TransactionHash.fromHex(utxo.transaction_id),
+                    index: utxo.output_index,
+                    address,
+                    assets: toAssets(utxo.value),
+                    datumOption,
+                    scriptRef
+                  })
+              )
+            )
+          )
         )
       },
       { concurrency: 10 }
