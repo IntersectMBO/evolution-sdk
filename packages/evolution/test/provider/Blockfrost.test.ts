@@ -171,6 +171,46 @@ describe("Blockfrost getProtocolParameters", () => {
     })
   })
 
+  it("accepts null for every nullable protocol parameter and falls back to the defaults", async () => {
+    // The OpenAPI spec marks these 15 fields nullable; one null must not fail the decode
+    const payload = JSON.parse(PROTOCOL_PARAMETERS) as Record<string, unknown>
+    for (const field of [
+      "max_val_size",
+      "cost_models",
+      "cost_models_raw",
+      "price_mem",
+      "price_step",
+      "max_tx_ex_mem",
+      "max_tx_ex_steps",
+      "max_block_ex_mem",
+      "max_block_ex_steps",
+      "collateral_percent",
+      "max_collateral_inputs",
+      "coins_per_utxo_size",
+      "min_fee_ref_script_cost_per_byte",
+      "drep_deposit",
+      "gov_action_deposit"
+    ]) {
+      payload[field] = null
+    }
+    stubRoutes({ "/epochs/latest/parameters": JSON.stringify(payload) })
+
+    const params = await Effect.runPromise(BlockfrostEffect.getProtocolParameters(BASE, PROJECT_ID))
+
+    expect(params.maxValSize).toBe(0)
+    expect(params.priceMem).toBe(0)
+    expect(params.priceStep).toBe(0)
+    expect(params.maxTxExMem).toBe(0n)
+    expect(params.maxTxExSteps).toBe(0n)
+    expect(params.coinsPerUtxoByte).toBe(0n)
+    expect(params.collateralPercentage).toBe(0)
+    expect(params.maxCollateralInputs).toBe(0)
+    expect(params.minFeeRefScriptCostPerByte).toBe(0)
+    expect(params.drepDeposit).toBe(0n)
+    expect(params.govActionDeposit).toBe(0n)
+    expect(params.costModels).toEqual({ PlutusV1: {}, PlutusV2: {}, PlutusV3: {} })
+  })
+
   it("falls back to the named cost models as numbers", async () => {
     stubRoutes({ "/epochs/latest/parameters": PROTOCOL_PARAMETERS.replace(/"cost_models_raw": \{[^}]*\},/, "") })
 
