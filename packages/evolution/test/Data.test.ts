@@ -780,3 +780,48 @@ it("should handle unsorted map and return sorted canonical format", () => {
     "d9050883a4410742b6491b81df71d083fb9aac1b5f7385f841d1edec4a70f3d8f8803183c150334688472079a8ce4b0f7f249c0a9f4f829d2e4f1bc0556aa7b700508606a14365b7f71b4b62f0e2fbb95d6d"
   expect(encoded).toBe(expectedCBORHex)
 })
+
+describe("Data deep nesting (issue #662)", () => {
+  // See CBOR.test.ts: the ledger bounds leaf size, not depth, so a datum
+  // can nest around 16,000 levels. Neither the CBOR decode nor the
+  // CBOR-to-Data conversion may recurse once per level.
+  const DEPTH = 16_000
+  const listDepth = (value: Data.Data): number => {
+    let depth = 0
+    let cur: Data.Data = value
+    while (Array.isArray(cur)) {
+      depth++
+      cur = cur[0]
+    }
+    return depth
+  }
+
+  it("decodes a datum nested 16,000 levels deep from hex", () => {
+    const decoded = Data.fromCBORHex("81".repeat(DEPTH) + "00")
+    expect(listDepth(decoded)).toBe(DEPTH)
+  })
+
+  it("decodes a datum nested 16,000 levels deep from bytes", () => {
+    const decoded = Data.fromCBORBytes(Bytes.fromHex("81".repeat(DEPTH) + "00"))
+    expect(listDepth(decoded)).toBe(DEPTH)
+  })
+
+  it("converts a deeply nested CBOR value", () => {
+    // Shallower than DEPTH only because building a Schema.Class Constr per
+    // level is slow; 5,000 is still well past the old ~1,250 failure point.
+    const decoded = Data.fromCBORHex("d87981".repeat(5_000) + "00")
+    let depth = 0
+    let cur: Data.Data = decoded
+    while (cur instanceof Data.Constr) {
+      depth++
+      cur = cur.fields[0]
+    }
+    expect(depth).toBe(5_000)
+    expect(cur).toBe(0n)
+  })
+
+  it("keeps the ParseError surface for invalid data", () => {
+    expect(() => Data.fromCBORHex("d864820105")).toThrowError(/Unsupported CBOR tag: 100/)
+    expect(() => Data.fromCBORHex("81".repeat(100))).toThrow()
+  })
+})

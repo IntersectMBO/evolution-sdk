@@ -939,3 +939,71 @@ describe("CBOR Implementation Tests", () => {
     })
   })
 })
+
+describe("CBOR deep nesting (issue #662)", () => {
+  // The ledger limits the size of each leaf of Plutus data, not its depth,
+  // so a value can nest roughly as deep as the transaction size allows
+  // (around 16,000 levels). Decoding must not recurse once per level.
+  const DEPTH = 16_000
+  const listDepth = (value: CBOR.CBOR): number => {
+    let depth = 0
+    let cur: CBOR.CBOR = value
+    while (Array.isArray(cur)) {
+      depth++
+      cur = cur[0]
+    }
+    return depth
+  }
+
+  it("decodes a definite list nested 16,000 levels deep", () => {
+    const decoded = CBOR.fromCBORHex("81".repeat(DEPTH) + "00")
+    expect(listDepth(decoded)).toBe(DEPTH)
+  })
+
+  it("decodes an indefinite list nested 16,000 levels deep", () => {
+    const decoded = CBOR.fromCBORHex("9f".repeat(DEPTH) + "00" + "ff".repeat(DEPTH))
+    expect(listDepth(decoded)).toBe(DEPTH)
+  })
+
+  it("decodes a map nested 16,000 levels deep", () => {
+    const decoded = CBOR.fromCBORHex("a100".repeat(DEPTH) + "00")
+    let depth = 0
+    let cur: CBOR.CBOR = decoded
+    while (cur instanceof Map) {
+      depth++
+      cur = cur.get(0n)
+    }
+    expect(depth).toBe(DEPTH)
+    expect(cur).toBe(0n)
+  })
+
+  it("decodes a tag nested 16,000 levels deep", () => {
+    const decoded = CBOR.fromCBORHex("d8c8".repeat(DEPTH) + "00")
+    let depth = 0
+    let cur: CBOR.CBOR = decoded
+    while (typeof cur === "object" && cur !== null && "_tag" in cur && cur._tag === "Tag") {
+      depth++
+      cur = cur.value
+    }
+    expect(depth).toBe(DEPTH)
+    expect(cur).toBe(0n)
+  })
+
+  it("decodes a deeply nested value with its format tree", () => {
+    const depth = 5_000
+    const { format, value } = CBOR.fromCBORHexWithFormat("81".repeat(depth) + "00")
+    expect(listDepth(value)).toBe(depth)
+    let formatDepth = 0
+    let curFormat = format
+    while (curFormat._tag === "array") {
+      formatDepth++
+      curFormat = curFormat.children[0]
+    }
+    expect(formatDepth).toBe(depth)
+  })
+
+  it("still rejects input that ends inside a container", () => {
+    expect(() => CBOR.fromCBORHex("81".repeat(100))).toThrowError(CBOR.CBORError)
+    expect(() => CBOR.fromCBORHex("9f".repeat(100) + "00")).toThrowError(CBOR.CBORError)
+  })
+})
