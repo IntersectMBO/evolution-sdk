@@ -234,6 +234,155 @@ const isEqual = Data.equals(map1, map2)
 // true
 ```
 
+## Typed Data with `Data.withSchema()`
+
+Everything above builds raw `Data` values by hand. When a datum or redeemer has a known shape, define it once as a [TSchema](/docs/encoding/tschema) and let `Data.withSchema()` bridge between your TypeScript type and PlutusData. It returns a codec with six functions:
+
+| Function | Converts |
+|----------|----------|
+| `toData(value)` | TypeScript value → `Data` |
+| `fromData(data)` | `Data` → TypeScript value (throws on a shape mismatch) |
+| `toCBORHex(value)` | TypeScript value → CBOR hex string |
+| `toCBORBytes(value)` | TypeScript value → CBOR bytes |
+| `fromCBORHex(hex)` | CBOR hex string → TypeScript value |
+| `fromCBORBytes(bytes)` | CBOR bytes → TypeScript value |
+
+```typescript twoslash
+import { Bytes, Data, TSchema } from "@evolution-sdk/evolution"
+
+const PersonSchema = TSchema.Struct({
+  name: TSchema.ByteArray,
+  nickname: TSchema.UndefinedOr(TSchema.ByteArray)
+})
+
+type Person = typeof PersonSchema.Type
+
+const PersonCodec = Data.withSchema(PersonSchema)
+
+const alice: Person = {
+  name: Bytes.fromHex("416c696365"), // "Alice"
+  nickname: undefined
+}
+
+// TypeScript value <-> Data
+const datum = PersonCodec.toData(alice)
+const backAgain = PersonCodec.fromData(datum)
+
+// TypeScript value <-> CBOR, without handling Data yourself
+const cborHex = PersonCodec.toCBORHex(alice)
+const decoded = PersonCodec.fromCBORHex(cborHex)
+```
+
+Pass codec options as the second argument when you need a non-default CBOR layout — the same options `Data.toCBORHex` and friends accept.
+
+## Datum Hashes with `Data.toDatumHash()`
+
+A non-inline datum is referenced by its hash: the blake2b-256 of its CBOR encoding. `Data.toDatumHash()` computes exactly that and returns a `DatumHash`, whose raw bytes are on its `hash` field:
+
+```typescript twoslash
+import { Bytes, Data, Text } from "@evolution-sdk/evolution"
+
+const datum = Data.constr(0n, [
+  Data.map([[Text.toBytes("beneficiary"), Text.toBytes("addr1...")]]),
+  5000000n
+])
+
+const datumHash = Data.toDatumHash(datum)
+const datumHashHex = Bytes.toHex(datumHash.hash)
+// 64 hex characters — the value a transaction references for this datum
+```
+
+The hash commits to the encoded bytes, so it depends on the CBOR layout: `toDatumHash` uses the default node layout, and passing different codec options can produce a different hash for the same logical datum. The older name `Data.hashData` still works as a deprecated alias for `toDatumHash`.
+
+## The Encoded Form: `DataEncoded`
+
+`Data` values are runtime values — `bigint`, `Uint8Array`, `Map`, class instances — which JSON cannot represent directly. `DataEncoded` is the JSON-serializable form the `DataSchema` converts to and from, and the shape you meet in node APIs, block explorers, and CML interop:
+
+| Runtime `Data` | `DataEncoded` form |
+|----------------|--------------------|
+| `Constr` | `{ index: string, fields: DataEncoded[] }` — the index as a decimal string |
+| `Map` | An array of `[key, value]` pairs, each side encoded |
+| `List` | An array of encoded elements |
+| `bigint` | A decimal string |
+| `Uint8Array` | A hex string |
+
+```typescript twoslash
+import { Data } from "@evolution-sdk/evolution"
+import { Schema } from "effect"
+
+const datum = Data.constr(0n, [42n])
+
+// Runtime Data -> JSON-safe encoded form
+const encoded = Schema.encodeSync(Data.DataSchema)(datum)
+// { index: "0", fields: ["42"] }
+
+const json = JSON.stringify(encoded)
+
+// Encoded form -> runtime Data
+const decoded = Schema.decodeSync(Data.DataSchema)(encoded)
+const isSame = Data.equals(decoded, datum)
+// true
+```
+
+## Errors: `DataError`
+
+Converting CBOR that is valid CBOR but not valid PlutusData — a text string, a float, an unsupported tag — fails rather than returning a wrong value. The low-level conversion raises the module's tagged error, `DataError` (an optional `message` and `cause`), for exactly these cases. The public CBOR entry points are Effect Schema transforms, so what a `catch` around `Data.fromCBORHex` actually receives is a `ParseError` whose message tree carries that `DataError` as the underlying cause:
+
+```typescript twoslash
+import { Data } from "@evolution-sdk/evolution"
+
+// "6161" is valid CBOR — for the text string "a", which is not PlutusData
+try {
+  Data.fromCBORHex("6161")
+} catch (error) {
+  const isDataProblem = String(error).includes("DataError")
+  // true — the ParseError's message ends with:
+  //   DataError: Unknown CBOR value type: "a"
+}
+```
+
+The same wrapping applies to a `withSchema` codec: bytes that decode to PlutusData but not to your shape fail with a `ParseError` describing the shape mismatch, and malformed CBOR bytes surface the `CBORError` cause the same way.
+
+## `Constr` Class vs `Data.constr()` Helper
+
+Constructors can be created two ways, and the results are the same value:
+
+- **`Data.constr(index, fields)`** is the convenience helper — it builds a `Constr` in one call and is what most code should use.
+- **`new Data.Constr({ index, fields })`** (or `Data.Constr.make(...)`) is the underlying [Effect Schema](https://effect.website/docs/schema/introduction/) class. Reach for it when you need the class itself: `instanceof` checks, schema composition, or the structural equality and hashing every `Constr` carries.
+
+```typescript twoslash
+import { Data } from "@evolution-sdk/evolution"
+
+const viaHelper = Data.constr(1n, [2n])
+const viaClass = new Data.Constr({ index: 1n, fields: [2n] })
+
+const same = Data.equals(viaHelper, viaClass)
+// true
+
+const isConstr = viaHelper instanceof Data.Constr
+// true
+```
+
+The `index` is a `bigint` that must fit in a `uint64`, and `fields` is an array of `Data`.
+
+## Helper Reference
+
+| Export | Signature | What it does |
+|--------|-----------|--------------|
+| `Data.constr` | `(index: bigint, fields: Array<Data>) => Constr` | Build a constructor value |
+| `Data.map` | `(entries: Array<[Data, Data]>) => Map` | Build a Plutus map from key/value pairs |
+| `Data.list` | `(list: Array<Data>) => List` | Identity helper that types an array as a Plutus list |
+| `Data.int` | `(integer: bigint) => Int` | Validate a `bigint` as a Plutus integer |
+| `Data.bytearray` | `(bytes: string) => ByteArray` | Build a byte array from a hex string |
+| `Data.isConstr` / `Data.isMap` / `Data.isList` / `Data.isInt` / `Data.isBytes` | `(data: unknown) => boolean` | Type guards for the five Plutus types |
+| `Data.matchConstr` / `Data.matchData` | Pattern-matching helpers | Handle each constructor / each Plutus type with typed callbacks |
+| `Data.toCBORHex` / `Data.toCBORBytes` | `(data: Data, options?) => string / Uint8Array` | Encode PlutusData to CBOR |
+| `Data.fromCBORHex` / `Data.fromCBORBytes` | `(hex / bytes, options?) => Data` | Decode CBOR to PlutusData (throws a `ParseError` wrapping the `DataError` / `CBORError` cause) |
+| `Data.toDatumHash` | `(data: Data, options?) => DatumHash` | Blake2b-256 datum hash of the CBOR encoding |
+| `Data.withSchema` | `(schema, options?) => codec` | Typed codec between a TypeScript type, `Data`, and CBOR |
+| `Data.equals` | `(a: Data, b: Data) => boolean` | Deep structural equality |
+| `Data.hash` | `(data: Data) => number` | Structural hash for `Equal`/`Hash` — **not** a datum hash; use `toDatumHash` for the on-chain value |
+
 ## Real-World Examples
 
 ### Escrow Datum
