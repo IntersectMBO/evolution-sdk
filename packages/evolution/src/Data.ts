@@ -844,57 +844,95 @@ export const plutusDataToCBORValue = (data: Data): CBOR.CBOR => {
  * @category transformation
  */
 export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
-  // Handle bigint (uint/nint)
-  if (CBOR.isInteger(cborValue)) {
-    return cborValue
-  }
-
-  // Handle Uint8Array (bytes)
-  if (CBOR.isByteArray(cborValue)) {
-    return cborValue
-  }
-
-  // Handle tagged values
-  if (CBOR.isTag(cborValue)) {
-    const tag = cborValue.tag
-    const value = cborValue.value
-
-    // Handle constructor tags (121-127 for indices 0-6)
-    if (tag >= 121 && tag <= 127) {
-      if (!Array.isArray(value)) {
-        throw new DataError({
-          message: `Expected array for constructor tag ${tag}, got ${typeof value}`
-        })
-      }
-      const fields = value.map(cborValueToPlutusData)
-      return new Constr({ index: Numeric.Uint64Make(BigInt(tag - 121)), fields })
+  // Conversion runs on an explicit action stack instead of recursing once
+  // per nesting level, so a datum nested as deeply as the ledger accepts
+  // converts without exhausting the call stack. Validation order matches
+  // the natural reading of the value: a tag's shape is checked before its
+  // fields are converted, and children convert left to right.
+  type Action =
+    | { readonly kind: "visit"; readonly value: CBOR.CBOR }
+    | { readonly kind: "buildList"; readonly count: number }
+    | { readonly kind: "buildMap"; readonly count: number }
+    | { readonly kind: "buildConstr"; readonly index: bigint; readonly count: number }
+  // Structural guards, not CBOR.is*: the Schema guards validate the whole
+  // subtree recursively, which is the same unbounded recursion this loop
+  // exists to remove (and quadratic work on top). For values the decoder
+  // produces the checks accept exactly the same nodes; the per-node error
+  // messages below are unchanged.
+  const isTagValue = (value: CBOR.CBOR): value is { _tag: "Tag"; tag: number; value: CBOR.CBOR } =>
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(value instanceof Uint8Array) &&
+    !(value instanceof Map) &&
+    (value as { _tag?: unknown })._tag === "Tag" &&
+    typeof (value as { tag?: unknown }).tag === "number"
+  const actions: Array<Action> = [{ kind: "visit", value: cborValue }]
+  const results: Array<Data> = []
+  while (actions.length > 0) {
+    const action = actions.pop()!
+    if (action.kind === "buildList") {
+      results.push(results.splice(results.length - action.count, action.count) as Data)
+      continue
     }
-
-    // Handle alternative constructor tags (1280-1400 for indices 7-127)
-    if (tag >= 1280 && tag <= 1400) {
-      if (!Array.isArray(value)) {
-        throw new DataError({
-          message: `Expected array for constructor tag ${tag}, got ${typeof value}`
-        })
-      }
-      const fields = value.map(cborValueToPlutusData)
-      return new Constr({ index: Numeric.Uint64Make(BigInt(tag - 1280 + 7)), fields })
+    if (action.kind === "buildMap") {
+      const flat = results.splice(results.length - action.count * 2, action.count * 2)
+      const entries = new Array<readonly [Data, Data]>(action.count)
+      for (let i = 0; i < action.count; i++) entries[i] = [flat[2 * i], flat[2 * i + 1]] as const
+      results.push(new Map(entries) as Data)
+      continue
     }
-
-    // Handle general constructor tag (102)
-    if (tag === 102) {
-      if (!Array.isArray(value)) {
+    if (action.kind === "buildConstr") {
+      const fields = results.splice(results.length - action.count, action.count)
+      results.push(new Constr({ index: Numeric.Uint64Make(action.index), fields }))
+      continue
+    }
+    const value = action.value
+    // Handle bigint (uint/nint)
+    if (typeof value === "bigint") {
+      results.push(value)
+      continue
+    }
+    // Handle Uint8Array (bytes)
+    if (value instanceof Uint8Array) {
+      results.push(value)
+      continue
+    }
+    // Handle tagged values
+    if (isTagValue(value)) {
+      const tag = value.tag
+      const inner = value.value
+      // Handle constructor tags (121-127 for indices 0-6)
+      if (tag >= 121 && tag <= 127) {
+        if (!Array.isArray(inner)) {
+          throw new DataError({
+            message: `Expected array for constructor tag ${tag}, got ${typeof inner}`
+          })
+        }
+        actions.push({ kind: "buildConstr", index: BigInt(tag - 121), count: inner.length })
+        for (let i = inner.length - 1; i >= 0; i--) actions.push({ kind: "visit", value: inner[i] })
+        continue
+      }
+      // Handle alternative constructor tags (1280-1400 for indices 7-127)
+      if (tag >= 1280 && tag <= 1400) {
+        if (!Array.isArray(inner)) {
+          throw new DataError({
+            message: `Expected array for constructor tag ${tag}, got ${typeof inner}`
+          })
+        }
+        actions.push({ kind: "buildConstr", index: BigInt(tag - 1280 + 7), count: inner.length })
+        for (let i = inner.length - 1; i >= 0; i--) actions.push({ kind: "visit", value: inner[i] })
+        continue
+      }
+      // Handle general constructor tag (102)
+      if (tag === 102 && !Array.isArray(inner)) {
         throw new DataError({
-          message: `Expected array for general constructor tag, got ${typeof value}`
+          message: `Expected array for general constructor tag, got ${typeof inner}`
         })
       }
-
-      const array = value
-      if (array.length === 2) {
-        // Two element arrays are general constructors [index, fields]
-        const indexValue = array[0]
-        const fieldsValue = array[1]
-
+      if (tag === 102 && Array.isArray(inner) && inner.length === 2) {
+        const indexValue = inner[0]
+        const fieldsValue = inner[1]
         if (typeof indexValue !== "bigint") {
           throw new DataError({
             message: `Expected bigint for constructor index, got ${typeof indexValue}`
@@ -905,58 +943,59 @@ export const cborValueToPlutusData = (cborValue: CBOR.CBOR): Data => {
             message: `Expected array for constructor fields, got ${typeof fieldsValue}`
           })
         }
-
-        const fields = fieldsValue.map(cborValueToPlutusData)
-        return new Constr({ index: Numeric.Uint64Make(indexValue), fields })
+        actions.push({ kind: "buildConstr", index: indexValue, count: fieldsValue.length })
+        for (let i = fieldsValue.length - 1; i >= 0; i--) actions.push({ kind: "visit", value: fieldsValue[i] })
+        continue
       }
-    }
-
-    // Handle big_uint tag (2) for large positive integers
-    if (tag === 2) {
-      if (!(value instanceof Uint8Array)) {
-        throw new DataError({
-          message: `Expected bytes for big_uint tag, got ${typeof value}`
-        })
+      // Handle big_uint tag (2) for large positive integers
+      if (tag === 2) {
+        if (!(inner instanceof Uint8Array)) {
+          throw new DataError({
+            message: `Expected bytes for big_uint tag, got ${typeof inner}`
+          })
+        }
+        // Convert bytes to bigint (big-endian)
+        results.push(bytesToBigint(inner))
+        continue
       }
-      // Convert bytes to bigint (big-endian)
-      return bytesToBigint(value)
-    }
-
-    // Handle big_nint tag (3) for large negative integers
-    if (tag === 3) {
-      if (!(value instanceof Uint8Array)) {
-        throw new DataError({
-          message: `Expected bytes for big_nint tag, got ${typeof value}`
-        })
+      // Handle big_nint tag (3) for large negative integers
+      if (tag === 3) {
+        if (!(inner instanceof Uint8Array)) {
+          throw new DataError({
+            message: `Expected bytes for big_nint tag, got ${typeof inner}`
+          })
+        }
+        // Convert bytes to bigint and negate (add 1) per RFC 8949
+        const positiveValue = bytesToBigint(inner)
+        results.push(-(positiveValue + 1n))
+        continue
       }
-      // Convert bytes to bigint and negate (add 1) per RFC 8949
-      const positiveValue = bytesToBigint(value)
-      return -(positiveValue + 1n)
+      throw new DataError({ message: `Unsupported CBOR tag: ${tag}` })
     }
-
-    throw new DataError({ message: `Unsupported CBOR tag: ${tag}` })
+    // Handle arrays
+    if (Array.isArray(value)) {
+      // Arrays are Lists
+      actions.push({ kind: "buildList", count: value.length })
+      for (let i = value.length - 1; i >= 0; i--) actions.push({ kind: "visit", value: value[i] })
+      continue
+    }
+    // Handle Maps
+    if (value instanceof Map) {
+      // Maps are Maps
+      const entries = Array.from(value.entries())
+      actions.push({ kind: "buildMap", count: entries.length })
+      for (let i = entries.length - 1; i >= 0; i--) {
+        actions.push({ kind: "visit", value: entries[i][1] })
+        actions.push({ kind: "visit", value: entries[i][0] })
+      }
+      continue
+    }
+    // Handle unsupported types
+    throw new DataError({
+      message: `Unknown CBOR value type: ${JSON.stringify(value)}`
+    })
   }
-
-  // Handle arrays
-  if (CBOR.isArray(cborValue)) {
-    // Arrays are Lists
-    const items = cborValue.map(cborValueToPlutusData)
-    return items
-  }
-
-  // Handle Maps
-  if (CBOR.isMap(cborValue)) {
-    // Maps are Maps
-    const entries = Array.from(cborValue.entries()).map(
-      ([k, v]) => [cborValueToPlutusData(k), cborValueToPlutusData(v)] as const
-    )
-    return new Map(entries)
-  }
-
-  // Handle unsupported types
-  throw new DataError({
-    message: `Unknown CBOR value type: ${JSON.stringify(cborValue)}`
-  })
+  return results[0]
 }
 
 /**
@@ -1134,8 +1173,22 @@ export const toCBORHex = (data: Data, options: CBOR.CodecOptions = DEFAULT_CBOR_
  * @since 2.0.0
  * @category transformation
  */
-export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORBytes(options))(bytes)
+export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data => {
+  // Decode directly, not through the FromCBORBytes schema: the schema
+  // parser recurses once per nesting level when it parses a value against
+  // the recursive CBOR and Data schemas, so a datum nested as deeply as the
+  // ledger accepts overflowed the call stack there. The CBOR decoder and
+  // cborValueToPlutusData both run on explicit stacks, and the conversion
+  // rejects every value that is not Plutus data. Failures keep the
+  // ParseError surface the schema path produced.
+  try {
+    return cborValueToPlutusData(CBOR.fromCBORBytes(bytes, options))
+  } catch (error) {
+    throw new ParseResult.ParseError({
+      issue: new ParseResult.Type(DataSchema.ast, bytes, error instanceof Error ? error.message : String(error))
+    })
+  }
+}
 
 /**
  * Decode PlutusData from CBOR hex string
@@ -1144,7 +1197,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = DE
  * @category transformation
  */
 export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = DEFAULT_CBOR_OPTIONS): Data =>
-  Schema.decodeSync(FromCBORHex(options))(hex)
+  fromCBORBytes(Bytes.fromHex(hex), options)
 
 /**
  * Create a schema that transforms from a custom type to Data and provides CBOR encoding
