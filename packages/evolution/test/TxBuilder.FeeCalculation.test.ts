@@ -522,4 +522,56 @@ describe("TxBuilder Fee Calculation", () => {
       })
     )
   })
+
+  describe("calculateReferenceScriptFee duplicate UTxOs", () => {
+    // The ledger scans the UNION of spent inputs and reference inputs
+    // (Conway `txNonDistinctRefScriptsSize`), so one UTxO appearing in both
+    // lists contributes its scriptRef size once — while two distinct UTxOs
+    // carrying the same script still count separately.
+    const ADDRESS = CoreAddress.fromBech32(
+      "addr_test1qpw0djgj0x59ngrjvqthn7enhvruxnsavsw5th63la3mjel3tkc974sr23jmlzgq5zda4gtv8k9cy38756r9y3qgmkqqjz6aa7"
+    )
+
+    const scriptOfSize = (size: number) => {
+      for (let length = size - 8; length <= size; length++) {
+        const script = new PlutusV3.PlutusV3({ bytes: new Uint8Array(length).fill(0xab) })
+        if (CoreScript.toCBOR(script).length === size) return script
+      }
+      throw new Error(`no script of size ${size}`)
+    }
+
+    const utxoWithScript = (index: bigint, size: number) =>
+      new CoreUTxO.UTxO({
+        transactionId: TransactionHash.fromHex("a".repeat(64)),
+        index,
+        address: ADDRESS,
+        assets: CoreAssets.fromLovelace(5_000_000n),
+        scriptRef: scriptOfSize(size)
+      })
+
+    it.effect("counts a UTxO listed as both spent and reference input once", () =>
+      Effect.gen(function* () {
+        const utxo = utxoWithScript(0n, 1_000)
+        const once = yield* calculateReferenceScriptFee([utxo], 15)
+        const twice = yield* calculateReferenceScriptFee([utxo, utxo], 15)
+        expect(twice).toBe(once)
+      })
+    )
+
+    it.effect("does not let a duplicated UTxO trip the size limit", () =>
+      Effect.gen(function* () {
+        const utxo = utxoWithScript(0n, 150_000)
+        const result = yield* Effect.either(calculateReferenceScriptFee([utxo, utxo], 15))
+        expect(result._tag).toBe("Right")
+      })
+    )
+
+    it.effect("still counts distinct UTxOs carrying the same script separately", () =>
+      Effect.gen(function* () {
+        const both = yield* calculateReferenceScriptFee([utxoWithScript(0n, 1_000), utxoWithScript(1n, 1_000)], 15)
+        const doubled = yield* calculateReferenceScriptFee([utxoWithScript(0n, 2_000)], 15)
+        expect(both).toBe(doubled)
+      })
+    )
+  })
 })

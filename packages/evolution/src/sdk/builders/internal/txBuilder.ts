@@ -180,7 +180,10 @@ export const tierRefScriptFee = (
  * The final (partial) chunk is charged proportionally. Result is `floor(total)`.
  *
  * The Cardano node sums scriptRef sizes from both spent inputs and reference
- * inputs (`txNonDistinctRefScriptsSize`), so callers must pass both.
+ * inputs (`txNonDistinctRefScriptsSize`), so callers must pass both. The node
+ * scans the union of the two input sets, so a UTxO that is both spent and
+ * referenced contributes its scriptRef size once; distinct UTxOs carrying the
+ * same script still count separately.
  *
  * @param utxos - All UTxOs (spent inputs + reference inputs) to scan for scriptRefs
  * @param costPerByte - The minFeeRefScriptCostPerByte protocol parameter
@@ -195,7 +198,11 @@ export const calculateReferenceScriptFee = (
   Effect.gen(function* () {
     let totalScriptSize = 0
 
+    const seen = new Set<string>()
     for (const utxo of utxos) {
+      const outRef = `${TransactionHash.toHex(utxo.transactionId)}#${utxo.index}`
+      if (seen.has(outRef)) continue
+      seen.add(outRef)
       if (utxo.scriptRef) {
         const scriptBytes = CoreScript.toCBOR(utxo.scriptRef).length
         totalScriptSize += scriptBytes
