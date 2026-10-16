@@ -950,8 +950,11 @@ const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue
   } else if (dataType === "Unit") {
     // No encoding needed
   } else if (dataType === "Bool") {
-    const boolVal = value as { index: bigint }
-    pushBit(state, boolVal.index === 0n ? 0 : 1)
+    // ConstantValue permits a plain JS boolean as well as the decoded
+    // { index } form; a boolean has no .index, so reading it would
+    // encode false as true.
+    const bit = typeof value === "boolean" ? (value ? 1 : 0) : (value as { index: bigint }).index === 0n ? 0 : 1
+    pushBit(state, bit)
   } else if (dataType === "Data") {
     encodeByteString(state, value as Uint8Array)
   } else if ("list" in dataType) {

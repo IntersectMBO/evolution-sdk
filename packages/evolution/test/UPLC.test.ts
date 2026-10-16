@@ -167,6 +167,51 @@ describe("UPLC Module", () => {
       const decoded2 = UPLC.fromFlatBytes(reencoded)
       expect(decoded2.version).toBe(program.version)
     })
+
+    describe("Bool constants given as plain JS booleans", () => {
+      const boolProgram = (value: UPLC.ConstantValue) =>
+        new UPLC.Program({ version: "1.0.0", body: UPLC.constantTerm("Bool", value) })
+
+      const decodedConstant = (bytes: Uint8Array): UPLC.ConstantValue => {
+        const decoded = UPLC.fromFlatBytes(bytes)
+        if (decoded.body.type !== "Constant") throw new Error("expected a Constant term")
+        return decoded.body.value
+      }
+
+      it("encodes JS false as False, not True", () => {
+        const falseBytes = UPLC.toFlatBytes(boolProgram(false))
+        const trueBytes = UPLC.toFlatBytes(boolProgram(true))
+        expect(Bytes.toHex(falseBytes)).not.toBe(Bytes.toHex(trueBytes))
+        expect(decodedConstant(falseBytes)).toEqual({ index: 0n, fields: [] })
+      })
+
+      it("encodes JS true as True", () => {
+        const trueBytes = UPLC.toFlatBytes(boolProgram(true))
+        expect(decodedConstant(trueBytes)).toEqual({ index: 1n, fields: [] })
+      })
+
+      it("matches the { index } representation byte for byte", () => {
+        expect(Bytes.toHex(UPLC.toFlatBytes(boolProgram(false)))).toBe(
+          Bytes.toHex(UPLC.toFlatBytes(boolProgram({ index: 0n, fields: [] })))
+        )
+        expect(Bytes.toHex(UPLC.toFlatBytes(boolProgram(true)))).toBe(
+          Bytes.toHex(UPLC.toFlatBytes(boolProgram({ index: 1n, fields: [] })))
+        )
+      })
+
+      it("roundtrips JS booleans nested in a list of Bool", () => {
+        const program = new UPLC.Program({
+          version: "1.0.0",
+          body: UPLC.constantTerm({ list: "Bool" }, { items: [false, true] })
+        })
+        expect(decodedConstant(UPLC.toFlatBytes(program))).toEqual({
+          items: [
+            { index: 0n, fields: [] },
+            { index: 1n, fields: [] }
+          ]
+        })
+      })
+    })
   })
 
   describe("Schema Transform - FromFlatBytes", () => {
