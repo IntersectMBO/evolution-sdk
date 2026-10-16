@@ -169,6 +169,13 @@ export type CodecOptions =
       readonly mode: "canonical"
       readonly mapsAsObjects?: boolean
       /**
+       * The order of map keys. `"lengthFirst"`, the default, puts the shorter
+       * encoded key first and orders keys of equal length bytewise (RFC 7049
+       * Section 3.9). `"bytewise"` orders the encoded keys bytewise, and a key
+       * that is a prefix of another comes first (RFC 8949 Section 4.2.1).
+       */
+      readonly keyOrder?: "lengthFirst" | "bytewise"
+      /**
        * Encode every map as an array of `[key, value]` pairs.
        *
        * @deprecated This turns a map into a list, which is a different value
@@ -183,6 +190,14 @@ export type CodecOptions =
       readonly useIndefiniteMaps: boolean
       readonly useDefiniteForEmpty: boolean
       readonly sortMapKeys: boolean
+      /**
+       * The order of map keys when `sortMapKeys` is true. `"lengthFirst"`,
+       * the default, puts the shorter encoded key first and orders keys of
+       * equal length bytewise (RFC 7049 Section 3.9). `"bytewise"` orders the
+       * encoded keys bytewise, and a key that is a prefix of another comes
+       * first (RFC 8949 Section 4.2.1).
+       */
+      readonly keyOrder?: "lengthFirst" | "bytewise"
       readonly useMinimalEncoding: boolean
       readonly mapsAsObjects?: boolean
       /**
@@ -196,13 +211,35 @@ export type CodecOptions =
     }
 
 /**
- * Canonical CBOR encoding options (RFC 8949 Section 4.2.1)
+ * Canonical CBOR encoding options with map keys in length-first order: the
+ * shorter encoded key first, and keys of equal length bytewise. The order is
+ * the one of RFC 7049 Section 3.9 (RFC 8949 Section 4.2.3), which CIP-21
+ * specifies.
  *
  * @since 1.0.0
  * @category constants
  */
 export const CANONICAL_OPTIONS: CodecOptions = {
   mode: "canonical"
+} as const
+
+/**
+ * Canonical CBOR encoding options with map keys in bytewise order (RFC 8949
+ * Section 4.2.1). Before it witnesses a transaction, cardano-hw-cli checks
+ * that the transaction is canonical in this order: it decodes the
+ * transaction, encodes it again as canonical CBOR with keys in bytewise
+ * order, and compares the bytes.
+ *
+ * No preset passes the check when a redeemer or a witness datum holds a byte
+ * string over 64 bytes, the bytes of a bignum included. Plutus requires such
+ * a string in 64-byte chunks, and the check requires it in one piece.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const HW_CLI_OPTIONS: CodecOptions = {
+  mode: "canonical",
+  keyOrder: "bytewise"
 } as const
 
 /**
@@ -375,7 +412,8 @@ export const TX_DEFAULT_OPTIONS: TxCodecOptions = {
 
 /**
  * Canonical options for a transaction: {@link CANONICAL_OPTIONS} for both
- * ledger structures and Plutus data.
+ * ledger structures and Plutus data, so map keys are in length-first order
+ * (RFC 7049 Section 3.9, RFC 8949 Section 4.2.3), as CIP-21 specifies.
  *
  * @since 2.0.0
  * @category constants
@@ -383,6 +421,24 @@ export const TX_DEFAULT_OPTIONS: TxCodecOptions = {
 export const TX_CANONICAL_OPTIONS: TxCodecOptions = {
   ledger: CANONICAL_OPTIONS,
   plutusData: CANONICAL_OPTIONS
+}
+
+/**
+ * Options for a transaction: {@link HW_CLI_OPTIONS} for both ledger
+ * structures and Plutus data. They write map keys in bytewise order (RFC 8949
+ * Section 4.2.1), which cardano-hw-cli checks before it witnesses a
+ * transaction.
+ *
+ * No preset passes the check when a redeemer or a witness datum holds a byte
+ * string over 64 bytes, the bytes of a bignum included. Plutus requires such
+ * a string in 64-byte chunks, and the check requires it in one piece.
+ *
+ * @since 2.0.0
+ * @category constants
+ */
+export const TX_HW_CLI_OPTIONS: TxCodecOptions = {
+  ledger: HW_CLI_OPTIONS,
+  plutusData: HW_CLI_OPTIONS
 }
 
 /**
@@ -1478,6 +1534,25 @@ const encodeArraySync = (value: ReadonlyArray<CBOR>, options: CodecOptions, fmt?
   return useIndefinite ? encodeArrayAsIndefinite(items) : encodeArrayAsDefinite(items)
 }
 
+type EncodedPair = { readonly encodedKey: Uint8Array; readonly encodedValue: Uint8Array }
+
+// Shorter encoded keys first; equal-length keys bytewise, e.g. token policy IDs
+const compareKeysLengthFirst = (a: EncodedPair, b: EncodedPair): number => {
+  const lengthDifference = a.encodedKey.length - b.encodedKey.length
+  if (lengthDifference !== 0) return lengthDifference
+  return compareKeysBytewise(a, b)
+}
+
+// Encoded keys bytewise; a key that is a prefix of another comes first
+const compareKeysBytewise = (a: EncodedPair, b: EncodedPair): number => {
+  const length = Math.min(a.encodedKey.length, b.encodedKey.length)
+  for (let i = 0; i < length; i++) {
+    const byteDifference = a.encodedKey[i] - b.encodedKey[i]
+    if (byteDifference !== 0) return byteDifference
+  }
+  return a.encodedKey.length - b.encodedKey.length
+}
+
 const encodeMapEntriesSync = (pairs: Array<[CBOR, CBOR]>, options: CodecOptions, fmt?: CBORFormat): Uint8Array => {
   const length = pairs.length
   const mapFmt = fmt?._tag === "map" ? fmt : undefined
@@ -1514,16 +1589,7 @@ const encodeMapEntriesSync = (pairs: Array<[CBOR, CBOR]>, options: CodecOptions,
       encodedKey: internalEncodeSync(key, options),
       encodedValue: internalEncodeSync(val, options)
     }))
-    encodedPairs.sort((a, b) => {
-      const lengthDifference = a.encodedKey.length - b.encodedKey.length
-      if (lengthDifference !== 0) return lengthDifference
-      // Equal-length keys still need bytewise ordering, e.g. token policy IDs.
-      for (let i = 0; i < a.encodedKey.length; i++) {
-        const byteDifference = a.encodedKey[i] - b.encodedKey[i]
-        if (byteDifference !== 0) return byteDifference
-      }
-      return 0
-    })
+    encodedPairs.sort(options.keyOrder === "bytewise" ? compareKeysBytewise : compareKeysLengthFirst)
   } else {
     encodedPairs = new Array(length)
     for (let i = 0; i < length; i++) {

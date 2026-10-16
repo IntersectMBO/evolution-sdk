@@ -412,7 +412,10 @@ const encodeMap = (
       options
     )
   }
-  const sorted = options.mode === "canonical" || options.sortMapKeys ? [...entries].sort(compareKeys) : entries
+  const sorted =
+    options.mode === "canonical" || options.sortMapKeys
+      ? [...entries].sort(options.keyOrder === "bytewise" ? compareKeysBytewise : compareKeys)
+      : entries
   const items = sorted.map(([key, value]) => concatBytes(key, value))
   const bytes =
     options.mode === "custom" && options.useIndefiniteMaps && items.length > 0
@@ -423,13 +426,24 @@ const encodeMap = (
   return bytes
 }
 
-// Shorter keys first, then bytewise, as the CBOR encoder sorts map keys
+// Shorter keys first, then bytewise, as the CBOR encoder sorts map keys in
+// length-first order
 const compareKeys = ([a]: readonly [Uint8Array, Uint8Array], [b]: readonly [Uint8Array, Uint8Array]): number => {
   if (a.length !== b.length) return a.length - b.length
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return a[i] - b[i]
   }
   return 0
+}
+
+// Keys bytewise, a key that is a prefix of another first, as the CBOR encoder
+// sorts map keys in bytewise order
+const compareKeysBytewise = ([a]: readonly [Uint8Array, Uint8Array], [b]: readonly [Uint8Array, Uint8Array]): number => {
+  const length = Math.min(a.length, b.length)
+  for (let i = 0; i < length; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i]
+  }
+  return a.length - b.length
 }
 
 const encodeError = (ast: SchemaAST.AST, actual: unknown, error: unknown) =>
