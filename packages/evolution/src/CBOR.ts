@@ -2018,7 +2018,7 @@ const decodeLengthAt = (data: Uint8Array, offset: number): { length: number; byt
   } else if (additionalInfo === 26) {
     if (data.length < offset + 5) throw new CBORError({ message: "Insufficient data for 4-byte length" })
     return {
-      length: (data[offset + 1] << 24) | (data[offset + 2] << 16) | (data[offset + 3] << 8) | data[offset + 4],
+      length: ((data[offset + 1] << 24) | (data[offset + 2] << 16) | (data[offset + 3] << 8) | data[offset + 4]) >>> 0,
       bytesRead: 5
     }
   }
