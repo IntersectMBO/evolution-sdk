@@ -44,6 +44,7 @@ import {
   proposalToKey,
   TransactionBuilderError,
   type TxBuilderConfigTag,
+  type TxBuilderState,
   TxContext,
   type UnfrackOptions,
   voterToKey} from "../TransactionBuilder.js"
@@ -587,6 +588,82 @@ export const validateProposalRedeemers: Effect.Effect<void, TransactionBuilderEr
   }
 )
 
+// The ledger index of a redeemer key in state.redeemers: the position of the
+// spent input, minting policy, certificate, withdrawal, voter or proposal the
+// redeemer is for, or undefined when the transaction holds no such item.
+// Assembly and the fee estimate share it, so both write the same indices.
+const makeRedeemerIndexer = (
+  state: TxBuilderState,
+  inputs: ReadonlyArray<TransactionInput.TransactionInput>
+): ((key: string, tag: Redeemer.RedeemerTag) => number | undefined) => {
+  // Spend redeemers: the input's position in the sorted inputs
+  const inputIndexMap = new Map<string, number>()
+  for (let i = 0; i < inputs.length; i++) {
+    const input = inputs[i]!
+    inputIndexMap.set(`${TransactionHash.toHex(input.transactionId)}#${input.index}`, i)
+  }
+
+  // Mint redeemers: the policy's position among the sorted policy ids
+  const mintIndexMap = new Map<string, number>()
+  if (state.mint && state.mint.map.size > 0) {
+    const sortedPolicyIds = globalThis.Array.from(state.mint.map.keys())
+      .map((pid) => PolicyId.toHex(pid))
+      .sort()
+    for (let i = 0; i < sortedPolicyIds.length; i++) {
+      mintIndexMap.set(sortedPolicyIds[i]!, i)
+    }
+  }
+
+  // Reward redeemers: the withdrawal's position in sorted order
+  const sortedWithdrawalHexes = globalThis.Array.from(state.withdrawals.keys())
+    .map((rewardAccount) => Bytes.toHex(rewardAccount.stakeCredential.hash))
+    .sort((a, b) => a.localeCompare(b))
+
+  // Vote redeemers: the voter's position among the sorted voter keys
+  const sortedVoterKeys = state.votingProcedures
+    ? globalThis.Array.from(state.votingProcedures.procedures.keys()).map(voterToKey).sort()
+    : undefined
+
+  const found = (index: number): number | undefined => (index === -1 ? undefined : index)
+
+  return (key, tag) => {
+    switch (tag) {
+      case "mint":
+        return mintIndexMap.get(key)
+      case "cert": {
+        // Key format: `cert:{credentialHex}`, matched against the stake
+        // credential or the DRep credential of each certificate in order
+        const credentialHex = key.slice(5)
+        for (let i = 0; i < state.certificates.length; i++) {
+          const cert = state.certificates[i]!
+          if ("stakeCredential" in cert && cert.stakeCredential) {
+            if (Bytes.toHex((cert.stakeCredential as { hash: Uint8Array }).hash) === credentialHex) return i
+          }
+          if ("drepCredential" in cert && cert.drepCredential) {
+            if (Bytes.toHex((cert.drepCredential as { hash: Uint8Array }).hash) === credentialHex) return i
+          }
+        }
+        return undefined
+      }
+      case "reward":
+        // Key format: `reward:{credentialHex}`
+        return found(sortedWithdrawalHexes.indexOf(key.slice(7)))
+      case "vote":
+        // Key format: `drep:{credentialHex}` | `cc:{credentialHex}` | `pool:{poolKeyHashHex}`
+        return sortedVoterKeys ? found(sortedVoterKeys.indexOf(key)) : undefined
+      case "propose": {
+        // Key format: `propose:{index}`; proposals keep insertion order
+        const proposalIndex = proposalKeyToIndex(key)
+        const proposalCount = state.proposalProcedures?.procedures.length ?? 0
+        return proposalIndex === undefined || proposalIndex >= proposalCount ? undefined : proposalIndex
+      }
+      default:
+        // Key format: `{txHashHex}#{outputIndex}`
+        return inputIndexMap.get(key)
+    }
+  }
+}
+
 /**
  * Assemble a Transaction from inputs, outputs, and calculated fee.
  * Creates TransactionBody with all required fields.
@@ -686,145 +763,17 @@ export const assembleTransaction = (
     // Build redeemers array from state FIRST (needed for scriptDataHash)
     const redeemers: Array<Redeemer.Redeemer> = []
 
-    // Create a mapping from UTxO reference (txHash#outputIndex) to input index
-    const inputIndexMap = new Map<string, number>()
-    for (let i = 0; i < inputs.length; i++) {
-      const input = inputs[i]!
-      const txHashHex = TransactionHash.toHex(input.transactionId)
-      const key = `${txHashHex}#${input.index}`
-      yield* Effect.logDebug(`[Assembly] Input ${i}: ${key}`)
-      inputIndexMap.set(key, i)
-    }
+    const redeemerIndexOf = makeRedeemerIndexer(state, inputs)
 
-    yield* Effect.logDebug(`[Assembly] Input index map has ${inputIndexMap.size} entries`)
     yield* Effect.logDebug(`[Assembly] Redeemer map keys: ${globalThis.Array.from(state.redeemers.keys()).join(", ")}`)
-
-    // Create a mapping from PolicyId hex to mint index (sorted order)
-    const mintIndexMap = new Map<string, number>()
-    if (state.mint && state.mint.map.size > 0) {
-      // Get sorted policy IDs (Cardano redeemer indices require sorted order)
-      const sortedPolicyIds = globalThis.Array.from(state.mint.map.keys())
-        .map((pid) => PolicyId.toHex(pid))
-        .sort()
-
-      for (let i = 0; i < sortedPolicyIds.length; i++) {
-        mintIndexMap.set(sortedPolicyIds[i]!, i)
-        yield* Effect.logDebug(`[Assembly] Mint policy ${i}: ${sortedPolicyIds[i]}`)
-      }
-    }
-
-    // Build redeemers with correct indices
-    // For cert/reward redeemers, we need to find their index in the certificates/withdrawals arrays
-    // Keys are stored as `cert:{hex}` and `reward:{hex}` in state.redeemers
 
     for (const [key, redeemerData] of state.redeemers) {
       yield* Effect.logDebug(`[Assembly] Processing redeemer for key: ${key}, tag: ${redeemerData.tag}`)
 
-      let redeemerIndex: number | undefined
-
-      if (redeemerData.tag === "mint") {
-        // For mint redeemers, look up in mint index map
-        redeemerIndex = mintIndexMap.get(key)
-        if (redeemerIndex === undefined) {
-          yield* Effect.logWarning(`[Assembly] Could not find mint index for policy: ${key}`)
-          continue
-        }
-      } else if (redeemerData.tag === "cert") {
-        // For cert redeemers, find matching certificate by credential hash
-        // Key format: `cert:{credentialHex}`
-        const credentialHex = key.slice(5) // Remove "cert:" prefix
-        for (let i = 0; i < state.certificates.length; i++) {
-          const cert = state.certificates[i]!
-          // Check stakeCredential (for stake-related certs)
-          if ("stakeCredential" in cert && cert.stakeCredential) {
-            const certCredHex = Bytes.toHex((cert.stakeCredential as { hash: Uint8Array }).hash)
-            if (certCredHex === credentialHex) {
-              redeemerIndex = i
-              break
-            }
-          }
-          // Check drepCredential (for DRep-related certs: RegDrepCert, UnregDrepCert, UpdateDrepCert)
-          if ("drepCredential" in cert && cert.drepCredential) {
-            const certCredHex = Bytes.toHex((cert.drepCredential as { hash: Uint8Array }).hash)
-            if (certCredHex === credentialHex) {
-              redeemerIndex = i
-              break
-            }
-          }
-        }
-        if (redeemerIndex === undefined) {
-          yield* Effect.logWarning(`[Assembly] Could not find cert index for key: ${key}`)
-          continue
-        }
-      } else if (redeemerData.tag === "reward") {
-        // For reward redeemers, find matching withdrawal by credential hash (sorted order)
-        // Key format: `reward:{credentialHex}`
-        const credentialHex = key.slice(7) // Remove "reward:" prefix
-        // Withdrawals must be in sorted order for redeemer indices
-        const sortedWithdrawals = globalThis.Array.from(state.withdrawals.entries()).sort((a, b) => {
-          const aHex = Bytes.toHex(a[0].stakeCredential.hash)
-          const bHex = Bytes.toHex(b[0].stakeCredential.hash)
-          return aHex.localeCompare(bHex)
-        })
-        for (let i = 0; i < sortedWithdrawals.length; i++) {
-          const [rewardAccount] = sortedWithdrawals[i]!
-          const rewardCredHex = Bytes.toHex(rewardAccount.stakeCredential.hash)
-          if (rewardCredHex === credentialHex) {
-            redeemerIndex = i
-            break
-          }
-        }
-        if (redeemerIndex === undefined) {
-          yield* Effect.logWarning(`[Assembly] Could not find withdrawal index for key: ${key}`)
-          continue
-        }
-      } else if (redeemerData.tag === "vote") {
-        // For vote redeemers, find matching voter in votingProcedures (sorted order)
-        // Key format: `drep:{credentialHex}` | `cc:{credentialHex}` | `pool:{poolKeyHashHex}`
-
-        if (!state.votingProcedures) {
-          yield* Effect.logWarning(`[Assembly] Vote redeemer found but no votingProcedures in state`)
-          continue
-        }
-
-        // Build sorted voter keys from votingProcedures using shared utility
-        const sortedVoterKeys: Array<string> = []
-        for (const voter of state.votingProcedures.procedures.keys()) {
-          sortedVoterKeys.push(voterToKey(voter))
-        }
-
-        // Sort keys lexicographically (as per Cardano ledger rules)
-        sortedVoterKeys.sort()
-
-        // Find the index of our voter key
-        for (let i = 0; i < sortedVoterKeys.length; i++) {
-          if (sortedVoterKeys[i] === key) {
-            redeemerIndex = i
-            break
-          }
-        }
-        if (redeemerIndex === undefined) {
-          yield* Effect.logWarning(`[Assembly] Could not find voter index for key: ${key}`)
-          continue
-        }
-      } else if (redeemerData.tag === "propose") {
-        // For propose redeemers, the key carries the proposal's position in proposalProcedures.
-        // Proposals keep insertion order, so the position is the redeemer index.
-        // Key format: `propose:{index}`
-        const proposalIndex = proposalKeyToIndex(key)
-        const proposalCount = state.proposalProcedures?.procedures.length ?? 0
-        if (proposalIndex === undefined || proposalIndex >= proposalCount) {
-          yield* Effect.logWarning(`[Assembly] Could not find proposal index for key: ${key}`)
-          continue
-        }
-        redeemerIndex = proposalIndex
-      } else {
-        // For spend redeemers, look up in input index map
-        redeemerIndex = inputIndexMap.get(key)
-        if (redeemerIndex === undefined) {
-          yield* Effect.logWarning(`[Assembly] Could not find input index for redeemer key: ${key}`)
-          continue
-        }
+      const redeemerIndex = redeemerIndexOf(key, redeemerData.tag)
+      if (redeemerIndex === undefined) {
+        yield* Effect.logWarning(`[Assembly] Could not find the ${redeemerData.tag} index for redeemer key: ${key}`)
+        continue
       }
 
       yield* Effect.logDebug(
@@ -1156,12 +1105,14 @@ const buildFakeVKeyWitness = (
  * Extracts unique payment key hashes from input addresses and creates
  * fake witnesses to accurately estimate witness set size in CBOR.
  * Includes any attached scripts from builder state for accurate size estimation.
+ * Redeemers carry the indices assembly gives them for the transaction `inputs`.
  *
  * @since 2.0.0
  * @category fee-calculation
  */
 export const buildFakeWitnessSet = (
-  inputUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  inputUtxos: ReadonlyArray<CoreUTxO.UTxO>,
+  inputs: ReadonlyArray<TransactionInput.TransactionInput>
 ): Effect.Effect<TransactionWitnessSet.TransactionWitnessSet, TransactionBuilderError, TxContext> =>
   Effect.gen(function* () {
     const stateRef = yield* TxContext
@@ -1291,17 +1242,20 @@ export const buildFakeWitnessSet = (
     // Build fake redeemers from state.redeemers for accurate size estimation
     // Redeemers contribute to transaction size and must be included in fee calculation
     const fakeRedeemers: Array<Redeemer.Redeemer> = []
-    let fakeIndex = 0n
-    for (const [_key, redeemerData] of state.redeemers) {
+    const redeemerIndexOf = makeRedeemerIndexer(state, inputs)
+    for (const [key, redeemerData] of state.redeemers) {
+      // The index assembly writes: an index of 24 or more takes one more CBOR
+      // byte, and the fee must cover it. Assembly leaves out a redeemer with no index
+      const index = redeemerIndexOf(key, redeemerData.tag)
+      if (index === undefined) continue
+
       // Use placeholder exUnits if not yet evaluated (will be updated after UPLC evaluation)
       const exUnits = redeemerData.exUnits ?? { mem: 0n, steps: 0n }
 
-      // Use unique placeholder indices — actual indices will be computed in assembly.
-      // For fee calculation, we just need accurate CBOR size estimation.
       fakeRedeemers.push(
         new Redeemer.Redeemer({
           tag: redeemerData.tag,
-          index: fakeIndex++, // Unique placeholder, will be set correctly in assembly
+          index: BigInt(index),
           data: redeemerData.data,
           exUnits: new Redeemer.ExUnits({ mem: exUnits.mem, steps: exUnits.steps })
         })
@@ -1361,7 +1315,7 @@ export const calculateFeeIteratively = (
     const allUtxosForWitnesses = state.collateral ? [...inputUtxos, ...state.collateral.inputs] : inputUtxos
 
     // Build fake witness set once for accurate size estimation
-    const fakeWitnessSet = yield* buildFakeWitnessSet(allUtxosForWitnesses)
+    const fakeWitnessSet = yield* buildFakeWitnessSet(allUtxosForWitnesses, inputs)
 
     // Outputs are already Core TransactionOutputs
     const transactionOutputs = outputs as Array<TxOut.TransactionOutput>

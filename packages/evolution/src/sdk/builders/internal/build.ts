@@ -98,7 +98,7 @@ const assembleAndValidateTransaction = Effect.gen(function* () {
   const allUtxosForWitnesses = finalState.collateral !== undefined
     ? [...selectedUtxos, ...finalState.collateral.inputs]
     : selectedUtxos
-  const fakeWitnessSet = yield* TxBuilderImpl.buildFakeWitnessSet(allUtxosForWitnesses)
+  const fakeWitnessSet = yield* TxBuilderImpl.buildFakeWitnessSet(allUtxosForWitnesses, inputs)
 
   const txWithFakeWitnesses = new Transaction.Transaction({
     body: transaction.body,
