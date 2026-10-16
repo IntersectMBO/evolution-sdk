@@ -1,5 +1,137 @@
 # @evolution-sdk/evolution
 
+## 0.7.0
+
+### Minor Changes
+
+- [#652](https://github.com/IntersectMBO/evolution-sdk/pull/652) [`f4e7823`](https://github.com/IntersectMBO/evolution-sdk/commit/f4e7823e2dc8e92c37d5d103c65b0ad0520b2401) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `build()` takes a new `codecOptions` option, the CBOR options to encode the transaction with. The builder computes the fee, the size limit, the minimum UTxO of payment, change and collateral return outputs, the script data hash and the auxiliary data hash over that encoding. The built transaction keeps the encoding through `sign()`, `partialSign()`, `signWithWitness()`, `assemble()` and `submit()`, and evaluators and providers write the same bytes.
+
+  ```ts
+  const signBuilder = await client
+    .newTx()
+    .payToAddress({ address, assets })
+    .build({ codecOptions: CBOR.TX_CANONICAL_OPTIONS })
+  const txHash = await (await signBuilder.sign()).submit()
+  ```
+
+  For a transaction that hardware wallet tooling witnesses, pass `CBOR.TX_HW_CLI_OPTIONS`. Before it witnesses a transaction, that tooling checks that the map keys are in bytewise order, and `CBOR.TX_CANONICAL_OPTIONS` writes them in length-first order.
+
+  The build fails when the options write a native script in the witness set with other bytes than the default options, as options with indefinite arrays do. The ledger hashes the written bytes, so the script would no longer match its script hash.
+
+  Before, the builder always hashed the default encoding, so a transaction written with `CBOR.TX_CANONICAL_OPTIONS` carried a stale script data hash and auxiliary data hash.
+
+  With no `codecOptions`, `CBOR.TX_DEFAULT_OPTIONS` or `CBOR.CML_DEFAULT_OPTIONS`, every byte, transaction id, fee and signature stays the same.
+
+  `Transaction.withCodecOptions(tx, options)` records options for a transaction. `Transaction.toCBORBytes` and `Transaction.toCBORHex` then use them when the caller passes no options. Options passed explicitly, other than `CBOR.TX_DEFAULT_OPTIONS` and `CBOR.CML_DEFAULT_OPTIONS`, come first, then the encoding a decoded transaction was read from, then the recorded options. `Transaction.addVKeyWitnesses` keeps the recorded options.
+
+  The chain `txHash` and the seed and private key wallets now hash the body bytes the transaction is written with. Some valid bytes decode to a `Transaction` that the default encoder writes differently, such as a body with its keys in another order. Given such a `Transaction`, `signTx` now signs the decoded body bytes and gives the signature it gives for the hex. Before, it signed a re-encoded body, and the node rejected the witness.
+
+- [#650](https://github.com/IntersectMBO/evolution-sdk/pull/650) [`4c0ac79`](https://github.com/IntersectMBO/evolution-sdk/commit/4c0ac790b38517017f672cbc721e5ecab3d563c1) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `CBOR.CodecOptions` takes a `keyOrder` option, the order of map keys when the encoder sorts them: in canonical mode, and in custom mode with `sortMapKeys: true`.
+
+  - `"lengthFirst"`, the default, puts the shorter encoded key first and orders keys of equal length bytewise (RFC 7049 Section 3.9).
+  - `"bytewise"` orders the encoded keys bytewise, and a key that is a prefix of another comes first (RFC 8949 Section 4.2.1).
+
+  ```ts
+  const datum = Data.map([
+    [1000n, 1n],
+    [-1n, 2n]
+  ])
+  Data.toCBORHex(datum, CBOR.CANONICAL_OPTIONS) // a220021903e801: -1 (20) is shorter than 1000 (1903e8)
+  Data.toCBORHex(datum, CBOR.HW_CLI_OPTIONS) // a21903e8012002: 1000 (19...) sorts before -1 (20)
+  ```
+
+  Two new presets write the bytewise order, which hardware wallet tooling checks before it witnesses a transaction:
+
+  - `CBOR.HW_CLI_OPTIONS`: `{ mode: "canonical", keyOrder: "bytewise" }`.
+  - `CBOR.TX_HW_CLI_OPTIONS`: `CBOR.HW_CLI_OPTIONS` for both `ledger` and `plutusData`.
+
+  No preset passes that check when a redeemer or a witness datum holds a byte string over 64 bytes, the bytes of a bignum included. Plutus requires such a string in 64-byte chunks, and the check requires it in one piece.
+
+  Every existing preset writes the same bytes as before. `CBOR.CANONICAL_OPTIONS` and `CBOR.TX_CANONICAL_OPTIONS` keep the length-first order, and their documentation now cites RFC 7049 Section 3.9 for it instead of RFC 8949 Section 4.2.1.
+
+- [#617](https://github.com/IntersectMBO/evolution-sdk/pull/617) [`98e8b38`](https://github.com/IntersectMBO/evolution-sdk/commit/98e8b380ef6f1b747c65e4be39f75308c55423fa) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Plutus data is now encoded by default with `CBOR.PLUTUS_DATA_OPTIONS`, the layout the node writes: non-empty lists and constructor fields indefinite, maps definite. Before, the default was `CBOR.CML_DATA_DEFAULT_OPTIONS`, which also wrote non-empty maps indefinite. `Data.DEFAULT_CBOR_OPTIONS` and `CBOR.TX_DEFAULT_OPTIONS.plutusData` are now `CBOR.PLUTUS_DATA_OPTIONS`, and `CBOR.toTxCodecOptions` maps `CBOR.CML_DEFAULT_OPTIONS` to it.
+
+  Only data that holds a non-empty map changes, and only in its map headers. `Data.map([[1n, 2n]])` was `bf0102ff` and is now `a10102`. For such data these change:
+
+  - datum hashes from `Data.toDatumHash`, which now match the hashes the node computes
+  - inline datums, witness datums and redeemer data in new transactions
+  - script data hashes of transactions that carry such datums or redeemers
+
+  Applied script hashes do not change, since `UPLC.applyParamsToScript` already used `CBOR.PLUTUS_DATA_OPTIONS`. Decoding is unchanged, and a decoded transaction keeps the original bytes of its datums and redeemers.
+
+  To keep the old bytes, pass the old options:
+
+  ```ts
+  Data.toDatumHash(datum, CBOR.CML_DATA_DEFAULT_OPTIONS)
+  Transaction.toCBORHex(tx, { ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.CML_DATA_DEFAULT_OPTIONS })
+  ```
+
+  The transaction options cover inline datums, witness datums and redeemer data, so the second call keeps the old bytes for all three.
+
+  `CBOR.CML_DATA_DEFAULT_OPTIONS` is deprecated in favor of `CBOR.PLUTUS_DATA_OPTIONS`. It keeps its bytes, but matches no tool exactly, so use it only to reproduce bytes and datum hashes written before this release.
+
+- [#618](https://github.com/IntersectMBO/evolution-sdk/pull/618) [`4e748e6`](https://github.com/IntersectMBO/evolution-sdk/commit/4e748e6a6925773a8be3802e6aa6fabee10cfffd) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - A new inline datum is now written with the `plutusData` transaction options, as witness datums and redeemer data are. Before, it was written with `Data.DEFAULT_CBOR_OPTIONS` whatever options the caller passed to the transaction encoder.
+
+  ```ts
+  const datum = Data.map([[1n, 2n]])
+  // Before: 24(h'a10102') under every option set
+  // Now: 24(h'bf0102ff'), the bytes Data.toCBORHex(datum, CBOR.CML_DATA_DEFAULT_OPTIONS) gives
+  Transaction.toCBORHex(tx, { ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.CML_DATA_DEFAULT_OPTIONS })
+  ```
+
+  The encoders and schemas of `TransactionBody`, `TxOut`, `TransactionOutput` and `DatumOption` take `CBOR.TxCodecOptions` and default to `CBOR.TX_DEFAULT_OPTIONS`. Plain `CBOR.CodecOptions` are still accepted, read as `CBOR.toTxCodecOptions` reads them. `DatumOption.makeFromCDDL` and `TxOut.makeFromCDDL` build the CDDL schema for given `plutusData` options.
+
+  With no options, `CBOR.TX_DEFAULT_OPTIONS` or `CBOR.CML_DEFAULT_OPTIONS`, every byte stays the same. Under other options only the bytes inside tag 24 change, so the transaction id of a transaction with a new inline datum changes. A decoded inline datum keeps its bytes, and an inline datum added to a decoded transaction is written with the default options.
+
+- [#616](https://github.com/IntersectMBO/evolution-sdk/pull/616) [`6f6a471`](https://github.com/IntersectMBO/evolution-sdk/commit/6f6a471fbf580be4433222f1855987f1b21777a9) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Plutus data now has its own encoder, so three kinds of value get the bytes the node writes under every option preset. Their bytes and datum hashes change:
+
+  - A constructor index above 127 writes its `[index, fields]` pair as a definite two-item array. `Data.constr(128n, [1n])` was `d8669f18809f01ffff` and is now `d8668218809f01ff`.
+  - The integer -2^64 is a plain negative integer, `3bffffffffffffffff`, where it was a negative bignum.
+  - A bignum whose bytes are longer than 64 is written in 64-byte chunks, as a long byte string already was.
+
+  `Data.toCBORBytes`, `Data.toCBORHex`, `Data.toDatumHash` and the encode side of `Data.FromCBORBytes` and `Data.FromCBORHex` use the new encoder, and so do redeemers, witness datums, inline datums, UPLC data constants and `Redeemers.toScriptDataHash`. All other data keeps its bytes under every preset. Decoding is unchanged. `Data.toCBORBytes` and `Data.toCBORHex` no longer validate their input with the schema first; a value that is not Plutus data now throws `DataError` instead of `ParseError`.
+
+  The CBOR encoder also writes -2^64 as `3bffffffffffffffff`. When a decoded transaction or witness set is written back, an integer decoded from a bignum tag keeps that tag, so a decoded -2^64 keeps its bytes in either form.
+
+- [#610](https://github.com/IntersectMBO/evolution-sdk/pull/610) [`a1b619b`](https://github.com/IntersectMBO/evolution-sdk/commit/a1b619b480e96f91f5891200cca4d7d1ea78aad8) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - Witness datums and redeemer data are now written with their own Plutus data options. Before, the witness set wrote them with the transaction options, so a datum in the witness set did not match the bytes its datum hash covers.
+
+  `CBOR.TxCodecOptions` holds two sets of options. `ledger` is for ledger structures: the body, the witness set, and the containers that hold datums and redeemers. `plutusData` is for Plutus data items: new inline datums, witness datums and redeemer data. Two presets come with it:
+
+  - `CBOR.TX_DEFAULT_OPTIONS`: `ledger` is `CBOR.CML_DEFAULT_OPTIONS` and `plutusData` is `CBOR.PLUTUS_DATA_OPTIONS`, the `Data` default.
+  - `CBOR.TX_CANONICAL_OPTIONS`: `CBOR.CANONICAL_OPTIONS` for both.
+
+  The encoders and schemas of `Transaction`, `TransactionWitnessSet`, `Redeemers` and `Redeemer`, and `Redeemers.toScriptDataHash`, take `CBOR.TxCodecOptions` and default to `CBOR.TX_DEFAULT_OPTIONS`:
+
+  ```ts
+  Transaction.toCBORHex(tx)
+  Transaction.toCBORHex(tx, CBOR.TX_CANONICAL_OPTIONS)
+  Transaction.toCBORHex(tx, { ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.PLUTUS_DATA_OPTIONS })
+  ```
+
+  Plain `CBOR.CodecOptions` are still accepted, read as `CBOR.toTxCodecOptions` reads them: the options serve as both, except that `CBOR.CML_DEFAULT_OPTIONS` writes Plutus data with `CBOR.PLUTUS_DATA_OPTIONS`, as passing no options does. Decoded datums and redeemers keep their bytes, and a datum or redeemer added to a decoded transaction is written with the default Plutus data options.
+
+  Script transactions whose redeemer data or witness datums hold a non-empty list, map or constructor fields change bytes. Simple data such as `Data.constr(0n, [])` or an integer keeps its bytes. The builder wrote redeemer data definite, for example `d87982a101028103`, and now writes it in the data default with indefinite lists and constructor fields and a definite map: `d8799fa101029f03ffff`. To keep the old redeemer layout, pass `{ ledger: CBOR.CML_DEFAULT_OPTIONS, plutusData: CBOR.CML_DATA_DEFINITE_OPTIONS }` to the encoders and to `Redeemers.toScriptDataHash`. That call also writes new inline datums fully definite.
+
+- [#613](https://github.com/IntersectMBO/evolution-sdk/pull/613) [`0656f6a`](https://github.com/IntersectMBO/evolution-sdk/commit/0656f6ace84a2094aff64807d340d18be099fb60) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - A proposal procedure now requires an anchor. The ledger has no null anchor for a proposal, so the node rejected a transaction whose proposal had one as malformed. Before, `ProposalProcedure` accepted `anchor: null` and wrote it as CBOR null.
+
+  `ProposalProcedure.anchor`, the `anchor` parameter of `ProposalProcedures.single` and `ProposeParams.anchor` for `propose()` are now `Anchor.Anchor`. Decoding a proposal procedure with a null anchor fails. Callers that passed `null` must pass an anchor with the metadata URL and hash of the proposal. Voting procedure anchors can still be null.
+
+### Patch Changes
+
+- [#654](https://github.com/IntersectMBO/evolution-sdk/pull/654) [`22a848c`](https://github.com/IntersectMBO/evolution-sdk/commit/22a848ce3f0a3cda88a5bb37b8d806bb35cb1107) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `Transaction.addVKeyWitnessesHex` and `Transaction.addVKeyWitnessesBytes` now write the vkey witnesses key at its ascending position when the decoded witness set keys ascend. A transaction that passes a hardware wallet's canonical check stays canonical after each signature, so a second hardware wallet can witness it.
+
+  This changes the bytes these functions write by default. Signing an unsigned transaction whose witness set holds keys 5 and 7 now writes key 0 first, where it came last before. The transaction id, the body bytes and the bytes of each existing entry stay the same. The same holds for `Transaction.addVKeyWitnesses` followed by `Transaction.toCBORHex`, and for a key added through `Transaction.toCBORHexWithFormat` or `TransactionWitnessSet.toCBORHexWithFormat`. A witness set whose decoded keys do not ascend still gets the new key last.
+
+- [#608](https://github.com/IntersectMBO/evolution-sdk/pull/608) [`04c4ec3`](https://github.com/IntersectMBO/evolution-sdk/commit/04c4ec32476c1803964b3d1e71effcd0d38c76dd) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - A decoded transaction now keeps the original bytes of witness datums and redeemers that contain a Plutus data map whose keys hold byte strings. This covers byte-string keys, list and constructor keys that contain them, and repeated keys. Before, re-encoding the transaction or adding a witness with `Transaction.addVKeyWitnessesHex` rewrote the value under each such key, so the node reported a script data hash mismatch.
+
+- [#656](https://github.com/IntersectMBO/evolution-sdk/pull/656) [`cc277be`](https://github.com/IntersectMBO/evolution-sdk/commit/cc277be41a39147ed05f259fd97f8790e2f993d1) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The builder now computes the fee with the redeemer indices the transaction is written with. Before, the fee estimate numbered redeemers 0, 1, 2 and so on, and a real index of 24 or more takes one more CBOR byte. A script transaction with two or more redeemers at index 24 or later, such as two script inputs that sort after 24 other inputs, paid too small a fee, and the node rejected it.
+
+  The fee changes only where a redeemer's index and its old number take a different number of bytes. Each redeemer at index 24 or more whose old number was under 24 adds the fee of one byte. With 25 or more redeemers, the reverse case removes one. Every other transaction keeps its bytes.
+
+- [#654](https://github.com/IntersectMBO/evolution-sdk/pull/654) [`22a848c`](https://github.com/IntersectMBO/evolution-sdk/commit/22a848ce3f0a3cda88a5bb37b8d806bb35cb1107) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - `SignBuilder.signWithWitness` now keeps the transaction's own witness set and adds the vkey and bootstrap witnesses of the given set. Before, it built the signed transaction from the given set alone. A Plutus transaction signed with only the vkey witnesses a hardware wallet returns lost its scripts, datums and redeemers. It skips a vkey witness the transaction already holds and adds a repeated one once. It ignores scripts, datums and redeemers in the given set, since the body's script data hash covers the transaction's own.
+
+- [#655](https://github.com/IntersectMBO/evolution-sdk/pull/655) [`d0ef3e8`](https://github.com/IntersectMBO/evolution-sdk/commit/d0ef3e85a26402a2c35877b48c225786065bdb13) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The redeemer `Data.int(0n)` now works in every builder operation. A Plutus integer is a `bigint`, so that redeemer is `0n`, and the operations tested the redeemer for truthiness. `collectFrom` and the stake operations, such as `withdraw`, failed with "Redeemer required". The DRep and committee operations and `vote` dropped the redeemer, so the build failed later. `mintAssets` dropped it without an error and built a transaction with no mint redeemer. The operations now test whether a redeemer was given, as `propose` already did.
+
 ## 0.6.0
 
 ### Minor Changes
