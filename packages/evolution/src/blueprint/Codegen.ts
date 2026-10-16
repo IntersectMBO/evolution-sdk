@@ -22,6 +22,36 @@ function toIdentifier(name: string): string {
 }
 
 /**
+ * Emit a blueprint-controlled string as a TypeScript string literal.
+ * Blueprint strings are untrusted input: JSON.stringify keeps quotes,
+ * backslashes and newlines inside the literal instead of letting them
+ * break out into generated code.
+ */
+function stringLiteral(value: string): string {
+  return JSON.stringify(value)
+}
+
+const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+/**
+ * Emit a blueprint-controlled name as an object property key: bare when it
+ * is a valid identifier (the normal case, output unchanged), quoted as a
+ * string literal otherwise.
+ */
+function propertyName(name: string): string {
+  return IDENTIFIER_PATTERN.test(name) ? name : JSON.stringify(name)
+}
+
+/**
+ * Neutralise a blueprint-controlled string for use inside a JSDoc comment:
+ * a comment-terminator sequence inside the value would close the comment
+ * and turn the rest of the string into generated code.
+ */
+function commentText(value: string): string {
+  return value.replace(/\*\//g, "* /")
+}
+
+/**
  * Get namespace path from a definition name
  * e.g., "cardano/address/Credential" -> "cardano/address"
  * e.g., "ByteArray" -> "" (primitive)
@@ -245,7 +275,7 @@ function generateTSchema(
             const tag = constructorDef.title || definitionKey || "Unit"
             const indexOpt =
               constructorDef.index && constructorDef.index !== 0 ? `, { index: ${constructorDef.index} }` : ""
-            return `TSchema.Literal("${tag}" as const${indexOpt})`
+            return `TSchema.Literal(${stringLiteral(tag)} as const${indexOpt})`
           }
           return "TSchema.Struct({})"
         }
@@ -283,7 +313,7 @@ function generateTSchema(
             fieldSchema = "PlutusData"
           }
 
-          fieldSchemas.push(`${indent}${config.indent}${config.indent}${fieldName}: ${fieldSchema}`)
+          fieldSchemas.push(`${indent}${config.indent}${config.indent}${propertyName(fieldName)}: ${fieldSchema}`)
         }
 
         return `TSchema.Struct({\n${fieldSchemas.join(",\n")}\n${indent}${config.indent}})`
@@ -416,7 +446,7 @@ function generateTSchema(
           const tag = constructorMember.title || definitionKey || "Unit"
           const indexOpt =
             constructorMember.index && constructorMember.index !== 0 ? `, { index: ${constructorMember.index} }` : ""
-          return `TSchema.Literal("${tag}" as const${indexOpt})`
+          return `TSchema.Literal(${stringLiteral(tag)} as const${indexOpt})`
         }
 
         // Build the fields object
@@ -445,7 +475,7 @@ function generateTSchema(
             fieldSchema = "PlutusData"
           }
 
-          fieldSchemas.push(`${indent}${config.indent}${config.indent}${fieldName}: ${fieldSchema}`)
+          fieldSchemas.push(`${indent}${config.indent}${config.indent}${propertyName(fieldName)}: ${fieldSchema}`)
         }
 
         return `TSchema.Struct({\n${fieldSchemas.join(",\n")}\n${indent}${config.indent}})`
@@ -522,12 +552,12 @@ function generateTSchema(
               fieldSchema = "PlutusData"
             }
 
-            fieldSchemas.push(`${fieldName}: ${fieldSchema}`)
+            fieldSchemas.push(`${propertyName(fieldName)}: ${fieldSchema}`)
           }
 
           if (useVariant) {
             variantFields.push(
-              `${indent}${config.indent}${config.indent}${tag}: {\n${fieldSchemas.map((f) => `${indent}${config.indent}${config.indent}${config.indent}${f}`).join(",\n")}\n${indent}${config.indent}${config.indent}}`
+              `${indent}${config.indent}${config.indent}${propertyName(tag)}: {\n${fieldSchemas.map((f) => `${indent}${config.indent}${config.indent}${config.indent}${f}`).join(",\n")}\n${indent}${config.indent}${config.indent}}`
             )
           } else {
             // Explicit Union style: TSchema.Struct({ TagName: TSchema.Struct({ ...fields }, { flatFields: true }) }, { flatInUnion: true })
@@ -536,7 +566,7 @@ function generateTSchema(
                 ? `{\n${fieldSchemas.map((f) => `${indent}${config.indent}${config.indent}${config.indent}${f}`).join(",\n")}\n${indent}${config.indent}${config.indent}}`
                 : "{}"
             explicitUnionMembers.push(
-              `${indent}${config.indent}TSchema.Struct({ ${tag}: TSchema.Struct(${innerFieldsStr}, { flatFields: true }) }, { flatInUnion: true })`
+              `${indent}${config.indent}TSchema.Struct({ ${propertyName(tag)}: TSchema.Struct(${innerFieldsStr}, { flatFields: true }) }, { flatInUnion: true })`
             )
           }
         }
@@ -597,13 +627,15 @@ function generateTSchema(
               fieldSchema = "PlutusData"
             }
 
-            fieldSchemas.push(`${indent}${config.indent}${config.indent}${config.indent}${fieldName}: ${fieldSchema}`)
+            fieldSchemas.push(
+              `${indent}${config.indent}${config.indent}${config.indent}${propertyName(fieldName)}: ${fieldSchema}`
+            )
           }
 
           // TaggedStruct for all constructors (empty or not)
           const fieldsStr = fieldSchemas.length > 0 ? `{ ${fieldSchemas.join(", ")} }` : "{}"
           unionMembers.push(
-            `${indent}${config.indent}TSchema.TaggedStruct("${tag}", ${fieldsStr}, { flatInUnion: true })`
+            `${indent}${config.indent}TSchema.TaggedStruct(${stringLiteral(tag)}, ${fieldsStr}, { flatInUnion: true })`
           )
         }
 
@@ -642,11 +674,11 @@ function generateTSchema(
               fieldSchema = "PlutusData"
             }
 
-            fieldSchemas.push(`${indent}${config.indent}${config.indent}${fieldName}: ${fieldSchema}`)
+            fieldSchemas.push(`${indent}${config.indent}${config.indent}${propertyName(fieldName)}: ${fieldSchema}`)
           }
 
           taggedStructs.push(
-            `${indent}  TSchema.TaggedStruct("${tag}", {\n${fieldSchemas.join(",\n")}\n${indent}  }, { flatFields: true })`
+            `${indent}  TSchema.TaggedStruct(${stringLiteral(tag)}, {\n${fieldSchemas.join(",\n")}\n${indent}  }, { flatFields: true })`
           )
         }
 
@@ -815,7 +847,7 @@ function generateTSType(
           } else {
             ftype = "unknown"
           }
-          return `readonly ${fname}: ${ftype}`
+          return `readonly ${propertyName(fname)}: ${ftype}`
         })
         return `{ ${fieldStrings.join("; ")} }`
       }
@@ -832,10 +864,10 @@ function generateTSType(
       }
       const title = (ctorDef as { title?: string }).title ?? "Unknown"
       if (!ctorDef.fields || ctorDef.fields.length === 0) {
-        return `{ readonly ${title}: Record<string, never> }`
+        return `{ readonly ${propertyName(title)}: Record<string, never> }`
       }
       const inner = generateTSType(variant, definitions, currentNamespace, config, visitedRefs)
-      return `{ readonly ${title}: ${inner} }`
+      return `{ readonly ${propertyName(title)}: ${inner} }`
     })
     return variants.join(" | ")
   }
@@ -904,7 +936,7 @@ export function generateTypeScript(
 
   // File header
   lines.push("/**")
-  lines.push(` * Generated from Blueprint: ${blueprint.preamble.title}`)
+  lines.push(` * Generated from Blueprint: ${commentText(blueprint.preamble.title)}`)
   lines.push(` * @generated - Do not edit manually`)
   lines.push(" */")
   lines.push("")
@@ -956,9 +988,9 @@ export function generateTypeScript(
       // Add JSDoc comment
       if ("title" in def && def.title) {
         lines.push("/**")
-        lines.push(` * ${def.title}`)
+        lines.push(` * ${commentText(def.title)}`)
         if ("description" in def && def.description) {
-          lines.push(` * ${def.description}`)
+          lines.push(` * ${commentText(def.description)}`)
         }
         lines.push(" */")
       }
@@ -1016,9 +1048,9 @@ export function generateTypeScript(
 
       if ("title" in typeDef && typeDef.title) {
         lines.push(`${nsIndent}/**`)
-        lines.push(`${nsIndent} * ${typeDef.title}`)
+        lines.push(`${nsIndent} * ${commentText(typeDef.title)}`)
         if ("description" in typeDef && typeDef.description) {
-          lines.push(`${nsIndent} * ${typeDef.description}`)
+          lines.push(`${nsIndent} * ${commentText(typeDef.description)}`)
         }
         lines.push(`${nsIndent} */`)
       }
@@ -1057,9 +1089,9 @@ export function generateTypeScript(
       // Add JSDoc comment
       if ("title" in def && def.title) {
         lines.push("/**")
-        lines.push(` * ${def.title}`)
+        lines.push(` * ${commentText(def.title)}`)
         if ("description" in def && def.description) {
-          lines.push(` * ${def.description}`)
+          lines.push(` * ${commentText(def.description)}`)
         }
         lines.push(" */")
       }
@@ -1085,13 +1117,13 @@ export function generateTypeScript(
     const validatorName = toIdentifier(validator.title)
 
     lines.push("/**")
-    lines.push(` * Validator: ${validator.title}`)
-    lines.push(` * Hash: ${validator.hash}`)
+    lines.push(` * Validator: ${commentText(validator.title)}`)
+    lines.push(` * Hash: ${commentText(validator.hash)}`)
     lines.push(" */")
     lines.push(`export const ${validatorName} = {`)
-    lines.push(`  title: "${validator.title}",`)
-    lines.push(`  hash: "${validator.hash}",`)
-    lines.push(`  compiledCode: "${validator.compiledCode}",`)
+    lines.push(`  title: ${stringLiteral(validator.title)},`)
+    lines.push(`  hash: ${stringLiteral(validator.hash)},`)
+    lines.push(`  compiledCode: ${stringLiteral(validator.compiledCode)},`)
 
     if (validator.datum) {
       const datumSchema = generateTSchema(validator.datum.schema, blueprint.definitions, config, "", "  ")
