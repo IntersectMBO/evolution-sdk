@@ -819,6 +819,40 @@ const withAddedFormats = (decoded: CBOR.CBORFormat, fresh: CBOR.CBORFormat): CBO
   }
 }
 
+// The keys of `map` with no format for their values, so that withAddedFormats
+// adds the keys a decoded witness set lacks and leaves the decoded parts as
+// they are
+const keysOnly = (map: ReadonlyMap<bigint, CBOR.CBOR>): CBOR.CBORFormat.Map => {
+  const keys = Array.from(map.keys())
+  return {
+    _tag: "map",
+    keyOrder: keys.map((key) => CBOR.toCBORBytes(key)),
+    entries: keys.map(() => [{ _tag: "simple" }, { _tag: "simple" }])
+  }
+}
+
+// withAddedFormats puts the keys a witness set gains after its decoded keys.
+// When the decoded keys ascend, as canonical CBOR writes them, each added key
+// moves to its ascending position instead, so a canonical witness set stays
+// canonical. Decoded keys in any other order keep the added keys after them.
+const inKeyOrder = (merged: CBOR.CBORFormat, decoded: CBOR.CBORFormat): CBOR.CBORFormat => {
+  if (merged._tag !== "map" || decoded._tag !== "map" || merged.keyOrder === undefined) return merged
+  const { entries, keyOrder } = merged
+  const decodedCount = decoded.keyOrder?.length ?? 0
+  if (keyOrder.length === decodedCount || entries.length !== keyOrder.length) return merged
+  const keys: Array<bigint> = []
+  for (const bytes of keyOrder) {
+    const key = CBOR.fromCBORBytes(bytes)
+    if (typeof key !== "bigint") return merged
+    keys.push(key)
+  }
+  for (let i = 1; i < decodedCount; i++) {
+    if (keys[i - 1] >= keys[i]) return merged
+  }
+  const order = keys.map((_, i) => i).sort((a, b) => (keys[a] < keys[b] ? -1 : keys[a] > keys[b] ? 1 : a - b))
+  return { ...merged, keyOrder: order.map((i) => keyOrder[i]), entries: order.map((i) => entries[i]) }
+}
+
 /**
  * Convert a TransactionWitnessSet to CBOR bytes, as in {@link FromCBORBytes}.
  *
@@ -838,6 +872,10 @@ export const toCBORBytes = (
  * datum or redeemer added to a decoded witness set is written as
  * {@link toCBORBytes} writes it under the default options.
  *
+ * A key the format tree lacks, such as the vkey witnesses key added to an
+ * unsigned transaction, goes at its ascending position when the decoded keys
+ * ascend, and after them otherwise.
+ *
  * @since 2.0.0
  * @category encoding
  */
@@ -846,9 +884,8 @@ export const toCBORBytesWithFormat = (
   format: CBOR.CBORFormat
 ): Uint8Array => {
   const cborMap = Schema.encodeSync(FromCDDL)(data)
-  if (!holdsPlutusData(data)) return CBOR.toCBORBytesWithFormat(cborMap, format)
-  const fresh = CBOR.fromCBORBytesWithFormat(toCBORBytes(data)).format
-  return CBOR.toCBORBytesWithFormat(cborMap, withAddedFormats(format, fresh))
+  const fresh = holdsPlutusData(data) ? CBOR.fromCBORBytesWithFormat(toCBORBytes(data)).format : keysOnly(cborMap)
+  return CBOR.toCBORBytesWithFormat(cborMap, inKeyOrder(withAddedFormats(format, fresh), format))
 }
 
 /**
