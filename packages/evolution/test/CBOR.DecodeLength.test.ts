@@ -27,7 +27,13 @@ describe("CBOR decoding of declared lengths", () => {
     { name: "a map declaring 2^31 - 1 entries with none present", hex: "ba7fffffff", message: "Insufficient data for map" },
     { name: "an array missing its last item", hex: "8201", message: "Insufficient data for array" },
     { name: "a map missing its value", hex: "a101", message: "Insufficient data for map" },
-    { name: "a tag with no content", hex: "d818", message: "Insufficient data for CBOR item" }
+    { name: "a tag with no content", hex: "d818", message: "Insufficient data for CBOR item" },
+    { name: "an array declaring 2^31 items with none present", hex: "9a80000000", message: "Insufficient data for array" },
+    { name: "a map declaring 2^31 entries with none present", hex: "ba80000000", message: "Insufficient data for map" },
+    { name: "a byte string declaring 2^32 - 1 bytes", hex: "5affffffff", message: "Insufficient data for byte string" },
+    { name: "an array holding a byte string that declares 2^31 bytes", hex: "825a8000000000", message: "Insufficient data for byte string" },
+    { name: "a byte string chunk declaring 2^32 - 1 bytes", hex: "5f5affffffffff", message: "Insufficient data for byte string chunk" },
+    { name: "an indefinite array holding a text string that declares 2^32 - 5 bytes", hex: "9f7afffffffbff", message: "Insufficient data for text string" }
   ]
 
   for (const [label, decode] of decoders) {
