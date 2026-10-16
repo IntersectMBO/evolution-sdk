@@ -8,11 +8,13 @@ import * as PlutusData from "../../../Data.js"
 import * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as InlineDatum from "../../../InlineDatum.js"
+import * as NativeScriptJSON from "../../../NativeScriptJSON.js"
 import * as NativeScripts from "../../../NativeScripts.js"
 import * as PlutusV1 from "../../../PlutusV1.js"
 import * as PlutusV2 from "../../../PlutusV2.js"
 import * as PlutusV3 from "../../../PlutusV3.js"
 import type * as Script from "../../../Script.js"
+import * as ScriptHash from "../../../ScriptHash.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import * as HttpUtils from "./HttpUtils.js"
@@ -173,6 +175,52 @@ export const getHeadersWithToken = (token?: string, headers: Record<string, stri
   return headers
 }
 
+const nativeVariantFromJSON = (json: NativeScriptJSON.NativeJSON): NativeScripts.NativeScriptVariants => {
+  switch (json.type) {
+    case "sig":
+      return { _tag: "ScriptPubKey", keyHash: Bytes.fromHex(json.keyHash) }
+    case "after":
+      return { _tag: "InvalidBefore", slot: BigInt(json.slot) }
+    case "before":
+      return { _tag: "InvalidHereafter", slot: BigInt(json.slot) }
+    case "all":
+      return { _tag: "ScriptAll", scripts: json.scripts.map(nativeVariantFromJSON) }
+    case "any":
+      return { _tag: "ScriptAny", scripts: json.scripts.map(nativeVariantFromJSON) }
+    case "atLeast":
+      return { _tag: "ScriptNOfK", required: BigInt(json.required), scripts: json.scripts.map(nativeVariantFromJSON) }
+  }
+}
+
+/**
+ * Rebuild a native reference script from the `value` Koios returns for it.
+ *
+ * db-sync stores no CBOR for native scripts before the Dijkstra era, so Koios
+ * sends `bytes: null` for timelock and multisig reference scripts; the script
+ * JSON in `value` (the db-sync `script.json`) is the only form available. The
+ * rebuilt script is checked against the `hash` Koios reports: a mismatch, or a
+ * value that does not decode as a native script, throws instead of silently
+ * dropping or corrupting the script reference.
+ */
+export const nativeScriptFromKoiosValue = (rs: ReferenceScript): NativeScripts.NativeScript => {
+  let script: NativeScripts.NativeScript
+  try {
+    const json = Schema.decodeSync(NativeScriptJSON.NativeJSONSchema)(rs.value)
+    script = new NativeScripts.NativeScript({ script: nativeVariantFromJSON(json) })
+  } catch (cause) {
+    throw new Error("Koios native reference script could not be rebuilt from its value", { cause })
+  }
+  if (rs.hash) {
+    const actual = ScriptHash.toHex(ScriptHash.fromScript(script))
+    if (actual !== rs.hash) {
+      throw new Error(
+        `Koios native reference script hash mismatch: rebuilt script hashes to ${actual}, but Koios reported ${rs.hash}`
+      )
+    }
+  }
+  return script
+}
+
 export const toUTxO = (koiosUTxO: UTxO, addressStr: string): CoreUTxO.UTxO => {
   // Build Core Assets
   let assets = CoreAssets.fromLovelace(koiosUTxO.value)
@@ -196,21 +244,28 @@ export const toUTxO = (koiosUTxO: UTxO, addressStr: string): CoreUTxO.UTxO => {
 
   let scriptRef: Script.Script | undefined
   const rs = koiosUTxO.reference_script
-  if (rs?.bytes && rs.type) {
-    const scriptBytes = Bytes.fromHex(rs.bytes)
-    switch (rs.type) {
-      case "plutusV1":
-        scriptRef = new PlutusV1.PlutusV1({ bytes: scriptBytes })
-        break
-      case "plutusV2":
-        scriptRef = new PlutusV2.PlutusV2({ bytes: scriptBytes })
-        break
-      case "plutusV3":
-        scriptRef = new PlutusV3.PlutusV3({ bytes: scriptBytes })
-        break
-      case "timelock":
-        scriptRef = NativeScripts.fromCBORHex(rs.bytes)
-        break
+  if (rs?.type) {
+    if (rs.bytes) {
+      const scriptBytes = Bytes.fromHex(rs.bytes)
+      switch (rs.type) {
+        case "plutusV1":
+          scriptRef = new PlutusV1.PlutusV1({ bytes: scriptBytes })
+          break
+        case "plutusV2":
+          scriptRef = new PlutusV2.PlutusV2({ bytes: scriptBytes })
+          break
+        case "plutusV3":
+          scriptRef = new PlutusV3.PlutusV3({ bytes: scriptBytes })
+          break
+        case "timelock":
+        case "multisig":
+          scriptRef = NativeScripts.fromCBORHex(rs.bytes)
+          break
+      }
+    } else if (rs.type === "timelock" || rs.type === "multisig") {
+      // No CBOR is stored for native scripts before the Dijkstra era, so
+      // Koios sends bytes: null — rebuild the script from its JSON value.
+      scriptRef = nativeScriptFromKoiosValue(rs)
     }
   }
 
