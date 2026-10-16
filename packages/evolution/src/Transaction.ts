@@ -287,6 +287,16 @@ export const toCBORHex = (data: Transaction, options: CBOR.TxCodecOptions | CBOR
   return Schema.encodeSync(FromCBORHex(optionsCache.get(data) ?? options))(data)
 }
 
+// Whether the witness set map holds a key its decoded format does not list
+// and that is lower than a key it lists. TransactionWitnessSet may write such
+// a key ahead of the decoded keys; a higher one goes after them either way.
+const gainsLowerKey = (witnessSet: ReadonlyMap<bigint, CBOR.CBOR>, format: CBOR.CBORFormat): boolean => {
+  const listed = format._tag === "map" ? (format.keyOrder ?? []).map((bytes) => CBOR.fromCBORBytes(bytes)) : []
+  return Array.from(witnessSet.keys()).some(
+    (key) => !listed.includes(key) && listed.some((other) => typeof other === "bigint" && other > key)
+  )
+}
+
 /**
  * Convert a Transaction to CBOR bytes using an explicit root format tree.
  *
@@ -301,13 +311,19 @@ export const toCBORBytesWithFormat = (
   format: CBOR.CBORFormat
 ): Uint8Array => {
   const cborTuple = Schema.encodeSync(FromCDDL)(data)
-  if ((data.witnessSet.plutusData ?? []).length === 0 && (data.witnessSet.redeemers?.size ?? 0) === 0) {
+  const arrayFormat: CBOR.CBORFormat.Array = format._tag === "array" ? format : { _tag: "array", children: [] }
+  const [bodyFormat = { _tag: "simple" }, witnessSetFormat = { _tag: "simple" }, ...rest] = arrayFormat.children
+  // A witness set without datums or redeemers replays in the tuple as it is,
+  // unless a key it gains may go ahead of its decoded keys
+  if (
+    (data.witnessSet.plutusData ?? []).length === 0 &&
+    (data.witnessSet.redeemers?.size ?? 0) === 0 &&
+    !gainsLowerKey(cborTuple[1], witnessSetFormat)
+  ) {
     return CBOR.toCBORBytesWithFormat(cborTuple as unknown as CBOR.CBOR, format)
   }
   // The witness set's bytes, decoded with their format, replay exactly in
   // the tuple. A part the format does not cover is written with the defaults.
-  const arrayFormat: CBOR.CBORFormat.Array = format._tag === "array" ? format : { _tag: "array", children: [] }
-  const [bodyFormat = { _tag: "simple" }, witnessSetFormat = { _tag: "simple" }, ...rest] = arrayFormat.children
   const witnessSet = CBOR.fromCBORBytesWithFormat(
     TransactionWitnessSet.toCBORBytesWithFormat(data.witnessSet, witnessSetFormat)
   )
@@ -336,7 +352,8 @@ export const toCBORHexWithFormat = (data: Transaction, format: CBOR.CBORFormat):
 // original encoding — preserving txId and scriptDataHash.
 //
 // Reconciliation handles structural changes gracefully:
-// - New map entries (key 0 absent → added) get default encoding
+// - New map entries (key 0 absent → added) get default encoding, at their
+//   ascending position when the decoded witness set keys ascend
 // - Extended arrays (more witnesses) encode extra children minimally
 // - Surviving entries replay their captured format exactly
 // ============================================================================
@@ -348,6 +365,10 @@ export const toCBORHexWithFormat = (data: Transaction, format: CBOR.CBORFormat):
  * domain level, re-encode with the original format tree. Body encoding,
  * redeemer bytes, map key ordering, and all non-witness data are preserved
  * through the format tree reconciliation.
+ *
+ * A witness set without vkey witnesses gains the vkey witnesses key at its
+ * ascending position when its keys ascend, so a canonical transaction stays
+ * canonical; otherwise the key follows the decoded keys.
  *
  * `options` applies only to parsing the wallet witness set bytes. Transaction
  * decoding and re-encoding are governed by the captured format tree, making

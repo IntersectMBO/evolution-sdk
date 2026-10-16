@@ -406,9 +406,9 @@ describe("datums and redeemers in a decoded transaction", () => {
   it.each(decodedLayouts)("a %s datum keeps its bytes through toCBORHex and addVKeyWitnessesHex", (_, datumHex) => {
     const hex = txHex(datumsOnlyWitnessSetHex([datumHex]))
     expect(Transaction.toCBORHex(Transaction.fromCBORHex(hex))).toBe(hex)
-    // The vkey key is new, so it follows the decoded keys
+    // The vkey key is new and the decoded keys ascend, so it goes first
     expect(Transaction.addVKeyWitnessesHex(hex, walletWitnessSetHex)).toBe(
-      txHex(`a204${witnessDatumsHex([datumHex])}${vkeyEntryHex}`)
+      txHex(`a2${vkeyEntryHex}04${witnessDatumsHex([datumHex])}`)
     )
   })
 
@@ -417,7 +417,7 @@ describe("datums and redeemers in a decoded transaction", () => {
       const hex = txHex(`a105${container(dataHex)}`)
       expect(Transaction.toCBORHex(Transaction.fromCBORHex(hex)), name).toBe(hex)
       expect(Transaction.addVKeyWitnessesHex(hex, walletWitnessSetHex), name).toBe(
-        txHex(`a205${container(dataHex)}${vkeyEntryHex}`)
+        txHex(`a2${vkeyEntryHex}05${container(dataHex)}`)
       )
     }
   })
@@ -428,7 +428,7 @@ describe("datums and redeemers in a decoded transaction", () => {
     const hex = txHex(`a204${witnessDatumsHex(all)}05${redeemersHex}`)
     expect(Transaction.toCBORHex(Transaction.fromCBORHex(hex))).toBe(hex)
     expect(Transaction.addVKeyWitnessesHex(hex, walletWitnessSetHex)).toBe(
-      txHex(`a304${witnessDatumsHex(all)}05${redeemersHex}${vkeyEntryHex}`)
+      txHex(`a3${vkeyEntryHex}04${witnessDatumsHex(all)}05${redeemersHex}`)
     )
   })
 
@@ -451,7 +451,7 @@ describe("datums and redeemers in a decoded transaction", () => {
     const start = performance.now()
     expect(Transaction.toCBORHex(Transaction.fromCBORHex(hex))).toBe(hex)
     expect(Transaction.addVKeyWitnessesHex(hex, walletWitnessSetHex)).toBe(
-      txHex(`a304${witnessDatumsHex([dataHex])}05${redeemersHex}${vkeyEntryHex}`)
+      txHex(`a3${vkeyEntryHex}04${witnessDatumsHex([dataHex])}05${redeemersHex}`)
     )
     expect(performance.now() - start).toBeLessThan(2000)
   })
@@ -523,13 +523,21 @@ describe("a datum or redeemer added to a decoded transaction", () => {
     )
   })
 
-  it("added keys keep the order the encoder gives them", () => {
-    // Decoded {5: ...}; added keys 0 and 4 follow it in ascending order
+  it("added keys go at their ascending position when the decoded keys ascend", () => {
+    // Decoded {5: ...}; added keys 0 and 4 go before it
     const { format, value: tx } = Transaction.fromCBORHexWithFormat(txHex(redeemerOnlyWitnessSetHex(decodedHex)))
     const extended = withWitnessSet(tx, { vkeyWitnesses: [vkeyWitness], plutusData: [datums[1]] })
     expect(Transaction.toCBORHexWithFormat(extended, format)).toBe(
-      txHex(`a305a182000082${decodedHex}${exUnitsHex}${vkeyEntryHex}04d9010281d8799f01ff`)
+      txHex(`a3${vkeyEntryHex}04d9010281d8799f01ff05a182000082${decodedHex}${exUnitsHex}`)
     )
+  })
+
+  it("added keys follow decoded keys that do not ascend", () => {
+    // Decoded {5: ..., 4: ...}; added key 0 follows them
+    const decoded = `a205a182000082${decodedHex}${exUnitsHex}04d9010281${decodedHex}`
+    const { format, value: tx } = Transaction.fromCBORHexWithFormat(txHex(decoded))
+    const extended = withWitnessSet(tx, { vkeyWitnesses: [vkeyWitness] })
+    expect(Transaction.toCBORHexWithFormat(extended, format)).toBe(txHex(`a3${decoded.slice(2)}${vkeyEntryHex}`))
   })
 
   it("through the witness set format functions", () => {

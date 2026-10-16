@@ -16,6 +16,7 @@
 
 import { Effect } from "effect"
 
+import * as Bytes from "../../Bytes.js"
 import type * as CBOR from "../../CBOR.js"
 import * as Script from "../../Script.js"
 import * as Transaction from "../../Transaction.js"
@@ -38,6 +39,10 @@ import { type ChainResult, TransactionBuilderError } from "./TransactionBuilder.
  * Wallet type - can be SigningWallet or ApiWallet (both have Effect.signTx)
  */
 type SignerWallet = Wallet.SigningWallet | Wallet.ApiWallet
+
+// A vkey witness as the hex of its key and signature bytes
+const vkeyWitnessHex = (witness: TransactionWitnessSet.VKeyWitness): string =>
+  Bytes.toHex(witness.vkey.bytes) + Bytes.toHex(witness.signature.bytes)
 
 /**
  * Create a SignBuilder instance for a built transaction.
@@ -185,32 +190,36 @@ export const makeSignBuilder = (params: {
       }),
 
     /**
-     * Sign the transaction using a pre-created witness set.
+     * Sign the transaction with signatures made outside the wallet, such as
+     * the vkey witnesses a hardware wallet returns.
      *
-     * This method allows you to provide your own witness set instead of delegating
-     * to the wallet. Useful for:
-     * - Hardware wallets where signing happens externally
-     * - Multi-sig workflows where witnesses are collected separately
-     * - Testing with pre-generated witnesses
-     *
-     * The witness set should contain VKey witnesses for all required signatures.
+     * The transaction keeps its own witness set, with its scripts, datums and
+     * redeemers, and gains the vkey and bootstrap witnesses of the given set
+     * through assemble(). A vkey witness the transaction already holds, or
+     * that the set repeats, is added once. Scripts, datums and redeemers in
+     * the given set are ignored.
      */
     signWithWitness: (witnessSet: TransactionWitnessSet.TransactionWitnessSet) =>
       Effect.gen(function* () {
         yield* Effect.logDebug("Signing transaction with provided witness set")
 
-        // Create signed transaction by combining transaction body with provided witness set
-        const signedTransaction = withBuildEncoding(new Transaction.Transaction({
-          body: transaction.body,
-          witnessSet,
-          isValid: transaction.isValid,
-          auxiliaryData: transaction.auxiliaryData
-        }))
+        // Only the signatures are taken. The body's script data hash covers
+        // the transaction's own datums and redeemers, and the ledger rejects
+        // a script the transaction does not need, so its own set wins
+        const seen = new Set((transaction.witnessSet.vkeyWitnesses ?? []).map(vkeyWitnessHex))
+        const vkeyWitnesses = (witnessSet.vkeyWitnesses ?? []).filter((witness) => {
+          const hex = vkeyWitnessHex(witness)
+          if (seen.has(hex)) return false
+          seen.add(hex)
+          return true
+        })
 
-        yield* Effect.logDebug(`Transaction signed with ${witnessSet.vkeyWitnesses?.length ?? 0} VKey witnesses`)
-
-        // Return SubmitBuilder
-        return makeSubmitBuilder(signedTransaction, witnessSet, provider)
+        return yield* signEffect.assemble([
+          new TransactionWitnessSet.TransactionWitnessSet({
+            vkeyWitnesses,
+            bootstrapWitnesses: witnessSet.bootstrapWitnesses ?? []
+          })
+        ])
       }),
 
     /**
