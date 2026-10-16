@@ -61,6 +61,64 @@ describe("CBOR WithFormat — format tree is the complete specification", () => 
   })
 })
 
+describe("CBOR WithFormat — stale chunk sizes are not reused (#575)", () => {
+  it("bytes: a shorter value under a chunked format decodes back to itself", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("5f4201024103ff") // h'010203' as chunks 2 + 1
+    const encoded = CBOR.toCBORHexWithFormat(new Uint8Array([0xaa]), format)
+    expect(CBOR.fromCBORHex(encoded)).toEqual(new Uint8Array([0xaa]))
+  })
+
+  it("bytes: a longer value under a chunked format decodes back to itself", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("5f4201024103ff")
+    const value = new Uint8Array([1, 2, 3, 4, 5])
+    const encoded = CBOR.toCBORHexWithFormat(value, format)
+    expect(CBOR.fromCBORHex(encoded)).toEqual(value)
+  })
+
+  it("bytes: an unchanged value under its own chunked format stays byte-identical", () => {
+    const hex = "5f4201024103ff"
+    const { format, value } = CBOR.fromCBORHexWithFormat(hex)
+    expect(CBOR.toCBORHexWithFormat(value, format)).toBe(hex)
+  })
+
+  it("bytes: a same-length changed value still reuses its chunk layout", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("5f4201024103ff")
+    expect(CBOR.toCBORHexWithFormat(new Uint8Array([0xaa, 0xbb, 0xcc]), format)).toBe("5f42aabb41ccff")
+  })
+
+  it("text: a shorter string under a chunked format decodes back to itself", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("7f626869616aff") // "hij" as chunks 2 + 1
+    const encoded = CBOR.toCBORHexWithFormat("x", format)
+    expect(CBOR.fromCBORHex(encoded)).toBe("x")
+  })
+
+  it("text: a longer string under a chunked format decodes back to itself", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("7f626869616aff")
+    const encoded = CBOR.toCBORHexWithFormat("hijk", format)
+    expect(CBOR.fromCBORHex(encoded)).toBe("hijk")
+  })
+
+  it("text: a string whose chunk split would break a UTF-8 character decodes back to itself", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("7f626869616aff")
+    const encoded = CBOR.toCBORHexWithFormat("héllo", format)
+    expect(CBOR.fromCBORHex(encoded)).toBe("héllo")
+  })
+
+  it("text: a same-length string whose chunks would split a UTF-8 character falls back", () => {
+    const { format } = CBOR.fromCBORHexWithFormat("7f626869616aff") // chunks 2 + 1, total 3 bytes
+    // "xé" is 3 UTF-8 bytes (x + 2-byte é); the 2-byte first chunk would split é
+    const encoded = CBOR.toCBORHexWithFormat("xé", format)
+    expect(CBOR.fromCBORHex(encoded)).toBe("xé")
+    expect(encoded).not.toBe("7f6278c361a9ff")
+  })
+
+  it("text: an unchanged string under its own chunked format stays byte-identical", () => {
+    const hex = "7f626869616aff"
+    const { format, value } = CBOR.fromCBORHexWithFormat(hex)
+    expect(CBOR.toCBORHexWithFormat(value, format)).toBe(hex)
+  })
+})
+
 describe("CBOR WithFormat — hand-crafted format injection", () => {
   it("explicit uint format with byteSize:1 forces non-minimal encoding", () => {
     const fmt: CBOR.CBORFormat = { _tag: "uint", byteSize: 1 }

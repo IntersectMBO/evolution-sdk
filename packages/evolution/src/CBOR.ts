@@ -1337,31 +1337,40 @@ const encodeBytesSync = (value: Uint8Array, options: CodecOptions, fmt?: CBORFor
   if (stringEncoding !== undefined) {
     if (stringEncoding.tag === "indefinite") {
       const chunks = stringEncoding.chunks
-      let totalSize = 2 // 0x5f + 0xff
-      for (const chunk of chunks) {
-        totalSize += encodeIntHeader(2, BigInt(chunk.length), chunk.byteSize).length + chunk.length
+      // Reuse the captured chunk layout only when it still fits the value:
+      // the chunk sizes must add up to the value's length. Otherwise the old
+      // sizes would pad or truncate the new value, so fall back to the
+      // default encoding below (as integer widths already do).
+      let chunkTotal = 0
+      for (const chunk of chunks) chunkTotal += chunk.length
+      if (chunkTotal === length) {
+        let totalSize = 2 // 0x5f + 0xff
+        for (const chunk of chunks) {
+          totalSize += encodeIntHeader(2, BigInt(chunk.length), chunk.byteSize).length + chunk.length
+        }
+        const result = new Uint8Array(totalSize)
+        let pos = 0
+        result[pos++] = 0x5f
+        let srcOffset = 0
+        for (const chunk of chunks) {
+          const header = encodeIntHeader(2, BigInt(chunk.length), chunk.byteSize)
+          result.set(header, pos)
+          pos += header.length
+          result.set(value.subarray(srcOffset, srcOffset + chunk.length), pos)
+          pos += chunk.length
+          srcOffset += chunk.length
+        }
+        result[pos] = 0xff
+        return result
       }
-      const result = new Uint8Array(totalSize)
-      let pos = 0
-      result[pos++] = 0x5f
-      let srcOffset = 0
-      for (const chunk of chunks) {
-        const header = encodeIntHeader(2, BigInt(chunk.length), chunk.byteSize)
-        result.set(header, pos)
-        pos += header.length
-        result.set(value.subarray(srcOffset, srcOffset + chunk.length), pos)
-        pos += chunk.length
-        srcOffset += chunk.length
-      }
-      result[pos] = 0xff
+    } else {
+      // Definite with specific byteSize
+      const header = encodeIntHeader(2, BigInt(length), stringEncoding.byteSize)
+      const result = new Uint8Array(header.length + length)
+      result.set(header, 0)
+      result.set(value, header.length)
       return result
     }
-    // Definite with specific byteSize
-    const header = encodeIntHeader(2, BigInt(length), stringEncoding.byteSize)
-    const result = new Uint8Array(header.length + length)
-    result.set(header, 0)
-    result.set(value, header.length)
-    return result
   }
 
   const useMinimal = options.mode !== "custom" || options.useMinimalEncoding
@@ -1428,31 +1437,45 @@ const encodeTextSync = (value: string, options: CodecOptions, fmt?: CBORFormat):
     const utf8 = TEXT_ENCODER.encode(value)
     if (stringEncoding.tag === "indefinite") {
       const chunks = stringEncoding.chunks
-      let totalSize = 2 // 0x7f + 0xff
+      // Reuse the captured chunk layout only when it still fits the value:
+      // the chunk sizes must add up to the value's UTF-8 length and every
+      // chunk must end on a UTF-8 character boundary (the next byte is not
+      // a continuation byte). Otherwise fall back to the default encoding
+      // below, rather than padding, truncating, or splitting a character.
+      let chunkTotal = 0
+      let chunksFit = true
       for (const chunk of chunks) {
-        totalSize += encodeIntHeader(3, BigInt(chunk.length), chunk.byteSize).length + chunk.length
+        chunkTotal += chunk.length
+        if (chunkTotal < utf8.length && (utf8[chunkTotal] & 0xc0) === 0x80) chunksFit = false
       }
-      const result = new Uint8Array(totalSize)
-      let pos = 0
-      result[pos++] = 0x7f
-      let srcOffset = 0
-      for (const chunk of chunks) {
-        const header = encodeIntHeader(3, BigInt(chunk.length), chunk.byteSize)
-        result.set(header, pos)
-        pos += header.length
-        result.set(utf8.subarray(srcOffset, srcOffset + chunk.length), pos)
-        pos += chunk.length
-        srcOffset += chunk.length
+      if (chunksFit && chunkTotal === utf8.length) {
+        let totalSize = 2 // 0x7f + 0xff
+        for (const chunk of chunks) {
+          totalSize += encodeIntHeader(3, BigInt(chunk.length), chunk.byteSize).length + chunk.length
+        }
+        const result = new Uint8Array(totalSize)
+        let pos = 0
+        result[pos++] = 0x7f
+        let srcOffset = 0
+        for (const chunk of chunks) {
+          const header = encodeIntHeader(3, BigInt(chunk.length), chunk.byteSize)
+          result.set(header, pos)
+          pos += header.length
+          result.set(utf8.subarray(srcOffset, srcOffset + chunk.length), pos)
+          pos += chunk.length
+          srcOffset += chunk.length
+        }
+        result[pos] = 0xff
+        return result
       }
-      result[pos] = 0xff
+    } else {
+      // Definite with specific byteSize
+      const header = encodeIntHeader(3, BigInt(utf8.length), stringEncoding.byteSize)
+      const result = new Uint8Array(header.length + utf8.length)
+      result.set(header, 0)
+      result.set(utf8, header.length)
       return result
     }
-    // Definite with specific byteSize
-    const header = encodeIntHeader(3, BigInt(utf8.length), stringEncoding.byteSize)
-    const result = new Uint8Array(header.length + utf8.length)
-    result.set(header, 0)
-    result.set(utf8, header.length)
-    return result
   }
 
   // Fast path for empty strings
