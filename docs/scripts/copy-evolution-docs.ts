@@ -19,6 +19,9 @@ function convertMdToMdx(content: string) {
   // Convert HTML class attributes to className for React/MDX compatibility
   content = content.replace(/class="/g, 'className="')
 
+  // MDX reads braces as an expression, so write a JSDoc {@link Name} tag as `Name`
+  content = content.replace(/\{@link\s+([^}\s]+)\s*\}/g, "`$1`")
+
   // Just copy the files and rename them - no complex processing
   return content
 }

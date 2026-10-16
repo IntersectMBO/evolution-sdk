@@ -188,8 +188,15 @@ const optionsCache = new WeakMap<Transaction, CBOR.TxCodecOptions>()
  * ```typescript
  * import * as CBOR from "@evolution-sdk/evolution/CBOR"
  * import * as Transaction from "@evolution-sdk/evolution/Transaction"
+ * import * as TransactionBody from "@evolution-sdk/evolution/TransactionBody"
+ * import * as TransactionWitnessSet from "@evolution-sdk/evolution/TransactionWitnessSet"
  *
- * declare const tx: Transaction.Transaction
+ * const tx = new Transaction.Transaction({
+ *   body: new TransactionBody.TransactionBody({ inputs: [], outputs: [], fee: 0n }),
+ *   witnessSet: new TransactionWitnessSet.TransactionWitnessSet({}),
+ *   isValid: true,
+ *   auxiliaryData: null
+ * })
  * const recorded = Transaction.withCodecOptions(tx, CBOR.TX_CANONICAL_OPTIONS)
  * // Same bytes as Transaction.toCBORHex(tx, CBOR.TX_CANONICAL_OPTIONS)
  * const hex = Transaction.toCBORHex(recorded)
