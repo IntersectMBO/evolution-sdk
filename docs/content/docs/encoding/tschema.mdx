@@ -120,6 +120,60 @@ const addr: Address = {
 const cbor = Codec.toCBORHex(addr)
 ```
 
+#### Struct options
+
+`TSchema.Struct(fields, options)` takes four options. All of them exist to make the encoded constructor match an Aiken type exactly — a wrong index or an extra nesting level is a different datum on-chain.
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `index` | `0` | The Plutus constructor index this struct encodes to. Set it when the Aiken constructor is not the first in its type. |
+| `flatFields` | `false` | When this struct is a *field* of a parent struct, spread its fields into the parent's field list instead of nesting it as its own constructor. |
+| `flatInUnion` | `true` when `index` is set, otherwise `false` | When this struct is a member of a `Union`, encode it directly as `Constr(index, [fields])` instead of wrapping it as `Constr(position, [Constr(index, [fields])])`. |
+| `tagField` | auto-detect | The field to treat as a discriminant tag: a custom name, or `false` to disable detection. Fields named `_tag`, `type`, `kind`, or `variant` holding a `Literal` are detected automatically, stripped from the CBOR on encode, and injected back on decode (see [TaggedStruct](#taggedstruct)). |
+
+A custom constructor index changes the constructor tag and nothing else:
+
+```typescript twoslash
+import { Data, TSchema } from "@evolution-sdk/evolution"
+
+const SecondConstructor = Data.withSchema(
+  TSchema.Struct({ amount: TSchema.Integer }, { index: 2 })
+)
+
+// Constr 2 with one field — the default index 0 would encode differently
+const cbor = SecondConstructor.toCBORHex({ amount: 500n })
+// "d87b9f1901f4ff"
+```
+
+`flatFields` flattens a nested struct into its parent. This is how Aiken record fields that are themselves records usually encode:
+
+```typescript twoslash
+import { Data, TSchema } from "@evolution-sdk/evolution"
+
+const Point = { x: TSchema.Integer, y: TSchema.Integer }
+
+const FlatCodec = Data.withSchema(
+  TSchema.Struct({
+    inner: TSchema.Struct(Point, { flatFields: true }),
+    z: TSchema.Integer
+  })
+)
+
+const NestedCodec = Data.withSchema(
+  TSchema.Struct({ inner: TSchema.Struct(Point), z: TSchema.Integer })
+)
+
+const value = { inner: { x: 1n, y: 2n }, z: 3n }
+
+// Constr 0 [1, 2, 3] — the inner fields are spread into the parent
+FlatCodec.toCBORHex(value)
+// "d8799f010203ff"
+
+// Constr 0 [Constr 0 [1, 2], 3] — without flatFields the inner struct nests
+NestedCodec.toCBORHex(value)
+// "d8799fd8799f0102ff03ff"
+```
+
 ### Variant
 
 For sum types (multiple possible constructors):
@@ -260,9 +314,20 @@ const config: Config = {
 }
 ```
 
+#### NullOr vs UndefinedOr — which one?
+
+On-chain there is no difference: both encode a present value as `Constr 0 [value]` ("Just") and an absent value as `Constr 1 []` ("Nothing"), byte for byte. `NullOr(TSchema.Integer)` encodes `42n` to `d8799f182aff` and `null` to `d87a80`; `UndefinedOr(TSchema.Integer)` encodes `42n` and `undefined` to exactly the same bytes.
+
+The choice is purely about the TypeScript side:
+
+- Use **`UndefinedOr`** when the value is an optional field that may simply be absent — the natural shape for struct fields in TypeScript objects.
+- Use **`NullOr`** when the value comes from (or goes to) JSON or an API where absence is represented explicitly as `null`.
+
+Pick by the data's TypeScript representation, never by the chain encoding — the validator sees the same datum either way.
+
 ### Boolean
 
-Maps `true`/`false` to Plutus constructors (`True = Constr(1, [])`, `False = Constr(0, [])`):
+Maps `true`/`false` to Plutus constructors (`True = Constr(1, [])`, `False = Constr(0, [])` — encoding to `d87a80` and `d87980` respectively):
 
 ```typescript twoslash
 import { Data, TSchema } from "@evolution-sdk/evolution"
@@ -299,7 +364,7 @@ const datum = Codec.toData({
 
 ### Literal
 
-For enum-like constructors with no fields:
+For enum-like constructors with no fields. With several literals, each value encodes to the constructor at its position in the argument list:
 
 ```typescript twoslash
 import { Data, TSchema } from "@evolution-sdk/evolution"
@@ -309,14 +374,49 @@ const UnitSchema = TSchema.Literal("Unit" as const)
 const Codec = Data.withSchema(UnitSchema)
 
 const unit = Codec.toData("Unit" as const)
+
+const DirectionCodec = Data.withSchema(TSchema.Literal("North", "South"))
+
+// Position determines the constructor index
+DirectionCodec.toCBORHex("North")
+// "d87980" — Constr 0, no fields
+DirectionCodec.toCBORHex("South")
+// "d87a80" — Constr 1, no fields
 ```
 
-### Tuple
+#### Literal options
 
-For fixed-length positional data (encoded as a Plutus constructor with indexed fields):
+A trailing options object configures `Literal`:
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `index` | the value's position | The constructor index the literal encodes to. It applies to the schema as a whole, not per value — see the warning below. |
+| `flatInUnion` | `true` when `index` is set, otherwise `false` | In a `Union`, encode directly as `Constr(index, [])` instead of wrapping in the union's constructor. |
+
+Use `index` for a **single** literal that must land on a specific constructor — typically one Aiken constructor you model on its own, flat inside a union:
 
 ```typescript twoslash
 import { Data, TSchema } from "@evolution-sdk/evolution"
+
+const Codec = Data.withSchema(TSchema.Literal("Unit", { index: 2, flatInUnion: true }))
+
+Codec.toCBORHex("Unit")
+// "d87b80" — Constr 2, no fields
+
+const decoded = Codec.fromCBORHex("d87b80")
+// "Unit"
+```
+
+Pair `index` with `flatInUnion: true` as shown: the flat flag is what lets decoding map the constructor back to the literal instead of looking the index up as a position.
+
+**Warning:** `index` is one index for the whole schema. Setting it on a multi-literal schema encodes *every* value to that same constructor (`TSchema.Literal("North", "South", { index: 7 })` encodes both as Constr 7) and the values can no longer be decoded back. For enums, use positions; reserve `index` for the single-literal case above.
+
+### Tuple
+
+For fixed-length positional data. Unlike `Struct`, a tuple is **not** a Plutus constructor: it encodes as a plain CBOR array of its elements, in order, and each element keeps its own schema's encoding (a `Boolean` element is still a constructor, an `Integer` element a bare integer). That matches Aiken tuples, which are also plain lists on-chain — use `Struct` when the value is a record with a constructor of its own, and `Tuple` when it is positional data inside one.
+
+```typescript twoslash
+import { Bytes, Data, TSchema } from "@evolution-sdk/evolution"
 
 const PairSchema = TSchema.Tuple([TSchema.ByteArray, TSchema.Integer])
 
@@ -325,13 +425,18 @@ type Pair = typeof PairSchema.Type
 
 const Codec = Data.withSchema(PairSchema)
 
-const pair: Pair = [new Uint8Array(28), 42n]
+const pair: Pair = [Bytes.fromHex("deadbeef"), 1000n]
+
+// A CBOR array of the two elements — no constructor wrapper
 const cbor = Codec.toCBORHex(pair)
+// "9f44deadbeef1903e8ff"
 ```
 
 ### TaggedStruct
 
-Like `Struct` but includes an Effect `_tag` field for pattern matching:
+`TSchema.TaggedStruct(tagValue, fields, options?)` is a shortcut for a `Struct` with a `Literal` tag field — the standard way to build discriminated unions in TypeScript. The tag field is `_tag` by default; pass `options.tagField` to use another name (`type`, `kind`, and `variant` are also auto-detected — see [Union](#union)).
+
+The tag exists only on the TypeScript side: it is stripped from the CBOR on encode and injected back on decode, so a tagged struct encodes exactly like the plain struct of its remaining fields:
 
 ```typescript twoslash
 import { Data, TSchema } from "@evolution-sdk/evolution"
@@ -346,11 +451,31 @@ type Claim = typeof ClaimAction.Type
 
 type Update = typeof UpdateAction.Type
 // { readonly _tag: "Update"; readonly newValue: bigint }
+
+const Codec = Data.withSchema(TSchema.TaggedStruct("Update", { amount: TSchema.Integer }))
+
+// Constr 0 [500] — the same bytes as Struct({ amount }) at index 0;
+// "Update" appears nowhere in the encoding
+const cbor = Codec.toCBORHex({ _tag: "Update", amount: 500n })
+// "d8799f1901f4ff"
+
+// Decoding injects the tag back
+const decoded = Codec.fromCBORHex(cbor)
+// { _tag: "Update", amount: 500n }
 ```
 
-### Union (Direct)
+The tag *field name* never reaches the chain either — a union built with `{ tagField: "type" }` encodes byte-identically to the `_tag` version and decodes with `type` injected instead. Choose the name your codebase already uses.
 
-Combine multiple schemas into a discriminated union — useful for complex redeemer types:
+### Union
+
+`TSchema.Union(...members)` is the lower-level primitive the helpers above are built on: `Variant` is a `Union` of flat wrapper structs, and a set of `TaggedStruct`s only becomes a union when you pass them to `Union`. Understanding `Union` directly matters when the helpers' shapes do not fit — members that are not structs at all, custom constructor indices, or a mix of flat and nested members.
+
+How encoding works:
+
+- The value is matched against the members in order (`Schema.is`); the first match wins.
+- A **nested** (default) member encodes as `Constr(position, [memberEncoding])` — the union adds a constructor layer of its own, with the member's position as its index.
+- A **flat** member — one whose schema carries an index, via `Struct(fields, { index })`, `TaggedStruct(tag, fields, { index })`, or `Literal(value, { index, flatInUnion: true })` — encodes directly as `Constr(index, [fields])` with no extra layer, so flat indices must not collide with another member's position.
+- If **every** member is a struct carrying the same tag field (`_tag`, `type`, `kind`, or `variant`) with a `Literal` value, the tag is auto-detected: it is stripped on encode and injected on decode. Tag values must be unique across members and all members must use the same tag field name — `Union` throws at construction time when either rule is broken.
 
 ```typescript twoslash
 import { Data, TSchema } from "@evolution-sdk/evolution"
@@ -367,28 +492,69 @@ const Codec = Data.withSchema(ActionSchema)
 
 const claim: Action = { _tag: "Claim" }
 const update: Action = { _tag: "Update", amount: 500n }
+
+// These members carry no index, so they are nested: the union's
+// constructor (position 2) wraps the member's own constructor
+const cbor = Codec.toCBORHex(update)
+// "d87a9fd8799f1901f4ffff" — Constr 2 [Constr 0 [500]]
 ```
+
+Reach for `Union` directly when you need that control — most often to give members explicit constructor indices so they encode flat, the way an Aiken enum does:
+
+```typescript twoslash
+import { Data, TSchema } from "@evolution-sdk/evolution"
+
+const Codec = Data.withSchema(
+  TSchema.Union(
+    TSchema.Struct({ amount: TSchema.Integer }, { index: 5 }),
+    TSchema.Struct({ note: TSchema.ByteArray })
+  )
+)
+
+// Flat member: Constr 5 [500], no wrapping layer
+Codec.toCBORHex({ amount: 500n })
+// "d87e9f1901f4ff"
+```
+
+### Variant vs Union vs TaggedStruct
+
+These three overlap, and the difference is the shape on both sides:
+
+| | TypeScript shape | CBOR shape | Use when |
+|---|---|---|---|
+| **Variant** | Wrapper object: `{ VerificationKey: { hash } }` — the variant name is the single key | Single level: `Constr(variantIndex, [fields])` | The type mirrors an Aiken enum and you want the encoding handled for you — this is the common case |
+| **TaggedStruct** (in a **Union**) | Discriminator field: `{ _tag: "Update", amount }` | Nested by default: `Constr(position, [Constr(memberIndex, [fields])])`; flat with explicit `index` options | You pattern-match on `_tag` in TypeScript (Effect-style codebases), or members need custom indices |
+| **Union** (raw members) | Whatever the member schemas produce | Position-wrapped for nested members, direct for flat ones | The members are not all structs, or you need per-member control the helpers do not expose |
+
+The tag-stripping rule is shared: in a `Variant` the variant *name* never appears in the CBOR (it is the constructor index), and in a tagged union the tag *value* never appears either. What differs is only the TypeScript shape you program against and whether an extra constructor layer wraps each member.
 
 ## Utility Functions
 
 TSchema re-exports several Effect Schema utilities:
 
-```typescript
-import { TSchema } from "@evolution-sdk/evolution"
+```typescript twoslash
+import { Data, TSchema } from "@evolution-sdk/evolution"
 
-// Type guard
-TSchema.is(MySchema)(someValue)  // boolean
+const AmountSchema = TSchema.Struct({ amount: TSchema.Integer })
 
-// Compose schemas
-const Composed = TSchema.compose(SchemaA, SchemaB)
+// Type guard — curried: build the guard once, then apply it
+const isAmount = TSchema.is(AmountSchema)
+const checked: boolean = isAmount({ amount: 500n })
 
-// Filter with refinement
-const Positive = TSchema.filter(TSchema.Integer, (n) => n > 0n)
+// Structural equality for a schema's values
+const eq = TSchema.equivalence(AmountSchema)
+const same: boolean = eq({ amount: 1n }, { amount: 1n })
 
-// Structural equality
-const eq = TSchema.equivalence(MySchema)
-eq(a, b)  // boolean
+// Filter with a refinement — note the pipe form: the two-argument
+// form TSchema.filter(schema, predicate) is not how Schema.filter works
+const Positive = TSchema.Integer.pipe(TSchema.filter((n) => n > 0n))
+const PositiveCodec = Data.withSchema(Positive)
+PositiveCodec.toCBORHex(5n)
+// "05"
+// Encoding -1n throws: the refinement rejects it before encoding
 ```
+
+`TSchema.compose(to, from)` also re-exports Effect's `Schema.compose`: it chains two schemas end to end, so a value decodes through one schema and then the other — the standard way to build a schema whose TypeScript type differs from its serialized form in two steps (for example, a text form parsed into a number, then validated as a domain type).
 
 ## Creating Codecs
 
