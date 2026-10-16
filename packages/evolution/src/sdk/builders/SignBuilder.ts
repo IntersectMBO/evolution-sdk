@@ -29,6 +29,13 @@ export interface SignBuilderEffect {
   // Signing methods
   readonly sign: () => Effect.Effect<SubmitBuilder, TransactionBuilderError>
   readonly signAndSubmit: () => Effect.Effect<TransactionHash.TransactionHash, TransactionBuilderError>
+  /**
+   * Signs with signatures made outside the wallet, such as the vkey witnesses
+   * a hardware wallet returns. The transaction keeps its own witness set, with
+   * its scripts, datums and redeemers, and gains the vkey and bootstrap
+   * witnesses of `witnessSet`, each vkey witness once. Scripts, datums and
+   * redeemers in `witnessSet` are ignored.
+   */
   readonly signWithWitness: (
     witnessSet: TransactionWitnessSet.TransactionWitnessSet
   ) => Effect.Effect<SubmitBuilder, TransactionBuilderError>
