@@ -73,7 +73,19 @@ export const getProtocolParameters = (baseUrl: string, apiKey: string) =>
     Maestro.MaestroTimestampedResponse(Maestro.MaestroProtocolParameters),
     createHeaders(apiKey)
   ).pipe(
-    Effect.map((response) => Maestro.transformProtocolParameters(response.data)),
+    // flatMap + try, not map: transformProtocolParameters throws a clear error for a
+    // required field that arrived null/missing (#570), and a throw inside Effect.map
+    // would surface as a defect instead of the ProviderError this function promises
+    Effect.flatMap((response) =>
+      Effect.try({
+        try: () => Maestro.transformProtocolParameters(response.data),
+        catch: (cause) =>
+          new ProviderError({
+            message: cause instanceof Error ? cause.message : "Maestro get protocol parameters failed",
+            cause
+          })
+      })
+    ),
     Effect.timeout(TIMEOUT),
     Effect.catchAll(wrapError("get protocol parameters"))
   )
