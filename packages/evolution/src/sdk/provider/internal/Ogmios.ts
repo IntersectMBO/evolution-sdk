@@ -35,9 +35,25 @@ export const ProtocolParametersSchema = Schema.Struct({
     range: Schema.BigInt,
     multiplier: Schema.NumberFromString
   }),
-  maxReferenceScriptsSize: Schema.Struct({
-    bytes: Schema.BigInt
-  }),
+  // Ogmios v7 renamed this to maxReferenceScriptsSizePerTransaction and
+  // added maxReferenceScriptsSizePerBlock; deployed servers run both major
+  // versions, so every spelling is optional (the value is not mapped into
+  // the provider's ProtocolParameters).
+  maxReferenceScriptsSize: Schema.optional(
+    Schema.Struct({
+      bytes: Schema.BigInt
+    })
+  ),
+  maxReferenceScriptsSizePerTransaction: Schema.optional(
+    Schema.Struct({
+      bytes: Schema.BigInt
+    })
+  ),
+  maxReferenceScriptsSizePerBlock: Schema.optional(
+    Schema.Struct({
+      bytes: Schema.BigInt
+    })
+  ),
   stakePoolVotingThresholds: Schema.Struct({
     noConfidence: TupleNumberFromString,
     constitutionalCommittee: Schema.Struct({
@@ -89,10 +105,12 @@ export const ProtocolParametersSchema = Schema.Struct({
   minStakePoolCost: Schema.Struct({ ada: LovelaceAsset }),
   minUtxoDepositConstant: Schema.Struct({ ada: LovelaceAsset }),
   minUtxoDepositCoefficient: Schema.BigInt,
+  // Ogmios builds this map from the cost models that exist on the network,
+  // so a language with no cost model is omitted entirely, not sent empty.
   plutusCostModels: Schema.Struct({
-    "plutus:v1": Schema.Array(Schema.BigInt),
-    "plutus:v2": Schema.Array(Schema.BigInt),
-    "plutus:v3": Schema.Array(Schema.BigInt)
+    "plutus:v1": Schema.optional(Schema.Array(Schema.BigInt)),
+    "plutus:v2": Schema.optional(Schema.Array(Schema.BigInt)),
+    "plutus:v3": Schema.optional(Schema.Array(Schema.BigInt))
   }),
   scriptExecutionPrices: Schema.Struct({
     memory: TupleNumberFromString,

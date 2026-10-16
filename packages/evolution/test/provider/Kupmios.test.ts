@@ -129,6 +129,52 @@ describe("Kupmios read paths", () => {
     expect(Object.values(params.costModels.PlutusV3)).toEqual(expected.plutusCostModels["plutus:v3"])
   })
 
+  it("getProtocolParameters with an Ogmios cost model language missing (#568)", async () => {
+    // Ogmios builds plutusCostModels from costModelsValid, so a network
+    // without a Plutus V1 cost model omits the "plutus:v1" key entirely.
+    const withoutV1 = protocolParameters.replace(/"plutus:v1": \[[^\]]*\],\s*/, "")
+    expect(withoutV1).not.toContain('"plutus:v1"')
+    stubKupmios({ ogmios: { "queryLedgerState/protocolParameters": withoutV1 } })
+    const { result: expected } = JSON.parse(withoutV1)
+
+    const params = await Effect.runPromise(KupmiosEffects.getProtocolParametersEffect(OGMIOS_URL))
+
+    // A missing language maps to an empty cost model; the others are intact
+    expect(params.costModels.PlutusV1).toEqual({})
+    expect(Object.values(params.costModels.PlutusV2)).toEqual(expected.plutusCostModels["plutus:v2"])
+    expect(Object.values(params.costModels.PlutusV3)).toEqual(expected.plutusCostModels["plutus:v3"])
+    expect(params.minFeeA).toBe(44)
+  })
+
+  it("getProtocolParameters with no Ogmios cost models at all (#568)", async () => {
+    const noModels = protocolParameters.replace(
+      /"plutusCostModels": \{[\s\S]*?\},\s*"scriptExecutionPrices"/,
+      `"plutusCostModels": {},\n    "scriptExecutionPrices"`
+    )
+    expect(JSON.parse(noModels).result.plutusCostModels).toEqual({})
+    stubKupmios({ ogmios: { "queryLedgerState/protocolParameters": noModels } })
+
+    const params = await Effect.runPromise(KupmiosEffects.getProtocolParametersEffect(OGMIOS_URL))
+
+    expect(params.costModels).toEqual({ PlutusV1: {}, PlutusV2: {}, PlutusV3: {} })
+  })
+
+  it("getProtocolParameters against Ogmios v7 (maxReferenceScriptsSize renamed, #559)", async () => {
+    // Ogmios v7 renames maxReferenceScriptsSize to
+    // maxReferenceScriptsSizePerTransaction and adds a PerBlock key.
+    const v7 = protocolParameters.replace(
+      /"maxReferenceScriptsSize": \{\s*"bytes": 204800\s*\}/,
+      `"maxReferenceScriptsSizePerTransaction": {"bytes": 204800},\n    "maxReferenceScriptsSizePerBlock": {"bytes": 1048576}`
+    )
+    expect(v7).toContain('"maxReferenceScriptsSizePerTransaction"')
+    expect(v7).not.toContain('"maxReferenceScriptsSize":')
+    stubKupmios({ ogmios: { "queryLedgerState/protocolParameters": v7 } })
+
+    const params = await Effect.runPromise(KupmiosEffects.getProtocolParametersEffect(OGMIOS_URL))
+
+    expect(params).toMatchObject({ minFeeA: 44, minFeeB: 155381, maxTxSize: 16384 })
+  })
+
   it("getUtxos by address", async () => {
     stubKupmios({ kupo: kupo() })
 

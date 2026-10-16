@@ -61,14 +61,15 @@ const toProtocolParameters = (result: Ogmios.ProtocolParameters): Provider.Proto
     maxCollateralInputs: Number(result.maxCollateralInputs),
     minFeeRefScriptCostPerByte: result.minFeeReferenceScripts.base,
     costModels: {
+      // A language Ogmios omitted has no cost model on this network: {}
       PlutusV1: Object.fromEntries(
-        result.plutusCostModels["plutus:v1"].map((value, index) => [index.toString(), Number(value)])
+        (result.plutusCostModels["plutus:v1"] ?? []).map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV2: Object.fromEntries(
-        result.plutusCostModels["plutus:v2"].map((value, index) => [index.toString(), Number(value)])
+        (result.plutusCostModels["plutus:v2"] ?? []).map((value, index) => [index.toString(), Number(value)])
       ),
       PlutusV3: Object.fromEntries(
-        result.plutusCostModels["plutus:v3"].map((value, index) => [index.toString(), Number(value)])
+        (result.plutusCostModels["plutus:v3"] ?? []).map((value, index) => [index.toString(), Number(value)])
       )
     }
   }
