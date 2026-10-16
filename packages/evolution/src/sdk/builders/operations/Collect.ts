@@ -81,7 +81,7 @@ export const createCollectFromProgram = (
     })
 
     // 4. Validate redeemer for Plutus script UTxOs only
-    if (plutusScriptUtxos.length > 0 && !params.redeemer) {
+    if (plutusScriptUtxos.length > 0 && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: `Redeemer required for ${plutusScriptUtxos.length} script-locked UTxO(s)`
@@ -98,7 +98,7 @@ export const createCollectFromProgram = (
 
       // 5. Track redeemer information if spending from Plutus scripts
       // Native scripts are validated by signatures, not redeemers
-      if (params.redeemer && plutusScriptUtxos.length > 0) {
+      if (params.redeemer !== undefined && plutusScriptUtxos.length > 0) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
 
         if (deferred._tag === "static") {

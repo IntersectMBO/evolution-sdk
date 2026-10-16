@@ -68,7 +68,7 @@ export const createVoteProgram = (params: VoteParams): Effect.Effect<void, Trans
     }
 
     // 3. If redeemer provided but no script voters, warn
-    if (params.redeemer && scriptVoters.size === 0) {
+    if (params.redeemer !== undefined && scriptVoters.size === 0) {
       yield* Effect.logWarning(
         "[Vote] Redeemer provided but no script-controlled voters found. Redeemer will be ignored."
       )
@@ -113,7 +113,7 @@ export const createVoteProgram = (params: VoteParams): Effect.Effect<void, Trans
       let newRedeemers = state.redeemers
       let newDeferredRedeemers = state.deferredRedeemers
 
-      if (params.redeemer && scriptVoters.size > 0) {
+      if (params.redeemer !== undefined && scriptVoters.size > 0) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
 
         if (deferred._tag === "static") {
