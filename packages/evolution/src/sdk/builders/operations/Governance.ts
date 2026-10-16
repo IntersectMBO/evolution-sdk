@@ -59,7 +59,7 @@ export const createRegisterDRepProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.drepCredential.hash)}`
 
@@ -120,7 +120,7 @@ export const createUpdateDRepProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.drepCredential.hash)}`
 
@@ -188,7 +188,7 @@ export const createDeregisterDRepProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.drepCredential.hash)}`
 
@@ -255,7 +255,7 @@ export const createAuthCommitteeHotProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.coldCredential.hash)}`
 
@@ -318,7 +318,7 @@ export const createResignCommitteeColdProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.coldCredential.hash)}`
 

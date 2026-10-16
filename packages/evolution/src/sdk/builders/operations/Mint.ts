@@ -101,7 +101,7 @@ export const createMintAssetsProgram = (
       let newRedeemers = state.redeemers
       let newDeferredRedeemers = state.deferredRedeemers
 
-      if (params.redeemer && policyIds.size > 0) {
+      if (params.redeemer !== undefined && policyIds.size > 0) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
 
         if (deferred._tag === "static") {

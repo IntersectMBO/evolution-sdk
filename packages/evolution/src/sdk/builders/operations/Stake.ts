@@ -42,7 +42,7 @@ export const createRegisterStakeProgram = (
 
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential registration"
@@ -68,7 +68,7 @@ export const createRegisterStakeProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -118,7 +118,7 @@ export const createRegisterStakeLegacyProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential registration"
@@ -136,7 +136,7 @@ export const createRegisterStakeLegacyProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -232,7 +232,7 @@ export const createDelegateToPoolProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential delegation"
@@ -251,7 +251,7 @@ export const createDelegateToPoolProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -303,7 +303,7 @@ export const createDelegateToDRepProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential delegation"
@@ -322,7 +322,7 @@ export const createDelegateToDRepProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -374,7 +374,7 @@ export const createDelegateToPoolAndDRepProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential delegation"
@@ -394,7 +394,7 @@ export const createDelegateToPoolAndDRepProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -467,7 +467,7 @@ export const createRegisterAndDelegateToProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential registration and delegation"
@@ -507,7 +507,7 @@ export const createRegisterAndDelegateToProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -567,7 +567,7 @@ export const createDeregisterStakeProgram = (
 
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential deregistration"
@@ -593,7 +593,7 @@ export const createDeregisterStakeProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         // Use credential hash as key for cert redeemers
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
@@ -644,7 +644,7 @@ export const createDeregisterStakeLegacyProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential deregistration"
@@ -662,7 +662,7 @@ export const createDeregisterStakeLegacyProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         const certKey = `cert:${Bytes.toHex(params.stakeCredential.hash)}`
 
@@ -716,7 +716,7 @@ export const createWithdrawProgram = (
     // Check if script-controlled
     const isScriptControlled = params.stakeCredential._tag === "ScriptHash"
 
-    if (isScriptControlled && !params.redeemer) {
+    if (isScriptControlled && params.redeemer === undefined) {
       return yield* Effect.fail(
         new TransactionBuilderError({
           message: "Redeemer required for script-controlled stake credential withdrawal"
@@ -738,7 +738,7 @@ export const createWithdrawProgram = (
       let newDeferredRedeemers = state.deferredRedeemers
 
       // Track redeemer if script-controlled
-      if (params.redeemer && isScriptControlled) {
+      if (params.redeemer !== undefined && isScriptControlled) {
         const deferred = RedeemerBuilder.toDeferredRedeemer(params.redeemer)
         // Use reward account as key for reward redeemers
         const rewardKey = `reward:${Bytes.toHex(params.stakeCredential.hash)}`
