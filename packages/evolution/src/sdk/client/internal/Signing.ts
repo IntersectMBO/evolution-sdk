@@ -110,6 +110,40 @@ const computeRequiredKeyHashesSync = (params: {
     }
   }
 
+  if (params.tx.body.votingProcedures) {
+    for (const voter of params.tx.body.votingProcedures.procedures.keys()) {
+      switch (voter._tag) {
+        case "DRepVoter":
+          // Mirrors the RegDrepCert handling below: a key-hash DRep voter is
+          // the wallet's stake credential.
+          if (params.stakeKhHex && voter.drep._tag === "KeyHashDRep") {
+            if (KeyHash.toHex(voter.drep.keyHash) === params.stakeKhHex) {
+              required.add(params.stakeKhHex)
+            }
+          }
+          break
+        case "ConstitutionalCommitteeVoter":
+          // Mirrors the AuthCommitteeHotCert handling below, which likewise
+          // matches the committee credential against the stake key hash.
+          if (params.stakeKhHex && voter.credential._tag === "KeyHash") {
+            if (KeyHash.toHex(voter.credential) === params.stakeKhHex) {
+              required.add(params.stakeKhHex)
+            }
+          }
+          break
+        case "StakePoolVoter":
+          // Mirrors the PoolRegistration/PoolRetirement handling below: a
+          // stake pool voter is identified by the pool (payment) key hash.
+          if (params.paymentKhHex) {
+            if (PoolKeyHash.toHex(voter.poolKeyHash) === params.paymentKhHex) {
+              required.add(params.paymentKhHex)
+            }
+          }
+          break
+      }
+    }
+  }
+
   if (params.tx.body.certificates && (params.stakeKhHex || params.paymentKhHex)) {
     for (const certificate of params.tx.body.certificates) {
       if (params.stakeKhHex) {

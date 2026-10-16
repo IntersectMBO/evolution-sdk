@@ -5,9 +5,10 @@
  * @since 2.0.0
  */
 
-import { Effect, Ref } from "effect"
+import { Effect, Equal, Ref } from "effect"
 
 import type * as GovernanceAction from "../../../GovernanceAction.js"
+import * as KeyHash from "../../../KeyHash.js"
 import * as VotingProcedures from "../../../VotingProcedures.js"
 import * as RedeemerBuilder from "../RedeemerBuilder.js"
 import { TransactionBuilderError, TxContext, voterToKey } from "../TransactionBuilder.js"
@@ -25,6 +26,22 @@ const isScriptVoter = (voter: VotingProcedures.Voter): boolean => {
     case "StakePoolVoter":
       // Pool operators are always key-hash based, never script-controlled
       return false
+  }
+}
+
+/**
+ * The key hash a key-hash voter must sign with, if the voter is key-hash based.
+ * Script-controlled voters return undefined (they sign via redeemers/scripts,
+ * not a vkey witness of their own).
+ */
+const keyHashVoter = (voter: VotingProcedures.Voter): KeyHash.KeyHash | undefined => {
+  switch (voter._tag) {
+    case "ConstitutionalCommitteeVoter":
+      return voter.credential._tag === "KeyHash" ? voter.credential : undefined
+    case "DRepVoter":
+      return voter.drep._tag === "KeyHashDRep" ? voter.drep.keyHash : undefined
+    case "StakePoolVoter":
+      return new KeyHash.KeyHash({ hash: voter.poolKeyHash.hash })
   }
 }
 
@@ -59,11 +76,17 @@ export const createVoteProgram = (params: VoteParams): Effect.Effect<void, Trans
       )
     }
 
-    // 2. Collect script-controlled voters for redeemer tracking
+    // 2. Collect script-controlled voters for redeemer tracking, and the
+    // key hashes of key-hash voters for requiredSigners tracking
     const scriptVoters = new Set<string>()
+    const keyHashVoters = new Array<KeyHash.KeyHash>()
     for (const [voter, _] of params.votingProcedures.procedures.entries()) {
       if (isScriptVoter(voter)) {
         scriptVoters.add(voterToKey(voter))
+      }
+      const keyHash = keyHashVoter(voter)
+      if (keyHash && !keyHashVoters.some((existing) => Equal.equals(existing, keyHash))) {
+        keyHashVoters.push(keyHash)
       }
     }
 
@@ -141,11 +164,26 @@ export const createVoteProgram = (params: VoteParams): Effect.Effect<void, Trans
         }
       }
 
+      // Key-hash voters must sign the transaction: record them in the body's
+      // requiredSigners (deduplicated, like the AddSigner operation) so the
+      // signing step is asked for their vkey witnesses.
+      let newRequiredSigners = state.requiredSigners
+      if (keyHashVoters.length > 0) {
+        const mergedSigners = [...state.requiredSigners]
+        for (const keyHash of keyHashVoters) {
+          if (!mergedSigners.some((existing) => Equal.equals(existing, keyHash))) {
+            mergedSigners.push(keyHash)
+          }
+        }
+        newRequiredSigners = mergedSigners
+      }
+
       return {
         ...state,
         votingProcedures: mergedVotingProcedures,
         redeemers: newRedeemers,
-        deferredRedeemers: newDeferredRedeemers
+        deferredRedeemers: newDeferredRedeemers,
+        requiredSigners: newRequiredSigners
       }
     })
 
