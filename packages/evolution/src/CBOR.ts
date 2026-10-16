@@ -2241,6 +2241,16 @@ const decodeTagAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
   } else if (additionalInfo === 25) {
     if (data.length < offset + 3) throw new CBORError({ message: "Insufficient data for 2-byte tag" })
     tagValue = (data[offset + 1] << 8) | data[offset + 2]; cur += 3
+  } else if (additionalInfo === 26) {
+    if (data.length < offset + 5) throw new CBORError({ message: "Insufficient data for 4-byte tag" })
+    tagValue = data[offset + 1] * 16777216 + data[offset + 2] * 65536 + data[offset + 3] * 256 + data[offset + 4]
+    cur += 5
+  } else if (additionalInfo === 27) {
+    if (data.length < offset + 9) throw new CBORError({ message: "Insufficient data for 8-byte tag" })
+    let v = 0n
+    for (let i = 1; i <= 8; i++) v = v * 256n + BigInt(data[offset + i])
+    tagValue = Number(v)
+    cur += 9
   } else {
     throw new CBORError({ message: `Unsupported tag encoding: ${additionalInfo}` })
   }

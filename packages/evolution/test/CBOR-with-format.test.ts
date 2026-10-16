@@ -14,6 +14,8 @@ const ENCODING_VECTORS = [
   { name: "array indefinite length", hex: "9f0102ff" },
   { name: "map indefinite length", hex: "bf01020304ff" },
   { name: "tag non-minimal width (tag 24 as uint8)", hex: "d81800" },
+  { name: "tag 4-byte header (tag 258 as uint32)", hex: "da000001028100" },
+  { name: "tag 8-byte header (tag 258 as uint64)", hex: "db00000000000001028100" },
   { name: "map non-canonical key order", hex: "a2036163016161" },
   { name: "nested mixed encodings", hex: "a205a182000082d8798082186418c803d901028143010203" }
 ] as const
@@ -58,6 +60,51 @@ describe("CBOR WithFormat — format tree is the complete specification", () => 
 
     // Plain round-trip canonicalises
     expect(CBOR.toCBORHex(plainValue, CBOR.CANONICAL_OPTIONS)).not.toBe(hex)
+  })
+})
+
+describe("CBOR tag headers wider than 2 bytes (#580)", () => {
+  it("plain decode accepts a 4-byte tag header and reads the tag value", () => {
+    const value = CBOR.fromCBORHex("da000001028100")
+    expect(CBOR.isTag(value)).toBe(true)
+    if (CBOR.isTag(value)) {
+      expect(value.tag).toBe(258)
+      expect(value.value).toEqual([0n])
+    }
+  })
+
+  it("plain decode accepts an 8-byte tag header and reads the tag value", () => {
+    const value = CBOR.fromCBORHex("db00000000000001028100")
+    expect(CBOR.isTag(value)).toBe(true)
+    if (CBOR.isTag(value)) {
+      expect(value.tag).toBe(258)
+      expect(value.value).toEqual([0n])
+    }
+  })
+
+  it("decodes a tag value that needs the 4-byte header", () => {
+    const value = CBOR.fromCBORHex("da000f424000")
+    expect(CBOR.isTag(value)).toBe(true)
+    if (CBOR.isTag(value)) expect(value.tag).toBe(1000000)
+  })
+
+  it("decodes a tag value that needs the 8-byte header", () => {
+    const value = CBOR.fromCBORHex("db000000010000000000")
+    expect(CBOR.isTag(value)).toBe(true)
+    if (CBOR.isTag(value)) expect(value.tag).toBe(4294967296)
+  })
+
+  it("decodes a bignum tag written with a 4-byte header", () => {
+    // tag 2 (positive bignum) in a 4-byte header, bytes 0x0102 = 258
+    expect(CBOR.fromCBORHex("da00000002420102")).toBe(258n)
+  })
+
+  it("rejects a truncated 4-byte tag header", () => {
+    expect(() => CBOR.fromCBORHex("da0001")).toThrow(/Insufficient data for 4-byte tag/)
+  })
+
+  it("rejects a truncated 8-byte tag header", () => {
+    expect(() => CBOR.fromCBORHex("db00000000000001")).toThrow(/Insufficient data for 8-byte tag/)
   })
 })
 

@@ -13,6 +13,11 @@ import * as VKey from "../src/VKey.js"
 const NON_CANONICAL_TX_HEX = "84a300d90102800180021800a0f5f6"
 const NON_CANONICAL_BODY_HEX = "a300d90102800180021800"
 
+// Same transaction, but the inputs set's tag 258 is written with a 4-byte
+// header (da00000102) instead of the usual 2-byte header (d90102) — #580
+const WIDE_TAG_TX_HEX = "84a300da00000102800180021800a0f5f6"
+const WIDE_TAG_BODY_HEX = "a300da00000102800180021800"
+
 const buildDummyVKeyWitness = (): TransactionWitnessSet.VKeyWitness =>
   new TransactionWitnessSet.VKeyWitness({
     vkey: VKey.fromBytes(new Uint8Array(32).fill(0xaa)),
@@ -45,6 +50,12 @@ describe("Transaction WithFormat — non-canonical encoding", () => {
     const hashBefore = CML.hash_transaction(CML.Transaction.from_cbor_hex(NON_CANONICAL_TX_HEX).body()).to_hex()
     const hashAfter = CML.hash_transaction(CML.Transaction.from_cbor_hex(reEncoded).body()).to_hex()
     expect(hashAfter).toBe(hashBefore)
+  })
+
+  it("round-trips a transaction whose set tag uses a 4-byte header exactly (#580)", () => {
+    const { format, value: tx } = Transaction.fromCBORHexWithFormat(WIDE_TAG_TX_HEX)
+    expect(Transaction.toCBORHexWithFormat(tx, format)).toBe(WIDE_TAG_TX_HEX)
+    expect(Transaction.toCBORHexWithFormat(tx, format)).toContain(WIDE_TAG_BODY_HEX)
   })
 
   it("addVKeyWitnessesHex preserves non-canonical body (txId stable)", () => {
