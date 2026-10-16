@@ -7,6 +7,7 @@ import * as CoreAddress from "../../../Address.js"
 import * as CoreAssets from "../../../Assets.js"
 import * as AuxiliaryData from "../../../AuxiliaryData.js"
 import * as Bytes from "../../../Bytes.js"
+import * as CBOR from "../../../CBOR.js"
 import type * as Certificate from "../../../Certificate.js"
 import * as CostModel from "../../../CostModel.js"
 import type * as PlutusData from "../../../Data.js"
@@ -610,6 +611,7 @@ export const assembleTransaction = (
     // Get state ref to access scripts and redeemers
     const stateRef = yield* TxContext
     const state = yield* Ref.get(stateRef)
+    const { codecOptions } = yield* BuildOptionsTag
 
     yield* Effect.logDebug(`[Assembly] Building transaction with ${inputs.length} inputs, ${outputs.length} outputs`)
     yield* Effect.logDebug(`[Assembly] Reference inputs in state: ${state.referenceInputs.length}`)
@@ -678,6 +680,21 @@ export const assembleTransaction = (
           plutusV3Scripts.push(coreScript)
           break
         case "NativeScript":
+          // The ledger hashes the written bytes, and the script hash covers the default encoding
+          if (
+            codecOptions !== undefined &&
+            !Bytes.equals(
+              NativeScripts.toCBORBytes(coreScript, CBOR.toTxCodecOptions(codecOptions).ledger),
+              NativeScripts.toCBORBytes(coreScript)
+            )
+          ) {
+            return yield* Effect.fail(
+              new TransactionBuilderError({
+                message: `codecOptions write native script ${scriptHash} with other bytes than its script hash covers`,
+                cause: { scriptHash }
+              })
+            )
+          }
           nativeScripts.push(coreScript)
           break
       }
@@ -946,7 +963,8 @@ export const assembleTransaction = (
       scriptDataHash = Redeemers.toScriptDataHash(
         redeemersConcrete,
         costModels,
-        plutusDataArray.length > 0 ? plutusDataArray : undefined
+        plutusDataArray.length > 0 ? plutusDataArray : undefined,
+        codecOptions
       )
       yield* Effect.logDebug(`[Assembly] Computed scriptDataHash: ${scriptDataHash.hash.toString()}`)
     }
@@ -1002,7 +1020,11 @@ export const assembleTransaction = (
     // Compute auxiliary data hash if auxiliary data is present
     let auxiliaryDataHash: ReturnType<typeof AuxiliaryData.toHash> | undefined
     if (state.auxiliaryData) {
-      auxiliaryDataHash = AuxiliaryData.toHash(state.auxiliaryData)
+      // The transaction writes its auxiliary data with the ledger options
+      auxiliaryDataHash = AuxiliaryData.toHash(
+        state.auxiliaryData,
+        codecOptions === undefined ? undefined : CBOR.toTxCodecOptions(codecOptions).ledger
+      )
       yield* Effect.logDebug(`[Assembly] Computed auxiliaryDataHash: ${auxiliaryDataHash.toString()}`)
     }
 
@@ -1046,7 +1068,8 @@ export const assembleTransaction = (
       auxiliaryData: state.auxiliaryData ?? null
     })
 
-    return transaction
+    // Evaluators and providers then write the bytes the hashes cover
+    return codecOptions === undefined ? transaction : Transaction.withCodecOptions(transaction, codecOptions)
   }).pipe(
     Effect.mapError(
       (error) =>
@@ -1063,13 +1086,15 @@ export const assembleTransaction = (
 
 /**
  * Calculate the size of a transaction in bytes for fee estimation.
- * Uses CBOR serialization to get accurate size.
+ * Uses CBOR serialization to get accurate size, with `options` when given.
  *
  * @since 2.0.0
  * @category fee-calculation
  */
-export const calculateTransactionSize = (transaction: Transaction.Transaction): number =>
-  Transaction.toCBORBytes(transaction).length
+export const calculateTransactionSize = (
+  transaction: Transaction.Transaction,
+  options?: CBOR.TxCodecOptions | CBOR.CodecOptions
+): number => Transaction.toCBORBytes(transaction, options).length
 
 /**
  * Calculate minimum transaction fee based on protocol parameters.
@@ -1481,7 +1506,7 @@ export const calculateFeeIteratively = (
       })
 
       // Calculate size
-      const size = calculateTransactionSize(transaction)
+      const size = calculateTransactionSize(transaction, buildOptions.codecOptions)
 
       // Calculate base fee from serialized transaction size
       // Note: reference script fees are a separate additive component, NOT included in base fee
@@ -1707,6 +1732,7 @@ export const calculateMinimumUtxoLovelace = (params: {
   datum?: DatumOption.DatumOption
   scriptRef?: CoreScript.Script
   coinsPerUtxoByte: bigint
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 }): Effect.Effect<bigint, TransactionBuilderError> =>
   Effect.gen(function* () {
     const calculateRequiredLovelace = (lovelace: bigint): bigint => {
@@ -1719,7 +1745,7 @@ export const calculateMinimumUtxoLovelace = (params: {
         scriptRef: params.scriptRef
       })
 
-      const cborBytes = TxOut.toCBORBytes(tempOutput)
+      const cborBytes = TxOut.toCBORBytes(tempOutput, params.codecOptions)
 
       return params.coinsPerUtxoByte * (UTXO_ENTRY_OVERHEAD_BYTES + BigInt(cborBytes.length))
     }
@@ -1761,6 +1787,9 @@ export const calculateMinimumUtxoLovelace = (params: {
  * 5. Roll up or subdivide ADA-only UTxOs
  * 6. Return multiple change outputs for optimal wallet structure
  *
+ * Outputs are sized with `codecOptions` when given, the options the
+ * transaction is encoded with.
+ *
  * @since 2.0.0
  * @category change
  */
@@ -1769,9 +1798,10 @@ export const createChangeOutput = (params: {
   changeAddress: CoreAddress.Address
   coinsPerUtxoByte: bigint
   unfrackOptions?: UnfrackOptions
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 }): Effect.Effect<ReadonlyArray<TxOut.TransactionOutput>, TransactionBuilderError> =>
   Effect.gen(function* () {
-    const { changeAddress, coinsPerUtxoByte, leftoverAssets, unfrackOptions } = params
+    const { changeAddress, codecOptions, coinsPerUtxoByte, leftoverAssets, unfrackOptions } = params
 
     // If no leftover, no change needed
     if (CoreAssets.isEmpty(leftoverAssets)) {
@@ -1785,7 +1815,8 @@ export const createChangeOutput = (params: {
         changeAddress,
         leftoverAssets,
         unfrackOptions,
-        coinsPerUtxoByte
+        coinsPerUtxoByte,
+        codecOptions
       ).pipe(
         Effect.mapError(
           (error) =>
@@ -1805,7 +1836,8 @@ export const createChangeOutput = (params: {
     const minLovelace = yield* calculateMinimumUtxoLovelace({
       address: changeAddress,
       assets: leftoverAssets,
-      coinsPerUtxoByte
+      coinsPerUtxoByte,
+      codecOptions
     })
 
     // Check if we have enough lovelace for change

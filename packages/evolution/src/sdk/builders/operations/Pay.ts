@@ -48,7 +48,8 @@ export const createPayToAddressProgram = (params: PayToAddressParams) =>
         assets: params.assets,
         datum: params.datum,
         scriptRef: params.script,
-        coinsPerUtxoByte: protocolParams.coinsPerUtxoByte
+        coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+        codecOptions: buildOptions.codecOptions
       })
 
       const specifiedLovelace = CoreAssets.lovelaceOf(params.assets)

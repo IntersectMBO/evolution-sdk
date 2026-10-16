@@ -11,7 +11,7 @@ import * as FeeCalculation from "../phases/FeeCalculation.js"
 import * as Selection from "../phases/Selection.js"
 import * as SignBuilderImpl from "../SignBuilderImpl.js"
 import type { BuildOptions, ProgramStep, TxBuilderConfig } from "../TransactionBuilder.js"
-import { AvailableUtxosTag, PhaseContextTag, ProtocolParametersTag, TransactionBuilderError, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
+import { AvailableUtxosTag, BuildOptionsTag, PhaseContextTag, ProtocolParametersTag, TransactionBuilderError, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
 import * as TransactionResult from "../TransactionResult.js"
 import * as BuilderLayers from "./layers.js"
 import * as BuilderState from "./state.js"
@@ -23,6 +23,7 @@ const assembleFinalResult = (
 ) =>
   Effect.gen(function* () {
     const config = yield* TxBuilderConfigTag
+    const { codecOptions } = yield* BuildOptionsTag
     const buildContextRef = yield* PhaseContextTag
     const buildContext = yield* Ref.get(buildContextRef)
     const stateRef = yield* TxContext
@@ -47,7 +48,8 @@ const assembleFinalResult = (
         provider,
         wallet,
         outputs: state.outputs,
-        availableUtxos
+        availableUtxos,
+        codecOptions
       })
     }
 
@@ -100,14 +102,16 @@ const assembleAndValidateTransaction = Effect.gen(function* () {
     : selectedUtxos
   const fakeWitnessSet = yield* TxBuilderImpl.buildFakeWitnessSet(allUtxosForWitnesses)
 
-  const txWithFakeWitnesses = new Transaction.Transaction({
+  const fakeTx = new Transaction.Transaction({
     body: transaction.body,
     witnessSet: fakeWitnessSet,
     isValid: true,
     auxiliaryData: finalState.auxiliaryData ?? null
   })
+  const { codecOptions } = yield* BuildOptionsTag
+  const txWithFakeWitnesses = codecOptions === undefined ? fakeTx : Transaction.withCodecOptions(fakeTx, codecOptions)
 
-  const txSizeWithWitnesses = TxBuilderImpl.calculateTransactionSize(txWithFakeWitnesses)
+  const txSizeWithWitnesses = TxBuilderImpl.calculateTransactionSize(txWithFakeWitnesses, codecOptions)
   const protocolParameters = yield* ProtocolParametersTag
 
   yield* Effect.logDebug(

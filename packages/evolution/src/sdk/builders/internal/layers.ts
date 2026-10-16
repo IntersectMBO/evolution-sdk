@@ -1,14 +1,23 @@
 import { Layer, Ref } from "effect"
 
+import * as CBOR from "../../../CBOR.js"
 import type { BuildOptions, PhaseContext, TxBuilderConfig } from "../TransactionBuilder.js"
 import { AvailableUtxosTag, BuildOptionsTag, ChangeAddressTag, FullProtocolParametersTag, PhaseContextTag, ProtocolParametersTag, TxBuilderConfigTag, TxContext } from "../TransactionBuilder.js"
 import * as BuilderResolve from "./resolve.js"
 import * as BuilderState from "./state.js"
 
+// The default options give the bytes of a build without options, so they
+// resolve to undefined; other options become transaction options, once here.
+const resolveCodecOptions = (options: BuildOptions["codecOptions"]): CBOR.TxCodecOptions | undefined =>
+  options === undefined || options === CBOR.TX_DEFAULT_OPTIONS || options === CBOR.CML_DEFAULT_OPTIONS
+    ? undefined
+    : CBOR.toTxCodecOptions(options)
+
 const makeBuildOptions = (config: TxBuilderConfig, options: BuildOptions): BuildOptions => ({
   ...options,
   evaluator: BuilderResolve.resolveEvaluator(config, options),
-  slotConfig: BuilderResolve.resolveSlotConfig(config, options)
+  slotConfig: BuilderResolve.resolveSlotConfig(config, options),
+  codecOptions: resolveCodecOptions(options.codecOptions)
 })
 
 /**

@@ -34,6 +34,7 @@ import type * as CoreAddress from "../../Address.js"
 import type * as CoreAssets from "../../Assets.js"
 import type * as AuxiliaryData from "../../AuxiliaryData.js"
 import * as Bytes from "../../Bytes.js"
+import type * as CBOR from "../../CBOR.js"
 import type * as Certificate from "../../Certificate.js"
 import type * as Coin from "../../Coin.js"
 import type * as CostModel from "../../CostModel.js"
@@ -598,6 +599,41 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly autoMinUtxo?: boolean
+
+  /**
+   * CBOR options to encode the transaction with. The fee, the size limit,
+   * the minimum UTxO of payment, change and collateral return outputs, the
+   * script data hash and the auxiliary data hash are computed over this
+   * encoding, and the built and signed transactions are written with it,
+   * also when a provider submits them. Plain options are read as
+   * `CBOR.toTxCodecOptions` reads them.
+   *
+   * When omitted, or set to `CBOR.TX_DEFAULT_OPTIONS` or
+   * `CBOR.CML_DEFAULT_OPTIONS`, the transaction has the default encoding.
+   *
+   * The build fails when these options write a native script in the
+   * witness set with other bytes than the default options, as options with
+   * indefinite arrays do. The ledger hashes the written bytes, so the script
+   * would no longer match its script hash.
+   *
+   * For a transaction that cardano-hw-cli witnesses, use
+   * `CBOR.TX_HW_CLI_OPTIONS`. Before it witnesses a transaction,
+   * cardano-hw-cli checks that the map keys are in bytewise order, and
+   * `CBOR.TX_CANONICAL_OPTIONS` writes them in length-first order.
+   *
+   * @example
+   * ```typescript
+   * import * as CBOR from "@evolution-sdk/evolution/CBOR"
+   *
+   * const signBuilder = await client
+   *   .newTx()
+   *   .payToAddress({ address, assets })
+   *   .build({ codecOptions: CBOR.TX_CANONICAL_OPTIONS })
+   * ```
+   *
+   * @since 2.0.0
+   */
+  readonly codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 }
 
 // ============================================================================

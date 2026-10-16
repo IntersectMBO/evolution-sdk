@@ -16,6 +16,7 @@
 
 import { Effect } from "effect"
 
+import type * as CBOR from "../../CBOR.js"
 import * as Script from "../../Script.js"
 import * as Transaction from "../../Transaction.js"
 import * as TransactionBody from "../../TransactionBody.js"
@@ -55,9 +56,12 @@ export const makeSignBuilder = (params: {
   // Data for lazy chainResult computation
   outputs: ReadonlyArray<TxOut.TransactionOutput>
   availableUtxos: ReadonlyArray<CoreUTxO.UTxO>
+  // The build's codec options, undefined for the default encoding
+  codecOptions?: CBOR.TxCodecOptions | CBOR.CodecOptions
 }): SignBuilder => {
   const {
     availableUtxos,
+    codecOptions,
     fee,
     outputs,
     provider,
@@ -68,13 +72,18 @@ export const makeSignBuilder = (params: {
     wallet
   } = params
 
+  // A signed transaction keeps the encoding the build computed its hashes over
+  const withBuildEncoding = (tx: Transaction.Transaction): Transaction.Transaction =>
+    codecOptions === undefined ? tx : Transaction.withCodecOptions(tx, codecOptions)
+
   // Memoized chainResult - computed once on first access
   let _chainResult: ChainResult | undefined
   const chainResult = (): ChainResult => {
     if (_chainResult) return _chainResult
 
     const consumed = utxos
-    const txHash = TransactionBody.toHash(transaction.body)
+    // The id of the body bytes the transaction is written with
+    const txHash = TransactionBody.toHashFromBytes(Transaction.extractBodyBytes(Transaction.toCBORBytes(transaction)))
 
     const created: Array<CoreUTxO.UTxO> = outputs.map(
       (output, index) =>
@@ -150,12 +159,12 @@ export const makeSignBuilder = (params: {
         )
 
         // Create signed transaction by combining transaction body with merged witness set
-        const signedTransaction = new Transaction.Transaction({
+        const signedTransaction = withBuildEncoding(new Transaction.Transaction({
           body: transaction.body,
           witnessSet: mergedWitnessSet,
           isValid: transaction.isValid,
           auxiliaryData: transaction.auxiliaryData
-        })
+        }))
 
         yield* Effect.logDebug("Transaction signed successfully")
 
@@ -191,12 +200,12 @@ export const makeSignBuilder = (params: {
         yield* Effect.logDebug("Signing transaction with provided witness set")
 
         // Create signed transaction by combining transaction body with provided witness set
-        const signedTransaction = new Transaction.Transaction({
+        const signedTransaction = withBuildEncoding(new Transaction.Transaction({
           body: transaction.body,
           witnessSet,
           isValid: transaction.isValid,
           auxiliaryData: transaction.auxiliaryData
-        })
+        }))
 
         yield* Effect.logDebug(`Transaction signed with ${witnessSet.vkeyWitnesses?.length ?? 0} VKey witnesses`)
 
@@ -250,12 +259,12 @@ export const makeSignBuilder = (params: {
         )
 
         // Create signed transaction
-        const signedTransaction = new Transaction.Transaction({
+        const signedTransaction = withBuildEncoding(new Transaction.Transaction({
           body: transaction.body,
           witnessSet: mergedWitnessSet,
           isValid: transaction.isValid,
           auxiliaryData: transaction.auxiliaryData
-        })
+        }))
 
         // Return SubmitBuilder
         return makeSubmitBuilder(signedTransaction, mergedWitnessSet, provider)
