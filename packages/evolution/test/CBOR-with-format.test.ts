@@ -96,3 +96,43 @@ describe("CBOR WithFormat — hand-crafted format injection", () => {
     expect(CBOR.toCBORHex(value)).toBe(hex)
   })
 })
+
+describe("CBOR WithFormat — tag 258 with an untagged (array) captured format (#574)", () => {
+  const tagSet = () => CBOR.Tag.make({ tag: 258, value: [1n, 2n] }, { disableValidation: true })
+
+  it("omits the tag when the captured format is a definite array node", () => {
+    const fmt: CBOR.CBORFormat = { _tag: "array", children: [{ _tag: "uint" }, { _tag: "uint" }] }
+    expect(CBOR.toCBORHexWithFormat(tagSet(), fmt)).toBe("820102")
+  })
+
+  it("omits the tag and keeps the indefinite form when the captured format is an indefinite array node", () => {
+    const fmt: CBOR.CBORFormat = {
+      _tag: "array",
+      length: { tag: "indefinite" },
+      children: [{ _tag: "uint" }, { _tag: "uint" }]
+    }
+    expect(CBOR.toCBORHexWithFormat(tagSet(), fmt)).toBe("9f0102ff")
+  })
+
+  it("encodes the inner array with its captured node, so nested widths survive", () => {
+    // One input whose index 0 was written as 0x1800 (non-minimal uint8)
+    const value = CBOR.Tag.make({ tag: 258, value: [[new Uint8Array(32), 0n]] }, { disableValidation: true })
+    const fmt: CBOR.CBORFormat = {
+      _tag: "array",
+      children: [{ _tag: "array", children: [{ _tag: "bytes" }, { _tag: "uint", byteSize: 1 }] }]
+    }
+    expect(CBOR.toCBORHexWithFormat(value, fmt)).toBe(`81825820${"00".repeat(32)}1800`)
+  })
+
+  it("keeps the tag when the captured format is a tag node", () => {
+    const fmt: CBOR.CBORFormat = {
+      _tag: "tag",
+      child: { _tag: "array", children: [{ _tag: "uint" }, { _tag: "uint" }] }
+    }
+    expect(CBOR.toCBORHexWithFormat(tagSet(), fmt)).toBe("d90102820102")
+  })
+
+  it("keeps the tag when there is no captured format", () => {
+    expect(CBOR.toCBORHex(tagSet())).toBe("d90102820102")
+  })
+})

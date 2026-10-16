@@ -477,12 +477,13 @@ describe("a datum or redeemer added to a decoded transaction", () => {
   })
 
   it("a datum added to an untagged datum set is written in the data layout", () => {
-    // The set is written tagged, as the encoder writes every datum set
+    // The set keeps the untagged form it was decoded with (#574); the added
+    // datum is written in the data layout
     const untaggedHex = "d8799f0102ff"
     const { format, value: tx } = Transaction.fromCBORHexWithFormat(txHex(`a10481${untaggedHex}`))
     const extended = withWitnessSet(tx, { plutusData: [...tx.witnessSet.plutusData!, datum] })
     expect(Transaction.toCBORHexWithFormat(extended, format)).toBe(
-      txHex(datumsOnlyWitnessSetHex([untaggedHex, Data.toCBORHex(datum)]))
+      txHex(`a10482${untaggedHex}${Data.toCBORHex(datum)}`)
     )
   })
 

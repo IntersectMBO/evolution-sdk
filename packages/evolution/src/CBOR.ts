@@ -1735,6 +1735,15 @@ const encodeRecordSync = (value: { readonly [key: string | number]: CBOR }, opti
 }
 
 const encodeTagSync = (tag: number, value: CBOR, options: CodecOptions, fmt?: CBORFormat): Uint8Array => {
+  // #574: a set the decoder read without tag 258 has an array node at this
+  // position in the captured format. The format decides whether the tag is
+  // written: encode the inner array with that node and omit the tag, so the
+  // nested choices the array node carries (length form, item widths) are
+  // replayed too. With no captured format — or a tag node — the tag is
+  // written as before, so freshly built transactions do not change.
+  if (tag === 258 && fmt?._tag === "array") {
+    return internalEncodeSync(value, options, fmt)
+  }
   const tagFmt = fmt?._tag === "tag" ? fmt : undefined
   // Use specific ByteSize from format metadata (pass child format even when width is canonical)
   if (tagFmt !== undefined) {
