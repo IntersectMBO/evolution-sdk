@@ -95,7 +95,7 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       expect(changeOutputs[0].assets.lovelace).toBe(1_150_770n)
       expect(changeOutputs[1].assets.lovelace).toBe(1_150_770n)
       expect(changeOutputs[2].assets.lovelace).toBe(1_155_080n)
-      expect(changeOutputs[3].assets.lovelace).toBe(2_259_487n)
+      expect(changeOutputs[3].assets.lovelace).toBe(2_259_531n) // 44 lovelace higher: the fee fell by 44 with the ledger size (#179)
 
       // Verify token distribution: all 3 tokens should be preserved in change outputs
       let totalTokenTypes = 0
@@ -168,10 +168,10 @@ describe("TxBuilder: Unfrack Change Handling Integration", () => {
       // Input: 2,500,000, Payment: 100,000, Fee: exact
       // Expected change: 2,500,000 - 100,000 - fee
       const changeOutput = tx.body.outputs[1]
-      expect(changeOutput.assets.lovelace).toBe(2_226_447n)
+      expect(changeOutput.assets.lovelace).toBe(2_226_491n) // 44 lovelace higher: the fee fell by 44 with the ledger size (#179)
 
       // Verify fee is exact for single-output transaction
-      expect(tx.body.fee).toBe(173_553n)
+      expect(tx.body.fee).toBe(173_509n) // 44 lovelace lower: ledger size without isValid (#179)
 
       // Balance equation must hold
       expect(changeOutput.assets.lovelace + paymentOutput.assets.lovelace + tx.body.fee).toBe(2_500_000n)

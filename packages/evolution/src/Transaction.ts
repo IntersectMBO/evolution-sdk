@@ -305,6 +305,40 @@ const gainsLowerKey = (witnessSet: ReadonlyMap<bigint, CBOR.CBOR>, format: CBOR.
 }
 
 /**
+ * CBOR bytes of the transaction as the ledger computes its size: a
+ * 3-element array `[body, witnessSet, auxiliaryData]` with the `isValid`
+ * flag omitted (`toCBORForSizeComputation` in the ledger's Alonzo Tx
+ * module). The ledger's one size — `tx ^. sizeTxF` — feeds both the
+ * minimum fee and the `maxTxSize` check, so anything measuring a
+ * transaction for fee or size purposes must measure these bytes, not the
+ * full 4-element encoding: the full encoding is exactly one byte longer
+ * (the boolean; the array header is one byte at both lengths).
+ *
+ * Each component is written as {@link toCBORBytes} writes it under the
+ * given options, joined exactly as the full encoding joins them.
+ *
+ * @since 2.0.0
+ * @category encoding
+ */
+export const toCBORBytesForSizeComputation = (
+  data: Transaction,
+  options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS
+): Uint8Array => {
+  const txOptions = CBOR.toTxCodecOptions(options)
+  const { ledger } = txOptions
+  return encodeArray(
+    [
+      TransactionBody.toCBORBytes(data.body, txOptions),
+      TransactionWitnessSet.toCBORBytes(data.witnessSet, txOptions),
+      data.auxiliaryData === null
+        ? CBOR.toCBORBytes(null, ledger)
+        : AuxiliaryData.toCBORBytes(data.auxiliaryData, ledger)
+    ],
+    ledger
+  )
+}
+
+/**
  * Convert a Transaction to CBOR bytes using an explicit root format tree.
  *
  * The witness set is written as `TransactionWitnessSet.toCBORBytesWithFormat`
