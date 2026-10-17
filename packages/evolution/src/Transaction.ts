@@ -320,6 +320,13 @@ export const toCBORBytesWithFormat = (
   const cborTuple = Schema.encodeSync(FromCDDL)(data)
   const arrayFormat: CBOR.CBORFormat.Array = format._tag === "array" ? format : { _tag: "array", children: [] }
   const [bodyFormat = { _tag: "simple" }, witnessSetFormat = { _tag: "simple" }, ...rest] = arrayFormat.children
+  // Outputs the decoder read in map form are re-expressed in that form, so
+  // their captured format nodes replay instead of being dropped (#577).
+  const body =
+    cborTuple[0] instanceof Map
+      ? TransactionBody.alignOutputsWithFormat(cborTuple[0] as Map<bigint, CBOR.CBOR>, bodyFormat)
+      : cborTuple[0]
+  const alignedTuple = [body, ...cborTuple.slice(1)] as typeof cborTuple
   // A witness set without datums or redeemers replays in the tuple as it is,
   // unless a key it gains may go ahead of its decoded keys
   if (
@@ -327,14 +334,14 @@ export const toCBORBytesWithFormat = (
     (data.witnessSet.redeemers?.size ?? 0) === 0 &&
     !gainsLowerKey(cborTuple[1], witnessSetFormat)
   ) {
-    return CBOR.toCBORBytesWithFormat(cborTuple as unknown as CBOR.CBOR, format)
+    return CBOR.toCBORBytesWithFormat(alignedTuple as unknown as CBOR.CBOR, format)
   }
   // The witness set's bytes, decoded with their format, replay exactly in
   // the tuple. A part the format does not cover is written with the defaults.
   const witnessSet = CBOR.fromCBORBytesWithFormat(
     TransactionWitnessSet.toCBORBytesWithFormat(data.witnessSet, witnessSetFormat)
   )
-  return CBOR.toCBORBytesWithFormat([cborTuple[0], witnessSet.value, ...cborTuple.slice(2)], {
+  return CBOR.toCBORBytesWithFormat([body, witnessSet.value, ...cborTuple.slice(2)], {
     ...arrayFormat,
     children: [bodyFormat, witnessSet.format, ...rest]
   })
