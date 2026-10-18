@@ -146,7 +146,26 @@ export const BuiltinFunctions = [
   "rotateByteString",
   "countSetBits",
   "findFirstSetBit",
-  "ripemd_160"
+  "ripemd_160",
+  "expModInteger",
+  "dropList",
+  "lengthOfArray",
+  "listToArray",
+  "indexArray",
+  "bls12_381_G1_multiScalarMul",
+  "bls12_381_G2_multiScalarMul",
+  "insertCoin",
+  "lookupCoin",
+  "unionValue",
+  "valueContains",
+  "valueData",
+  "unValueData",
+  "scaleValue",
+  "multiIndexArray",
+  "policies",
+  "assetCount",
+  "keepPolicies",
+  "dropPolicies"
 ] as const
 
 export type BuiltinFunction = (typeof BuiltinFunctions)[number]
@@ -157,10 +176,12 @@ export type BuiltinFunction = (typeof BuiltinFunctions)[number]
  * @since 2.0.0
  * @category model
  */
-export type PrimitiveDataType = "Integer" | "ByteString" | "String" | "Unit" | "Bool" | "Data"
+export type PrimitiveDataType = "Integer" | "ByteString" | "String" | "Unit" | "Bool" | "Data" | "Value"
 
 /**
- * UPLC data type (recursive for pair/list).
+ * UPLC data type (recursive for pair/list/array).
+ * Arrays use `{ array: elementType }` and the same `{ items: [...] }` payload as lists.
+ * Native Value constants use {@link ValueConstant}, distinct from a Data map.
  *
  * @since 2.0.0
  * @category model
@@ -169,6 +190,7 @@ export type DataType =
   | PrimitiveDataType
   | { readonly pair: readonly [DataType, DataType] }
   | { readonly list: DataType }
+  | { readonly array: DataType }
 
 /**
  * Type tags for flat encoding.
@@ -182,8 +204,30 @@ export const DataTypeTags = {
   String: 2,
   Unit: 3,
   Bool: 4,
-  Data: 8
+  Data: 8,
+  ProtoArray: 12,
+  Value: 13
 } as const
+
+/**
+ * Native UPLC Value constant. Currency symbols and token names are byte strings
+ * of at most 32 bytes, in strictly ascending lexicographic order without duplicates.
+ * Token maps must be nonempty and quantities must be nonzero signed 128-bit integers.
+ * An empty outer `entries` array represents zero. Encoding rejects invalid entries
+ * rather than sorting or normalizing them, preserving the script's exact bytes.
+ *
+ * @since 2.0.0
+ * @category model
+ */
+export interface ValueConstant {
+  readonly entries: ReadonlyArray<{
+    readonly currency: Uint8Array
+    readonly tokens: ReadonlyArray<{
+      readonly name: Uint8Array
+      readonly quantity: bigint
+    }>
+  }>
+}
 
 /**
  * Value types for UPLC constants.
@@ -200,6 +244,7 @@ export type ConstantValue =
   | { readonly items: ReadonlyArray<ConstantValue> }
   | { readonly index: bigint; readonly fields: ReadonlyArray<ConstantValue> }
   | ReadonlyMap<ConstantValue, ConstantValue>
+  | ValueConstant
 
 /**
  * Term tags for flat encoding.
@@ -575,6 +620,10 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       // List<T> = [7, 5, ...elementType]
       const [innerType, remainder] = decodeType(type.slice(2))
       return [{ list: innerType }, remainder]
+    } else if (subtype === 12) {
+      if (type.length < 3) throw new UPLCError({ message: "Incomplete array element type" })
+      const [innerType, remainder] = decodeType(type.slice(2))
+      return [{ array: innerType }, remainder]
     } else if (subtype === 7 && type[2] === 6) {
       // Pair<T, U> = [7, 7, 6, ...firstType, ...secondType]
       const [innerType, remainder] = decodeType(type.slice(3))
@@ -605,6 +654,15 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       case 8:
         typeName = "Data"
         break
+      case 9:
+      case 10:
+      case 11:
+        throw new UPLCError({ message: `BLS constants cannot be Flat-serialized in scripts (type tag ${head})` })
+      case 12:
+        throw new UPLCError({ message: "The array type constructor must be applied to an element type" })
+      case 13:
+        typeName = "Value"
+        break
       default:
         throw new UPLCError({ message: `Unknown type tag: ${head}` })
     }
@@ -630,6 +688,40 @@ const decodeVersion = (state: DecodeState): SemVer => {
   const patch = popByte(state)
   const version = `${major}.${minor}.${patch}` as SemVer
   return version
+}
+
+const compareValueKeys = (left: Uint8Array, right: Uint8Array): number => {
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    const difference = left[i]! - right[i]!
+    if (difference !== 0) return difference
+  }
+  return left.length - right.length
+}
+
+// Plutus 1.72.0.0 PlutusCore/Value.hs: K, Quantity and buildValueWith.
+// Validate on both paths: neither decoding nor construction may normalize a script.
+const validateValueConstant = (value: ValueConstant): void => {
+  let previousCurrency: Uint8Array | undefined
+  for (const { currency, tokens } of value.entries) {
+    if (currency.length > 32) throw new UPLCError({ message: "Value keys must be at most 32 bytes" })
+    if (previousCurrency !== undefined && compareValueKeys(previousCurrency, currency) >= 0) {
+      throw new UPLCError({ message: "Value currency symbols not strictly ascending" })
+    }
+    if (tokens.length === 0) throw new UPLCError({ message: "Value contains an empty inner map" })
+    let previousToken: Uint8Array | undefined
+    for (const { name, quantity } of tokens) {
+      if (name.length > 32) throw new UPLCError({ message: "Value keys must be at most 32 bytes" })
+      if (previousToken !== undefined && compareValueKeys(previousToken, name) >= 0) {
+        throw new UPLCError({ message: "Value token names not strictly ascending" })
+      }
+      if (quantity < -(1n << 127n) || quantity >= 1n << 127n) {
+        throw new UPLCError({ message: "Value quantity out of signed 128-bit integer bounds" })
+      }
+      if (quantity === 0n) throw new UPLCError({ message: "Value contains a zero quantity" })
+      previousToken = name
+    }
+    previousCurrency = currency
+  }
 }
 
 /**
@@ -663,6 +755,20 @@ const decodeData = (state: DecodeState, dataType: DataType): ConstantValue => {
   if (dataType === "Data") {
     const result = decodeByteString(state)
     return result
+  }
+  if (dataType === "Value") {
+    const value: ValueConstant = {
+      entries: decodeList(state, () => ({
+        currency: decodeByteString(state),
+        tokens: decodeList(state, () => ({ name: decodeByteString(state), quantity: decodeInteger(state) }))
+      }))
+    }
+    validateValueConstant(value)
+    return value
+  }
+  if ("array" in dataType) {
+    // Plutus uses Strict.Vector's Flat list instance, not Vector's chunk encoding.
+    return { items: decodeList(state, () => decodeData(state, dataType.array)) }
   }
   if ("list" in dataType) {
     const items = decodeList(state, () => decodeData(state, dataType.list))
@@ -927,6 +1033,8 @@ const encodeDataType = (state: EncodeState, dataType: DataType): Array<number> =
   if (dataType === "Unit") return [3]
   if (dataType === "Bool") return [4]
   if (dataType === "Data") return [8]
+  if (dataType === "Value") return [13]
+  if ("array" in dataType) return [7, 12, ...encodeDataType(state, dataType.array)]
   if ("list" in dataType) return [7, 5, ...encodeDataType(state, dataType.list)]
   if ("pair" in dataType) {
     return [7, 7, 6, ...encodeDataType(state, dataType.pair[0]), ...encodeDataType(state, dataType.pair[1])]
@@ -954,6 +1062,19 @@ const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue
     pushBit(state, boolVal.index === 0n ? 0 : 1)
   } else if (dataType === "Data") {
     encodeByteString(state, value as Uint8Array)
+  } else if (dataType === "Value") {
+    const nativeValue = value as ValueConstant
+    validateValueConstant(nativeValue)
+    encodeList(state, nativeValue.entries, ({ currency, tokens }) => {
+      encodeByteString(state, currency)
+      encodeList(state, tokens, ({ name, quantity }) => {
+        encodeByteString(state, name)
+        encodeInteger(state, quantity)
+      })
+    })
+  } else if ("array" in dataType) {
+    const arrayVal = value as { items: ReadonlyArray<ConstantValue> }
+    encodeList(state, arrayVal.items, (item) => encodeData(state, dataType.array, item))
   } else if ("list" in dataType) {
     const listVal = value as { items: ReadonlyArray<ConstantValue> }
     encodeList(state, listVal.items, (item) => encodeData(state, dataType.list, item))
@@ -1172,6 +1293,15 @@ const constantToJSON = (value: ConstantValue): unknown => {
   if (typeof value === "string") return value
   if (typeof value === "boolean") return value
   if (value instanceof Uint8Array) return Bytes.toHex(value)
+  if ("entries" in value && Array.isArray(value.entries)) {
+    const nativeValue = value as ValueConstant
+    return {
+      entries: nativeValue.entries.map(({ currency, tokens }) => ({
+        currency: Bytes.toHex(currency),
+        tokens: tokens.map(({ name, quantity }) => ({ name: Bytes.toHex(name), quantity: quantity.toString() }))
+      }))
+    }
+  }
   if ("items" in value) return { items: (value.items as ReadonlyArray<ConstantValue>).map(constantToJSON) }
   if ("index" in value)
     return { index: value.index.toString(), fields: (value.fields as ReadonlyArray<ConstantValue>).map(constantToJSON) }
