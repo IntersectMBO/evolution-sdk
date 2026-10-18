@@ -146,7 +146,26 @@ export const BuiltinFunctions = [
   "rotateByteString",
   "countSetBits",
   "findFirstSetBit",
-  "ripemd_160"
+  "ripemd_160",
+  "expModInteger",
+  "dropList",
+  "lengthOfArray",
+  "listToArray",
+  "indexArray",
+  "bls12_381_G1_multiScalarMul",
+  "bls12_381_G2_multiScalarMul",
+  "insertCoin",
+  "lookupCoin",
+  "unionValue",
+  "valueContains",
+  "valueData",
+  "unValueData",
+  "scaleValue",
+  "multiIndexArray",
+  "policies",
+  "assetCount",
+  "keepPolicies",
+  "dropPolicies"
 ] as const
 
 export type BuiltinFunction = (typeof BuiltinFunctions)[number]
@@ -157,10 +176,10 @@ export type BuiltinFunction = (typeof BuiltinFunctions)[number]
  * @since 2.0.0
  * @category model
  */
-export type PrimitiveDataType = "Integer" | "ByteString" | "String" | "Unit" | "Bool" | "Data"
+export type PrimitiveDataType = "Integer" | "ByteString" | "String" | "Unit" | "Bool" | "Data" | "Value"
 
 /**
- * UPLC data type (recursive for pair/list).
+ * UPLC data type (recursive for pair/list/array).
  *
  * @since 2.0.0
  * @category model
@@ -169,6 +188,7 @@ export type DataType =
   | PrimitiveDataType
   | { readonly pair: readonly [DataType, DataType] }
   | { readonly list: DataType }
+  | { readonly array: DataType }
 
 /**
  * Type tags for flat encoding.
@@ -182,8 +202,23 @@ export const DataTypeTags = {
   String: 2,
   Unit: 3,
   Bool: 4,
-  Data: 8
+  Data: 8,
+  Value: 13
 } as const
+
+/**
+ * A Plutus `Value` constant: a list of `(currency symbol, tokens)` entries,
+ * where each token entry is a `(token name, quantity)` pair. Currency symbols
+ * and token names are byte strings of at most 32 bytes; quantities are signed
+ * 128-bit integers. In a valid value the entries are strictly ascending
+ * (currency symbols, then token names within each currency), no inner token
+ * list is empty, and no quantity is zero — the invariants Plutus' own
+ * `buildValueWith` enforces when decoding.
+ *
+ * @since 2.0.0
+ * @category model
+ */
+export type ValueConstant = ReadonlyArray<readonly [Uint8Array, ReadonlyArray<readonly [Uint8Array, bigint]>]>
 
 /**
  * Value types for UPLC constants.
@@ -199,6 +234,7 @@ export type ConstantValue =
   | null
   | { readonly items: ReadonlyArray<ConstantValue> }
   | { readonly index: bigint; readonly fields: ReadonlyArray<ConstantValue> }
+  | { readonly value: ValueConstant }
   | ReadonlyMap<ConstantValue, ConstantValue>
 
 /**
@@ -553,6 +589,89 @@ const decodeList = <T>(state: DecodeState, decodeItem: () => T): Array<T> => {
   return items
 }
 
+/** Maximum length of a `Value` currency symbol or token name, in bytes. */
+const MAX_VALUE_KEY_LEN = 32
+
+/** Bounds of a `Value` quantity: a signed 128-bit integer. */
+const QUANTITY_MIN = -(2n ** 127n)
+const QUANTITY_MAX = 2n ** 127n - 1n
+
+/**
+ * Compare two byte strings the way Haskell's `ByteString` ordering does:
+ * lexicographically over the common prefix, then by length.
+ *
+ * @since 2.0.0
+ * @category internal
+ */
+const compareBytes = (a: Uint8Array, b: Uint8Array): number => {
+  const len = Math.min(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) return a[i]! - b[i]!
+  }
+  return a.length - b.length
+}
+
+/**
+ * Decode one `Value` key (a currency symbol or token name): a flat-encoded
+ * byte string of at most `MAX_VALUE_KEY_LEN` bytes, as in Plutus' `K` type.
+ *
+ * @since 2.0.0
+ * @category internal
+ */
+const decodeValueKey = (state: DecodeState): Uint8Array => {
+  const bytes = decodeByteString(state)
+  if (bytes.length > MAX_VALUE_KEY_LEN) {
+    throw new UPLCError({ message: `Invalid Value key: [${Array.from(bytes).join(",")}]` })
+  }
+  return bytes
+}
+
+/**
+ * Decode a `Value` constant: a flat list of `(currency, tokens)` entries,
+ * each token a `(name, quantity)` pair. Applies the same validation as
+ * Plutus' `buildValueWith` in the flat decoder: currency symbols and token
+ * names strictly ascending, no empty inner list, no zero quantity, and every
+ * quantity within signed 128-bit bounds (checked where integers are read).
+ *
+ * @since 2.0.0
+ * @category internal
+ */
+const decodeValue = (state: DecodeState): { readonly value: ValueConstant } => {
+  const entries = decodeList(state, () => {
+    const currency = decodeValueKey(state)
+    const tokens = decodeList(state, () => {
+      const token = decodeValueKey(state)
+      const quantity = decodeInteger(state)
+      if (quantity < QUANTITY_MIN || quantity > QUANTITY_MAX) {
+        throw new UPLCError({ message: `Quantity out of signed 128-bit integer bounds: ${quantity}` })
+      }
+      return [token, quantity] as const
+    })
+    return [currency, tokens] as const
+  })
+  let prevCurrency: Uint8Array | undefined
+  for (const [currency, tokens] of entries) {
+    if (prevCurrency !== undefined && compareBytes(prevCurrency, currency) >= 0) {
+      throw new UPLCError({ message: "Value Flat decoder: currency symbols not strictly ascending" })
+    }
+    prevCurrency = currency
+    if (tokens.length === 0) {
+      throw new UPLCError({ message: "Value Flat decoder: empty inner map" })
+    }
+    let prevToken: Uint8Array | undefined
+    for (const [token, quantity] of tokens) {
+      if (prevToken !== undefined && compareBytes(prevToken, token) >= 0) {
+        throw new UPLCError({ message: "Value Flat decoder: token names not strictly ascending" })
+      }
+      prevToken = token
+      if (quantity === 0n) {
+        throw new UPLCError({ message: "Value Flat decoder: zero quantity" })
+      }
+    }
+  }
+  return { value: entries }
+}
+
 /**
  * Decode a type from an array of 4-bit chunks (blaze-cardano approach).
  * Handles tag 7 (type application) recursively.
@@ -575,6 +694,10 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       // List<T> = [7, 5, ...elementType]
       const [innerType, remainder] = decodeType(type.slice(2))
       return [{ list: innerType }, remainder]
+    } else if (subtype === 12) {
+      // Array<T> = [7, 12, ...elementType]
+      const [innerType, remainder] = decodeType(type.slice(2))
+      return [{ array: innerType }, remainder]
     } else if (subtype === 7 && type[2] === 6) {
       // Pair<T, U> = [7, 7, 6, ...firstType, ...secondType]
       const [innerType, remainder] = decodeType(type.slice(3))
@@ -605,6 +728,17 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       case 8:
         typeName = "Data"
         break
+      case 13:
+        typeName = "Value"
+        break
+      case 9:
+      case 10:
+      case 11:
+        // The BLS12-381 element types have no flat serialisation in scripts,
+        // so a constant can never carry one of these tags.
+        throw new UPLCError({
+          message: `Type tag ${head} has no flat serialisation in scripts (BLS12-381 element types cannot appear in constants)`
+        })
       default:
         throw new UPLCError({ message: `Unknown type tag: ${head}` })
     }
@@ -664,8 +798,15 @@ const decodeData = (state: DecodeState, dataType: DataType): ConstantValue => {
     const result = decodeByteString(state)
     return result
   }
+  if (dataType === "Value") {
+    return decodeValue(state)
+  }
   if ("list" in dataType) {
     const items = decodeList(state, () => decodeData(state, dataType.list))
+    return { items }
+  }
+  if ("array" in dataType) {
+    const items = decodeList(state, () => decodeData(state, dataType.array))
     return { items }
   }
   if ("pair" in dataType) {
@@ -927,11 +1068,65 @@ const encodeDataType = (state: EncodeState, dataType: DataType): Array<number> =
   if (dataType === "Unit") return [3]
   if (dataType === "Bool") return [4]
   if (dataType === "Data") return [8]
+  if (dataType === "Value") return [13]
   if ("list" in dataType) return [7, 5, ...encodeDataType(state, dataType.list)]
+  if ("array" in dataType) return [7, 12, ...encodeDataType(state, dataType.array)]
   if ("pair" in dataType) {
     return [7, 7, 6, ...encodeDataType(state, dataType.pair[0]), ...encodeDataType(state, dataType.pair[1])]
   }
   throw new UPLCError({ message: `Unknown data type: ${JSON.stringify(dataType)}` })
+}
+
+/**
+ * Encode a `Value` constant. Entries are written in strictly ascending
+ * order — the order of the underlying Plutus map — so entries supplied out
+ * of order are sorted first; the same invariants the decoder enforces
+ * (key length, quantity bounds, no zero quantity, no empty inner list, no
+ * duplicate keys) are checked before anything is written.
+ *
+ * @since 2.0.0
+ * @category internal
+ */
+const encodeValue = (state: EncodeState, value: ValueConstant): void => {
+  const sorted = [...value]
+    .map(([currency, tokens]) => [currency, [...tokens].sort((x, y) => compareBytes(x[0], y[0]))] as const)
+    .sort((x, y) => compareBytes(x[0], y[0]))
+  let prevCurrency: Uint8Array | undefined
+  for (const [currency, tokens] of sorted) {
+    if (currency.length > MAX_VALUE_KEY_LEN) {
+      throw new UPLCError({ message: `Invalid Value key: [${Array.from(currency).join(",")}]` })
+    }
+    if (prevCurrency !== undefined && compareBytes(prevCurrency, currency) >= 0) {
+      throw new UPLCError({ message: "Value Flat encoder: currency symbols not strictly ascending" })
+    }
+    prevCurrency = currency
+    if (tokens.length === 0) {
+      throw new UPLCError({ message: "Value Flat encoder: empty inner map" })
+    }
+    let prevToken: Uint8Array | undefined
+    for (const [token, quantity] of tokens) {
+      if (token.length > MAX_VALUE_KEY_LEN) {
+        throw new UPLCError({ message: `Invalid Value key: [${Array.from(token).join(",")}]` })
+      }
+      if (prevToken !== undefined && compareBytes(prevToken, token) >= 0) {
+        throw new UPLCError({ message: "Value Flat encoder: token names not strictly ascending" })
+      }
+      prevToken = token
+      if (quantity === 0n) {
+        throw new UPLCError({ message: "Value Flat encoder: zero quantity" })
+      }
+      if (quantity < QUANTITY_MIN || quantity > QUANTITY_MAX) {
+        throw new UPLCError({ message: `Quantity out of signed 128-bit integer bounds: ${quantity}` })
+      }
+    }
+  }
+  encodeList(state, sorted, ([currency, tokens]) => {
+    encodeByteString(state, currency)
+    encodeList(state, tokens, ([token, quantity]) => {
+      encodeByteString(state, token)
+      encodeInteger(state, quantity)
+    })
+  })
 }
 
 /**
@@ -954,9 +1149,14 @@ const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue
     pushBit(state, boolVal.index === 0n ? 0 : 1)
   } else if (dataType === "Data") {
     encodeByteString(state, value as Uint8Array)
+  } else if (dataType === "Value") {
+    encodeValue(state, (value as { value: ValueConstant }).value)
   } else if ("list" in dataType) {
     const listVal = value as { items: ReadonlyArray<ConstantValue> }
     encodeList(state, listVal.items, (item) => encodeData(state, dataType.list, item))
+  } else if ("array" in dataType) {
+    const arrayVal = value as { items: ReadonlyArray<ConstantValue> }
+    encodeList(state, arrayVal.items, (item) => encodeData(state, dataType.array, item))
   } else if ("pair" in dataType) {
     const pairVal = value as { items: readonly [ConstantValue, ConstantValue] }
     encodeData(state, dataType.pair[0], pairVal.items[0])
@@ -1172,6 +1372,14 @@ const constantToJSON = (value: ConstantValue): unknown => {
   if (typeof value === "string") return value
   if (typeof value === "boolean") return value
   if (value instanceof Uint8Array) return Bytes.toHex(value)
+  if ("value" in value) {
+    return {
+      value: (value.value as ValueConstant).map(([currency, tokens]) => [
+        Bytes.toHex(currency),
+        tokens.map(([token, quantity]) => [Bytes.toHex(token), quantity.toString()])
+      ])
+    }
+  }
   if ("items" in value) return { items: (value.items as ReadonlyArray<ConstantValue>).map(constantToJSON) }
   if ("index" in value)
     return { index: value.index.toString(), fields: (value.fields as ReadonlyArray<ConstantValue>).map(constantToJSON) }

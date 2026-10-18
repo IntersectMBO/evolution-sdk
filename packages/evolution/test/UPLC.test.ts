@@ -23,9 +23,10 @@ describe("UPLC Module", () => {
     })
 
     it("should have builtin functions defined", () => {
-      expect(UPLC.BuiltinFunctions.length).toBe(87)
+      expect(UPLC.BuiltinFunctions.length).toBe(106)
       expect(UPLC.BuiltinFunctions[0]).toBe("addInteger")
       expect(UPLC.BuiltinFunctions[86]).toBe("ripemd_160")
+      expect(UPLC.BuiltinFunctions[105]).toBe("dropPolicies")
     })
   })
 
@@ -486,6 +487,292 @@ describe("UPLC Module", () => {
       expect(appliedProgram.versionParsed).toEqual({ major: 1, minor: 0, patch: 0 })
 
       expect(appliedDirectOfferVal).toBe(expectedAppliedDirectOfferVal)
+    })
+  })
+
+  describe("Plutus V3 builtins 87-105 and Value/Array constants (#666)", () => {
+    // The builtin ids and spellings are PlutusCore/Default/Builtins.hs at
+    // plutus 1.72.0.0, `instance Flat DefaultFun`: ids 87-105 in order.
+    const newBuiltins = [
+      "expModInteger",
+      "dropList",
+      "lengthOfArray",
+      "listToArray",
+      "indexArray",
+      "bls12_381_G1_multiScalarMul",
+      "bls12_381_G2_multiScalarMul",
+      "insertCoin",
+      "lookupCoin",
+      "unionValue",
+      "valueContains",
+      "valueData",
+      "unValueData",
+      "scaleValue",
+      "multiIndexArray",
+      "policies",
+      "assetCount",
+      "keepPolicies",
+      "dropPolicies"
+    ] as const
+
+    it("places the new builtins at flat ids 87-105, in Plutus order", () => {
+      expect(UPLC.BuiltinFunctions.slice(87)).toEqual([...newBuiltins])
+    })
+
+    it("decodes a bare expModInteger program (Aiken vector)", () => {
+      const program = UPLC.fromCborHexToProgram("450101007ae1")
+      expect(program.body).toEqual({ type: "Builtin", function: "expModInteger" })
+    })
+
+    it("decodes unionValue under a lambda (Aiken vector)", () => {
+      const program = UPLC.fromCborHexToProgram("4501010027c1")
+      expect(program.body.type).toBe("Lambda")
+      if (program.body.type === "Lambda") {
+        expect(program.body.body).toEqual({ type: "Builtin", function: "unionValue" })
+      }
+    })
+
+    it("round-trips every new builtin through flat encoding", () => {
+      for (const fn of newBuiltins) {
+        const program = new UPLC.Program({ version: "1.1.0", body: UPLC.builtinTerm(fn) })
+        const decoded = UPLC.fromFlatHex(UPLC.toFlatHex(program))
+        expect(decoded.body).toEqual({ type: "Builtin", function: fn })
+      }
+    })
+
+    it("applyParamsToScript matches the Aiken oracle for all three vectors", () => {
+      const appliedInnerFlat = (input: string): string =>
+        Bytes.toHex(UPLC.decodeDoubleCborHexToFlat(UPLC.applyParamsToScript(input, [Data.int(1n)])))
+      expect(appliedInnerFlat("450101002701")).toBe("0101003270098101010001")
+      expect(appliedInnerFlat("4501010027c1")).toBe("010100327c098101010001")
+      expect(appliedInnerFlat("4501010024e9")).toBe("010100324e898101010001")
+    })
+
+    it("decodes an empty value constant (Aiken vector)", () => {
+      const program = UPLC.fromCborHexToProgram("4501010024e9")
+      expect(program.body.type).toBe("Lambda")
+      if (program.body.type === "Lambda") {
+        expect(program.body.body).toEqual({ type: "Constant", valueType: "Value", value: { value: [] } })
+      }
+    })
+
+    it("encodes (con value []) to the Plutus flat vector", () => {
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm("Value", { value: [] }) })
+      expect(UPLC.toFlatHex(program)).toBe("0101004e81")
+    })
+
+    it("round-trips a non-empty value, sorting entries into Plutus map order", () => {
+      const policy = Bytes.fromHex("ab".repeat(28))
+      const supplied: UPLC.ValueConstant = [
+        [
+          policy,
+          [
+            [Bytes.fromHex("cd"), -5n],
+            [Bytes.fromHex("ce"), 7n]
+          ]
+        ],
+        [new Uint8Array([]), [[new Uint8Array([]), 1500000n]]]
+      ]
+      const program = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm("Value", { value: supplied })
+      })
+      const decoded = UPLC.fromFlatHex(UPLC.toFlatHex(program))
+      expect(decoded.body).toEqual({
+        type: "Constant",
+        valueType: "Value",
+        value: {
+          value: [
+            [new Uint8Array([]), [[new Uint8Array([]), 1500000n]]],
+            [
+              policy,
+              [
+                [Bytes.fromHex("cd"), -5n],
+                [Bytes.fromHex("ce"), 7n]
+              ]
+            ]
+          ]
+        }
+      })
+      // Byte-exact: re-encoding the decoded program reproduces the flat bytes.
+      expect(UPLC.toFlatHex(decoded)).toBe(UPLC.toFlatHex(program))
+    })
+
+    it("round-trips quantities at the signed 128-bit bounds", () => {
+      const value: UPLC.ValueConstant = [
+        [
+          new Uint8Array([]),
+          [
+            [new Uint8Array([]), 2n ** 127n - 1n],
+            [Bytes.fromHex("ff"), -(2n ** 127n)]
+          ]
+        ]
+      ]
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm("Value", { value }) })
+      const decoded = UPLC.fromFlatHex(UPLC.toFlatHex(program))
+      expect(decoded.body).toEqual({ type: "Constant", valueType: "Value", value: { value } })
+    })
+
+    it("round-trips an array constant and keeps it distinct from a list", () => {
+      const arrayProgram = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm({ array: "Integer" }, { items: [1n, 2n, 3n] })
+      })
+      const decoded = UPLC.fromFlatHex(UPLC.toFlatHex(arrayProgram))
+      expect(decoded.body).toEqual({
+        type: "Constant",
+        valueType: { array: "Integer" },
+        value: { items: [1n, 2n, 3n] }
+      })
+      const listProgram = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm({ list: "Integer" }, { items: [1n, 2n, 3n] })
+      })
+      expect(UPLC.toFlatHex(arrayProgram)).not.toBe(UPLC.toFlatHex(listProgram))
+    })
+
+    // A minimal flat bit writer, used only to craft payloads the encoder
+    // itself refuses to produce (invalid values, BLS type tags).
+    class BitWriter {
+      bytes: Array<number> = []
+      cur = 0
+      n = 0
+      bit(b: number): this {
+        this.cur = (this.cur << 1) | b
+        if (++this.n === 8) {
+          this.bytes.push(this.cur)
+          this.cur = 0
+          this.n = 0
+        }
+        return this
+      }
+      bits(v: number, count: number): this {
+        for (let i = count - 1; i >= 0; i--) this.bit((v >> i) & 1)
+        return this
+      }
+      byte(v: number): this {
+        return this.bits(v, 8)
+      }
+      pad(): this {
+        const remaining = this.n === 0 ? 8 : 8 - this.n
+        for (let i = 0; i < remaining - 1; i++) this.bit(0)
+        return this.bit(1)
+      }
+      natural(n: bigint): this {
+        const chunks: Array<number> = []
+        let r = n
+        do {
+          chunks.push(Number(r & 0x7fn))
+          r >>= 7n
+        } while (r > 0n)
+        chunks.forEach((c, i) => {
+          this.bit(i === chunks.length - 1 ? 0 : 1)
+          this.bits(c, 7)
+        })
+        return this
+      }
+      integer(i: bigint): this {
+        return this.natural(i >= 0n ? i * 2n : -i * 2n - 1n)
+      }
+      byteString(bs: Uint8Array): this {
+        this.pad()
+        let off = 0
+        while (off < bs.length) {
+          const size = Math.min(255, bs.length - off)
+          this.byte(size)
+          for (let i = 0; i < size; i++) this.byte(bs[off + i]!)
+          off += size
+        }
+        return this.byte(0)
+      }
+      finish(): string {
+        this.pad()
+        if (this.n > 0) this.bytes.push(this.cur << (8 - this.n))
+        return Bytes.toHex(new Uint8Array(this.bytes))
+      }
+    }
+
+    const constantProgramHex = (typeTags: Array<number>, payload: (w: BitWriter) => void): string => {
+      const w = new BitWriter()
+      w.byte(1).byte(1).byte(0) // version 1.1.0
+      w.bits(4, 4) // Constant term tag
+      for (const t of typeTags) {
+        w.bit(1)
+        w.bits(t, 4)
+      }
+      w.bit(0) // end of type list
+      payload(w)
+      return w.finish()
+    }
+
+    const valuePayload =
+      (entries: Array<[Uint8Array, Array<[Uint8Array, bigint]>]>) =>
+      (w: BitWriter): void => {
+        for (const [currency, tokens] of entries) {
+          w.bit(1)
+          w.byteString(currency)
+          for (const [token, quantity] of tokens) {
+            w.bit(1)
+            w.byteString(token)
+            w.integer(quantity)
+          }
+          w.bit(0)
+        }
+        w.bit(0)
+      }
+
+    it("rejects a value with a zero quantity, as buildValueWith does", () => {
+      const hex = constantProgramHex([13], valuePayload([[new Uint8Array([]), [[new Uint8Array([]), 0n]]]]))
+      expect(() => UPLC.fromFlatHex(hex)).toThrow(/zero quantity/)
+    })
+
+    it("rejects a value whose currency symbols are not strictly ascending", () => {
+      const hex = constantProgramHex(
+        [13],
+        valuePayload([
+          [Bytes.fromHex("ff"), [[new Uint8Array([]), 1n]]],
+          [Bytes.fromHex("aa"), [[new Uint8Array([]), 1n]]]
+        ])
+      )
+      expect(() => UPLC.fromFlatHex(hex)).toThrow(/currency symbols not strictly ascending/)
+    })
+
+    it("rejects a value with an empty inner token list", () => {
+      const hex = constantProgramHex([13], valuePayload([[new Uint8Array([]), []]]))
+      expect(() => UPLC.fromFlatHex(hex)).toThrow(/empty inner map/)
+    })
+
+    it("rejects a value key longer than 32 bytes", () => {
+      const hex = constantProgramHex([13], valuePayload([[new Uint8Array(33), [[new Uint8Array([]), 1n]]]]))
+      expect(() => UPLC.fromFlatHex(hex)).toThrow(/Invalid Value key/)
+    })
+
+    it("rejects a quantity outside signed 128-bit bounds", () => {
+      const hex = constantProgramHex([13], valuePayload([[new Uint8Array([]), [[new Uint8Array([]), 2n ** 127n]]]]))
+      expect(() => UPLC.fromFlatHex(hex)).toThrow(/signed 128-bit/)
+    })
+
+    it("rejects BLS element type tags, which have no flat serialisation in scripts", () => {
+      const hex = constantProgramHex([9], () => {})
+      expect(() => UPLC.fromFlatHex(hex)).toThrow(/no flat serialisation/)
+    })
+
+    it("rejects encoding a value with a zero quantity or duplicate currency", () => {
+      const zeroQty = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm("Value", { value: [[new Uint8Array([]), [[new Uint8Array([]), 0n]]]] })
+      })
+      expect(() => UPLC.toFlatHex(zeroQty)).toThrow(/zero quantity/)
+      const duplicate = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm("Value", {
+          value: [
+            [new Uint8Array([]), [[new Uint8Array([]), 1n]]],
+            [new Uint8Array([]), [[Bytes.fromHex("ff"), 2n]]]
+          ]
+        })
+      })
+      expect(() => UPLC.toFlatHex(duplicate)).toThrow(/not strictly ascending/)
     })
   })
 })
