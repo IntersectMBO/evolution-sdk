@@ -129,3 +129,26 @@ describe("CIP-30 getUtxos (#414)", () => {
     expect(utxo.datumOption?._tag).toBe("DatumHash")
   })
 })
+
+describe("CIP-30 getUtxos with a deep inline datum", () => {
+  it("returns a UTxO whose inline datum nests 15,000 levels", async () => {
+    // A list nested 15,000 levels deep, written by hand since the encoders recurse
+    const datum = "81".repeat(15_000) + "00"
+    const datumLength = (datum.length / 2).toString(16).padStart(4, "0")
+    const input = `825820${"aa".repeat(32)}00`
+    // {0: address, 1: 2 ADA, 2: [1, 24(datum bytes)]}
+    const output = `a300581d${addressHex}011a001e8480028201d81859${datumLength}${datum}`
+    const api = { getUtxos: () => Promise.resolve([`82${input}${output}`]) } as unknown as Wallet.WalletApi
+
+    const [utxo] = await cip30Wallet(api)(preprod).getUtxos()
+
+    let levels = 0
+    let data = utxo.datumOption?._tag === "InlineDatum" ? utxo.datumOption.data : undefined
+    while (Array.isArray(data) && data.length === 1) {
+      data = data[0]
+      levels++
+    }
+    expect(data).toBe(0n)
+    expect(levels).toBe(15_000)
+  })
+})

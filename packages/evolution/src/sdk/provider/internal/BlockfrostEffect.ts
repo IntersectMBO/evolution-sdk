@@ -227,7 +227,7 @@ const getDatumByHash =
     ).pipe(
       Effect.map((datum) => {
         const data = PlutusData.fromCBORHex(datum.cbor)
-        return new InlineDatum.InlineDatum({ data })
+        return new InlineDatum.InlineDatum({ data }, { disableValidation: true })
       }),
       Effect.catchAll(wrapError("getDatumByHash"))
     )
@@ -310,9 +310,10 @@ export const getUtxos =
       const dataHash = utxo.data_hash
       const datumEffect = utxo.inline_datum
         ? Effect.succeed(
-            new InlineDatum.InlineDatum({
-              data: PlutusData.fromCBORHex(utxo.inline_datum)
-            })
+            new InlineDatum.InlineDatum(
+              { data: PlutusData.fromCBORHex(utxo.inline_datum) },
+              { disableValidation: true }
+            )
           )
         : dataHash
           ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
@@ -403,9 +404,10 @@ export const getUtxosWithUnit =
       const dataHash = utxo.data_hash
       const datumEffect = utxo.inline_datum
         ? Effect.succeed(
-            new InlineDatum.InlineDatum({
-              data: PlutusData.fromCBORHex(utxo.inline_datum)
-            })
+            new InlineDatum.InlineDatum(
+              { data: PlutusData.fromCBORHex(utxo.inline_datum) },
+              { disableValidation: true }
+            )
           )
         : dataHash
           ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
@@ -499,9 +501,10 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
           const dataHash = utxo.data_hash
           const datumEffect = utxo.inline_datum
             ? Effect.succeed(
-                new InlineDatum.InlineDatum({
-                  data: PlutusData.fromCBORHex(utxo.inline_datum)
-                })
+                new InlineDatum.InlineDatum(
+                  { data: PlutusData.fromCBORHex(utxo.inline_datum) },
+                  { disableValidation: true }
+                )
               )
             : dataHash
               ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
@@ -565,9 +568,10 @@ export const getUtxosByOutRef =
               const dataHash = output.data_hash
               const datumEffect = output.inline_datum
                 ? Effect.succeed(
-                    new InlineDatum.InlineDatum({
-                      data: PlutusData.fromCBORHex(output.inline_datum)
-                    })
+                    new InlineDatum.InlineDatum(
+                      { data: PlutusData.fromCBORHex(output.inline_datum) },
+                      { disableValidation: true }
+                    )
                   )
                 : dataHash
                   ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
@@ -627,7 +631,7 @@ export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: Dat
       Effect.flatMap((datum) => {
         // Parse CBOR hex to PlutusData
         return Effect.try({
-          try: () => Schema.decodeSync(PlutusData.FromCBORHex())(datum.cbor),
+          try: () => PlutusData.fromCBORHex(datum.cbor),
           catch: (error) => new ProviderError({ message: "Failed to parse datum CBOR", cause: error })
         })
       }),

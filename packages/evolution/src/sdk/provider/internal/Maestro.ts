@@ -252,7 +252,7 @@ export const transformDatumOption = (
 ): DatumOption | undefined => {
   if (!maestroDatum) return undefined
   if (maestroDatum.type === "inline" && maestroDatum.bytes) {
-    return new InlineDatum.InlineDatum({ data: PlutusData.fromCBORHex(maestroDatum.bytes) })
+    return new InlineDatum.InlineDatum({ data: PlutusData.fromCBORHex(maestroDatum.bytes) }, { disableValidation: true })
   }
   return DatumHash.fromHex(maestroDatum.hash)
 }

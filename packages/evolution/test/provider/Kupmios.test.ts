@@ -237,6 +237,69 @@ describe("Kupmios read paths", () => {
   })
 })
 
+describe("Kupmios deep inline datums", () => {
+  // A list nested 15,000 levels deep, about as deep as a transaction can carry
+  const DEEP_DATUM = "81".repeat(15_000) + "00"
+  const DEEP_DATUM_HASH = "aa".repeat(32)
+
+  const depth = (data: PlutusData.Data): number => {
+    let levels = 0
+    let current = data
+    while (Array.isArray(current) && current.length === 1) {
+      current = current[0]
+      levels++
+    }
+    return current === 0n ? levels : -1
+  }
+
+  const match = (outputIndex: number, datumHash: string) => `{
+    "transaction_index": 0,
+    "transaction_id": "${TX_HASH}",
+    "output_index": ${outputIndex},
+    "address": "${ADDRESS}",
+    "value": {"coins": 2000000, "assets": {}},
+    "datum_hash": "${datumHash}",
+    "datum_type": "inline",
+    "script_hash": null,
+    "created_at": {"slot_no": 56486181, "header_hash": "d25ac5572bedeba724d8c8178a5b6dcf95b75992970dab7145403cfbc44f9809"},
+    "spent_at": null
+  }`
+
+  const kupoDeep = {
+    "/matches/": `[${match(0, DATUM_HASH)}, ${match(1, DEEP_DATUM_HASH)}]`,
+    [`/datums/${DATUM_HASH}`]: `{"datum":"${DATUM}"}`,
+    [`/datums/${DEEP_DATUM_HASH}`]: `{"datum":"${DEEP_DATUM}"}`
+  }
+
+  it("getUtxos returns every UTxO at an address that holds a deep datum", async () => {
+    stubKupmios({ kupo: kupoDeep })
+
+    const utxos = await Effect.runPromise(KupmiosEffects.getUtxosEffect(KUPO_URL)(CoreAddress.fromBech32(ADDRESS)))
+
+    expect(utxos.map((utxo) => utxo.index)).toEqual([0n, 1n])
+    const deep = utxos[1].datumOption
+    expect(deep?._tag === "InlineDatum" ? depth(deep.data) : -1).toBe(15_000)
+  })
+
+  it("getUtxosByOutRef returns a UTxO that holds a deep datum", async () => {
+    stubKupmios({ kupo: kupoDeep })
+    const input = new TransactionInput.TransactionInput({ transactionId: TransactionHash.fromHex(TX_HASH), index: 1n })
+
+    const [utxo] = await Effect.runPromise(KupmiosEffects.getUtxosByOutRefEffect(KUPO_URL)([input]))
+
+    const deep = utxo!.datumOption
+    expect(deep?._tag === "InlineDatum" ? depth(deep.data) : -1).toBe(15_000)
+  })
+
+  it("getDatum returns a deep datum", async () => {
+    stubKupmios({ kupo: kupoDeep })
+
+    const datum = await Effect.runPromise(KupmiosEffects.getDatumEffect(KUPO_URL)(DatumHash.fromHex(DEEP_DATUM_HASH)))
+
+    expect(depth(datum)).toBe(15_000)
+  })
+})
+
 describe("Kupmios integers past 2^53", () => {
   it.each([
     ["2^64 - 1", "18446744073709551615", 18446744073709551615n],
