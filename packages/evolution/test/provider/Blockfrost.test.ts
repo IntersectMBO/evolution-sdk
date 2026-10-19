@@ -313,6 +313,57 @@ describe("Blockfrost UTxO queries", () => {
   })
 })
 
+describe("Blockfrost deep inline datums", () => {
+  // A list nested 15,000 levels deep, about as deep as a transaction can carry
+  const DEEP_DATUM = "81".repeat(15_000) + "00"
+  const DEEP_DATUM_HASH = "aa".repeat(32)
+
+  const depth = (data: Data.Data): number => {
+    let levels = 0
+    let current = data
+    while (Array.isArray(current) && current.length === 1) {
+      current = current[0]
+      levels++
+    }
+    return current === 0n ? levels : -1
+  }
+
+  const utxo = (index: number, inlineDatum: string | null, dataHash: string | null) => `{
+    "address": "${ADDRESS}",
+    "tx_hash": "${TX_HASH}",
+    "tx_index": ${index},
+    "output_index": ${index},
+    "amount": [{ "unit": "lovelace", "quantity": "42000000" }],
+    "block": "5c571f83fe6c784d3fbc223792627ccf0eea96773100f9aedecf8b1eda4544d7",
+    "data_hash": ${dataHash === null ? "null" : `"${dataHash}"`},
+    "inline_datum": ${inlineDatum === null ? "null" : `"${inlineDatum}"`},
+    "reference_script_hash": null
+  }`
+
+  it("getUtxos returns every UTxO at an address that holds a deep datum", async () => {
+    stubRoutes({
+      [`/addresses/${ADDRESS}/utxos?page=1&count=100`]: `[${utxo(0, "00", null)}, ${utxo(1, DEEP_DATUM, null)}, ${utxo(2, null, DEEP_DATUM_HASH)}]`,
+      [`/scripts/datum/${DEEP_DATUM_HASH}/cbor`]: `{"cbor":"${DEEP_DATUM}"}`
+    })
+
+    const utxos = await Effect.runPromise(BlockfrostEffect.getUtxos(BASE, PROJECT_ID)(Address.fromBech32(ADDRESS)))
+
+    expect(utxos.map((u) => u.index)).toEqual([0n, 1n, 2n])
+    const datums = utxos.map((u) => (u.datumOption instanceof InlineDatum.InlineDatum ? depth(u.datumOption.data) : -1))
+    expect(datums).toEqual([0, 15_000, 15_000])
+  })
+
+  it("getDatum returns a deep datum", async () => {
+    stubRoutes({ [`/scripts/datum/${DEEP_DATUM_HASH}/cbor`]: `{"cbor":"${DEEP_DATUM}"}` })
+
+    const datum = await Effect.runPromise(
+      BlockfrostEffect.getDatum(BASE, PROJECT_ID)(DatumHash.fromHex(DEEP_DATUM_HASH))
+    )
+
+    expect(depth(datum)).toBe(15_000)
+  })
+})
+
 describe("Blockfrost getDelegation", () => {
   // /accounts/{stake_address}, from the OpenAPI example with an active_epoch past 2^53
   const STAKE_ADDRESS = "stake1ux3g2c9dx2nhhehyrezyxpkstartcqmu9hk63qgfkccw5rqttygt7"
