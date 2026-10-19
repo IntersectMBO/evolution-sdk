@@ -1838,12 +1838,12 @@ export const decodeItemWithOffset = (
   data: Uint8Array,
   offset: number,
   options: CodecOptions = CML_DEFAULT_OPTIONS
-): { item: CBOR; newOffset: number } => decodeItemAt(data, offset, options, "none")
+): { item: CBOR; newOffset: number } => decodeItemAt(data, offset, options, "none", 0)
 
 // Decode (sync)
 export const internalDecodeSync = (data: Uint8Array, options: CodecOptions = DEFAULT_OPTIONS): CBOR => {
   if (data.length === 0) throw new CBORError({ message: "Empty CBOR data" })
-  const { item, newOffset } = decodeItemAt(data, 0, options, "none")
+  const { item, newOffset } = decodeItemAt(data, 0, options, "none", 0)
   if (newOffset !== data.length) {
     throw new CBORError({
       message: `Invalid CBOR: expected to consume ${data.length} bytes, but consumed ${newOffset}`
@@ -1862,7 +1862,7 @@ export const internalDecodeWithFormatSync = (
   data: Uint8Array
 ): DecodedWithFormat<CBOR> => {
   if (data.length === 0) throw new CBORError({ message: "Empty CBOR data" })
-  const result = decodeItemAt(data, 0, DEFAULT_OPTIONS, "format")
+  const result = decodeItemAt(data, 0, DEFAULT_OPTIONS, "format", 0)
   if (result.newOffset !== data.length) {
     throw new CBORError({
       message: `Invalid CBOR: expected to consume ${data.length} bytes, but consumed ${result.newOffset}`
@@ -2101,7 +2101,7 @@ const decodeItemIterative = (data: Uint8Array, offset: number, options: CodecOpt
  */
 const MAX_DECODE_DEPTH = 64
 
-const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack, depth: number = 0): DecodeAtResult => {
+const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack, depth: number): DecodeAtResult => {
   if (depth > MAX_DECODE_DEPTH) return decodeItemIterative(data, offset, options, track)
   if (offset >= data.length) throw new CBORError({ message: "Insufficient data for CBOR item" })
   const firstByte = data[offset]
