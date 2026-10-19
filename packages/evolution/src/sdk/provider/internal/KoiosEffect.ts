@@ -249,7 +249,7 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
       Effect.catchAll(wrapError("getDatum"))
     )
 
-    return Schema.decodeSync(PlutusData.FromCBORHex())(result.bytes)
+    return PlutusData.fromCBORHex(result.bytes)
   })
 
 export const awaitTx =

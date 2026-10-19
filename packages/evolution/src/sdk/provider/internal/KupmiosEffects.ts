@@ -102,7 +102,7 @@ const retrieveDatumEffect =
           Effect.map((result) => {
             // Parse the datum hex string to PlutusData
             const data = PlutusData.fromCBORHex(result.datum)
-            return new InlineDatum.InlineDatum({ data })
+            return new InlineDatum.InlineDatum({ data }, { disableValidation: true })
           }),
           Effect.retry(Schedule.compose(Schedule.exponential(50), Schedule.recurs(5))),
           Effect.timeout(5_000),
@@ -468,5 +468,5 @@ export const getDatumEffect = (kupoUrl: string, headers?: { kupoHeader?: Record<
       Effect.flatMap(Effect.fromNullable),
       Effect.catchAll(wrapError("getDatum"))
     )
-    return Schema.decodeSync(PlutusData.FromCBORHex())(result.datum)
+    return PlutusData.fromCBORHex(result.datum)
   })

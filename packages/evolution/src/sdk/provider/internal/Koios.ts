@@ -189,7 +189,10 @@ export const toUTxO = (koiosUTxO: UTxO, addressStr: string): CoreUTxO.UTxO => {
 
   let datumOption: DatumOption.DatumOption | undefined
   if (koiosUTxO.inline_datum?.bytes) {
-    datumOption = new InlineDatum.InlineDatum({ data: PlutusData.fromCBORHex(koiosUTxO.inline_datum.bytes) })
+    datumOption = new InlineDatum.InlineDatum(
+      { data: PlutusData.fromCBORHex(koiosUTxO.inline_datum.bytes) },
+      { disableValidation: true }
+    )
   } else if (koiosUTxO.datum_hash) {
     datumOption = DatumHash.fromHex(koiosUTxO.datum_hash)
   }
