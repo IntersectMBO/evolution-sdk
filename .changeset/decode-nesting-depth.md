@@ -6,4 +6,4 @@ Decoding no longer fails on data nested thousands of levels deep. `Data.fromCBOR
 
 - `Data.fromCBORBytes` and `Data.fromCBORHex` decode directly instead of through the `Data.FromCBORBytes` schema; the 24,000 golden test datums decode in 75 ms instead of 5.5 s. They still throw `ParseError` with the same message underneath, without the schema path lines above it.
 - The providers build each decoded inline datum without validating it a second time.
-- Koios and Maestro still fail from about 1,500 levels, in the JSON parsing of their responses. Encoding, comparing and hashing such data still recurse.
+- Koios and Maestro still fail from about 1,250 levels, in the JSON parsing of their responses. Encoding, comparing and hashing such data still recurse.
