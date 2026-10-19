@@ -1903,7 +1903,206 @@ const additionalInfoToByteSize = (ai: number): ByteSize => {
 const bytesReadToByteSize = (bytesRead: number): ByteSize =>
   bytesRead <= 1 ? 0 : bytesRead === 2 ? 1 : bytesRead === 3 ? 2 : 4
 
-const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+// An open array, map or tag on the stack of `decodeItemIterative`
+type ArrayFrame = {
+  readonly kind: "array"
+  readonly length: number // -1 for indefinite
+  index: number
+  readonly bs: ByteSize
+  readonly arr: Array<CBOR>
+  readonly children: Array<CBORFormat>
+}
+type MapFrame = {
+  readonly kind: "map"
+  readonly length: number // -1 for indefinite
+  index: number
+  readonly bs: ByteSize
+  readonly map: Map<CBOR, CBOR> | Record<string, CBOR>
+  hasKey: boolean
+  key: CBOR
+  keyFmt: CBORFormat
+  keyStart: number
+  readonly keyOrder: Array<Uint8Array>
+  readonly entries: Array<readonly [CBORFormat, CBORFormat]>
+}
+type TagFrame = { readonly kind: "tag"; readonly tag: number; readonly bs: ByteSize }
+type Frame = ArrayFrame | MapFrame | TagFrame
+
+// Placeholders for frame fields that only format mode fills
+const SIMPLE_FMT: CBORFormat = { _tag: "simple" }
+const NO_FORMATS: Array<CBORFormat> = []
+const NO_KEYS: Array<Uint8Array> = []
+const NO_ENTRIES: Array<readonly [CBORFormat, CBORFormat]> = []
+
+/**
+ * Decodes one item like `decodeItemAt`, keeping open containers on an explicit stack
+ * instead of the call stack, so any nesting depth fits. It must return the same item,
+ * format, offset and error as the recursive decoder for every input.
+ */
+const decodeItemIterative = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+  const fmt = track === "format"
+  const isObj = options.mode === "custom" && options.mapsAsObjects
+  const stack: Array<Frame> = []
+  let cur = offset
+  let item: CBOR = undefined
+  let format: CBORFormat = SIMPLE_FMT
+  for (;;) {
+    const top = stack.length > 0 ? stack[stack.length - 1] : undefined
+    let opened = true
+    if (top !== undefined && top.kind !== "tag" && top.length < 0 && !(top.kind === "map" && top.hasKey)) {
+      if (cur >= data.length) {
+        throw new CBORError({ message: top.kind === "array" ? "Indefinite array missing break byte (0xff)" : "Indefinite map missing break byte (0xff)" })
+      }
+      if (data[cur] === 0xff) {
+        cur += 1
+        stack.pop()
+        opened = false
+        if (top.kind === "array") {
+          item = top.arr
+          if (fmt) format = { _tag: "array", length: { tag: "indefinite" }, children: top.children }
+        } else {
+          item = top.map
+          if (fmt) format = { _tag: "map", length: { tag: "indefinite" }, keyOrder: top.keyOrder, entries: top.entries }
+        }
+      }
+    }
+    if (opened) {
+      if (cur >= data.length) throw new CBORError({ message: "Insufficient data for CBOR item" })
+      if (top !== undefined && top.kind === "map" && !top.hasKey) top.keyStart = cur
+      const first = data[cur]
+      const major = (first >> 5) & 0x07
+      const ai = first & 0x1f
+      if (major === CBOR_MAJOR_TYPE.ARRAY || major === CBOR_MAJOR_TYPE.MAP) {
+        const isArray = major === CBOR_MAJOR_TYPE.ARRAY
+        let length = -1
+        let bs: ByteSize = 0
+        if (ai === CBOR_ADDITIONAL_INFO.INDEFINITE) {
+          cur += 1
+        } else {
+          const h = decodeLengthAt(data, cur)
+          cur += h.bytesRead
+          length = h.length
+          if (isArray ? length > data.length - cur : length > (data.length - cur) / 2)
+            throw new CBORError({ message: isArray ? "Insufficient data for array" : "Insufficient data for map" })
+          bs = bytesReadToByteSize(h.bytesRead)
+        }
+        if (length !== 0) {
+          const n = length < 0 ? 0 : length
+          if (isArray) {
+            stack.push({ kind: "array", length, index: 0, bs, arr: new Array(n), children: fmt ? new Array(n) : NO_FORMATS })
+          } else {
+            stack.push({
+              kind: "map", length, index: 0, bs, map: isObj ? {} : new Map(), hasKey: false, key: undefined, keyFmt: SIMPLE_FMT, keyStart: 0,
+              keyOrder: fmt ? new Array(n) : NO_KEYS, entries: fmt ? new Array(n) : NO_ENTRIES
+            })
+          }
+          continue
+        }
+        if (isArray) {
+          item = []
+          if (fmt) format = { _tag: "array", ...(bs !== 0 ? { length: { tag: "definite", byteSize: bs } } : {}), children: [] }
+        } else {
+          item = isObj ? {} : new Map()
+          if (fmt) format = { _tag: "map", ...(bs !== 0 ? { length: { tag: "definite", byteSize: bs } } : {}), keyOrder: [], entries: [] }
+        }
+      } else if (major === CBOR_MAJOR_TYPE.TAG) {
+        let tag: number
+        if (ai < 24) {
+          tag = ai; cur += 1
+        } else if (ai === 24) {
+          if (data.length < cur + 2) throw new CBORError({ message: "Insufficient data for 1-byte tag" })
+          tag = data[cur + 1]; cur += 2
+        } else if (ai === 25) {
+          if (data.length < cur + 3) throw new CBORError({ message: "Insufficient data for 2-byte tag" })
+          tag = (data[cur + 1] << 8) | data[cur + 2]; cur += 3
+        } else {
+          throw new CBORError({ message: `Unsupported tag encoding: ${ai}` })
+        }
+        stack.push({ kind: "tag", tag, bs: additionalInfoToByteSize(ai) })
+        continue
+      } else {
+        let r: DecodeAtResult
+        switch (major) {
+          case CBOR_MAJOR_TYPE.UNSIGNED_INTEGER: r = decodeUintAt(data, cur, track); break
+          case CBOR_MAJOR_TYPE.NEGATIVE_INTEGER: r = decodeNintAt(data, cur, track); break
+          case CBOR_MAJOR_TYPE.BYTE_STRING: r = decodeBytesAt(data, cur, track); break
+          case CBOR_MAJOR_TYPE.TEXT_STRING: r = decodeTextAt(data, cur, track); break
+          default: r = decodeSimpleOrFloatAt(data, cur, track)
+        }
+        item = r.item
+        format = r.format ?? { _tag: "simple" }
+        cur = r.newOffset
+      }
+    }
+    // Hand the finished item to its parent; close every container it completes
+    for (;;) {
+      const parent = stack.length > 0 ? stack[stack.length - 1] : undefined
+      if (parent === undefined) return fmt ? { item, newOffset: cur, format } : { item, newOffset: cur }
+      if (parent.kind === "array") {
+        if (parent.length < 0) {
+          parent.arr.push(item)
+          if (fmt) parent.children.push(format)
+          break
+        }
+        parent.arr[parent.index] = item
+        if (fmt) parent.children[parent.index] = format
+        parent.index += 1
+        if (parent.index < parent.length) break
+        stack.pop()
+        item = parent.arr
+        if (fmt) format = { _tag: "array", ...(parent.bs !== 0 ? { length: { tag: "definite", byteSize: parent.bs } } : {}), children: parent.children }
+      } else if (parent.kind === "map") {
+        if (!parent.hasKey) {
+          parent.hasKey = true
+          parent.key = item
+          parent.keyFmt = format
+          if (fmt) {
+            const kb = data.slice(parent.keyStart, cur)
+            if (parent.length < 0) parent.keyOrder.push(kb)
+            else parent.keyOrder[parent.index] = kb
+          }
+          break
+        }
+        parent.hasKey = false
+        const m = parent.map
+        if (m instanceof Map) m.set(parent.key, item)
+        else m[String(parent.key)] = item
+        if (fmt) {
+          const e: readonly [CBORFormat, CBORFormat] = [parent.keyFmt, format]
+          if (parent.length < 0) parent.entries.push(e)
+          else parent.entries[parent.index] = e
+        }
+        parent.index += 1
+        if (parent.length < 0 || parent.index < parent.length) break
+        stack.pop()
+        item = m
+        if (fmt) format = { _tag: "map", ...(parent.bs !== 0 ? { length: { tag: "definite", byteSize: parent.bs } } : {}), keyOrder: parent.keyOrder, entries: parent.entries }
+      } else {
+        stack.pop()
+        const tag = parent.tag
+        if (tag === 2 || tag === 3) {
+          if (!(item instanceof Uint8Array)) throw new CBORError({ message: `Expected bytes for bigint tag ${tag}` })
+          let n = 0n
+          for (let i = 0; i < item.length; i++) n = (n << 8n) | BigInt(item[i])
+          item = tag === 2 ? n : -1n - n
+        } else {
+          item = { _tag: "Tag", tag, value: item }
+        }
+        if (fmt) format = { _tag: "tag", ...(parent.bs !== 0 ? { width: parent.bs } : {}), child: format }
+      }
+    }
+  }
+}
+
+/**
+ * Nesting depth the recursive decoder handles before it passes the rest of an item to
+ * `decodeItemIterative`. The golden datums and test transactions nest at most 10 levels,
+ * so real input stays recursive, and 64 levels need about 35 KiB of stack.
+ */
+const MAX_DECODE_DEPTH = 64
+
+const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack, depth: number = 0): DecodeAtResult => {
+  if (depth > MAX_DECODE_DEPTH) return decodeItemIterative(data, offset, options, track)
   if (offset >= data.length) throw new CBORError({ message: "Insufficient data for CBOR item" })
   const firstByte = data[offset]
   const majorType = (firstByte >> 5) & 0x07
@@ -1922,13 +2121,13 @@ const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, t
       result = decodeTextAt(data, offset, track)
       break
     case CBOR_MAJOR_TYPE.ARRAY:
-      result = decodeArrayAt(data, offset, options, track)
+      result = decodeArrayAt(data, offset, options, track, depth)
       break
     case CBOR_MAJOR_TYPE.MAP:
-      result = decodeMapAt(data, offset, options, track)
+      result = decodeMapAt(data, offset, options, track, depth)
       break
     case CBOR_MAJOR_TYPE.TAG:
-      result = decodeTagAt(data, offset, options, track)
+      result = decodeTagAt(data, offset, options, track, depth)
       break
     case CBOR_MAJOR_TYPE.SIMPLE_FLOAT:
       result = decodeSimpleOrFloatAt(data, offset, track)
@@ -2117,7 +2316,7 @@ const decodeTextAt = (data: Uint8Array, offset: number, track: DecodeTrack): Dec
   }
 }
 
-const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack, depth: number): DecodeAtResult => {
   const firstByte = data[offset]
   const additionalInfo = firstByte & 0x1f
   if (additionalInfo === CBOR_ADDITIONAL_INFO.INDEFINITE) {
@@ -2127,7 +2326,7 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
     if (track === "none") {
       while (cur < data.length) {
         if (data[cur] === 0xff) { cur += 1; foundBreak = true; break }
-        const child = decodeItemAt(data, cur, options, "none")
+        const child = decodeItemAt(data, cur, options, "none", depth + 1)
         arr.push(child.item); cur = child.newOffset
       }
       if (!foundBreak) throw new CBORError({ message: "Indefinite array missing break byte (0xff)" })
@@ -2136,7 +2335,7 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
     const childFormats: Array<CBORFormat> = []
     while (cur < data.length) {
       if (data[cur] === 0xff) { cur += 1; foundBreak = true; break }
-      const child = decodeItemAt(data, cur, options, "format")
+      const child = decodeItemAt(data, cur, options, "format", depth + 1)
       arr.push(child.item); childFormats.push(child.format!); cur = child.newOffset
     }
     if (!foundBreak) throw new CBORError({ message: "Indefinite array missing break byte (0xff)" })
@@ -2149,7 +2348,7 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
     const arr: Array<CBOR> = new Array(length)
     if (track === "none") {
       for (let i = 0; i < length; i++) {
-        const { item, newOffset } = decodeItemAt(data, cur, options, "none")
+        const { item, newOffset } = decodeItemAt(data, cur, options, "none", depth + 1)
         arr[i] = item; cur = newOffset
       }
       return { item: arr, newOffset: cur }
@@ -2158,14 +2357,14 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
     const le: LengthEncoding = { tag: "definite", byteSize: bs }
     const childFormats: Array<CBORFormat> = new Array(length)
     for (let i = 0; i < length; i++) {
-      const child = decodeItemAt(data, cur, options, "format")
+      const child = decodeItemAt(data, cur, options, "format", depth + 1)
       arr[i] = child.item; childFormats[i] = child.format!; cur = child.newOffset
     }
     return { item: arr, newOffset: cur, format: { _tag: "array", ...(bs !== 0 ? { length: le } : {}), children: childFormats } }
   }
 }
 
-const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack, depth: number): DecodeAtResult => {
   const firstByte = data[offset]
   const additionalInfo = firstByte & 0x1f
   const isObj = options.mode === "custom" && options.mapsAsObjects
@@ -2176,8 +2375,8 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
     if (track === "none") {
       while (cur < data.length) {
         if (data[cur] === 0xff) { cur += 1; foundBreak = true; break }
-        const k = decodeItemAt(data, cur, options, "none"); cur = k.newOffset
-        const v = decodeItemAt(data, cur, options, "none"); cur = v.newOffset
+        const k = decodeItemAt(data, cur, options, "none", depth + 1); cur = k.newOffset
+        const v = decodeItemAt(data, cur, options, "none", depth + 1); cur = v.newOffset
         if (map instanceof Map) map.set(k.item, v.item)
         else map[String(k.item as unknown)] = v.item
       }
@@ -2189,8 +2388,8 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
     while (cur < data.length) {
       if (data[cur] === 0xff) { cur += 1; foundBreak = true; break }
       const keyStart = cur
-      const k = decodeItemAt(data, cur, options, "format"); cur = k.newOffset
-      const v = decodeItemAt(data, cur, options, "format"); cur = v.newOffset
+      const k = decodeItemAt(data, cur, options, "format", depth + 1); cur = k.newOffset
+      const v = decodeItemAt(data, cur, options, "format", depth + 1); cur = v.newOffset
       keyOrderBytes.push(data.slice(keyStart, k.newOffset)); entryFormats.push([k.format!, v.format!])
       if (map instanceof Map) map.set(k.item, v.item)
       else map[String(k.item as unknown)] = v.item
@@ -2205,9 +2404,9 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
     const map = isObj ? ({} as Record<string, CBOR>) : new Map<CBOR, CBOR>()
     if (track === "none") {
       for (let i = 0; i < length; i++) {
-        const k = decodeItemAt(data, cur, options, "none")
+        const k = decodeItemAt(data, cur, options, "none", depth + 1)
         cur = k.newOffset
-        const v = decodeItemAt(data, cur, options, "none")
+        const v = decodeItemAt(data, cur, options, "none", depth + 1)
         cur = v.newOffset
         if (map instanceof Map) map.set(k.item, v.item)
         else map[String(k.item as unknown)] = v.item
@@ -2220,9 +2419,9 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
     const entryFormats: Array<readonly [CBORFormat, CBORFormat]> = new Array(length)
     for (let i = 0; i < length; i++) {
       const keyStart = cur
-      const k = decodeItemAt(data, cur, options, "format")
+      const k = decodeItemAt(data, cur, options, "format", depth + 1)
       cur = k.newOffset
-      const v = decodeItemAt(data, cur, options, "format")
+      const v = decodeItemAt(data, cur, options, "format", depth + 1)
       cur = v.newOffset
       keyOrderBytes[i] = data.slice(keyStart, k.newOffset)
       entryFormats[i] = [k.format!, v.format!]
@@ -2233,7 +2432,7 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
   }
 }
 
-const decodeTagAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+const decodeTagAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack, depth: number): DecodeAtResult => {
   const firstByte = data[offset]
   const additionalInfo = firstByte & 0x1f
   let tagValue: number
@@ -2249,7 +2448,7 @@ const decodeTagAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
   } else {
     throw new CBORError({ message: `Unsupported tag encoding: ${additionalInfo}` })
   }
-  const inner = decodeItemAt(data, cur, options, track)
+  const inner = decodeItemAt(data, cur, options, track, depth + 1)
   cur = inner.newOffset
   const bs = additionalInfoToByteSize(additionalInfo)
   if (tagValue === 2 || tagValue === 3) {
