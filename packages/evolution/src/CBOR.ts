@@ -1904,6 +1904,7 @@ const bytesReadToByteSize = (bytesRead: number): ByteSize =>
   bytesRead <= 1 ? 0 : bytesRead === 2 ? 1 : bytesRead === 3 ? 2 : 4
 
 const decodeItemAt = (data: Uint8Array, offset: number, options: CodecOptions, track: DecodeTrack): DecodeAtResult => {
+  if (offset >= data.length) throw new CBORError({ message: "Insufficient data for CBOR item" })
   const firstByte = data[offset]
   const majorType = (firstByte >> 5) & 0x07
   let result: DecodeAtResult
@@ -2017,7 +2018,7 @@ const decodeLengthAt = (data: Uint8Array, offset: number): { length: number; byt
   } else if (additionalInfo === 26) {
     if (data.length < offset + 5) throw new CBORError({ message: "Insufficient data for 4-byte length" })
     return {
-      length: (data[offset + 1] << 24) | (data[offset + 2] << 16) | (data[offset + 3] << 8) | data[offset + 4],
+      length: ((data[offset + 1] << 24) | (data[offset + 2] << 16) | (data[offset + 3] << 8) | data[offset + 4]) >>> 0,
       bytesRead: 5
     }
   }
@@ -2143,6 +2144,8 @@ const decodeArrayAt = (data: Uint8Array, offset: number, options: CodecOptions, 
   } else {
     const { bytesRead, length } = decodeLengthAt(data, offset)
     let cur = offset + bytesRead
+    // Every item takes at least one byte
+    if (length > data.length - cur) throw new CBORError({ message: "Insufficient data for array" })
     const arr: Array<CBOR> = new Array(length)
     if (track === "none") {
       for (let i = 0; i < length; i++) {
@@ -2197,6 +2200,8 @@ const decodeMapAt = (data: Uint8Array, offset: number, options: CodecOptions, tr
   } else {
     const { bytesRead, length } = decodeLengthAt(data, offset)
     let cur = offset + bytesRead
+    // Every entry takes at least two bytes, one for the key and one for the value
+    if (length > (data.length - cur) / 2) throw new CBORError({ message: "Insufficient data for map" })
     const map = isObj ? ({} as Record<string, CBOR>) : new Map<CBOR, CBOR>()
     if (track === "none") {
       for (let i = 0; i < length; i++) {
