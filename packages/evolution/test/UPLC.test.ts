@@ -27,6 +27,20 @@ describe("UPLC Module", () => {
       expect(UPLC.BuiltinFunctions[0]).toBe("addInteger")
       expect(UPLC.BuiltinFunctions[86]).toBe("ripemd_160")
     })
+
+    // Plutus PlutusCore/Default/Builtins.hs encodeBuiltin; flat bytes cross-checked with `aiken uplc decode` (v1.1.24).
+    it.each([
+      [58, "bls12_381_G1_compress", "0101007741"],
+      [59, "bls12_381_G1_uncompress", "0101007761"],
+      [60, "bls12_381_G1_hashToGroup", "0101007781"],
+      [65, "bls12_381_G2_compress", "0101007821"],
+      [66, "bls12_381_G2_uncompress", "0101007841"],
+      [67, "bls12_381_G2_hashToGroup", "0101007861"]
+    ] as const)("maps builtin %i to %s", (id, name, flat) => {
+      expect(UPLC.BuiltinFunctions[id]).toBe(name)
+      expect(UPLC.fromFlatHex(flat).body).toEqual({ type: "Builtin", function: name })
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: UPLC.builtinTerm(name) }))).toBe(flat)
+    })
   })
 
   describe("Term Constructors", () => {
