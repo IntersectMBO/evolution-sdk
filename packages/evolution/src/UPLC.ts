@@ -767,6 +767,16 @@ const decodeTerm = (state: DecodeState, lamDepth: bigint): Term => {
 const decodeProgram = (state: DecodeState): Program => {
   const version = decodeVersion(state)
   const body = decodeTerm(state, 0n)
+  // Plutus decodes a program post-aligned (filler 0*1) and rejects any input left after it
+  // (PlutusCore.Flat postAlignedDecoder + strictDecoder), so a truncated parse cannot pass silently.
+  if (state.bitPosition >= state.buffer.length * 8) {
+    throw new UPLCError({ message: "Flat program is missing its final filler" })
+  }
+  _skipByte(state)
+  if (state.bitPosition !== state.buffer.length * 8) {
+    const remaining = state.buffer.length * 8 - state.bitPosition
+    throw new UPLCError({ message: `Flat program has ${remaining} trailing bits after its final filler` })
+  }
   return new Program({ version, body }, { disableValidation: true })
 }
 

@@ -233,6 +233,19 @@ describe("UPLC Module", () => {
     it("should throw for truncated data", () => {
       expect(() => UPLC.fromFlatHex("0101")).toThrow()
     })
+
+    // Plutus decodes a program post-aligned and its strictDecoder rejects anything left after the filler.
+    it.each([
+      ["a trailing byte", "01010048008100", "8 trailing bits"],
+      ["a filler that ends mid-byte", "0101004800a0", "5 trailing bits"],
+      ["no final filler", "01010016", "missing its final filler"]
+    ])("rejects a program with %s", (_name, flat, error) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(error)
+    })
+
+    it("accepts a final filler that spans several bytes, as Plutus's dFiller does", () => {
+      expect(UPLC.fromFlatHex("010100160001").body).toEqual({ type: "Delay", term: { type: "Error" } })
+    })
   })
 
   describe("Program Methods", () => {
