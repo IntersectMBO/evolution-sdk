@@ -790,11 +790,66 @@ describe("UPLC Module", () => {
       expect(() => UPLC.fromFlatHex(String(flat))).toThrow("BLS constants cannot be Flat-serialized")
     })
 
+    it("rejects a bare array constructor", () => {
+      expect(() => UPLC.fromFlatHex("0101004e01")).toThrow("array")
+    })
+
+    // Plutus's decodeKindedUni rejects an empty tag list and leftover tags.
     it.each([
-      ["bare array constructor", "0101004e01"],
-      ["array with no element type", "0101004bf1"]
-    ])("rejects a %s", (_name, flat) => {
-      expect(() => UPLC.fromFlatHex(flat)).toThrow("array")
+      ["an empty type tag list []", "01010041"],
+      ["an array with no element type [7,12]", "0101004bf1"],
+      ["a list with no element type [7,5]", "0101004bd401"],
+      ["a pair with no element types [7,7,6]", "0101004bdec1"],
+      ["a pair with no second type [7,7,6,0]", "0101004bded001"],
+      ["a nested truncated type [7,12,7,5]", "0101004bf2f501"]
+    ])("rejects %s", (_name, flat) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow("incomplete type application")
+    })
+
+    it.each([
+      ["Value [13,0]", "0101004ec001"],
+      ["Integer [0,0]", "010100484001"]
+    ])("rejects a trailing type tag after %s", (_name, flat) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow("remaining bits: [0]")
+    })
+
+    const malformedValues: Array<{ name: string; value: unknown; error: string }> = [
+      { name: "a missing entries array", value: {}, error: "entries array" },
+      { name: "a null entry", value: { entries: [null] }, error: "entries must be objects" },
+      { name: "a sparse entries array", value: { entries: new Array(1) }, error: "entries must be objects" },
+      {
+        name: "a null token",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [null] }] },
+        error: "tokens must be objects"
+      },
+      {
+        name: "a hex-string currency",
+        value: { entries: [{ currency: "abcd", tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] }] },
+        error: "byte strings"
+      },
+      {
+        name: "a non-array token list",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: {} }] },
+        error: "tokens must be an array"
+      },
+      {
+        name: "a hex-string token name",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: "ab", quantity: 1n }] }] },
+        error: "byte strings"
+      },
+      {
+        name: "a number quantity",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: Bytes.fromHex(""), quantity: 1 }] }] },
+        error: "bigints"
+      }
+    ]
+
+    it.each(malformedValues)("rejects a Value payload with $name on encoding", ({ error, value }) => {
+      const program = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm("Value", value as UPLC.ValueConstant)
+      })
+      expect(() => UPLC.toFlatHex(program)).toThrow(error)
     })
 
     it.each([

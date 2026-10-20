@@ -214,7 +214,8 @@ export const DataTypeTags = {
  * of at most 32 bytes, in strictly ascending lexicographic order without duplicates.
  * Token maps must be nonempty and quantities must be nonzero signed 128-bit integers.
  * An empty outer `entries` array represents zero. Encoding rejects invalid entries
- * rather than sorting or normalizing them, preserving the script's exact bytes.
+ * rather than sorting or dropping them. Like every other constant, keys and quantities
+ * are re-encoded in canonical Flat form (one chunk per 255 bytes, minimal integers).
  *
  * @since 2.0.0
  * @category model
@@ -599,16 +600,18 @@ const decodeList = <T>(state: DecodeState, decodeItem: () => T): Array<T> => {
 }
 
 /**
- * Decode a type from an array of 4-bit chunks (blaze-cardano approach).
+ * Decode a type from an array of 4-bit chunks.
  * Handles tag 7 (type application) recursively.
- * Type encoding: [7, 5, ...elementType] for List, [7, 7, 6, ...first, ...second] for Pair.
+ * Type encoding: [7, 5, ...elementType] for List, [7, 12, ...elementType] for Array,
+ * [7, 7, 6, ...first, ...second] for Pair. Missing tags are rejected, as in Plutus's decodeKindedUni.
  *
  * @since 2.0.0
  * @category internal
  */
 const decodeType = (type: Array<number>): [DataType, Array<number>] => {
+  // Plutus rejects an empty tag list: decoding it as Unit would accept truncated applications like [7,12,7,5].
   if (type.length === 0) {
-    return ["Unit", type]
+    throw new UPLCError({ message: "decodeType: incomplete type application" })
   }
 
   const head = type[0]
@@ -621,7 +624,6 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       const [innerType, remainder] = decodeType(type.slice(2))
       return [{ list: innerType }, remainder]
     } else if (subtype === 12) {
-      if (type.length < 3) throw new UPLCError({ message: "Incomplete array element type" })
       const [innerType, remainder] = decodeType(type.slice(2))
       return [{ array: innerType }, remainder]
     } else if (subtype === 7 && type[2] === 6) {
@@ -699,17 +701,26 @@ const compareValueKeys = (left: Uint8Array, right: Uint8Array): number => {
 }
 
 // Plutus 1.72.0.0 PlutusCore/Value.hs: K, Quantity and buildValueWith.
-// Validate on both paths: neither decoding nor construction may normalize a script.
+// Validate on both paths: neither decoding nor construction may sort or drop Value entries.
 const validateValueConstant = (value: ValueConstant): void => {
+  if (!Array.isArray(value?.entries)) throw new UPLCError({ message: "Value constant must have an entries array" })
   let previousCurrency: Uint8Array | undefined
-  for (const { currency, tokens } of value.entries) {
+  for (const entry of value.entries) {
+    if (typeof entry !== "object" || entry === null) throw new UPLCError({ message: "Value entries must be objects" })
+    const { currency, tokens } = entry
+    if (!(currency instanceof Uint8Array)) throw new UPLCError({ message: "Value keys must be byte strings" })
+    if (!Array.isArray(tokens)) throw new UPLCError({ message: "Value tokens must be an array" })
     if (currency.length > 32) throw new UPLCError({ message: "Value keys must be at most 32 bytes" })
     if (previousCurrency !== undefined && compareValueKeys(previousCurrency, currency) >= 0) {
       throw new UPLCError({ message: "Value currency symbols not strictly ascending" })
     }
     if (tokens.length === 0) throw new UPLCError({ message: "Value contains an empty inner map" })
     let previousToken: Uint8Array | undefined
-    for (const { name, quantity } of tokens) {
+    for (const token of tokens) {
+      if (typeof token !== "object" || token === null) throw new UPLCError({ message: "Value tokens must be objects" })
+      const { name, quantity } = token
+      if (!(name instanceof Uint8Array)) throw new UPLCError({ message: "Value keys must be byte strings" })
+      if (typeof quantity !== "bigint") throw new UPLCError({ message: "Value quantities must be bigints" })
       if (name.length > 32) throw new UPLCError({ message: "Value keys must be at most 32 bytes" })
       if (previousToken !== undefined && compareValueKeys(previousToken, name) >= 0) {
         throw new UPLCError({ message: "Value token names not strictly ascending" })
@@ -797,9 +808,8 @@ const decodeConst = (state: DecodeState): [DataType, ConstantValue] => {
   // Process the array to get DataType
   const [dataType, remainder] = decodeType(typeBits)
 
-  // Blaze-cardano allows non-empty remainder in some cases (empirically observed)
-  // The remainder seems to occur with String types specifically
-  if (remainder.length !== 0 && !(remainder.length === 1 && remainder[0] === 0)) {
+  // Plutus's decodeKindedUni requires no leftover tags; tolerating one would let a re-encode change the script bytes.
+  if (remainder.length !== 0) {
     throw new UPLCError({ message: `decodeConst: invalid type application, remaining bits: [${remainder.join(", ")}]` })
   }
   return [dataType, decodeData(state, dataType)]
