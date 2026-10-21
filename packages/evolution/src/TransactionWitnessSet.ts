@@ -6,6 +6,7 @@ import * as CBOR from "./CBOR.js"
 import * as PlutusData from "./Data.js"
 import * as Ed25519Signature from "./Ed25519Signature.js"
 import * as NativeScripts from "./NativeScripts.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 import * as PlutusV1 from "./PlutusV1.js"
 import * as PlutusV2 from "./PlutusV2.js"
 import * as PlutusV3 from "./PlutusV3.js"
@@ -178,12 +179,22 @@ export type PlutusScript = typeof PlutusScript.Type
  * @since 2.0.0
  * @category model
  */
+// A datum passes the constructor as the same object, so the bytes recorded
+// for it stay with it when a witness set is built from another one. The
+// encoded side stays DataSchema's
+const isData = Schema.is(PlutusData.DataSchema)
+const WitnessDatum = Schema.transform(
+  PlutusData.DataSchema,
+  Schema.declare((input: unknown): input is PlutusData.Data => isData(input)),
+  { strict: true, decode: (datum) => datum, encode: (datum) => datum }
+).annotations({ identifier: "TransactionWitnessSet.WitnessDatum" })
+
 export class TransactionWitnessSet extends Schema.Class<TransactionWitnessSet>("TransactionWitnessSet")({
   vkeyWitnesses: Schema.optional(Schema.Array(VKeyWitness)),
   nativeScripts: Schema.optional(Schema.Array(NativeScripts.NativeScript)),
   bootstrapWitnesses: Schema.optional(Schema.Array(Bootstrap.BootstrapWitness)),
   plutusV1Scripts: Schema.optional(Schema.Array(PlutusV1.PlutusV1)),
-  plutusData: Schema.optional(Schema.Array(PlutusData.DataSchema)),
+  plutusData: Schema.optional(Schema.Array(WitnessDatum)),
   redeemers: Schema.optional(Schema.typeSchema(Redeemers.Redeemers)),
   plutusV2Scripts: Schema.optional(Schema.Array(PlutusV2.PlutusV2)),
   plutusV3Scripts: Schema.optional(Schema.Array(PlutusV3.PlutusV3))
@@ -571,7 +582,11 @@ const encodeDatumSet = (datums: ReadonlyArray<PlutusData.Data>, options: CBOR.Tx
   CBOR.encodeTaggedValue(
     258,
     encodeArray(
-      datums.map((datum) => PlutusData.toCBORBytes(datum, options.plutusData)),
+      datums.map(
+        (datum) =>
+          (typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)) ??
+          PlutusData.toCBORBytes(datum, options.plutusData)
+      ),
       options.ledger
     )
   )

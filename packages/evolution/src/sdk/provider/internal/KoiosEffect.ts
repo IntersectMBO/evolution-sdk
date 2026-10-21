@@ -6,6 +6,7 @@ import * as Bytes from "../../../Bytes.js"
 import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
+import * as OriginalBytes from "../../../OriginalBytes.js"
 import * as PolicyId from "../../../PolicyId.js"
 import * as PoolKeyHash from "../../../PoolKeyHash.js"
 import * as Redeemer from "../../../Redeemer.js"
@@ -249,7 +250,10 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
       Effect.catchAll(wrapError("getDatum"))
     )
 
-    return PlutusData.fromCBORHex(result.bytes)
+    // Keep the fetched bytes: a witness set writes the datum with them
+    const bytes = Bytes.fromHex(result.bytes)
+    const data = PlutusData.fromCBORBytes(bytes)
+    return typeof data === "bigint" ? data : OriginalBytes.record(data, bytes)
   })
 
 export const awaitTx =

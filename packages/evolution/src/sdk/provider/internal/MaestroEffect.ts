@@ -10,6 +10,7 @@ import * as Bytes from "../../../Bytes.js"
 import type * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
+import * as OriginalBytes from "../../../OriginalBytes.js"
 import * as Script from "../../../Script.js"
 import * as ScriptRef from "../../../ScriptRef.js"
 import * as Transaction from "../../../Transaction.js"
@@ -307,7 +308,10 @@ export const getDatum = (baseUrl: string, apiKey: string) => (datumHash: DatumHa
       }
     ).pipe(Effect.timeout(TIMEOUT), Effect.catchAll(wrapError("get datum")))
 
-    return PlutusData.fromCBORHex(response.data.bytes)
+    // Keep the fetched bytes: a witness set writes the datum with them
+    const bytes = Bytes.fromHex(response.data.bytes)
+    const data = PlutusData.fromCBORBytes(bytes)
+    return typeof data === "bigint" ? data : OriginalBytes.record(data, bytes)
   })
 
 /**

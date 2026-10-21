@@ -2,6 +2,7 @@ import type * as CoreAddress from "../../../Address.js"
 import type * as Anchor from "../../../Anchor.js"
 import type * as CoreAssets from "../../../Assets.js"
 import type * as Credential from "../../../Credential.js"
+import type * as Data from "../../../Data.js"
 import type * as CoreDatumOption from "../../../DatumOption.js"
 import type * as DRep from "../../../DRep.js"
 import type * as EpochNo from "../../../EpochNo.js"
@@ -68,6 +69,29 @@ export interface CollectFromParams {
   readonly redeemer?: RedeemerBuilder.RedeemerArg
   /** Optional label for debugging script failures - identifies this operation in error messages */
   readonly label?: string
+  /**
+   * The datum of each input that holds a datum hash at a Plutus script
+   * address. The witness set must carry it with the bytes its hash covers.
+   *
+   * A datum from `provider.getDatum` keeps the bytes it was fetched with,
+   * whatever the build's codec options say. Any other datum is written with
+   * the build's `plutusData` options, so a datum built by hand must be in the
+   * layout its hash was computed with, or carry those bytes through
+   * `OriginalBytes.record`. A bare integer keeps no bytes and is written in
+   * its shortest form.
+   *
+   * The build fails when a given datum belongs to no spent input, and when a
+   * spent input's datum is missing, unless the build uses
+   * `onMissingDatum: "provider"`.
+   *
+   * @example
+   * ```typescript
+   * if (utxo.datumOption?._tag !== "DatumHash") throw new Error("expected a datum hash")
+   * const datum = await client.getDatum(utxo.datumOption)
+   * client.newTx().collectFrom({ inputs: [utxo], redeemer, datums: [datum] })
+   * ```
+   */
+  readonly datums?: ReadonlyArray<Data.Data>
 }
 
 export interface ReadFromParams {

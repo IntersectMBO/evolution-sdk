@@ -439,6 +439,8 @@ export interface TxBuilderState {
   readonly selectedUtxos: ReadonlyArray<CoreUTxO.UTxO>
   readonly outputs: ReadonlyArray<TxOut.TransactionOutput>
   readonly scripts: Map<string, CoreScript.Script>
+  /** Witness datums, given to collectFrom or fetched for onMissingDatum, by datum hash hex */
+  readonly datums: Map<string, PlutusData.Data>
   readonly totalOutputAssets: CoreAssets.Assets
   readonly totalInputAssets: CoreAssets.Assets
   readonly redeemers: Map<string, RedeemerData>
@@ -533,6 +535,35 @@ export interface BuildOptions {
    * @since 2.0.0
    */
   readonly onInsufficientChange?: "error" | "burn"
+
+  /**
+   * What the build does when a spent input at a Plutus script address holds a
+   * datum hash and collectFrom was given no datum for it. The ledger rejects
+   * the transaction unless that datum is in the witness set.
+   *
+   * - "error": the build fails and names each such input. It makes no request.
+   * - "provider": the build fetches each such datum once with
+   *   `provider.getDatum`, checks that its bytes hash to the datum hash, and
+   *   writes those bytes to the witness set.
+   *
+   * A provider finds a datum only once an earlier transaction has published
+   * it, in its witness set or as an inline datum. Outputs this SDK locks
+   * under a datum hash never publish their datum, so keep that datum and
+   * pass it to `collectFrom({ datums })`.
+   *
+   * @example
+   * ```typescript
+   * const signBuilder = await client
+   *   .newTx()
+   *   .collectFrom({ inputs: [scriptUtxo], redeemer })
+   *   .attachScript({ script })
+   *   .build({ onMissingDatum: "provider" })
+   * ```
+   *
+   * @default "error"
+   * @since 2.0.0
+   */
+  readonly onMissingDatum?: "error" | "provider"
 
   /**
    * Script evaluator for Plutus script execution costs.

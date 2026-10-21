@@ -1,8 +1,12 @@
+import { blake2b } from "@noble/hashes/blake2.js"
 import { beforeAll, expect, it } from "vitest"
 
 import * as Address from "../../src/Address.js"
 import * as Assets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as Credential from "../../src/Credential.js"
+import * as DatumHash from "../../src/DatumHash.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import { type Provider } from "../../src/sdk/provider/Provider.js"
 import * as Transaction from "../../src/Transaction.js"
@@ -131,8 +135,11 @@ export function registerConformanceTests(factory: () => Provider, options?: Conf
   })
 
   it("getDatum", async () => {
-    const datum = await provider.getDatum(preprodDatumHash())
-    expect(datum).toBeDefined()
+    const datumHash = preprodDatumHash()
+    const datum = await provider.getDatum(datumHash)
+    // The datum keeps the bytes it was fetched with, and they hash to its datum hash
+    const bytes = typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)
+    expect(bytes && Bytes.toHex(blake2b(bytes, { dkLen: 32 }))).toBe(DatumHash.toHex(datumHash))
   })
 
   it("awaitTx", { timeout: 200_000 }, async () => {

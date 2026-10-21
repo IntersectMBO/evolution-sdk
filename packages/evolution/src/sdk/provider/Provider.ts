@@ -110,7 +110,9 @@ export interface ProviderEffect {
   readonly getDelegation: (rewardAddress: RewardAddress.RewardAddress) => Effect.Effect<Delegation, ProviderError>
   /**
    * Query a datum by its hash.
-   * Returns the parsed PlutusData structure.
+   * Returns the parsed PlutusData structure. The built-in providers record
+   * the bytes it was fetched with (`OriginalBytes`), so a witness set writes
+   * the datum with the bytes its hash covers.
    */
   readonly getDatum: (datumHash: DatumHash.DatumHash) => Effect.Effect<PlutusData.Data, ProviderError>
   /**

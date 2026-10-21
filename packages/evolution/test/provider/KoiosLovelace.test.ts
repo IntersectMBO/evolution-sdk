@@ -11,8 +11,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as CoreAddress from "../../src/Address.js"
 import * as CoreAssets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as PlutusData from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
 import * as ScriptHash from "../../src/ScriptHash.js"
 import * as KoiosEffect from "../../src/sdk/provider/internal/KoiosEffect.js"
@@ -68,6 +70,14 @@ const DATUM_INFO = `[{
   "value": {"fields": [{"fields": [{"int": 1740453}], "constructor": 0}, {"int": 1712190951000}], "constructor": 0},
   "bytes": "d8799fd8799f1a001a8ea5ff1b0000018ea6888e58ff"
 }]`
+
+// A datum in a layout the default Plutus data options do not write: the
+// constructor's map is indefinite
+const FETCHED_LAYOUT = "d8799fbf0102ff9f03ffff"
+const recordedHex = (datum: PlutusData.Data) => {
+  const bytes = typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)
+  return bytes === undefined ? undefined : Bytes.toHex(bytes)
+}
 
 /** Ogmios `evaluateTransaction` reply that Koios relays from `/ogmios` */
 const evaluation = (cpu: string) => {
@@ -220,6 +230,16 @@ describe("Koios paths without lovelace fields", () => {
     const datum = await Effect.runPromise(KoiosEffect.getDatum(BASE_URL)(DatumHash.fromHex(expected.datum_hash)))
 
     expect(PlutusData.toCBORHex(datum)).toBe(expected.bytes)
+  })
+
+  it("getDatum keeps the bytes it was fetched with", async () => {
+    stubKoios({ datum_info: DATUM_INFO.replace(/"bytes": "[0-9a-f]+"/, `"bytes": "${FETCHED_LAYOUT}"`) })
+    const [expected] = JSON.parse(DATUM_INFO)
+
+    const datum = await Effect.runPromise(KoiosEffect.getDatum(BASE_URL)(DatumHash.fromHex(expected.datum_hash)))
+
+    expect(recordedHex(datum)).toBe(FETCHED_LAYOUT)
+    expect(PlutusData.toCBORHex(datum)).not.toBe(FETCHED_LAYOUT)
   })
 
   it("submitTx", async () => {
