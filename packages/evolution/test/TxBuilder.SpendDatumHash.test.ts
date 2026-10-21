@@ -379,7 +379,9 @@ describe("onMissingDatum: provider", () => {
   it("fails when the provider has no datum", async () => {
     await expect(
       build({ inputs: [lockedUtxo("d87982a101028103")], onMissingDatum: "provider" }).built
-    ).rejects.toThrow("provider.getDatum failed for datum hash")
+    ).rejects.toThrow(
+      /provider\.getDatum failed for datum hash .*for an output this SDK locked, pass its datum to collectFrom/
+    )
   })
 
   it("fails when the fetched datum does not hash to the datum hash", async () => {

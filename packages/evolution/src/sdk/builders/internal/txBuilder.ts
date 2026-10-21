@@ -468,7 +468,10 @@ export const resolveSpendDatums: Effect.Effect<
       Effect.mapError(
         (error) =>
           new TransactionBuilderError({
-            message: `provider.getDatum failed for datum hash ${expected} of input ${input}: ${error.message}`,
+            message:
+              `provider.getDatum failed for datum hash ${expected} of input ${input}: ${error.message}. ` +
+              "A provider finds a datum only once an earlier transaction has published it; " +
+              "for an output this SDK locked, pass its datum to collectFrom({ datums })",
             cause: error
           })
       )

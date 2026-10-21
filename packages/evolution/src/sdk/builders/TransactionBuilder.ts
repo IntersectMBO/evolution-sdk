@@ -546,6 +546,11 @@ export interface BuildOptions {
    *   `provider.getDatum`, checks that its bytes hash to the datum hash, and
    *   writes those bytes to the witness set.
    *
+   * A provider finds a datum only once an earlier transaction has published
+   * it, in its witness set or as an inline datum. Outputs this SDK locks
+   * under a datum hash never publish their datum, so keep that datum and
+   * pass it to `collectFrom({ datums })`.
+   *
    * @example
    * ```typescript
    * const signBuilder = await client

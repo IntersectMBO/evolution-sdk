@@ -80,7 +80,7 @@ const spendTx = await client
   .build()
 ```
 
-A datum built by hand must be in the layout its hash was computed with, as `datum` is here. For an output someone else locked, fetch the datum with `client.getDatum(lockedUtxo.datumOption)`, which keeps the bytes its hash covers, or let the build fetch each missing datum with `build({ onMissingDatum: "provider" })`. A provider can serve a datum only after some transaction has published it. With neither, `build()` fails and names each input that needs its datum.
+A datum built by hand must be in the layout its hash was computed with, as `datum` is here. For an output someone else locked, fetch the datum with `client.getDatum(lockedUtxo.datumOption)`, which keeps the bytes its hash covers, or let the build fetch each missing datum with `build({ onMissingDatum: "provider" })`. A provider can serve a datum only after an earlier transaction has published it. Outputs this SDK locks never publish theirs, so keep the datum of each output you lock. With neither, `build()` fails and names each input that needs its datum.
 
 ## Type-Safe Datums with TSchema
 
