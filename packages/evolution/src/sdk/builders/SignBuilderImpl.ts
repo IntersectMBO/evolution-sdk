@@ -247,7 +247,8 @@ export const makeSignBuilder = (params: {
               plutusV1Scripts: [...(acc.plutusV1Scripts ?? []), ...(ws.plutusV1Scripts ?? [])],
               plutusV2Scripts: [...(acc.plutusV2Scripts ?? []), ...(ws.plutusV2Scripts ?? [])],
               plutusV3Scripts: [...(acc.plutusV3Scripts ?? []), ...(ws.plutusV3Scripts ?? [])],
-              plutusData: [...(acc.plutusData ?? []), ...(ws.plutusData ?? [])],
+              // The body's script data hash covers the transaction's own datums
+              plutusData: acc.plutusData,
               redeemers: acc.redeemers
             }),
           // Start from transaction's witness set (NOT empty) to preserve attached scripts
