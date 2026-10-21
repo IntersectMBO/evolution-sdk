@@ -14,6 +14,7 @@ import * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as InlineDatum from "../../../InlineDatum.js"
 import * as NativeScripts from "../../../NativeScripts.js"
+import * as OriginalBytes from "../../../OriginalBytes.js"
 import * as PlutusV1 from "../../../PlutusV1.js"
 import * as PlutusV2 from "../../../PlutusV2.js"
 import * as PlutusV3 from "../../../PlutusV3.js"
@@ -609,7 +610,12 @@ export const getDatum = (baseUrl: string, projectId?: string) => (datumHash: Dat
       Effect.flatMap((datum) => {
         // Parse CBOR hex to PlutusData
         return Effect.try({
-          try: () => PlutusData.fromCBORHex(datum.cbor),
+          try: () => {
+            // Keep the fetched bytes: a witness set writes the datum with them
+            const bytes = Bytes.fromHex(datum.cbor)
+            const data = PlutusData.fromCBORBytes(bytes)
+            return typeof data === "bigint" ? data : OriginalBytes.record(data, bytes)
+          },
           catch: (error) => new ProviderError({ message: "Failed to parse datum CBOR", cause: error })
         })
       }),
