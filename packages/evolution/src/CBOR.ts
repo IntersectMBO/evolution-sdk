@@ -381,8 +381,10 @@ export const CARDANO_NODE_DATA_OPTIONS: CodecOptions = CML_DATA_DEFINITE_OPTIONS
  *
  * - `ledger`: the options for ledger structures: the body, the witness set,
  *   and the containers that hold datums and redeemers.
- * - `plutusData`: the options for Plutus data items: new inline datums,
- *   witness datums and redeemer data.
+ * - `plutusData`: the options for Plutus data items: new inline datums, new
+ *   witness datums and redeemer data. A datum that keeps the bytes it was
+ *   decoded from, such as one from `provider.getDatum`, is written with
+ *   those bytes.
  *
  * @since 2.0.0
  * @category model

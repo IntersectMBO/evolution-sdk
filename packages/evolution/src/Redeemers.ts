@@ -4,6 +4,7 @@ import { Effect as Eff, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema
 import * as CBOR from "./CBOR.js"
 import * as CostModel from "./CostModel.js"
 import * as Data from "./Data.js"
+import * as OriginalBytes from "./OriginalBytes.js"
 import * as Redeemer from "./Redeemer.js"
 import * as ScriptDataHash from "./ScriptDataHash.js"
 
@@ -649,7 +650,10 @@ const encodeDatumsTaggedSet = (datums: ReadonlyArray<Data.Data>, options: CBOR.T
   CBOR.encodeTaggedValue(
     258,
     encodeArray(
-      datums.map((datum) => Data.toCBORBytes(datum, options.plutusData)),
+      datums.map(
+        (datum) =>
+          (typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)) ?? Data.toCBORBytes(datum, options.plutusData)
+      ),
       options.ledger
     )
   )
