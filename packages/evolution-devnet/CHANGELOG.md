@@ -1,5 +1,14 @@
 # @evolution-sdk/devnet
 
+## 3.0.23
+
+### Patch Changes
+
+- Updated dependencies [[`68ee868`](https://github.com/IntersectMBO/evolution-sdk/commit/68ee868e649ef30146fcf1c6728c14f8c7c4c84f), [`dcd54c1`](https://github.com/IntersectMBO/evolution-sdk/commit/dcd54c13ab0c9e3f9144e1b2a405ffcf5e299b50)]:
+  - @evolution-sdk/evolution@0.7.1
+  - @evolution-sdk/aiken-uplc@2.0.22
+  - @evolution-sdk/scalus-uplc@2.0.22
+
 ## 3.0.22
 
 ### Patch Changes
