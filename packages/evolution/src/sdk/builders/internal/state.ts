@@ -24,6 +24,7 @@ export const makeInitialTxBuilderState = (): TxBuilderState => ({
   selectedUtxos: [],
   outputs: [],
   scripts: new Map(),
+  datums: new Map(),
   totalOutputAssets: CoreAssets.zero,
   totalInputAssets: CoreAssets.zero,
   redeemers: new Map(),

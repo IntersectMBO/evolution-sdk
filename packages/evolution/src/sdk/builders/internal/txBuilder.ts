@@ -1,4 +1,5 @@
 // Effect-TS imports
+import { blake2b } from "@noble/hashes/blake2.js"
 import { Effect, Ref } from "effect"
 import type * as Array from "effect/Array"
 
@@ -10,12 +11,14 @@ import * as Bytes from "../../../Bytes.js"
 import * as CBOR from "../../../CBOR.js"
 import type * as Certificate from "../../../Certificate.js"
 import * as CostModel from "../../../CostModel.js"
-import type * as PlutusData from "../../../Data.js"
+import * as PlutusData from "../../../Data.js"
+import type * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
 import * as Ed25519Signature from "../../../Ed25519Signature.js"
 import type * as GovernanceAction from "../../../GovernanceAction.js"
 import type * as KeyHash from "../../../KeyHash.js"
 import * as NativeScripts from "../../../NativeScripts.js"
+import * as OriginalBytes from "../../../OriginalBytes.js"
 import type * as PlutusV1 from "../../../PlutusV1.js"
 import type * as PlutusV2 from "../../../PlutusV2.js"
 import type * as PlutusV3 from "../../../PlutusV3.js"
@@ -44,7 +47,7 @@ import {
   proposalKeyToIndex,
   proposalToKey,
   TransactionBuilderError,
-  type TxBuilderConfigTag,
+  TxBuilderConfigTag,
   type TxBuilderState,
   TxContext,
   type UnfrackOptions,
@@ -332,6 +335,186 @@ const makeIsNativeScript =
     }
     return undefined
   }
+
+// ============================================================================
+// Witness datums
+// ============================================================================
+
+/**
+ * The bytes the witness set writes for a datum: the bytes it was decoded
+ * from, when they were recorded with `OriginalBytes`, else its encoding with
+ * the Plutus data options. A bare integer keeps no bytes.
+ *
+ * @since 2.0.0
+ * @category witness-datums
+ */
+export const witnessDatumBytes = (datum: PlutusData.Data, plutusData: CBOR.CodecOptions): Uint8Array =>
+  (typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)) ?? PlutusData.toCBORBytes(datum, plutusData)
+
+/**
+ * The datum hash, as hex, of the bytes the witness set writes for a datum.
+ *
+ * @since 2.0.0
+ * @category witness-datums
+ */
+export const witnessDatumHash = (datum: PlutusData.Data, plutusData: CBOR.CodecOptions): string =>
+  Bytes.toHex(blake2b(witnessDatumBytes(datum, plutusData), { dkLen: 32 }))
+
+type RequiredDatum = { readonly datumHash: DatumHash.DatumHash; readonly input: string }
+
+// The datum hashes the ledger needs in the witness set, each with the first
+// input that holds it: spent inputs with a datum hash whose payment script is
+// not a native script (cardano-ledger Alonzo/UTxO.hs getInputDataHashesTxBody).
+// A script the builder cannot classify counts as Plutus, as in collectFrom
+const requiredDatums = (state: TxBuilderState): Map<string, RequiredDatum> => {
+  const isNativeScript = makeIsNativeScript(state)
+  const required = new Map<string, RequiredDatum>()
+  for (const utxo of state.selectedUtxos) {
+    const datumOption = utxo.datumOption
+    const credential = utxo.address.paymentCredential
+    if (datumOption?._tag !== "DatumHash" || credential?._tag !== "ScriptHash") continue
+    if (isNativeScript(ScriptHash.toHex(credential)) === true) continue
+    const hash = Bytes.toHex(datumOption.hash)
+    if (!required.has(hash)) required.set(hash, { datumHash: datumOption, input: CoreUTxO.toOutRefString(utxo) })
+  }
+  return required
+}
+
+// The datum hashes of the outputs and the reference inputs. The ledger accepts
+// their datums too (getBabbageSupplementalDataHashes, Babbage/UTxO.hs), but
+// collectFrom takes only the datums of spent inputs
+const supplementalDatumHashes = (state: TxBuilderState): Set<string> => {
+  const hashes = new Set<string>()
+  for (const { datumOption } of [...state.outputs, ...state.referenceInputs]) {
+    if (datumOption?._tag === "DatumHash") hashes.add(Bytes.toHex(datumOption.hash))
+  }
+  return hashes
+}
+
+const missingDatumsError = (missing: ReadonlyArray<RequiredDatum>, unmatched: ReadonlyArray<string>) =>
+  new TransactionBuilderError({
+    message:
+      `Datum required for ${missing.length} input(s) that hold a datum hash: ` +
+      missing.map(({ datumHash, input }) => `${input} (datum hash ${Bytes.toHex(datumHash.hash)})`).join(", ") +
+      '. Pass each datum to collectFrom({ datums }), or build with onMissingDatum: "provider" to fetch it with provider.getDatum' +
+      (unmatched.length > 0
+        ? `. The given datum(s) ${unmatched.join(", ")} hash to none of them: a datum built by hand must be in the layout its hash covers, or carry those bytes through OriginalBytes.record`
+        : ""),
+    cause: {
+      missing: missing.map(({ datumHash, input }) => ({ input, datumHash: Bytes.toHex(datumHash.hash) })),
+      unmatched
+    }
+  })
+
+const unneededDatumsError = (unmatched: ReadonlyArray<string>, supplemental: ReadonlySet<string>) => {
+  const nowhere = unmatched.filter((hash) => !supplemental.has(hash))
+  const elsewhere = unmatched.filter((hash) => supplemental.has(hash))
+  const parts: Array<string> = []
+  if (nowhere.length > 0) {
+    parts.push(
+      `Datum(s) ${nowhere.join(", ")} given to collectFrom match no spent input that holds a datum hash at a Plutus script address, ` +
+        "and the ledger rejects a datum no input needs (NotAllowedSupplementalDatums)."
+    )
+  }
+  if (elsewhere.length > 0) {
+    parts.push(
+      `Datum(s) ${elsewhere.join(", ")} given to collectFrom belong to an output or a reference input; collectFrom takes the datums of spent inputs only.`
+    )
+  }
+  return new TransactionBuilderError({ message: parts.join(" "), cause: { unmatched } })
+}
+
+/**
+ * Match the datums given to collectFrom to the spent inputs, as the ledger
+ * does (`missingRequiredDatums`): each input that holds a datum hash at a
+ * Plutus script address needs its datum, and each given datum must belong to
+ * one of those inputs. A missing datum fails the build, unless
+ * `onMissingDatum` is `"provider"`: then each one is fetched once with
+ * `provider.getDatum`, and its bytes must hash to its datum hash.
+ *
+ * @since 2.0.0
+ * @category witness-datums
+ */
+export const resolveSpendDatums: Effect.Effect<
+  void,
+  TransactionBuilderError,
+  TxContext | TxBuilderConfigTag | BuildOptionsTag
+> = Effect.gen(function* () {
+  const stateRef = yield* TxContext
+  const state = yield* Ref.get(stateRef)
+  const { codecOptions, onMissingDatum = "error" } = yield* BuildOptionsTag
+  const required = requiredDatums(state)
+  const unmatched = globalThis.Array.from(state.datums.keys()).filter((hash) => !required.has(hash))
+  const missing = globalThis.Array.from(required)
+    .filter(([hash]) => !state.datums.has(hash))
+    .map(([, datum]) => datum)
+  if (missing.length > 0 && onMissingDatum === "error") {
+    return yield* Effect.fail(missingDatumsError(missing, unmatched))
+  }
+  if (unmatched.length > 0) return yield* Effect.fail(unneededDatumsError(unmatched, supplementalDatumHashes(state)))
+  if (missing.length === 0) return
+
+  const { provider } = yield* TxBuilderConfigTag
+  if (provider === undefined) {
+    return yield* Effect.fail(
+      new TransactionBuilderError({ message: 'onMissingDatum: "provider" needs a provider in the builder config' })
+    )
+  }
+  const { plutusData } = CBOR.toTxCodecOptions(codecOptions ?? CBOR.TX_DEFAULT_OPTIONS)
+  const datums = new Map(state.datums)
+  for (const { datumHash, input } of missing) {
+    const expected = Bytes.toHex(datumHash.hash)
+    const datum = yield* provider.effect.getDatum(datumHash).pipe(
+      Effect.mapError(
+        (error) =>
+          new TransactionBuilderError({
+            message: `provider.getDatum failed for datum hash ${expected} of input ${input}: ${error.message}`,
+            cause: error
+          })
+      )
+    )
+    const actual = witnessDatumHash(datum, plutusData)
+    if (actual !== expected) {
+      return yield* Effect.fail(
+        new TransactionBuilderError({
+          message:
+            `The datum the provider returned for input ${input} hashes to ${actual}, not to its datum hash ${expected}. ` +
+            "The provider must return the datum with the bytes it was decoded from.",
+          cause: { input, datumHash: expected, actual }
+        })
+      )
+    }
+    yield* Effect.logDebug(`[WitnessDatums] Fetched datum ${expected} for input ${input}`)
+    datums.set(expected, datum)
+  }
+  yield* Ref.update(stateRef, (current) => ({ ...current, datums }))
+})
+
+// The witness datums, once per datum hash. Fails when an input added after
+// resolveSpendDatums, by coin selection, needs a datum the build does not
+// have, or when the bytes a datum would be written with no longer hash to its
+// datum hash
+const witnessDatums = (
+  state: TxBuilderState,
+  plutusData: CBOR.CodecOptions
+): Effect.Effect<Array<PlutusData.Data>, TransactionBuilderError> =>
+  Effect.gen(function* () {
+    const missing = globalThis.Array.from(requiredDatums(state))
+      .filter(([hash]) => !state.datums.has(hash))
+      .map(([, datum]) => datum)
+    if (missing.length > 0) return yield* Effect.fail(missingDatumsError(missing, []))
+    for (const [hash, datum] of state.datums) {
+      if (witnessDatumHash(datum, plutusData) !== hash) {
+        return yield* Effect.fail(
+          new TransactionBuilderError({
+            message: `The witness datum for datum hash ${hash} would be written with bytes that hash to another hash`,
+            cause: { datumHash: hash }
+          })
+        )
+      }
+    }
+    return globalThis.Array.from(state.datums.values())
+  })
 
 /**
  * Validate redeemer requirements for governance voters, distinguishing native-script
@@ -814,19 +997,12 @@ export const assembleTransaction = (
       redeemers.push(redeemer)
     }
 
-    // Extract plutus data (datums) from selected UTxOs
-    // NOTE: Only datum hashes need to be resolved in the witness set's plutusData field.
-    // Inline datums (Babbage era feature) are already embedded in the UTxO output
-    // and should NOT be included in the witness set - doing so causes "extraneous datums" error.
-    const plutusDataArray: Array<PlutusData.Data> = []
-    for (const utxo of state.selectedUtxos) {
-      if (utxo.datumOption?._tag === "DatumHash") {
-        // For datum hash, we need to resolve and include the actual datum
-        // TODO: Implement datum resolution from provider or state
-        yield* Effect.logDebug(`[Assembly] Found datum hash UTxO (resolution not yet implemented)`)
-      }
-      // Inline datums (InlineDatum) are NOT added to plutusData - they're already in the UTxO
-    }
+    // The datums of the spent datum hash inputs, as collectFrom took them or
+    // resolveSpendDatums fetched them. An inline datum stays in its output
+    const plutusDataArray = yield* witnessDatums(
+      state,
+      CBOR.toTxCodecOptions(codecOptions ?? CBOR.TX_DEFAULT_OPTIONS).plutusData
+    )
 
     // Compute scriptDataHash if there are Plutus scripts (redeemers present)
     let scriptDataHash: ReturnType<typeof Redeemers.toScriptDataHash> | undefined
@@ -1292,7 +1468,8 @@ export const buildFakeWitnessSet = (
       nativeScripts,
       bootstrapWitnesses: [],
       plutusV1Scripts,
-      plutusData: [],
+      // The fee covers the witness datums
+      plutusData: globalThis.Array.from(state.datums.values()),
       redeemers: fakeRedeemers.length > 0 ? Redeemers.makeRedeemerMap(fakeRedeemers) : undefined,
       plutusV2Scripts,
       plutusV3Scripts

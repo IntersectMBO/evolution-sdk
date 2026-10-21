@@ -8,11 +8,12 @@
 import { Effect, Ref } from "effect"
 
 import * as CoreAssets from "../../../Assets.js"
+import * as CBOR from "../../../CBOR.js"
 import * as ScriptHash from "../../../ScriptHash.js"
 import * as UTxO from "../../../UTxO.js"
-import { filterScriptUtxos } from "../internal/txBuilder.js"
+import { filterScriptUtxos, witnessDatumHash } from "../internal/txBuilder.js"
 import * as RedeemerBuilder from "../RedeemerBuilder.js"
-import { TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
+import { BuildOptionsTag, TransactionBuilderError, TxContext } from "../TransactionBuilder.js"
 import type { CollectFromParams } from "./Operations.js"
 
 /**
@@ -37,10 +38,12 @@ import type { CollectFromParams } from "./Operations.js"
  */
 export const createCollectFromProgram = (
   params: CollectFromParams
-): Effect.Effect<void, TransactionBuilderError, TxContext> =>
+): Effect.Effect<void, TransactionBuilderError, TxContext | BuildOptionsTag> =>
   Effect.gen(function* () {
     const ctx = yield* TxContext
     const state = yield* Ref.get(ctx)
+    const { codecOptions } = yield* BuildOptionsTag
+    const { plutusData } = CBOR.toTxCodecOptions(codecOptions ?? CBOR.TX_DEFAULT_OPTIONS)
 
     // 1. Validate inputs exist
     if (params.inputs.length === 0) {
@@ -92,6 +95,10 @@ export const createCollectFromProgram = (
     // 5. Add UTxOs to selected inputs and track redeemers and input assets
     const inputAssets = UTxO.totalAssets(params.inputs)
 
+    // 6. Key each given datum by the hash of the bytes the witness set writes:
+    // the bytes it was decoded from, or else the build's plutusData encoding
+    const givenDatums = (params.datums ?? []).map((datum) => [witnessDatumHash(datum, plutusData), datum] as const)
+
     yield* Ref.update(ctx, (state) => {
       let newRedeemers = state.redeemers
       let newDeferredRedeemers = state.deferredRedeemers
@@ -133,6 +140,7 @@ export const createCollectFromProgram = (
         selectedUtxos: [...state.selectedUtxos, ...params.inputs],
         redeemers: newRedeemers,
         deferredRedeemers: newDeferredRedeemers,
+        datums: givenDatums.length > 0 ? new Map([...state.datums, ...givenDatums]) : state.datums,
         totalInputAssets: CoreAssets.merge(state.totalInputAssets, inputAssets)
       }
     })
