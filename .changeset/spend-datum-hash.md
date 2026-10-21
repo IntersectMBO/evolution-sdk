@@ -20,6 +20,8 @@ await client.newTx()
 
 A spend of a datum-hash output at a Plutus script address now fails at `build()` when its datum is neither given nor fetched, and the error names each such input. Code that added the datum to the built transaction by hand should pass it to `collectFrom` instead.
 
+The `onMissingDatum: "provider"` lookup only finds datums an earlier transaction published, and outputs this SDK locks never publish theirs. For those, keep the datum and pass it to `collectFrom`.
+
 - The built-in providers' `getDatum` keeps the bytes it fetched, through `OriginalBytes`. The witness set and the script data hash write a datum with those bytes, whatever the codec options say, because the datum hash covers them. A datum without recorded bytes is written with the `plutusData` options, as before.
 - The builder matches each given datum to its input by hashing the bytes it will write. It fails when a given datum belongs to no spent input.
 - The fee now counts the witness datums.
