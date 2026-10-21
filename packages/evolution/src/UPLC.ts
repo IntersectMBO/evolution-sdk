@@ -743,11 +743,15 @@ function failOnBlsElement(
   dataType: DataType,
   operation: "decoding" | "encoding"
 ): asserts dataType is Exclude<DataType, keyof typeof blsFlatErrors> {
-  if (typeof dataType === "string" && Object.hasOwn(blsFlatErrors, dataType)) {
-    const error = blsFlatErrors[dataType as keyof typeof blsFlatErrors]
-    throw new UPLCError({
-      message: `Flat ${operation} is not supported for objects of type ${error.name}${error[operation]}`
-    })
+  switch (dataType) {
+    case "BLS12_381_G1_Element":
+    case "BLS12_381_G2_Element":
+    case "BLS12_381_MlResult": {
+      const error = blsFlatErrors[dataType]
+      throw new UPLCError({
+        message: `Flat ${operation} is not supported for objects of type ${error.name}${error[operation]}`
+      })
+    }
   }
 }
 
@@ -756,21 +760,26 @@ function failOnBlsElement(
 function validateValueConstant(value: ConstantValue): asserts value is ValueConstant {
   const entries: unknown = typeof value === "object" && value !== null && "entries" in value ? value.entries : undefined
   if (!Array.isArray(entries)) throw new UPLCError({ message: "Value constant must have an entries array" })
+  // Unknown elements make each check below the only thing narrowing its field.
+  const entryList: ReadonlyArray<unknown> = entries
   let previousCurrency: Uint8Array | undefined
-  for (const entry of entries as ValueConstant["entries"]) {
+  for (const entry of entryList) {
     if (typeof entry !== "object" || entry === null) throw new UPLCError({ message: "Value entries must be objects" })
-    const { currency, tokens } = entry
+    const currency = "currency" in entry ? entry.currency : undefined
+    const tokens = "tokens" in entry ? entry.tokens : undefined
     if (!(currency instanceof Uint8Array)) throw new UPLCError({ message: "Value keys must be byte strings" })
     if (!Array.isArray(tokens)) throw new UPLCError({ message: "Value tokens must be an array" })
+    const tokenList: ReadonlyArray<unknown> = tokens
     if (currency.length > 32) throw new UPLCError({ message: "Value keys must be at most 32 bytes" })
     if (previousCurrency !== undefined && compareValueKeys(previousCurrency, currency) >= 0) {
       throw new UPLCError({ message: "Value currency symbols not strictly ascending" })
     }
-    if (tokens.length === 0) throw new UPLCError({ message: "Value contains an empty inner map" })
+    if (tokenList.length === 0) throw new UPLCError({ message: "Value contains an empty inner map" })
     let previousToken: Uint8Array | undefined
-    for (const token of tokens) {
+    for (const token of tokenList) {
       if (typeof token !== "object" || token === null) throw new UPLCError({ message: "Value tokens must be objects" })
-      const { name, quantity } = token
+      const name = "name" in token ? token.name : undefined
+      const quantity = "quantity" in token ? token.quantity : undefined
       if (!(name instanceof Uint8Array)) throw new UPLCError({ message: "Value keys must be byte strings" })
       if (typeof quantity !== "bigint") throw new UPLCError({ message: "Value quantities must be bigints" })
       if (name.length > 32) throw new UPLCError({ message: "Value keys must be at most 32 bytes" })
