@@ -103,6 +103,27 @@ const equalsVariant = (a: NativeScriptVariants, b: NativeScriptVariants): boolea
 }
 
 /**
+ * Helper function to recursively hash NativeScriptVariants, agreeing with `equalsVariant`
+ */
+const hashVariant = (script: NativeScriptVariants): number => {
+  const tag = Hash.string(script._tag)
+  switch (script._tag) {
+    case "ScriptPubKey":
+      // Hashed from the bytes, not their container: `equalsVariant` compares with `Bytes.equals`, so
+      // a `Buffer` and a `Uint8Array` over the same bytes are equal and must hash alike.
+      return Hash.combine(Hash.array(Array.from(script.keyHash)))(tag)
+    case "InvalidBefore":
+    case "InvalidHereafter":
+      return Hash.combine(Hash.hash(script.slot))(tag)
+    case "ScriptAll":
+    case "ScriptAny":
+      return Hash.combine(Hash.array(script.scripts.map(hashVariant)))(tag)
+    case "ScriptNOfK":
+      return Hash.combine(Hash.array(script.scripts.map(hashVariant)))(Hash.combine(Hash.hash(script.required))(tag))
+  }
+}
+
+/**
  * Internal Union schema for the actual native script variants
  *
  * @since 2.0.0
@@ -164,7 +185,9 @@ export class NativeScript extends Schema.TaggedClass<NativeScript>("NativeScript
   }
 
   [Hash.symbol](): number {
-    return Hash.hash(JSON.stringify(toJSON(this.script)))
+    // Hashed structurally, not through `toJSON`: that form refuses a `slot` or `required` outside the
+    // JSON-safe range, so routing through it would throw for a script a `HashSet` must still hold.
+    return hashVariant(this.script)
   }
 }
 
@@ -262,7 +285,29 @@ export const makeScriptNOfK = (required: bigint, scripts: ReadonlyArray<NativeSc
 // ============================================================================
 
 /**
+ * Largest magnitude a JSON number carries exactly. The cardano-cli JSON form uses JSON numbers for
+ * `slot` and `required`, so a `uint64` slot or an `int64` `required` outside this has no
+ * representation in it.
+ */
+const JSON_SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER)
+
+const jsonNumber = (value: bigint, field: string): number => {
+  // Refused rather than truncated: `Number(2n ** 53n + 1n)` silently returns a different slot, and a
+  // script decoded from the chain may carry any `uint64` slot, or an `int64` `required` the ledger
+  // allows to be negative.
+  if (value > JSON_SAFE_MAX || value < -JSON_SAFE_MAX) {
+    throw new NativeScriptError({
+      message: `${field} ${value} exceeds what the cardano-cli JSON form can represent exactly`
+    })
+  }
+  return Number(value)
+}
+
+/**
  * Convert a NativeScript to JSON representation matching cardano-cli format
+ *
+ * Throws `NativeScriptError` if `slot` or `required` falls outside ±`Number.MAX_SAFE_INTEGER`, which
+ * the JSON form cannot carry exactly.
  *
  * @since 2.0.0
  * @category conversion
@@ -277,12 +322,12 @@ export const toJSON = (script: NativeScriptVariants): any => {
     case "InvalidBefore":
       return {
         type: "after" as const,
-        slot: Number(script.slot)
+        slot: jsonNumber(script.slot, "slot")
       }
     case "InvalidHereafter":
       return {
         type: "before" as const,
-        slot: Number(script.slot)
+        slot: jsonNumber(script.slot, "slot")
       }
     case "ScriptAll":
       return {
@@ -297,7 +342,7 @@ export const toJSON = (script: NativeScriptVariants): any => {
     case "ScriptNOfK":
       return {
         type: "atLeast" as const,
-        required: Number(script.required),
+        required: jsonNumber(script.required, "required"),
         scripts: script.scripts.map(toJSON)
       }
   }
