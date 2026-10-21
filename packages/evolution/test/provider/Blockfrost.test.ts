@@ -8,9 +8,11 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as Address from "../../src/Address.js"
 import * as Assets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as Data from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
 import * as InlineDatum from "../../src/InlineDatum.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PlutusV2 from "../../src/PlutusV2.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
@@ -46,6 +48,14 @@ const ADDRESS =
   "addr1qxqs59lphg8g6qndelq8xwqn60ag3aeyfcp33c2kdp46a09re5df3pzwwmyq946axfcejy5n4x0y99wqpgtp2gd0k09qsgy6pz"
 const TOKEN_UNIT = "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a76e7574636f696e"
 const DATUM_HASH = "9e478573ab81ea7a8e31891ce0648b81229f408d596a3483e6f4f9b92d3cf710"
+
+// A datum in a layout the default Plutus data options do not write: the
+// constructor's map is indefinite
+const FETCHED_LAYOUT = "d8799fbf0102ff9f03ffff"
+const recordedHex = (datum: Data.Data) => {
+  const bytes = typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)
+  return bytes === undefined ? undefined : Bytes.toHex(bytes)
+}
 const SCRIPT_HASH = "13a3efd825703a352a8f71f4e2758d08c28c564e8dfcce9f77776ad1"
 const SCRIPT_CBOR = "4e4d01000033222220051200120011"
 const TX_HASH = "768c63e27a1c816a83dc7b07e78af673b2400de8849ea7e7b734ae1333d100d2"
@@ -417,6 +427,15 @@ describe("Blockfrost other endpoints", () => {
     const datum = await Effect.runPromise(BlockfrostEffect.getDatum(BASE, PROJECT_ID)(DatumHash.fromHex(DATUM_HASH)))
 
     expect(datum).toEqual(Data.fromCBORHex("19a6aa"))
+  })
+
+  it("getDatum keeps the bytes it was fetched with", async () => {
+    stubRoutes({ [`/scripts/datum/${DATUM_HASH}/cbor`]: `{"cbor":"${FETCHED_LAYOUT}"}` })
+
+    const datum = await Effect.runPromise(BlockfrostEffect.getDatum(BASE, PROJECT_ID)(DatumHash.fromHex(DATUM_HASH)))
+
+    expect(recordedHex(datum)).toBe(FETCHED_LAYOUT)
+    expect(Data.toCBORHex(datum)).not.toBe(FETCHED_LAYOUT)
   })
 
   it("awaitTx succeeds once the transaction is found", async () => {

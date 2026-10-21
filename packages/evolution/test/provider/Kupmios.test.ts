@@ -11,8 +11,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as CoreAddress from "../../src/Address.js"
 import * as CoreAssets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as PlutusData from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import * as RewardAddress from "../../src/RewardAddress.js"
 import * as ScriptHash from "../../src/ScriptHash.js"
@@ -32,6 +34,14 @@ const POLICY_ID = "ec0f50624331d0df45f40ab0e6081e5f1ff577c5c4dc767079d4fe59"
 const ASSET_NAME = "695553443230323430343033313833343534"
 const DATUM_HASH = "facfe6aa45fa8023a97a3f13afb823f3966313533f6d68821e65d8431b5a4918"
 const DATUM = "d8799fd8799f1a001a8ea5ff1b0000018ea6888e58ff"
+
+// A datum in a layout the default Plutus data options do not write: the
+// constructor's map is indefinite
+const FETCHED_LAYOUT = "d8799fbf0102ff9f03ffff"
+const recordedHex = (datum: PlutusData.Data) => {
+  const bytes = typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)
+  return bytes === undefined ? undefined : Bytes.toHex(bytes)
+}
 
 /** Kupo `/matches` body for that UTxO, with the token quantity as given */
 const matches = (quantity: string) => `[{
@@ -199,6 +209,15 @@ describe("Kupmios read paths", () => {
     const datum = await Effect.runPromise(KupmiosEffects.getDatumEffect(KUPO_URL)(DatumHash.fromHex(DATUM_HASH)))
 
     expect(PlutusData.toCBORHex(datum)).toBe(DATUM)
+  })
+
+  it("getDatum keeps the bytes it was fetched with", async () => {
+    stubKupmios({ kupo: { [`/datums/${DATUM_HASH}`]: `{"datum":"${FETCHED_LAYOUT}"}` } })
+
+    const datum = await Effect.runPromise(KupmiosEffects.getDatumEffect(KUPO_URL)(DatumHash.fromHex(DATUM_HASH)))
+
+    expect(recordedHex(datum)).toBe(FETCHED_LAYOUT)
+    expect(PlutusData.toCBORHex(datum)).not.toBe(FETCHED_LAYOUT)
   })
 
   it("getDelegation", async () => {

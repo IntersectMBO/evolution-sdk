@@ -6,7 +6,9 @@ import * as CoreAssets from "../../src/Assets.js"
 import * as Bytes from "../../src/Bytes.js"
 import type * as CBOR from "../../src/CBOR.js"
 import * as Data from "../../src/Data.js"
+import * as DatumHash from "../../src/DatumHash.js"
 import * as InlineDatum from "../../src/InlineDatum.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PlutusV3 from "../../src/PlutusV3.js"
 import * as Redeemer from "../../src/Redeemer.js"
 import * as ScriptHash from "../../src/ScriptHash.js"
@@ -14,7 +16,7 @@ import type { SignBuilder } from "../../src/sdk/builders/SignBuilder.js"
 import { type Evaluator, makeTxBuilder } from "../../src/sdk/builders/TransactionBuilder.js"
 import { preprod } from "../../src/sdk/client/index.js"
 import { seedWallet } from "../../src/sdk/client/internal/Wallets.js"
-import type { ProtocolParameters, Provider } from "../../src/sdk/provider/Provider.js"
+import { type ProtocolParameters, type Provider, ProviderError } from "../../src/sdk/provider/Provider.js"
 import * as Transaction from "../../src/Transaction.js"
 import * as TransactionHash from "../../src/TransactionHash.js"
 import type * as TransactionMetadatum from "../../src/TransactionMetadatum.js"
@@ -173,9 +175,24 @@ export const walletUtxos = [
   })
 ]
 
-/** A provider that records the bytes `submitTx` writes, as a provider does. */
-export const makeStubProvider = () => {
+/**
+ * A datum as the built-in providers return it from `getDatum`: decoded, with
+ * the bytes it was fetched with.
+ */
+export const fetchedDatum = (datumHex: string): Data.Data => {
+  const bytes = Bytes.fromHex(datumHex)
+  const data = Data.fromCBORBytes(bytes)
+  return typeof data === "bigint" ? data : OriginalBytes.record(data, bytes)
+}
+
+/**
+ * A provider that records the bytes `submitTx` writes, as a provider does.
+ * `getDatum` serves the given datums, by datum hash hex, as `fetchedDatum`
+ * returns them, and records each request.
+ */
+export const makeStubProvider = (datums: Readonly<Record<string, string>> = {}) => {
   const submitted: Array<Uint8Array> = []
+  const datumRequests: Array<string> = []
   const notImplemented = (name: string) => () => Effect.die(new Error(`StubProvider.${name}`))
   const effect = {
     getProtocolParameters: () => Effect.succeed(FULL_PP),
@@ -184,7 +201,14 @@ export const makeStubProvider = () => {
     getUtxoByUnit: notImplemented("getUtxoByUnit"),
     getUtxosByOutRef: notImplemented("getUtxosByOutRef"),
     getDelegation: notImplemented("getDelegation"),
-    getDatum: notImplemented("getDatum"),
+    getDatum: (datumHash: DatumHash.DatumHash) => {
+      const hash = DatumHash.toHex(datumHash)
+      datumRequests.push(hash)
+      const served = datums[hash]
+      return served === undefined
+        ? Effect.fail(new ProviderError({ message: `No datum for ${hash}` }))
+        : Effect.sync(() => fetchedDatum(served))
+    },
     awaitTx: notImplemented("awaitTx"),
     evaluateTx: notImplemented("evaluateTx"),
     submitTx: (tx: Transaction.Transaction) =>
@@ -195,7 +219,7 @@ export const makeStubProvider = () => {
       })
   }
   const provider = { effect } as unknown as Provider
-  return { provider, submitted }
+  return { provider, submitted, datumRequests }
 }
 
 /** An evaluator that records the bytes it is given, as the UPLC evaluators write them. */

@@ -8,8 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import * as Address from "../../src/Address.js"
 import * as Assets from "../../src/Assets.js"
+import * as Bytes from "../../src/Bytes.js"
 import * as Data from "../../src/Data.js"
 import * as DatumHash from "../../src/DatumHash.js"
+import * as OriginalBytes from "../../src/OriginalBytes.js"
 import * as PoolKeyHash from "../../src/PoolKeyHash.js"
 import * as MaestroEffect from "../../src/sdk/provider/internal/MaestroEffect.js"
 import * as Transaction from "../../src/Transaction.js"
@@ -221,6 +223,14 @@ describe("Maestro evaluateTx", () => {
   })
 })
 
+// A datum in a layout the default Plutus data options do not write: the
+// constructor's map is indefinite
+const FETCHED_LAYOUT = "d8799fbf0102ff9f03ffff"
+const recordedHex = (datum: Data.Data) => {
+  const bytes = typeof datum === "bigint" ? undefined : OriginalBytes.get(datum)
+  return bytes === undefined ? undefined : Bytes.toHex(bytes)
+}
+
 describe("Maestro getDatum and awaitTx", () => {
   it("getDatum decodes the datum bytes", async () => {
     stubFetch({ [`${BASE_URL}/datums/${PREPROD_DATUM_HASH_HEX}`]: `{"data":{"bytes":"d87980","json":{"constructor":0,"fields":[]}},${lastUpdated}}` })
@@ -228,6 +238,15 @@ describe("Maestro getDatum and awaitTx", () => {
     const datum = await Effect.runPromise(MaestroEffect.getDatum(BASE_URL, API_KEY)(DatumHash.fromHex(PREPROD_DATUM_HASH_HEX)))
 
     expect(datum).toEqual(Data.fromCBORHex("d87980"))
+  })
+
+  it("getDatum keeps the bytes it was fetched with", async () => {
+    stubFetch({ [`${BASE_URL}/datums/${PREPROD_DATUM_HASH_HEX}`]: `{"data":{"bytes":"${FETCHED_LAYOUT}","json":{}},${lastUpdated}}` })
+
+    const datum = await Effect.runPromise(MaestroEffect.getDatum(BASE_URL, API_KEY)(DatumHash.fromHex(PREPROD_DATUM_HASH_HEX)))
+
+    expect(recordedHex(datum)).toBe(FETCHED_LAYOUT)
+    expect(Data.toCBORHex(datum)).not.toBe(FETCHED_LAYOUT)
   })
 
   it("awaitTx returns once the transaction has a block", async () => {
