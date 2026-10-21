@@ -673,7 +673,7 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       case 8:
         typeName = "Data"
         break
-      // Plutus decodes BLS tags as ordinary types and fails only when it reads an element (see blsTypeNames).
+      // Plutus decodes BLS tags as ordinary types and fails only when it reads an element (see blsFlatErrors).
       case 9:
         typeName = "BLS12_381_G1_Element"
         break
@@ -724,20 +724,30 @@ const compareValueKeys = (left: Uint8Array, right: Uint8Array): number => {
 }
 
 // Plutus 1.72.0.0 BLS12_381/G1.hs, G2.hs and Pairing.hs: the Flat instances of these elements always fail,
-// so only an element read or written throws. Keyed by DataType, valued by Plutus's type name.
-const blsTypeNames = {
-  BLS12_381_G1_Element: "bls12_381_G1_element",
-  BLS12_381_G2_Element: "bls12_381_G2_element",
-  BLS12_381_MlResult: "bls12_381_mlresult"
+// so only an element read or written throws, with Plutus's messages.
+const blsFlatErrors = {
+  BLS12_381_G1_Element: {
+    decoding: ": use bls12_381_G1_uncompress on a bytestring instead.",
+    encoding: ": use bls12_381_G1_compress to obtain a bytestring instead.",
+    name: "bls12_381_G1_element"
+  },
+  BLS12_381_G2_Element: {
+    decoding: ": use bls12_381_G2_uncompress on a bytestring instead.",
+    encoding: ": use bls12_381_G2_compress to obtain a bytestring instead.",
+    name: "bls12_381_G2_element"
+  },
+  BLS12_381_MlResult: { decoding: "", encoding: "", name: "bls12_381_mlresult" }
 } as const
 
 function failOnBlsElement(
   dataType: DataType,
   operation: "decoding" | "encoding"
-): asserts dataType is Exclude<DataType, keyof typeof blsTypeNames> {
-  if (typeof dataType === "string" && dataType in blsTypeNames) {
-    const name = blsTypeNames[dataType as keyof typeof blsTypeNames]
-    throw new UPLCError({ message: `Flat ${operation} is not supported for objects of type ${name}` })
+): asserts dataType is Exclude<DataType, keyof typeof blsFlatErrors> {
+  if (typeof dataType === "string" && Object.hasOwn(blsFlatErrors, dataType)) {
+    const error = blsFlatErrors[dataType as keyof typeof blsFlatErrors]
+    throw new UPLCError({
+      message: `Flat ${operation} is not supported for objects of type ${error.name}${error[operation]}`
+    })
   }
 }
 

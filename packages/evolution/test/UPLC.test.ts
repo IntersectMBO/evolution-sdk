@@ -803,41 +803,61 @@ describe("UPLC Module", () => {
       )
     })
 
+    // Type tags [7,5,7,5,9], then two empty inner lists: 1 0 1 0 0.
+    it("round-trips a list of empty G1 lists", () => {
+      const flat = "0101004bd6f5ca81"
+      const constant = UPLC.constantTerm(
+        { list: { list: "BLS12_381_G1_Element" } },
+        { items: [{ items: [] }, { items: [] }] }
+      )
+      expect(UPLC.fromFlatHex(flat).body).toEqual(constant)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: constant }))).toBe(flat)
+    })
+
+    // Messages copied from the Flat instances in G1.hs, G2.hs and Pairing.hs.
+    const g1Decode =
+      "Flat decoding is not supported for objects of type bls12_381_G1_element: use bls12_381_G1_uncompress on a bytestring instead."
+    const g2Decode =
+      "Flat decoding is not supported for objects of type bls12_381_G2_element: use bls12_381_G2_uncompress on a bytestring instead."
+    const mlDecode = "Flat decoding is not supported for objects of type bls12_381_mlresult"
+    const g1Encode =
+      "Flat encoding is not supported for objects of type bls12_381_G1_element: use bls12_381_G1_compress to obtain a bytestring instead."
+    const g2Encode =
+      "Flat encoding is not supported for objects of type bls12_381_G2_element: use bls12_381_G2_compress to obtain a bytestring instead."
+    const mlEncode = "Flat encoding is not supported for objects of type bls12_381_mlresult"
+
     it.each([
-      ["a G1 element", "0101004c81", "bls12_381_G1_element"],
-      ["a G2 element", "0101004d01", "bls12_381_G2_element"],
-      ["a Miller loop result", "0101004d81", "bls12_381_mlresult"],
-      // As 0101004bd721, with the list's continuation bit set: 1001 0 1 then filler 001.
-      ["a nonempty list of G1 elements", "0101004bd729", "bls12_381_G1_element"]
-    ])("rejects decoding %s", (_name, flat, typeName) => {
-      expect(() => UPLC.fromFlatHex(flat)).toThrow(`Flat decoding is not supported for objects of type ${typeName}`)
+      ["a G1 element", "0101004c81", g1Decode],
+      ["a G2 element", "0101004d01", g2Decode],
+      ["a Miller loop result", "0101004d81", mlDecode],
+      // The empty containers above with the continuation bit set: <tag> 0 1, then filler.
+      ["a nonempty list of G1 elements", "0101004bd729", g1Decode],
+      ["a nonempty list of G2 elements", "0101004bd749", g2Decode],
+      ["a nonempty list of Miller loop results", "0101004bd769", mlDecode],
+      ["a nonempty array of G1 elements", "0101004bf329", g1Decode],
+      ["a nonempty array of G2 elements", "0101004bf349", g2Decode],
+      ["a nonempty array of Miller loop results", "0101004bf369", mlDecode],
+      // Type tags [7,7,6,0,9], then integer 0 (00000000) before the G1 element.
+      ["a pair holding a G1 element", "0101004bded0c801", g1Decode]
+    ])("rejects decoding %s", (_name, flat, message) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(message)
     })
 
     it.each<[string, UPLC.DataType, UPLC.ConstantValue, string]>([
-      ["a G1 element", "BLS12_381_G1_Element", new Uint8Array(48), "bls12_381_G1_element"],
-      ["a G2 element", "BLS12_381_G2_Element", new Uint8Array(96), "bls12_381_G2_element"],
-      ["a Miller loop result", "BLS12_381_MlResult", new Uint8Array(0), "bls12_381_mlresult"],
-      [
-        "a nonempty list of G2 elements",
-        { list: "BLS12_381_G2_Element" },
-        { items: [new Uint8Array(96)] },
-        "bls12_381_G2_element"
-      ],
-      [
-        "a nonempty array of G1 elements",
-        { array: "BLS12_381_G1_Element" },
-        { items: [new Uint8Array(48)] },
-        "bls12_381_G1_element"
-      ],
+      ["a G1 element", "BLS12_381_G1_Element", new Uint8Array(48), g1Encode],
+      ["a G2 element", "BLS12_381_G2_Element", new Uint8Array(96), g2Encode],
+      ["a Miller loop result", "BLS12_381_MlResult", new Uint8Array(0), mlEncode],
+      ["a nonempty list of G2 elements", { list: "BLS12_381_G2_Element" }, { items: [new Uint8Array(96)] }, g2Encode],
+      ["a nonempty array of G1 elements", { array: "BLS12_381_G1_Element" }, { items: [new Uint8Array(48)] }, g1Encode],
       [
         "a pair holding a Miller loop result",
         { pair: ["Integer", "BLS12_381_MlResult"] },
         { items: [0n, new Uint8Array(0)] },
-        "bls12_381_mlresult"
+        mlEncode
       ]
-    ])("rejects encoding %s", (_name, type, value, typeName) => {
+    ])("rejects encoding %s", (_name, type, value, message) => {
       const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm(type, value) })
-      expect(() => UPLC.toFlatHex(program)).toThrow(`Flat encoding is not supported for objects of type ${typeName}`)
+      expect(() => UPLC.toFlatHex(program)).toThrow(message)
     })
 
     // Copied byte for byte from plutus-conformance/test-cases/uplc/evaluation/builtin/semantics at 1.72.0.0.
