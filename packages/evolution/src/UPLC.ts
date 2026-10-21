@@ -432,27 +432,6 @@ const popBits = (state: DecodeState, count: number): number => {
 }
 
 /**
- * Pop a single byte from the decode state.
- *
- * @since 2.0.0
- * @category internal
- */
-const popByte = (state: DecodeState): number => {
-  // Align to byte boundary
-  const remainder = state.bitPosition % 8
-  if (remainder !== 0) {
-    state.bitPosition += 8 - remainder
-  }
-  const byteIndex = state.bitPosition / 8
-  if (byteIndex >= state.buffer.length) {
-    throw new UPLCError({ message: "No more bytes available" })
-  }
-  const value = state.buffer[byteIndex]!
-  state.bitPosition += 8
-  return value
-}
-
-/**
  * Skip padding bits until byte boundary.
  *
  * @since 2.0.0
@@ -648,9 +627,10 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
  * @category internal
  */
 const decodeVersion = (state: DecodeState): SemVer => {
-  const major = popByte(state)
-  const minor = popByte(state)
-  const patch = popByte(state)
+  // Plutus PlutusCore/FlatInstances.hs: each version component is a Flat Natural, not a byte.
+  const major = decodeNatural(state)
+  const minor = decodeNatural(state)
+  const patch = decodeNatural(state)
   const version = `${major}.${minor}.${patch}` as SemVer
   return version
 }
@@ -960,10 +940,8 @@ const encodeList = <T>(state: EncodeState, items: ReadonlyArray<T>, encodeItem: 
  * @category internal
  */
 const encodeVersion = (state: EncodeState, version: SemVer): void => {
-  const { major, minor, patch } = parseSemVer(version)
-  pushByte(state, major)
-  pushByte(state, minor)
-  pushByte(state, patch)
+  // Plutus PlutusCore/FlatInstances.hs: each version component is a Flat Natural, not a byte.
+  for (const component of version.split(".")) encodeNatural(state, BigInt(component))
 }
 
 /**

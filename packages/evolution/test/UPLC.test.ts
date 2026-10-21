@@ -322,6 +322,19 @@ describe("UPLC Module", () => {
       expect(() => UPLC.toFlatHex(program)).toThrow(UPLC.UPLCError)
       expect(() => UPLC.toFlatHex(program)).toThrow(error)
     })
+
+    // Plutus PlutusCore/FlatInstances.hs: each version component is a Flat Natural, not a byte.
+    it("writes and reads version components of 128 or more as naturals", () => {
+      const program = new UPLC.Program({ version: "257.0.0", body: UPLC.constrTerm(0n, []) })
+      expect(UPLC.toFlatHex(program)).toBe("810200008001")
+      expect(UPLC.fromFlatHex("810200008001").version).toBe("257.0.0")
+    })
+
+    it("rejects constr in a 0.255.0 program", () => {
+      expect(() => UPLC.fromFlatHex("00ff01008001")).toThrow(
+        "'constr' is not allowed before version 1.1.0, this program has version: 0.255.0"
+      )
+    })
   })
 
   describe("Program Methods", () => {
