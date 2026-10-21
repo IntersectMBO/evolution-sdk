@@ -200,7 +200,7 @@ describe("Blockfrost getProtocolParameters", () => {
 })
 
 describe("Blockfrost UTxO queries", () => {
-  it("getUtxos resolves datums and scripts and keeps quantities exact", async () => {
+  it("getUtxos keeps datum hashes, resolves scripts and keeps quantities exact", async () => {
     stubRoutes({ [`/addresses/${ADDRESS}/utxos?page=1&count=100`]: ADDRESS_UTXOS, ...SCRIPT_ROUTES })
 
     const utxos = await Effect.runPromise(
@@ -208,7 +208,9 @@ describe("Blockfrost UTxO queries", () => {
     )
 
     expectAddressUtxos(utxos)
-    expect(utxos[0].datumOption).toEqual(new InlineDatum.InlineDatum({ data: Data.fromCBORHex("19a6aa") }))
+    // The datum route answers, but a hash output still reports its hash
+    expect(utxos[0].datumOption).toEqual(DatumHash.fromHex(DATUM_HASH))
+    expect(utxos[1].datumOption).toEqual(new InlineDatum.InlineDatum({ data: Data.fromCBORHex("19a6aa") }))
     expect(utxos[1].scriptRef).toBeInstanceOf(PlutusV2.PlutusV2)
   })
 
@@ -308,7 +310,6 @@ describe("Blockfrost UTxO queries", () => {
     expect(utxos).toHaveLength(1)
     expect(utxos[0].index).toBe(1n)
     expect(utxos[0].assets.lovelace).toBe(18446744073709551615n)
-    // No datum route is stubbed, so the hash is kept
     expect(utxos[0].datumOption).toEqual(DatumHash.fromHex(DATUM_HASH))
   })
 })
@@ -350,7 +351,8 @@ describe("Blockfrost deep inline datums", () => {
 
     expect(utxos.map((u) => u.index)).toEqual([0n, 1n, 2n])
     const datums = utxos.map((u) => (u.datumOption instanceof InlineDatum.InlineDatum ? depth(u.datumOption.data) : -1))
-    expect(datums).toEqual([0, 15_000, 15_000])
+    expect(datums).toEqual([0, 15_000, -1])
+    expect(utxos[2].datumOption).toEqual(DatumHash.fromHex(DEEP_DATUM_HASH))
   })
 
   it("getDatum returns a deep datum", async () => {

@@ -215,24 +215,6 @@ const BlockfrostDatumCbor = Schema.Struct({
   cbor: Schema.String
 })
 
-/**
- * Fetch datum by hash and return as DatumOption.
- * Since we've resolved the actual datum data, we return InlineDatum.
- */
-const getDatumByHash =
-  (baseUrl: string, projectId?: string) =>
-  (datumHash: string): Effect.Effect<DatumOption.DatumOption, ProviderError> => {
-    return withRateLimit(
-      HttpUtils.get(`${baseUrl}/scripts/datum/${datumHash}/cbor`, BlockfrostDatumCbor, createHeaders(projectId))
-    ).pipe(
-      Effect.map((datum) => {
-        const data = PlutusData.fromCBORHex(datum.cbor)
-        return new InlineDatum.InlineDatum({ data }, { disableValidation: true })
-      }),
-      Effect.catchAll(wrapError("getDatumByHash"))
-    )
-  }
-
 // ============================================================================
 // Blockfrost Effect Functions (Curry Pattern)
 // ============================================================================
@@ -259,7 +241,6 @@ export const getUtxos =
   (baseUrl: string, projectId?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
     const addressPath = getAddressPath(addressOrCredential)
     const fetchScript = getScriptByHash(baseUrl, projectId)
-    const fetchDatum = getDatumByHash(baseUrl, projectId)
 
     // Fetch all pages of UTxOs
     const fetchPage = (page: number): Effect.Effect<ReadonlyArray<Blockfrost.BlockfrostUTxO>, unknown> =>
@@ -316,7 +297,7 @@ export const getUtxos =
             )
           )
         : dataHash
-          ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
+          ? Effect.succeed(DatumHash.fromHex(dataHash))
           : Effect.succeed(undefined)
 
       return Effect.all([scriptEffect, datumEffect]).pipe(
@@ -356,7 +337,6 @@ export const getUtxosWithUnit =
   (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) => {
     const addressPath = getAddressPath(addressOrCredential)
     const fetchScript = getScriptByHash(baseUrl, projectId)
-    const fetchDatum = getDatumByHash(baseUrl, projectId)
 
     // Fetch all pages of UTxOs
     const fetchPage = (page: number): Effect.Effect<ReadonlyArray<Blockfrost.BlockfrostUTxO>, unknown> =>
@@ -410,7 +390,7 @@ export const getUtxosWithUnit =
             )
           )
         : dataHash
-          ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
+          ? Effect.succeed(DatumHash.fromHex(dataHash))
           : Effect.succeed(undefined)
 
       return Effect.all([scriptEffect, datumEffect]).pipe(
@@ -450,7 +430,6 @@ export const getUtxosWithUnit =
  */
 export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: string) => {
   const fetchScript = getScriptByHash(baseUrl, projectId)
-  const fetchDatum = getDatumByHash(baseUrl, projectId)
 
   // First, get addresses holding this unit
   return withRateLimit(
@@ -507,7 +486,7 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
                 )
               )
             : dataHash
-              ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
+              ? Effect.succeed(DatumHash.fromHex(dataHash))
               : Effect.succeed(undefined)
 
           return Effect.all([scriptEffect, datumEffect]).pipe(
@@ -540,7 +519,6 @@ export const getUtxoByUnit = (baseUrl: string, projectId?: string) => (unit: str
 export const getUtxosByOutRef =
   (baseUrl: string, projectId?: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) => {
     const fetchScript = getScriptByHash(baseUrl, projectId)
-    const fetchDatum = getDatumByHash(baseUrl, projectId)
 
     // Blockfrost doesn't have a bulk endpoint, so we need to make individual calls
     const effects = inputs.map((input) =>
@@ -574,7 +552,7 @@ export const getUtxosByOutRef =
                     )
                   )
                 : dataHash
-                  ? fetchDatum(dataHash).pipe(Effect.catchAll(() => Effect.succeed(DatumHash.fromHex(dataHash))))
+                  ? Effect.succeed(DatumHash.fromHex(dataHash))
                   : Effect.succeed(undefined)
 
               return Effect.all([scriptEffect, datumEffect]).pipe(
