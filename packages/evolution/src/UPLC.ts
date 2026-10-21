@@ -489,6 +489,29 @@ const decodeNatural = (state: DecodeState): bigint => {
   return result
 }
 
+const MAX_WORD64 = 2n ** 64n - 1n
+
+/**
+ * Decode a Word64 from flat-encoded bits.
+ *
+ * @since 2.0.0
+ * @category internal
+ */
+const decodeWord64 = (state: DecodeState): bigint => {
+  // Plutus PlutusCore/Flat/Decoder/Strict.hs dWord64: at most ten 7-bit chunks, and the tenth must be 0 or 1.
+  let result = 0n
+  for (let i = 0; i < 10; i++) {
+    const more = popBit(state) === 1
+    const chunk = popBits(state, 7)
+    result |= BigInt(chunk) << BigInt(i * 7)
+    if (!more) {
+      if (i === 9 && chunk > 1) break
+      return result
+    }
+  }
+  throw new UPLCError({ message: "Unsigned integer does not fit in Word64: unexpected extra byte" })
+}
+
 /**
  * Decode an integer from flat-encoded bits.
  *
@@ -700,12 +723,27 @@ const decodeConst = (state: DecodeState): [DataType, ConstantValue] => {
 }
 
 /**
+ * Whether a program version allows constr and case terms.
+ *
+ * @since 2.0.0
+ * @category internal
+ */
+const allowsConstrCase = (version: SemVer): boolean => {
+  // Plutus PlutusCore/Version.hs: plcVersion110, and Ord Version compares major, then minor, then patch.
+  const { major, minor } = parseSemVer(version)
+  return major > 1 || (major === 1 && minor >= 1)
+}
+
+const notAllowedBefore110 = (term: "constr" | "case", version: SemVer): UPLCError =>
+  new UPLCError({ message: `'${term}' is not allowed before version 1.1.0, this program has version: ${version}` })
+
+/**
  * Decode a UPLC term from encoded bits.
  *
  * @since 2.0.0
  * @category internal
  */
-const decodeTerm = (state: DecodeState, lamDepth: bigint): Term => {
+const decodeTerm = (state: DecodeState, version: SemVer, lamDepth: bigint): Term => {
   const tag = popBits(state, 4)
 
   switch (tag) {
@@ -714,12 +752,12 @@ const decodeTerm = (state: DecodeState, lamDepth: bigint): Term => {
       return { type: "Var", name }
     }
     case TermTags.Lambda: {
-      const body = decodeTerm(state, lamDepth + 1n)
+      const body = decodeTerm(state, version, lamDepth + 1n)
       return { type: "Lambda", name: lamDepth, body }
     }
     case TermTags.Apply: {
-      const func = decodeTerm(state, lamDepth)
-      const arg = decodeTerm(state, lamDepth)
+      const func = decodeTerm(state, version, lamDepth)
+      const arg = decodeTerm(state, version, lamDepth)
       return { type: "Apply", function: func, argument: arg }
     }
     case TermTags.Constant: {
@@ -734,21 +772,25 @@ const decodeTerm = (state: DecodeState, lamDepth: bigint): Term => {
       return { type: "Builtin", function: BuiltinFunctions[idx]! }
     }
     case TermTags.Delay: {
-      const term = decodeTerm(state, lamDepth)
+      const term = decodeTerm(state, version, lamDepth)
       return { type: "Delay", term }
     }
     case TermTags.Force: {
-      const term = decodeTerm(state, lamDepth)
+      const term = decodeTerm(state, version, lamDepth)
       return { type: "Force", term }
     }
+    // Plutus UntypedPlutusCore/Core/Instance/Flat.hs decodeTerm checks the version before reading constr or case,
+    // and reads the constr tag as a Word64.
     case TermTags.Constr: {
-      const ctag = decodeNatural(state)
-      const terms = decodeList(state, () => decodeTerm(state, lamDepth))
+      if (!allowsConstrCase(version)) throw notAllowedBefore110("constr", version)
+      const ctag = decodeWord64(state)
+      const terms = decodeList(state, () => decodeTerm(state, version, lamDepth))
       return { type: "Constr", tag: ctag, terms }
     }
     case TermTags.Case: {
-      const term = decodeTerm(state, lamDepth)
-      const cases = decodeList(state, () => decodeTerm(state, lamDepth))
+      if (!allowsConstrCase(version)) throw notAllowedBefore110("case", version)
+      const term = decodeTerm(state, version, lamDepth)
+      const cases = decodeList(state, () => decodeTerm(state, version, lamDepth))
       return { type: "Case", term, cases }
     }
     case TermTags.Error:
@@ -766,7 +808,7 @@ const decodeTerm = (state: DecodeState, lamDepth: bigint): Term => {
  */
 const decodeProgram = (state: DecodeState): Program => {
   const version = decodeVersion(state)
-  const body = decodeTerm(state, 0n)
+  const body = decodeTerm(state, version, 0n)
   // Plutus decodes a program post-aligned (filler 0*1) and rejects any input left after it
   // (PlutusCore.Flat postAlignedDecoder + strictDecoder), so a truncated parse cannot pass silently.
   if (state.bitPosition >= state.buffer.length * 8) {
@@ -992,7 +1034,7 @@ const encodeConst = (state: EncodeState, valueType: DataType, value: ConstantVal
  * @since 2.0.0
  * @category internal
  */
-const encodeTerm = (state: EncodeState, term: Term): void => {
+const encodeTerm = (state: EncodeState, version: SemVer, term: Term): void => {
   switch (term.type) {
     case "Var":
       pushBits(state, TermTags.Var, 4)
@@ -1000,12 +1042,12 @@ const encodeTerm = (state: EncodeState, term: Term): void => {
       break
     case "Lambda":
       pushBits(state, TermTags.Lambda, 4)
-      encodeTerm(state, term.body)
+      encodeTerm(state, version, term.body)
       break
     case "Apply":
       pushBits(state, TermTags.Apply, 4)
-      encodeTerm(state, term.function)
-      encodeTerm(state, term.argument)
+      encodeTerm(state, version, term.function)
+      encodeTerm(state, version, term.argument)
       break
     case "Constant":
       pushBits(state, TermTags.Constant, 4)
@@ -1020,21 +1062,25 @@ const encodeTerm = (state: EncodeState, term: Term): void => {
     }
     case "Delay":
       pushBits(state, TermTags.Delay, 4)
-      encodeTerm(state, term.term)
+      encodeTerm(state, version, term.term)
       break
     case "Force":
       pushBits(state, TermTags.Force, 4)
-      encodeTerm(state, term.term)
+      encodeTerm(state, version, term.term)
       break
+    // Refuse what Plutus's decodeTerm would reject: constr or case before 1.1.0, and a tag outside Word64.
     case "Constr":
+      if (!allowsConstrCase(version)) throw notAllowedBefore110("constr", version)
+      if (term.tag > MAX_WORD64) throw new UPLCError({ message: `constr tag ${term.tag} does not fit in Word64` })
       pushBits(state, TermTags.Constr, 4)
       encodeNatural(state, term.tag)
-      encodeList(state, term.terms, (t) => encodeTerm(state, t))
+      encodeList(state, term.terms, (t) => encodeTerm(state, version, t))
       break
     case "Case":
+      if (!allowsConstrCase(version)) throw notAllowedBefore110("case", version)
       pushBits(state, TermTags.Case, 4)
-      encodeTerm(state, term.term)
-      encodeList(state, term.cases, (c) => encodeTerm(state, c))
+      encodeTerm(state, version, term.term)
+      encodeList(state, term.cases, (c) => encodeTerm(state, version, c))
       break
     case "Error":
       pushBits(state, TermTags.Error, 4)
@@ -1051,7 +1097,7 @@ const encodeTerm = (state: EncodeState, term: Term): void => {
 const encodeProgram = (program: Program): Uint8Array => {
   const state: EncodeState = { bytes: [], currentByte: 0, bitCount: 0 }
   encodeVersion(state, program.version as SemVer)
-  encodeTerm(state, program.body)
+  encodeTerm(state, program.version as SemVer, program.body)
   // Add filler at end to reach byte alignment
   pad(state)
   return getBytes(state)
