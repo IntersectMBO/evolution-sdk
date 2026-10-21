@@ -4,17 +4,14 @@
  * default is accepted.
  *
  * The builder locks funds at a script address under Data.toDatumHash, then
- * builds the spend. The builder does not yet put datum hash datums in the
- * witness set (txBuilder.ts, "datum resolution not yet implemented"), so the
- * test adds the datum to the built transaction, recomputes the script data
- * hash with Redeemers.toScriptDataHash, encodes with Transaction.toCBORHex,
- * signs with Transaction.addVKeyWitnessesBytes, and submits. Each case uses
- * one set of options for the script data hash and the encoding, and their
- * plutusData options for the datum hash: no options, CBOR.CML_DEFAULT_OPTIONS,
- * CBOR.TX_CANONICAL_OPTIONS, or plutusData set to CML_DATA_DEFAULT_OPTIONS. The
- * node accepts the spend only when the written datum hashes to the locked
- * datum hash and the script data hash covers the datum and redeemer as
- * written.
+ * builds the spend with the datum given to collectFrom. The test encodes the
+ * built transaction with Transaction.toCBORHex, signs it with
+ * Transaction.addVKeyWitnessesBytes, and submits. Each case builds with one
+ * set of codec options, and hashes the datum with their plutusData options:
+ * no options, CBOR.CML_DEFAULT_OPTIONS, CBOR.TX_CANONICAL_OPTIONS, or
+ * plutusData set to CML_DATA_DEFAULT_OPTIONS. The node accepts the spend only
+ * when the written datum hashes to the locked datum hash and the script data
+ * hash covers the datum and redeemer as written.
  *
  * A last spend goes through the builder alone, with an inline datum: the
  * builder writes its redeemer data in the data default and the node accepts it.
@@ -28,19 +25,15 @@ import { Cardano, Client, preprod } from "@evolution-sdk/evolution"
 import * as Address from "@evolution-sdk/evolution/Address"
 import * as Bytes from "@evolution-sdk/evolution/Bytes"
 import * as CBOR from "@evolution-sdk/evolution/CBOR"
-import * as CostModel from "@evolution-sdk/evolution/CostModel"
 import * as Data from "@evolution-sdk/evolution/Data"
 import * as DatumHash from "@evolution-sdk/evolution/DatumHash"
 import * as InlineDatum from "@evolution-sdk/evolution/InlineDatum"
 import * as PlutusV3 from "@evolution-sdk/evolution/PlutusV3"
-import * as Redeemers from "@evolution-sdk/evolution/Redeemers"
-import * as ScriptDataHash from "@evolution-sdk/evolution/ScriptDataHash"
 import * as ScriptHash from "@evolution-sdk/evolution/ScriptHash"
 import * as Transaction from "@evolution-sdk/evolution/Transaction"
 import * as TransactionBody from "@evolution-sdk/evolution/TransactionBody"
 import * as TransactionHash from "@evolution-sdk/evolution/TransactionHash"
 import * as TransactionWitnessSet from "@evolution-sdk/evolution/TransactionWitnessSet"
-import * as TxOut from "@evolution-sdk/evolution/TxOut"
 
 import plutusJson from "../../evolution/test/spec/plutus.json"
 
@@ -195,59 +188,17 @@ describe("Witness datum layout (Devnet Submit)", () => {
       )
       expect(scriptUtxo).toBeDefined()
 
-      // Build the spend; the builder leaves the witness datum out
+      // The builder writes the datum given to collectFrom, with the build's plutusData options
       const spendSignBuilder = await client
         .newTx()
-        .collectFrom({ inputs: [scriptUtxo!], redeemer: mapAndList })
+        .collectFrom({ inputs: [scriptUtxo!], redeemer: mapAndList, datums: [datum] })
         .attachScript({ script })
         .payToAddress({ address: walletAddress, assets: Cardano.Assets.fromLovelace(5_000_000n) })
-        .build()
-      const built = await spendSignBuilder.toTransaction()
-      expect(built.witnessSet.plutusData ?? []).toHaveLength(0)
-      const redeemers = built.witnessSet.redeemers!
-      expect(redeemers.size).toBe(1)
+        .build({ codecOptions: options })
+      const tx = await spendSignBuilder.toTransaction()
+      expect(tx.witnessSet.plutusData ?? []).toHaveLength(1)
 
-      // The builder hashed the PlutusV3 language view only
-      const params = await client.getProtocolParameters()
-      const costModels = new CostModel.CostModels({
-        PlutusV1: new CostModel.CostModel({ costs: [] }),
-        PlutusV2: new CostModel.CostModel({ costs: [] }),
-        PlutusV3: new CostModel.CostModel({ costs: Object.values(params.costModels.PlutusV3).map((v) => BigInt(v)) })
-      })
-      expect(ScriptDataHash.toHex(Redeemers.toScriptDataHash(redeemers, costModels))).toBe(
-        ScriptDataHash.toHex(built.body.scriptDataHash!)
-      )
-
-      // Add the datum and its hash; pay the few extra bytes from the change output
-      const feeBump = 10_000n
-      const changeIndex = built.body.outputs.reduce(
-        (best, output, i) =>
-          Cardano.Assets.lovelaceOf(output.assets) > Cardano.Assets.lovelaceOf(built.body.outputs[best]!.assets)
-            ? i
-            : best,
-        0
-      )
-      const outputs = built.body.outputs.map((output, i) =>
-        i === changeIndex
-          ? new TxOut.TransactionOutput({
-              ...output,
-              assets: Cardano.Assets.subtractLovelace(output.assets, feeBump)
-            })
-          : output
-      )
-      const tx = new Transaction.Transaction({
-        body: new TransactionBody.TransactionBody({
-          ...built.body,
-          outputs,
-          fee: built.body.fee + feeBump,
-          scriptDataHash: Redeemers.toScriptDataHash(redeemers, costModels, [datum], options)
-        }),
-        witnessSet: new TransactionWitnessSet.TransactionWitnessSet({ ...built.witnessSet, plutusData: [datum] }),
-        isValid: built.isValid,
-        auxiliaryData: built.auxiliaryData
-      })
-
-      const txHex = Transaction.toCBORHex(tx, options)
+      const txHex = Transaction.toCBORHex(tx)
       const txBytes = Bytes.fromHex(txHex)
       const walletUtxos = await client.getUtxos(walletAddress)
       const walletWitnessSet = await client.signTx(txHex, { utxos: [...walletUtxos, scriptUtxo!] })
