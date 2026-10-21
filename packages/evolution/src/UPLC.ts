@@ -53,8 +53,10 @@ export const makeSemVer = (major: number, minor: number, patch: number): SemVer 
   `${major}.${minor}.${patch}` as SemVer
 
 /**
- * All builtin functions supported in Plutus V3.
+ * All builtin functions defined by Plutus 1.72.0.0, in Flat tag order.
  * Order is significant - index is used in flat encoding.
+ * Being listed here does not mean a builtin is enabled on a network: 101–105
+ * (`batch7` in Plutus's Versions.hs) are not enabled on any protocol version yet.
  *
  * @since 2.0.0
  * @category constants
@@ -176,12 +178,24 @@ export type BuiltinFunction = (typeof BuiltinFunctions)[number]
  * @since 2.0.0
  * @category model
  */
-export type PrimitiveDataType = "Integer" | "ByteString" | "String" | "Unit" | "Bool" | "Data" | "Value"
+export type PrimitiveDataType =
+  | "Integer"
+  | "ByteString"
+  | "String"
+  | "Unit"
+  | "Bool"
+  | "Data"
+  | "Value"
+  | "BLS12_381_G1_Element"
+  | "BLS12_381_G2_Element"
+  | "BLS12_381_MlResult"
 
 /**
  * UPLC data type (recursive for pair/list/array).
  * Arrays use `{ array: elementType }` and the same `{ items: [...] }` payload as lists.
  * Native Value constants use {@link ValueConstant}, distinct from a Data map.
+ * BLS12-381 types can appear in a constant's type, but their elements have no Flat form:
+ * decoding or encoding an element throws, while an empty list or array of them is valid.
  *
  * @since 2.0.0
  * @category model
@@ -205,6 +219,9 @@ export const DataTypeTags = {
   Unit: 3,
   Bool: 4,
   Data: 8,
+  BLS12_381_G1_Element: 9,
+  BLS12_381_G2_Element: 10,
+  BLS12_381_MlResult: 11,
   ProtoArray: 12,
   Value: 13
 } as const
@@ -656,10 +673,16 @@ const decodeType = (type: Array<number>): [DataType, Array<number>] => {
       case 8:
         typeName = "Data"
         break
+      // Plutus decodes BLS tags as ordinary types and fails only when it reads an element (see blsTypeNames).
       case 9:
+        typeName = "BLS12_381_G1_Element"
+        break
       case 10:
+        typeName = "BLS12_381_G2_Element"
+        break
       case 11:
-        throw new UPLCError({ message: `BLS constants cannot be Flat-serialized in scripts (type tag ${head})` })
+        typeName = "BLS12_381_MlResult"
+        break
       case 12:
         throw new UPLCError({ message: "The array type constructor must be applied to an element type" })
       case 13:
@@ -700,12 +723,31 @@ const compareValueKeys = (left: Uint8Array, right: Uint8Array): number => {
   return left.length - right.length
 }
 
+// Plutus 1.72.0.0 BLS12_381/G1.hs, G2.hs and Pairing.hs: the Flat instances of these elements always fail,
+// so only an element read or written throws. Keyed by DataType, valued by Plutus's type name.
+const blsTypeNames = {
+  BLS12_381_G1_Element: "bls12_381_G1_element",
+  BLS12_381_G2_Element: "bls12_381_G2_element",
+  BLS12_381_MlResult: "bls12_381_mlresult"
+} as const
+
+function failOnBlsElement(
+  dataType: DataType,
+  operation: "decoding" | "encoding"
+): asserts dataType is Exclude<DataType, keyof typeof blsTypeNames> {
+  if (typeof dataType === "string" && dataType in blsTypeNames) {
+    const name = blsTypeNames[dataType as keyof typeof blsTypeNames]
+    throw new UPLCError({ message: `Flat ${operation} is not supported for objects of type ${name}` })
+  }
+}
+
 // Plutus 1.72.0.0 PlutusCore/Value.hs: K, Quantity and buildValueWith.
 // Validate on both paths: neither decoding nor construction may sort or drop Value entries.
-const validateValueConstant = (value: ValueConstant): void => {
-  if (!Array.isArray(value?.entries)) throw new UPLCError({ message: "Value constant must have an entries array" })
+function validateValueConstant(value: ConstantValue): asserts value is ValueConstant {
+  const entries: unknown = typeof value === "object" && value !== null && "entries" in value ? value.entries : undefined
+  if (!Array.isArray(entries)) throw new UPLCError({ message: "Value constant must have an entries array" })
   let previousCurrency: Uint8Array | undefined
-  for (const entry of value.entries) {
+  for (const entry of entries as ValueConstant["entries"]) {
     if (typeof entry !== "object" || entry === null) throw new UPLCError({ message: "Value entries must be objects" })
     const { currency, tokens } = entry
     if (!(currency instanceof Uint8Array)) throw new UPLCError({ message: "Value keys must be byte strings" })
@@ -742,6 +784,7 @@ const validateValueConstant = (value: ValueConstant): void => {
  * @category internal
  */
 const decodeData = (state: DecodeState, dataType: DataType): ConstantValue => {
+  failOnBlsElement(dataType, "decoding")
   if (dataType === "Integer") {
     const result = decodeInteger(state)
     return result
@@ -768,7 +811,7 @@ const decodeData = (state: DecodeState, dataType: DataType): ConstantValue => {
     return result
   }
   if (dataType === "Value") {
-    const value: ValueConstant = {
+    const value: ConstantValue = {
       entries: decodeList(state, () => ({
         currency: decodeByteString(state),
         tokens: decodeList(state, () => ({ name: decodeByteString(state), quantity: decodeInteger(state) }))
@@ -1044,6 +1087,9 @@ const encodeDataType = (state: EncodeState, dataType: DataType): Array<number> =
   if (dataType === "Bool") return [4]
   if (dataType === "Data") return [8]
   if (dataType === "Value") return [13]
+  if (dataType === "BLS12_381_G1_Element") return [9]
+  if (dataType === "BLS12_381_G2_Element") return [10]
+  if (dataType === "BLS12_381_MlResult") return [11]
   if ("array" in dataType) return [7, 12, ...encodeDataType(state, dataType.array)]
   if ("list" in dataType) return [7, 5, ...encodeDataType(state, dataType.list)]
   if ("pair" in dataType) {
@@ -1059,6 +1105,7 @@ const encodeDataType = (state: EncodeState, dataType: DataType): Array<number> =
  * @category internal
  */
 const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue): void => {
+  failOnBlsElement(dataType, "encoding")
   if (dataType === "Integer") {
     encodeInteger(state, value as bigint)
   } else if (dataType === "ByteString") {
@@ -1073,9 +1120,8 @@ const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue
   } else if (dataType === "Data") {
     encodeByteString(state, value as Uint8Array)
   } else if (dataType === "Value") {
-    const nativeValue = value as ValueConstant
-    validateValueConstant(nativeValue)
-    encodeList(state, nativeValue.entries, ({ currency, tokens }) => {
+    validateValueConstant(value)
+    encodeList(state, value.entries, ({ currency, tokens }) => {
       encodeByteString(state, currency)
       encodeList(state, tokens, ({ name, quantity }) => {
         encodeByteString(state, name)

@@ -782,12 +782,118 @@ describe("UPLC Module", () => {
       expect(() => UPLC.toFlatHex(program)).toThrow(error)
     })
 
+    // Universe.hs decodes tags 9-11 as types; G1.hs, G2.hs and Pairing.hs fail only when an element is read.
+    // Hand-derived: con 0100, type tags 1 0111 1 <0101 list | 1100 array> 1 <tag>, end 0, empty list 0, filler.
+    // 0101004bd721 is solidsnakedev's example from #667 and also decodes with Aiken v1.1.24.
+    const emptyBlsContainers: Array<[string, string, UPLC.DataType]> = [
+      ["list of G1 elements", "0101004bd721", { list: "BLS12_381_G1_Element" }],
+      ["list of G2 elements", "0101004bd741", { list: "BLS12_381_G2_Element" }],
+      ["list of Miller loop results", "0101004bd761", { list: "BLS12_381_MlResult" }],
+      ["array of G1 elements", "0101004bf321", { array: "BLS12_381_G1_Element" }],
+      ["array of G2 elements", "0101004bf341", { array: "BLS12_381_G2_Element" }],
+      ["array of Miller loop results", "0101004bf361", { array: "BLS12_381_MlResult" }]
+    ]
+
+    it.each(emptyBlsContainers)("round-trips an empty %s", (_name, flat, type) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(program.body).toEqual(UPLC.constantTerm(type, { items: [] }))
+      expect(UPLC.toFlatHex(program)).toBe(flat)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm(type, { items: [] }) }))).toBe(
+        flat
+      )
+    })
+
     it.each([
-      [9, "0101004c81"],
-      [10, "0101004d01"],
-      [11, "0101004d81"]
-    ])("keeps BLS constant tag %i unserialisable", (_tag, flat) => {
-      expect(() => UPLC.fromFlatHex(String(flat))).toThrow("BLS constants cannot be Flat-serialized")
+      ["a G1 element", "0101004c81", "bls12_381_G1_element"],
+      ["a G2 element", "0101004d01", "bls12_381_G2_element"],
+      ["a Miller loop result", "0101004d81", "bls12_381_mlresult"],
+      // As 0101004bd721, with the list's continuation bit set: 1001 0 1 then filler 001.
+      ["a nonempty list of G1 elements", "0101004bd729", "bls12_381_G1_element"]
+    ])("rejects decoding %s", (_name, flat, typeName) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(`Flat decoding is not supported for objects of type ${typeName}`)
+    })
+
+    it.each<[string, UPLC.DataType, UPLC.ConstantValue, string]>([
+      ["a G1 element", "BLS12_381_G1_Element", new Uint8Array(48), "bls12_381_G1_element"],
+      ["a G2 element", "BLS12_381_G2_Element", new Uint8Array(96), "bls12_381_G2_element"],
+      ["a Miller loop result", "BLS12_381_MlResult", new Uint8Array(0), "bls12_381_mlresult"],
+      [
+        "a nonempty list of G2 elements",
+        { list: "BLS12_381_G2_Element" },
+        { items: [new Uint8Array(96)] },
+        "bls12_381_G2_element"
+      ],
+      [
+        "a nonempty array of G1 elements",
+        { array: "BLS12_381_G1_Element" },
+        { items: [new Uint8Array(48)] },
+        "bls12_381_G1_element"
+      ],
+      [
+        "a pair holding a Miller loop result",
+        { pair: ["Integer", "BLS12_381_MlResult"] },
+        { items: [0n, new Uint8Array(0)] },
+        "bls12_381_mlresult"
+      ]
+    ])("rejects encoding %s", (_name, type, value, typeName) => {
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm(type, value) })
+      expect(() => UPLC.toFlatHex(program)).toThrow(`Flat encoding is not supported for objects of type ${typeName}`)
+    })
+
+    // Copied byte for byte from plutus-conformance/test-cases/uplc/evaluation/builtin/semantics at 1.72.0.0.
+    const conformanceGoldens: Array<{ name: string; flat: string; constant: UPLC.Term }> = [
+      {
+        name: "bls12_381_G1_multiScalarMul/multiScalarMul-01",
+        flat:
+          "0100003377266f712f58373d9e1318fc5fb4f1d536731aff74d8db19fdfb531f75c0a3357406eed22130950dfd33da2682260c" +
+          "76038dfb8bad6e84ae9d599a3c151815945ac1e6ef6b1027cd917f3907479d20d636ce437a41f5004bd7219bb8482e7b3c26" +
+          "31f8bf69e3aa6ce635fee9b1b633fbf6a63eeb814ddda44130950dfd33da2682260c76038dfb8bad6e84ae9d599a3c151815" +
+          "945ac1e6ef6b1027cd917f3907479d20d636ce437a41f50001",
+        constant: UPLC.constantTerm({ list: "BLS12_381_G1_Element" }, { items: [] })
+      },
+      {
+        name: "scaleValue/by-pos",
+        flat: "010000337c890022750101aa008101aa000a8101bb001d8101cc002801",
+        constant: UPLC.constantTerm("Value", {
+          entries: [
+            {
+              currency: Bytes.fromHex("aa"),
+              tokens: [
+                { name: Bytes.fromHex("aa"), quantity: 5n },
+                { name: Bytes.fromHex("bb"), quantity: -15n },
+                { name: Bytes.fromHex("cc"), quantity: 20n }
+              ]
+            }
+          ]
+        })
+      },
+      {
+        name: "indexArray/indexArray-01",
+        flat: "0101003357b697e41028241a110a240041",
+        constant: UPLC.constantTerm({ array: "Integer" }, { items: [1n, 2n, 3n, 4n, 5n] })
+      }
+    ]
+
+    const collectConstants = (term: UPLC.Term): Array<UPLC.Term> => {
+      switch (term.type) {
+        case "Constant":
+          return [term]
+        case "Apply":
+          return [...collectConstants(term.function), ...collectConstants(term.argument)]
+        case "Lambda":
+          return collectConstants(term.body)
+        case "Delay":
+        case "Force":
+          return collectConstants(term.term)
+        default:
+          return []
+      }
+    }
+
+    it.each(conformanceGoldens)("round-trips the Plutus conformance program $name", ({ constant, flat }) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(collectConstants(program.body)).toContainEqual(constant)
+      expect(UPLC.toFlatHex(program)).toBe(flat)
     })
 
     it("rejects a bare array constructor", () => {
