@@ -753,6 +753,8 @@ function failOnBlsElement(
       })
     }
   }
+  // A blsFlatErrors key without a case above is a type error here, so the asserts signature cannot drift.
+  dataType satisfies Exclude<DataType, keyof typeof blsFlatErrors>
 }
 
 // Plutus 1.72.0.0 PlutusCore/Value.hs: K, Quantity and buildValueWith.
