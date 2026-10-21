@@ -509,7 +509,7 @@ const decodeWord64 = (state: DecodeState): bigint => {
       return result
     }
   }
-  throw new UPLCError({ message: "Unsigned integer does not fit in Word64: unexpected extra byte" })
+  throw new UPLCError({ message: "Unexpected extra byte in unsigned integer" })
 }
 
 /**

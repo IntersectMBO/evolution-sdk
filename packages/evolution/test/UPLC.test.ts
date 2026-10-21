@@ -258,7 +258,7 @@ describe("UPLC Module", () => {
       [
         "constr/constr-08.flat",
         "010100880808080808080808002a49144d6178696d756d2074616720706c7573206f6e6500a4c1",
-        "does not fit in Word64"
+        "Unexpected extra byte in unsigned integer"
       ],
       [
         "constr/constr-09.flat",
@@ -285,7 +285,7 @@ describe("UPLC Module", () => {
     it("decodes constr tag 2^64-1", () => {
       const flat = "0101008ffffffffffffffffff01a49144d6178696d756d20746167203d20325e36342d3100a419c1e1"
       const body = UPLC.fromFlatHex(flat).body
-      expect(body.type === "Constr" && body.tag).toBe(2n ** 64n - 1n)
+      expect(body).toMatchObject({ type: "Constr", tag: 2n ** 64n - 1n })
     })
 
     it("rejects constr nested below the top of a 1.0.0 program", () => {
@@ -299,7 +299,9 @@ describe("UPLC Module", () => {
 
     // dWord64 reads at most ten 7-bit chunks; a tag spread over more is rejected even when its value fits.
     it("rejects a constr tag of more than ten chunks, and accepts one of exactly ten", () => {
-      expect(() => UPLC.fromFlatHex("010100880808080808080808080001")).toThrow("does not fit in Word64")
+      expect(() => UPLC.fromFlatHex("010100880808080808080808080001")).toThrow(
+        "Unexpected extra byte in unsigned integer"
+      )
       expect(UPLC.fromFlatHex("0101008808080808080808080001").body).toEqual({ type: "Constr", tag: 0n, terms: [] })
     })
 
