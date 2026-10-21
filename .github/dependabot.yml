@@ -43,7 +43,6 @@ updates:
           - "@noble/*"
           - "@scure/*"
           - "bip39"
-          - "@types/bip39"
 
       cardano-ecosystem:
         patterns:
@@ -80,7 +79,6 @@ updates:
           - "typescript"
           - "@types/*"
         exclude-patterns:
-          - "@types/bip39"
           - "@types/dockerode"
           - "@types/react"
           - "@types/react-dom"
