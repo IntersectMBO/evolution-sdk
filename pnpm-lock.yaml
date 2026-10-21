@@ -43,7 +43,7 @@ importers:
         version: 10.0.1(eslint@10.13.0(jiti@2.7.0))
       '@turbo/gen':
         specifier: ^2.5.6
-        version: 2.11.9(@types/node@26.6.5)
+        version: 2.11.10(@types/node@26.6.5)
       '@types/node':
         specifier: ^26.4.1
         version: 26.6.5
@@ -170,7 +170,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       baseline-browser-mapping:
         specifier: ^2.9.8
-        version: 2.11.29
+        version: 2.11.30
       effect:
         specifier: ^3.21.1
         version: 3.22.2
@@ -2499,8 +2499,8 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@turbo/gen@2.11.9':
-    resolution: {integrity: sha512-q4VMSYJOquGo8Os4U//sZ3Np2H/khEQ8tNDTBqPtX6rIS6lNze2HFBfRic1pkIvyDbF/F5oRWJu7Na4q2cS8tQ==}
+  '@turbo/gen@2.11.10':
+    resolution: {integrity: sha512-PL/OEEJLdsmS8zF/ijMrG9yi/j+PYe0nOCcZ1XbKndcjdYmeALnqHaxwoGmOo73FwDzC8mnsy2KrqNV6biaGlA==}
     hasBin: true
 
   '@turbo/linux-64@2.11.10':
@@ -3260,8 +3260,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  baseline-browser-mapping@2.11.29:
-    resolution: {integrity: sha512-YeesxhUmR4h5y5V8KF8iBCqJb8YFrBJ++XBTeGcWIaQOYXGN19JM0FoiOjAhwuDoln8owMgXcWBmgHtYSkky2w==}
+  baseline-browser-mapping@2.11.30:
+    resolution: {integrity: sha512-YJs6Pz17RMNv8HoyKREtCY38E3BV1nPkWVmIb+XN1uHC1Vqt3KZCH/uJH9ZKRoiKb/icZ6tvehyee6RZNbFfRA==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -8630,7 +8630,7 @@ snapshots:
   '@turbo/darwin-arm64@2.11.10':
     optional: true
 
-  '@turbo/gen@2.11.9(@types/node@26.6.5)':
+  '@turbo/gen@2.11.10(@types/node@26.6.5)':
     dependencies:
       '@inquirer/prompts': 7.10.1(@types/node@26.6.5)
       esbuild: 0.28.2
@@ -9389,7 +9389,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  baseline-browser-mapping@2.11.29: {}
+  baseline-browser-mapping@2.11.30: {}
 
   bcrypt-pbkdf@1.0.2:
     dependencies:
@@ -9444,7 +9444,7 @@ snapshots:
 
   browserslist@4.29.0:
     dependencies:
-      baseline-browser-mapping: 2.11.29
+      baseline-browser-mapping: 2.11.30
       caniuse-lite: 1.0.30001816
       electron-to-chromium: 1.5.433
       node-releases: 2.0.56
@@ -12043,7 +12043,7 @@ snapshots:
     dependencies:
       '@next/env': 16.4.2
       '@swc/helpers': 0.5.23
-      baseline-browser-mapping: 2.11.29
+      baseline-browser-mapping: 2.11.30
       caniuse-lite: 1.0.30001816
       postcss: 8.5.23
       react: 19.3.1
