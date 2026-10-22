@@ -211,6 +211,35 @@ export const CDDLSchema = Schema.declare(
 
 type CDDLSchema = typeof CDDLSchema.Type
 
+/**
+ * Every transaction-body key this schema reads — the whole of Conway's `transaction_body`.
+ *
+ * ⚠️ Keep it in step with the decoder below. A key added there and not here is refused; a key
+ * here and not there is silently dropped, which is the defect this set exists to prevent.
+ */
+const MODELLED_KEYS: ReadonlySet<bigint> = new Set([
+  0n, // inputs
+  1n, // outputs
+  2n, // fee
+  3n, // ttl
+  4n, // certificates
+  5n, // withdrawals
+  7n, // auxiliary data hash
+  8n, // validity interval start
+  9n, // mint
+  11n, // script data hash
+  13n, // collateral inputs
+  14n, // required signers
+  15n, // network id
+  16n, // collateral return
+  17n, // total collateral
+  18n, // reference inputs
+  19n, // voting procedures
+  20n, // proposal procedures
+  21n, // current treasury value
+  22n // donation
+])
+
 // The CDDL transform that writes a new inline datum with the `plutusData` options
 const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
   const encodeTxOutput = ParseResult.encodeEither(TxOut.makeFromCDDL(plutusData))
@@ -321,8 +350,29 @@ const makeFromCDDL = (plutusData: CBOR.CodecOptions) => {
 
         return record as CDDLSchema
       }),
-    decode: (fromA) =>
+    decode: (fromA, _options, ast) =>
       E.gen(function* () {
+        // ⚠️ A key this schema does not model is REFUSED, not dropped. The fields below are read
+        // by key, so one that is never read is absent from the result and missing from the
+        // re-encode: measured on a mainnet transaction, a body given one extra key went in at
+        // 1271 bytes and came back out as the original 1268, byte for byte, with nothing raised.
+        //
+        // Every valid Conway body key is modelled, so an unmodelled one is either a pre-Conway
+        // field this schema cannot represent or a field from a newer era. Carrying the bytes
+        // through would be no better than dropping them: it would let a wallet sign a field it
+        // cannot display, which is what a review step exists to prevent.
+        for (const key of fromA.keys()) {
+          if (!MODELLED_KEYS.has(key)) {
+            return yield* ParseResult.fail(
+              new ParseResult.Type(
+                ast,
+                fromA,
+                `unknown transaction body key ${key}: this schema models ${[...MODELLED_KEYS].join(", ")}, ` +
+                  "and dropping a field it does not understand would change the transaction id"
+              )
+            )
+          }
+        }
         // Required fields - accept both tag-258 (Conway) and plain array (Babbage)
         const inputsRaw = fromA.get(0n)
         const taggedResult = decodeTaggedInputs(inputsRaw)
