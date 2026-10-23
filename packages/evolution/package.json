@@ -58,7 +58,7 @@
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
-    "effect": "^3.21.1"
+    "effect": "^4.0.2"
   },
   "keywords": [
     "cardano",
