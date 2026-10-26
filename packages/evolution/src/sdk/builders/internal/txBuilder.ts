@@ -11,6 +11,7 @@ import * as Bytes from "../../../Bytes.js"
 import * as CBOR from "../../../CBOR.js"
 import type * as Certificate from "../../../Certificate.js"
 import * as CostModel from "../../../CostModel.js"
+import type * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
 import type * as DatumOption from "../../../DatumOption.js"
@@ -289,6 +290,14 @@ const voterScriptHashHex = (voter: VotingProcedures.Voter): string | undefined =
   }
 }
 
+/** The credential a certificate's `cert:{credentialHex}` redeemer key names, if any. */
+export const certCredential = (certificate: Certificate.Certificate): Credential.Credential | undefined => {
+  if ("stakeCredential" in certificate) return certificate.stakeCredential
+  if ("drepCredential" in certificate) return certificate.drepCredential
+  if ("committeeColdCredential" in certificate) return certificate.committeeColdCredential
+  return undefined
+}
+
 /**
  * Resolve the governing credential hash (as hex) for certificates whose authorization
  * can be script-controlled: the DRep lifecycle certificates (DRep credential) and the
@@ -300,14 +309,11 @@ const certScriptHashHex = (certificate: Certificate.Certificate): string | undef
     case "RegDrepCert":
     case "UpdateDrepCert":
     case "UnregDrepCert":
-      return certificate.drepCredential._tag === "ScriptHash"
-        ? Bytes.toHex(certificate.drepCredential.hash)
-        : undefined
     case "AuthCommitteeHotCert":
-    case "ResignCommitteeColdCert":
-      return certificate.committeeColdCredential._tag === "ScriptHash"
-        ? Bytes.toHex(certificate.committeeColdCredential.hash)
-        : undefined
+    case "ResignCommitteeColdCert": {
+      const credential = certCredential(certificate)!
+      return credential._tag === "ScriptHash" ? Bytes.toHex(credential.hash) : undefined
+    }
     default:
       return undefined
   }
@@ -818,19 +824,14 @@ const makeRedeemerIndexer = (
       case "mint":
         return mintIndexMap.get(key)
       case "cert": {
-        // Key format: `cert:{credentialHex}`, matched against the stake
-        // credential or the DRep credential of each certificate in order
+        // Key format: `cert:{credentialHex}`
         const credentialHex = key.slice(5)
-        for (let i = 0; i < state.certificates.length; i++) {
-          const cert = state.certificates[i]!
-          if ("stakeCredential" in cert && cert.stakeCredential) {
-            if (Bytes.toHex((cert.stakeCredential as { hash: Uint8Array }).hash) === credentialHex) return i
-          }
-          if ("drepCredential" in cert && cert.drepCredential) {
-            if (Bytes.toHex((cert.drepCredential as { hash: Uint8Array }).hash) === credentialHex) return i
-          }
-        }
-        return undefined
+        return found(
+          state.certificates.findIndex((cert) => {
+            const credential = certCredential(cert)
+            return credential !== undefined && Bytes.toHex(credential.hash) === credentialHex
+          })
+        )
       }
       case "reward":
         // Key format: `reward:{credentialHex}`
