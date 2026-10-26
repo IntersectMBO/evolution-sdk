@@ -976,8 +976,12 @@ export const assembleTransaction = (
 
       const redeemerIndex = redeemerIndexOf(key, redeemerData.tag)
       if (redeemerIndex === undefined) {
-        yield* Effect.logWarning(`[Assembly] Could not find the ${redeemerData.tag} index for redeemer key: ${key}`)
-        continue
+        return yield* Effect.fail(
+          new TransactionBuilderError({
+            message: `Could not find the ${redeemerData.tag} index for redeemer key: ${key}`,
+            cause: { key, tag: redeemerData.tag }
+          })
+        )
       }
 
       yield* Effect.logDebug(
@@ -1450,7 +1454,7 @@ export const buildFakeWitnessSet = (
     const redeemerIndexOf = makeRedeemerIndexer(state, inputs)
     for (const [key, redeemerData] of state.redeemers) {
       // The index assembly writes: an index of 24 or more takes one more CBOR
-      // byte, and the fee must cover it. Assembly leaves out a redeemer with no index
+      // byte, and the fee must cover it. Assembly fails on a redeemer with no index
       const index = redeemerIndexOf(key, redeemerData.tag)
       if (index === undefined) continue
 
