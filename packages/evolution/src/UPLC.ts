@@ -1180,8 +1180,10 @@ const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue
       })
     })
   } else if ("array" in dataType) {
-    const arrayVal = value as { items: ReadonlyArray<ConstantValue> }
-    encodeList(state, arrayVal.items, (item) => encodeData(state, dataType.array, item))
+    if (typeof value !== "object" || value === null || !("items" in value)) {
+      throw new UPLCError({ message: "Array constant must have an items array" })
+    }
+    encodeList(state, value.items, (item) => encodeData(state, dataType.array, item))
   } else if ("list" in dataType) {
     const listVal = value as { items: ReadonlyArray<ConstantValue> }
     encodeList(state, listVal.items, (item) => encodeData(state, dataType.list, item))
@@ -1404,10 +1406,9 @@ const constantToJSON = (value: ConstantValue): unknown => {
   if (typeof value === "string") return value
   if (typeof value === "boolean") return value
   if (value instanceof Uint8Array) return Bytes.toHex(value)
-  if ("entries" in value && Array.isArray(value.entries)) {
-    const nativeValue = value as ValueConstant
+  if ("entries" in value && !("size" in value)) {
     return {
-      entries: nativeValue.entries.map(({ currency, tokens }) => ({
+      entries: value.entries.map(({ currency, tokens }) => ({
         currency: Bytes.toHex(currency),
         tokens: tokens.map(({ name, quantity }) => ({ name: Bytes.toHex(name), quantity: quantity.toString() }))
       }))

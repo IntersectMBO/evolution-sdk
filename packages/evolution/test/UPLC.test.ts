@@ -1094,6 +1094,11 @@ describe("UPLC Module", () => {
       expect(() => UPLC.toFlatHex(program)).toThrow(error)
     })
 
+    it("rejects an array payload without items on encoding", () => {
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm({ array: "Integer" }, 5n) })
+      expect(() => UPLC.toFlatHex(program)).toThrow("Array constant must have an items array")
+    })
+
     it.each([
       ["450101002701", "0101003270098101010001"],
       ["4501010027c1", "010100327c098101010001"],
