@@ -1,5 +1,54 @@
 # @evolution-sdk/evolution
 
+## 0.8.0
+
+### Minor Changes
+
+- [#707](https://github.com/IntersectMBO/evolution-sdk/pull/707) [`cd6c9d4`](https://github.com/IntersectMBO/evolution-sdk/commit/cd6c9d4ae6d0db25d57cd8e2e891ce4e854270a3) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The transaction builder now spends outputs that hold a datum hash. `collectFrom` takes the datum of each such input in a new `datums` field, and `build({ onMissingDatum: "provider" })` fetches the missing ones with `provider.getDatum`. Before, the builder left the datum out of the witness set, and the node rejected the spend.
+
+  ```ts
+  const datum = await client.getDatum(utxo.datumOption)
+  await client
+    .newTx()
+    .collectFrom({ inputs: [utxo], redeemer, datums: [datum] })
+    .attachScript({ script })
+    .build()
+
+  // or fetch each missing datum during the build
+  await client
+    .newTx()
+    .collectFrom({ inputs: [utxo], redeemer })
+    .attachScript({ script })
+    .build({ onMissingDatum: "provider" })
+  ```
+
+  A spend of a datum-hash output at a Plutus script address now fails at `build()` when its datum is neither given nor fetched, and the error names each such input. Code that added the datum to the built transaction by hand should pass it to `collectFrom` instead.
+
+  The `onMissingDatum: "provider"` lookup only finds datums an earlier transaction published, and outputs this SDK locks never publish theirs. For those, keep the datum and pass it to `collectFrom`.
+
+  - The built-in providers' `getDatum` keeps the bytes it fetched, through `OriginalBytes`. The witness set and the script data hash write a datum with those bytes, whatever the codec options say, because the datum hash covers them. A datum without recorded bytes is written with the `plutusData` options, as before.
+  - The builder matches each given datum to its input by hashing the bytes it will write. It fails when a given datum belongs to no spent input.
+  - The fee now counts the witness datums.
+  - `TransactionWitnessSet` keeps each datum as the same object when it is built from another witness set, so the recorded bytes survive signing.
+  - `SignBuilder.assemble` keeps the transaction's own datums and drops the datums of the given witness sets, since the body's script data hash covers only its own.
+  - `TxBuilderState` has a new `datums` field.
+
+- [#667](https://github.com/IntersectMBO/evolution-sdk/pull/667) [`04c4541`](https://github.com/IntersectMBO/evolution-sdk/commit/04c4541a8631961587d3924df6c025e49f5e1c21) Thanks [@nemo83](https://github.com/nemo83)! - Support Plutus builtin IDs 87–105 (Plutus 1.72.0.0; 101–105 are not yet enabled on any protocol version) and Flat constants for native Value and arrays in UPLC decoding, encoding, and parameter application. Scripts produced by Aiken v1.1.24 can now round-trip and accept parameters without failing on the new builtins or Value constants. This adds serialization support only; it does not enable builtins on a network or evaluate scripts.
+
+  Represent arrays with `{ array: elementType }` and an `{ items: [...] }` payload. Represent native Value constants with the exported `ValueConstant` type: `{ entries: [{ currency: Uint8Array, tokens: [{ name: Uint8Array, quantity: bigint }] }] }`. Encoding and decoding reject unordered or duplicate keys, keys longer than 32 bytes, empty token maps, zero quantities, and quantities outside the signed 128-bit range. Encoding also rejects wrongly shaped Value and array payloads with a `UPLCError`.
+
+  BLS12-381 type tags 9–11 now decode as the types `BLS12_381_G1_Element`, `BLS12_381_G2_Element` and `BLS12_381_MlResult`, as in Plutus, so an empty list or array of BLS elements round-trips, as in the `multiScalarMul` conformance programs. Decoding or encoding a BLS element itself still throws, because Plutus gives these elements no Flat form.
+
+  Constant type decoding now matches Plutus's `decodeKindedUni`. A missing type tag was previously read as `Unit`, so `[]` decoded as a unit and a truncated application such as `[7, 5]` as a list of units, and a single trailing `0` tag was ignored, so `[0, 0]` decoded as an integer. Both are now rejected, because re-encoding them changed the script bytes. Previously every type containing tag 12 or 13 was rejected, because arrays and Value were not supported.
+
+### Patch Changes
+
+- [#706](https://github.com/IntersectMBO/evolution-sdk/pull/706) [`79ee853`](https://github.com/IntersectMBO/evolution-sdk/commit/79ee85393a3dcb5564d77fefae6bdaa684ed8ed7) Thanks [@solidsnakedev](https://github.com/solidsnakedev)! - The Blockfrost provider now reports an output that holds a datum hash with a `DatumHash` datum option, as Koios, Maestro and Kupmios do. Before, `getUtxos`, `getUtxosWithUnit`, `getUtxoByUnit` and `getUtxosByOutRef` fetched the datum behind each hash and returned it as an `InlineDatum`, so the UTxO did not match the chain. Re-encoding such a UTxO wrote an inline datum where the chain holds a hash, and the builder could not see that spending it needs the datum in the witness set. Code that read a hash output's datum from `datumOption.data` should call `getDatum(datumHash)` instead. The UTxO queries also make one request fewer for each datum-hash output.
+
+- [#702](https://github.com/IntersectMBO/evolution-sdk/pull/702) [`0092feb`](https://github.com/IntersectMBO/evolution-sdk/commit/0092feb3698e40178449bb818080976e8f8b0787) Thanks [@nemo83](https://github.com/nemo83)! - UPLC Flat decoding now rejects `constr` and `case` terms in a program whose version is below 1.1.0, as Plutus's `decodeTerm` does. It also reads the `constr` tag as Plutus's Word64 decoder does, rejecting a value of 2^64 or more and an encoding longer than ten 7-bit chunks. Before, such programs decoded without error. The encoder now refuses `constr` and `case` before 1.1.0 and `constr` tags above 2^64 - 1; before, it wrote e.g. `(program 1.0.0 (constr 0))` as `0100008001`, which Plutus cannot decode.
+
+  Program version components are now read and written as Flat naturals, as in Plutus. Before, each was a single byte, so a component of 128 or more was misread, and one of 256 or more was truncated: `257.0.0` was written as `1.0.0`. Versions with every component below 128 encode to the same bytes as before.
+
 ## 0.7.1
 
 ### Patch Changes
