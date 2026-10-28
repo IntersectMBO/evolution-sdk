@@ -31,7 +31,7 @@
     "@babel/core": "^7.28.3",
     "@changesets/changelog-github": "^1.0.0",
     "@changesets/cli": "^3.0.3",
-    "@effect/docgen": "^0.5.2",
+    "@effect/docgen": "^4.0.4",
     "@effect/eslint-plugin": "^0.3.2",
     "@effect/language-service": "^0.87.0",
     "@effect/vitest": "^0.30.0",
