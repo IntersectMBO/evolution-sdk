@@ -248,6 +248,95 @@ describe("UPLC Module", () => {
     })
   })
 
+  // Plutus 1.72.0.0 UntypedPlutusCore/Core/Instance/Flat.hs decodeTerm: constr and case need program version 1.1.0
+  // or later, and a constr tag is a Word64 read with dWord64. Flat bytes from plutus-conformance uplc/evaluation/term.
+  describe("constr and case limits", () => {
+    const before110 = (term: string) => `'${term}' is not allowed before version 1.1.0, this program has version: 1.0.0`
+
+    it.each([
+      ["constr/constr-06.flat", "0100008001", before110("constr")],
+      [
+        "constr/constr-08.flat",
+        "010100880808080808080808002a49144d6178696d756d2074616720706c7573206f6e6500a4c1",
+        "Unexpected extra byte in unsigned integer"
+      ],
+      [
+        "constr/constr-09.flat",
+        "010000880808080808080808002a49144d6178696d756d2074616720706c7573206f6e6500a4c1",
+        before110("constr")
+      ],
+      ["case/case-07.flat", "010000948009", before110("case")]
+    ])("rejects conformance %s", (_name, flat, error) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(UPLC.UPLCError)
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(error)
+    })
+
+    it.each([
+      ["constr/constr-01.flat", "0101008001"],
+      ["case/case-01.flat", "0101009800a40009240052480101"],
+      [
+        "constr/constr-07.flat (tag 2^64-1)",
+        "0101008ffffffffffffffffff01a49144d6178696d756d20746167203d20325e36342d3100a419c1e1"
+      ]
+    ])("decodes and re-encodes conformance %s", (_name, flat) => {
+      expect(UPLC.toFlatHex(UPLC.fromFlatHex(flat))).toBe(flat)
+    })
+
+    it("decodes constr tag 2^64-1", () => {
+      const flat = "0101008ffffffffffffffffff01a49144d6178696d756d20746167203d20325e36342d3100a419c1e1"
+      const body = UPLC.fromFlatHex(flat).body
+      expect(body).toMatchObject({ type: "Constr", tag: 2n ** 64n - 1n })
+    })
+
+    it("rejects constr nested below the top of a 1.0.0 program", () => {
+      // (program 1.0.0 (lam x (constr 0)))
+      expect(() => UPLC.fromFlatHex("010000280001")).toThrow(before110("constr"))
+    })
+
+    it("accepts constr in a 2.0.0 program, as Plutus compares versions major first", () => {
+      expect(UPLC.fromFlatHex("0200008001").body).toEqual({ type: "Constr", tag: 0n, terms: [] })
+    })
+
+    // dWord64 reads at most ten 7-bit chunks; a tag spread over more is rejected even when its value fits.
+    it("rejects a constr tag of more than ten chunks, and accepts one of exactly ten", () => {
+      expect(() => UPLC.fromFlatHex("010100880808080808080808080001")).toThrow(
+        "Unexpected extra byte in unsigned integer"
+      )
+      expect(UPLC.fromFlatHex("0101008808080808080808080001").body).toEqual({ type: "Constr", tag: 0n, terms: [] })
+    })
+
+    it.each([
+      ["constr", UPLC.lambdaTerm(0n, UPLC.constrTerm(0n, []))],
+      ["case", UPLC.lambdaTerm(0n, UPLC.caseTerm(UPLC.varTerm(1n), []))]
+    ])("refuses to encode %s in a 1.0.0 program", (term, body) => {
+      const program = new UPLC.Program({ version: "1.0.0", body })
+      expect(() => UPLC.toFlatHex(program)).toThrow(UPLC.UPLCError)
+      expect(() => UPLC.toFlatHex(program)).toThrow(before110(term))
+    })
+
+    it.each([
+      ["2^64", 2n ** 64n, "does not fit in Word64"],
+      ["-1", -1n, "Cannot encode negative"]
+    ])("refuses to encode constr tag %s", (_name, tag, error) => {
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constrTerm(tag, []) })
+      expect(() => UPLC.toFlatHex(program)).toThrow(UPLC.UPLCError)
+      expect(() => UPLC.toFlatHex(program)).toThrow(error)
+    })
+
+    // Plutus PlutusCore/FlatInstances.hs: each version component is a Flat Natural, not a byte.
+    it("writes and reads version components of 128 or more as naturals", () => {
+      const program = new UPLC.Program({ version: "257.0.0", body: UPLC.constrTerm(0n, []) })
+      expect(UPLC.toFlatHex(program)).toBe("810200008001")
+      expect(UPLC.fromFlatHex("810200008001").version).toBe("257.0.0")
+    })
+
+    it("rejects constr in a 0.255.0 program", () => {
+      expect(() => UPLC.fromFlatHex("00ff01008001")).toThrow(
+        "'constr' is not allowed before version 1.1.0, this program has version: 0.255.0"
+      )
+    })
+  })
+
   describe("Program Methods", () => {
     const alwaysSucceedBytes = UPLC.decodeDoubleCborHexToFlat(
       (plutusJson.validators[0] as { compiledCode: string }).compiledCode
