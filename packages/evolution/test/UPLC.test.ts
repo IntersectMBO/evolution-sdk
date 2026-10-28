@@ -23,7 +23,7 @@ describe("UPLC Module", () => {
     })
 
     it("should have builtin functions defined", () => {
-      expect(UPLC.BuiltinFunctions.length).toBe(87)
+      expect(UPLC.BuiltinFunctions.length).toBe(106)
       expect(UPLC.BuiltinFunctions[0]).toBe("addInteger")
       expect(UPLC.BuiltinFunctions[86]).toBe("ripemd_160")
     })
@@ -423,9 +423,7 @@ describe("UPLC Module", () => {
       const limitsAikenHash = "1bb0e306732e07ca5495991af8b47a14e2bda09eb2235d1c264c6354"
 
       const applyLimits = () =>
-        UPLC.applyParamsToScript(UPLC.applyDoubleCborEncoding(limitsUnapplied), [
-          Data.map([[Bytes.fromHex("01"), 5n]])
-        ])
+        UPLC.applyParamsToScript(UPLC.applyDoubleCborEncoding(limitsUnapplied), [Data.map([[Bytes.fromHex("01"), 5n]])])
 
       // applyParamsToScript returns double CBOR; strip one byte-string layer to
       // get the compiledCode form that aiken writes.
@@ -513,6 +511,507 @@ describe("UPLC Module", () => {
       expect(appliedProgram.versionParsed).toEqual({ major: 1, minor: 0, patch: 0 })
 
       expect(appliedDirectOfferVal).toBe(expectedAppliedDirectOfferVal)
+    })
+  })
+  describe("Plutus 1.72 Flat compatibility", () => {
+    // Stable ids: PlutusCore/Default/Builtins.hs at tag 1.72.0.0.
+    const builtinVectors = [
+      [87, "expModInteger", "0101007ae1"],
+      [88, "dropList", "0101007b01"],
+      [89, "lengthOfArray", "0101007b21"],
+      [90, "listToArray", "0101007b41"],
+      [91, "indexArray", "0101007b61"],
+      [92, "bls12_381_G1_multiScalarMul", "0101007b81"],
+      [93, "bls12_381_G2_multiScalarMul", "0101007ba1"],
+      [94, "insertCoin", "0101007bc1"],
+      [95, "lookupCoin", "0101007be1"],
+      [96, "unionValue", "0101007c01"],
+      [97, "valueContains", "0101007c21"],
+      [98, "valueData", "0101007c41"],
+      [99, "unValueData", "0101007c61"],
+      [100, "scaleValue", "0101007c81"],
+      [101, "multiIndexArray", "0101007ca1"],
+      [102, "policies", "0101007cc1"],
+      [103, "assetCount", "0101007ce1"],
+      [104, "keepPolicies", "0101007d01"],
+      [105, "dropPolicies", "0101007d21"]
+    ] as const
+
+    it.each(builtinVectors)("decodes and re-encodes builtin %i (%s)", (id, name, flat) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(program.body).toEqual({ type: "Builtin", function: name })
+      expect(UPLC.BuiltinFunctions[id]).toBe(name)
+      expect(UPLC.toFlatHex(program)).toBe(flat)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: UPLC.builtinTerm(name) }))).toBe(flat)
+    })
+
+    it("rejects an unknown builtin beyond the Plutus table", () => {
+      expect(() => UPLC.fromFlatHex("0101007d41")).toThrow("Unknown builtin index: 106")
+    })
+
+    // Value goldens were independently encoded with Aiken v1.1.24.
+    // Array goldens follow Universe.hs [7,12,T] and Data/Vector/Orphans.hs:
+    // Strict.Vector uses Flat's 1-bit list encoding, not lazy Vector's chunks.
+    const valueVectors: Array<{ name: string; flat: string; value: UPLC.ValueConstant }> = [
+      { name: "empty", flat: "0101004e81", value: { entries: [] } },
+      {
+        name: "lovelace",
+        flat: "0101004ea10081000201",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] }] }
+      },
+      {
+        name: "multiple currencies and tokens",
+        flat: "0101004ea10081000e41010000810003810100005481020000008002410101008101ff00810201",
+        value: {
+          entries: [
+            { currency: Bytes.fromHex(""), tokens: [{ name: Bytes.fromHex(""), quantity: 7n }] },
+            {
+              currency: Bytes.fromHex("00"),
+              tokens: [
+                { name: Bytes.fromHex(""), quantity: -2n },
+                { name: Bytes.fromHex("00"), quantity: 42n },
+                { name: Bytes.fromHex("0000"), quantity: 128n }
+              ]
+            },
+            { currency: Bytes.fromHex("01"), tokens: [{ name: Bytes.fromHex("ff"), quantity: -129n }] }
+          ]
+        }
+      },
+      {
+        name: "quantity bounds",
+        flat: "0101004ea101000081010000ffffffffffffffffffffffffffffffffffff0381010100feffffffffffffffffffffffffffffffffff0301",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex("00"),
+              tokens: [
+                { name: Bytes.fromHex("00"), quantity: -170141183460469231731687303715884105728n },
+                { name: Bytes.fromHex("01"), quantity: 170141183460469231731687303715884105727n }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        name: "32-byte keys",
+        flat: "0101004ea120abababababababababababababababababababababababababababababababab008120cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd001201",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex("abababababababababababababababababababababababababababababababab"),
+              tokens: [
+                {
+                  name: Bytes.fromHex("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"),
+                  quantity: 9n
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+
+    it.each(valueVectors)("round-trips the $name Value constant byte for byte", ({ flat, value }) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(program.body).toEqual(UPLC.constantTerm("Value", value))
+      expect(UPLC.toFlatHex(program)).toBe(flat)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm("Value", value) }))).toBe(flat)
+      expect(() => JSON.stringify(program.toJSON())).not.toThrow()
+    })
+
+    const arrayVectors: Array<{ name: string; flat: string; type: UPLC.DataType; value: UPLC.ConstantValue }> = [
+      { name: "empty integer array", flat: "0101004bf201", type: { array: "Integer" }, value: { items: [] } },
+      {
+        name: "integer array",
+        flat: "0101004bf208140e01800201",
+        type: { array: "Integer" },
+        value: { items: [1n, -2n, 0n, 128n] }
+      },
+      {
+        name: "nested arrays",
+        flat: "0101004bf2fc82c0a061",
+        type: { array: { array: "Integer" } },
+        value: { items: [{ items: [] }, { items: [1n, -2n] }] }
+      },
+      {
+        name: "array of byte strings",
+        flat: "0101004bf229008101ab008102cdef0001",
+        type: { array: "ByteString" },
+        value: { items: [Bytes.fromHex(""), Bytes.fromHex("ab"), Bytes.fromHex("cdef")] }
+      },
+      {
+        name: "array of values",
+        flat: "0101004bf3ab010081000201",
+        type: { array: "Value" },
+        value: {
+          items: [
+            { entries: [] },
+            { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] }] }
+          ]
+        }
+      },
+      {
+        name: "array of pairs",
+        flat: "0101004bf2f7b422810101ab0081810001",
+        type: { array: { pair: ["Integer", "ByteString"] } },
+        value: { items: [{ items: [1n, Bytes.fromHex("ab")] }, { items: [-2n, Bytes.fromHex("")] }] }
+      },
+      {
+        name: "list of arrays",
+        flat: "0101004bd6fc830241",
+        type: { list: { array: "Integer" } },
+        value: { items: [{ items: [1n] }, { items: [] }] }
+      },
+      {
+        name: "256 unit elements",
+        flat: "0101004bf26ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff1",
+        type: { array: "Unit" },
+        value: { items: Array.from({ length: 256 }, () => null) }
+      }
+    ]
+
+    it.each(arrayVectors)("round-trips $name byte for byte", ({ flat, type, value }) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(program.body).toEqual(UPLC.constantTerm(type, value))
+      expect(UPLC.toFlatHex(program)).toBe(flat)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm(type, value) }))).toBe(flat)
+    })
+
+    const invalidValues = [
+      {
+        name: "currency order",
+        flat: "0101004ea10101008100024101000081000201",
+        error: "currency symbols not strictly ascending",
+        value: {
+          entries: [
+            { currency: Bytes.fromHex("01"), tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] },
+            { currency: Bytes.fromHex("00"), tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] }
+          ]
+        }
+      },
+      {
+        name: "duplicate currency",
+        flat: "0101004ea10100008100024101000081000401",
+        error: "currency symbols not strictly ascending",
+        value: {
+          entries: [
+            { currency: Bytes.fromHex("00"), tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] },
+            { currency: Bytes.fromHex("00"), tokens: [{ name: Bytes.fromHex(""), quantity: 2n }] }
+          ]
+        }
+      },
+      {
+        name: "token order",
+        flat: "0101004ea1008101010002810100000401",
+        error: "token names not strictly ascending",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex(""),
+              tokens: [
+                { name: Bytes.fromHex("01"), quantity: 1n },
+                { name: Bytes.fromHex("00"), quantity: 2n }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        name: "duplicate token",
+        flat: "0101004ea1008101000002810100000401",
+        error: "token names not strictly ascending",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex(""),
+              tokens: [
+                { name: Bytes.fromHex("00"), quantity: 1n },
+                { name: Bytes.fromHex("00"), quantity: 2n }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        name: "empty token map",
+        flat: "0101004ea10001",
+        error: "empty inner map",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [] }] }
+      },
+      {
+        name: "zero quantity",
+        flat: "0101004ea10081000001",
+        error: "zero quantity",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: Bytes.fromHex(""), quantity: 0n }] }] }
+      },
+      {
+        name: "quantity overflow",
+        flat: "0101004ea10081008080808080808080808080808080808080800401",
+        error: "signed 128-bit",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex(""),
+              tokens: [{ name: Bytes.fromHex(""), quantity: 170141183460469231731687303715884105728n }]
+            }
+          ]
+        }
+      },
+      {
+        name: "quantity underflow",
+        flat: "0101004ea10081008180808080808080808080808080808080800401",
+        error: "signed 128-bit",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex(""),
+              tokens: [{ name: Bytes.fromHex(""), quantity: -170141183460469231731687303715884105729n }]
+            }
+          ]
+        }
+      },
+      {
+        name: "currency key too long",
+        flat: "0101004ea121ababababababababababababababababababababababababababababababababab0081000201",
+        error: "32 bytes",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex("ababababababababababababababababababababababababababababababababab"),
+              tokens: [{ name: Bytes.fromHex(""), quantity: 1n }]
+            }
+          ]
+        }
+      },
+      {
+        name: "token key too long",
+        flat: "0101004ea1008121cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd000201",
+        error: "32 bytes",
+        value: {
+          entries: [
+            {
+              currency: Bytes.fromHex(""),
+              tokens: [
+                {
+                  name: Bytes.fromHex("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"),
+                  quantity: 1n
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+
+    it.each(invalidValues)("rejects $name on decoding and encoding", ({ error, flat, value }) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(error)
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm("Value", value) })
+      expect(() => UPLC.toFlatHex(program)).toThrow(error)
+    })
+
+    // Universe.hs decodes tags 9-11 as types; G1.hs, G2.hs and Pairing.hs fail only when an element is read.
+    // Hand-derived: con 0100, type tags 1 0111 1 <0101 list | 1100 array> 1 <tag>, end 0, empty list 0, filler.
+    // 0101004bd721 is solidsnakedev's example from #667 and also decodes with Aiken v1.1.24.
+    const emptyBlsContainers: Array<[string, string, UPLC.DataType]> = [
+      ["list of G1 elements", "0101004bd721", { list: "BLS12_381_G1_Element" }],
+      ["list of G2 elements", "0101004bd741", { list: "BLS12_381_G2_Element" }],
+      ["list of Miller loop results", "0101004bd761", { list: "BLS12_381_MlResult" }],
+      ["array of G1 elements", "0101004bf321", { array: "BLS12_381_G1_Element" }],
+      ["array of G2 elements", "0101004bf341", { array: "BLS12_381_G2_Element" }],
+      ["array of Miller loop results", "0101004bf361", { array: "BLS12_381_MlResult" }]
+    ]
+
+    it.each(emptyBlsContainers)("round-trips an empty %s", (_name, flat, type) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(program.body).toEqual(UPLC.constantTerm(type, { items: [] }))
+      expect(UPLC.toFlatHex(program)).toBe(flat)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm(type, { items: [] }) }))).toBe(
+        flat
+      )
+    })
+
+    // Type tags [7,5,7,5,9], then two empty inner lists: 1 0 1 0 0.
+    it("round-trips a list of empty G1 lists", () => {
+      const flat = "0101004bd6f5ca81"
+      const constant = UPLC.constantTerm(
+        { list: { list: "BLS12_381_G1_Element" } },
+        { items: [{ items: [] }, { items: [] }] }
+      )
+      expect(UPLC.fromFlatHex(flat).body).toEqual(constant)
+      expect(UPLC.toFlatHex(new UPLC.Program({ version: "1.1.0", body: constant }))).toBe(flat)
+    })
+
+    // Messages copied from the Flat instances in G1.hs, G2.hs and Pairing.hs.
+    const g1Decode =
+      "Flat decoding is not supported for objects of type bls12_381_G1_element: use bls12_381_G1_uncompress on a bytestring instead."
+    const g2Decode =
+      "Flat decoding is not supported for objects of type bls12_381_G2_element: use bls12_381_G2_uncompress on a bytestring instead."
+    const mlDecode = "Flat decoding is not supported for objects of type bls12_381_mlresult"
+    const g1Encode =
+      "Flat encoding is not supported for objects of type bls12_381_G1_element: use bls12_381_G1_compress to obtain a bytestring instead."
+    const g2Encode =
+      "Flat encoding is not supported for objects of type bls12_381_G2_element: use bls12_381_G2_compress to obtain a bytestring instead."
+    const mlEncode = "Flat encoding is not supported for objects of type bls12_381_mlresult"
+
+    it.each([
+      ["a G1 element", "0101004c81", g1Decode],
+      ["a G2 element", "0101004d01", g2Decode],
+      ["a Miller loop result", "0101004d81", mlDecode],
+      // The empty containers above with the continuation bit set: <tag> 0 1, then filler.
+      ["a nonempty list of G1 elements", "0101004bd729", g1Decode],
+      ["a nonempty list of G2 elements", "0101004bd749", g2Decode],
+      ["a nonempty list of Miller loop results", "0101004bd769", mlDecode],
+      ["a nonempty array of G1 elements", "0101004bf329", g1Decode],
+      ["a nonempty array of G2 elements", "0101004bf349", g2Decode],
+      ["a nonempty array of Miller loop results", "0101004bf369", mlDecode],
+      // Type tags [7,7,6,0,9], then integer 0 (00000000) before the G1 element.
+      ["a pair holding a G1 element", "0101004bded0c801", g1Decode]
+    ])("rejects decoding %s", (_name, flat, message) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow(message)
+    })
+
+    it.each<[string, UPLC.DataType, UPLC.ConstantValue, string]>([
+      ["a G1 element", "BLS12_381_G1_Element", new Uint8Array(48), g1Encode],
+      ["a G2 element", "BLS12_381_G2_Element", new Uint8Array(96), g2Encode],
+      ["a Miller loop result", "BLS12_381_MlResult", new Uint8Array(0), mlEncode],
+      ["a nonempty list of G2 elements", { list: "BLS12_381_G2_Element" }, { items: [new Uint8Array(96)] }, g2Encode],
+      ["a nonempty array of G1 elements", { array: "BLS12_381_G1_Element" }, { items: [new Uint8Array(48)] }, g1Encode],
+      [
+        "a pair holding a Miller loop result",
+        { pair: ["Integer", "BLS12_381_MlResult"] },
+        { items: [0n, new Uint8Array(0)] },
+        mlEncode
+      ]
+    ])("rejects encoding %s", (_name, type, value, message) => {
+      const program = new UPLC.Program({ version: "1.1.0", body: UPLC.constantTerm(type, value) })
+      expect(() => UPLC.toFlatHex(program)).toThrow(message)
+    })
+
+    // Copied byte for byte from plutus-conformance/test-cases/uplc/evaluation/builtin/semantics at 1.72.0.0.
+    const conformanceGoldens: Array<{ name: string; flat: string; constant: UPLC.Term }> = [
+      {
+        name: "bls12_381_G1_multiScalarMul/multiScalarMul-01",
+        flat:
+          "0100003377266f712f58373d9e1318fc5fb4f1d536731aff74d8db19fdfb531f75c0a3357406eed22130950dfd33da2682260c" +
+          "76038dfb8bad6e84ae9d599a3c151815945ac1e6ef6b1027cd917f3907479d20d636ce437a41f5004bd7219bb8482e7b3c26" +
+          "31f8bf69e3aa6ce635fee9b1b633fbf6a63eeb814ddda44130950dfd33da2682260c76038dfb8bad6e84ae9d599a3c151815" +
+          "945ac1e6ef6b1027cd917f3907479d20d636ce437a41f50001",
+        constant: UPLC.constantTerm({ list: "BLS12_381_G1_Element" }, { items: [] })
+      },
+      {
+        name: "scaleValue/by-pos",
+        flat: "010000337c890022750101aa008101aa000a8101bb001d8101cc002801",
+        constant: UPLC.constantTerm("Value", {
+          entries: [
+            {
+              currency: Bytes.fromHex("aa"),
+              tokens: [
+                { name: Bytes.fromHex("aa"), quantity: 5n },
+                { name: Bytes.fromHex("bb"), quantity: -15n },
+                { name: Bytes.fromHex("cc"), quantity: 20n }
+              ]
+            }
+          ]
+        })
+      },
+      {
+        name: "indexArray/indexArray-01",
+        flat: "0101003357b697e41028241a110a240041",
+        constant: UPLC.constantTerm({ array: "Integer" }, { items: [1n, 2n, 3n, 4n, 5n] })
+      }
+    ]
+
+    const collectConstants = (term: UPLC.Term): Array<UPLC.Term> => {
+      switch (term.type) {
+        case "Constant":
+          return [term]
+        case "Apply":
+          return [...collectConstants(term.function), ...collectConstants(term.argument)]
+        case "Lambda":
+          return collectConstants(term.body)
+        case "Delay":
+        case "Force":
+          return collectConstants(term.term)
+        default:
+          return []
+      }
+    }
+
+    it.each(conformanceGoldens)("round-trips the Plutus conformance program $name", ({ constant, flat }) => {
+      const program = UPLC.fromFlatHex(flat)
+      expect(collectConstants(program.body)).toContainEqual(constant)
+      expect(UPLC.toFlatHex(program)).toBe(flat)
+    })
+
+    it("rejects a bare array constructor", () => {
+      expect(() => UPLC.fromFlatHex("0101004e01")).toThrow("array")
+    })
+
+    // Plutus's decodeKindedUni rejects an empty tag list and leftover tags.
+    it.each([
+      ["an empty type tag list []", "01010041"],
+      ["an array with no element type [7,12]", "0101004bf1"],
+      ["a list with no element type [7,5]", "0101004bd401"],
+      ["a pair with no element types [7,7,6]", "0101004bdec1"],
+      ["a pair with no second type [7,7,6,0]", "0101004bded001"],
+      ["a nested truncated type [7,12,7,5]", "0101004bf2f501"]
+    ])("rejects %s", (_name, flat) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow("incomplete type application")
+    })
+
+    it.each([
+      ["Value [13,0]", "0101004ec001"],
+      ["Integer [0,0]", "010100484001"]
+    ])("rejects a trailing type tag after %s", (_name, flat) => {
+      expect(() => UPLC.fromFlatHex(flat)).toThrow("remaining bits: [0]")
+    })
+
+    const malformedValues: Array<{ name: string; value: unknown; error: string }> = [
+      { name: "a missing entries array", value: {}, error: "entries array" },
+      { name: "a null entry", value: { entries: [null] }, error: "entries must be objects" },
+      { name: "a sparse entries array", value: { entries: new Array(1) }, error: "entries must be objects" },
+      {
+        name: "a null token",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [null] }] },
+        error: "tokens must be objects"
+      },
+      {
+        name: "a hex-string currency",
+        value: { entries: [{ currency: "abcd", tokens: [{ name: Bytes.fromHex(""), quantity: 1n }] }] },
+        error: "byte strings"
+      },
+      {
+        name: "a non-array token list",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: {} }] },
+        error: "tokens must be an array"
+      },
+      {
+        name: "a hex-string token name",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: "ab", quantity: 1n }] }] },
+        error: "byte strings"
+      },
+      {
+        name: "a number quantity",
+        value: { entries: [{ currency: Bytes.fromHex(""), tokens: [{ name: Bytes.fromHex(""), quantity: 1 }] }] },
+        error: "bigints"
+      }
+    ]
+
+    it.each(malformedValues)("rejects a Value payload with $name on encoding", ({ error, value }) => {
+      const program = new UPLC.Program({
+        version: "1.1.0",
+        body: UPLC.constantTerm("Value", value as UPLC.ValueConstant)
+      })
+      expect(() => UPLC.toFlatHex(program)).toThrow(error)
+    })
+
+    it.each([
+      ["450101002701", "0101003270098101010001"],
+      ["4501010027c1", "010100327c098101010001"],
+      ["4501010024e9", "010100324e898101010001"]
+    ])("applies Data parameters to %s exactly like Aiken v1.1.24", (script, appliedFlat) => {
+      const applied = UPLC.applyParamsToScript(script, [Data.int(1n)])
+      expect(Bytes.toHex(UPLC.decodeDoubleCborHexToFlat(applied))).toBe(appliedFlat)
     })
   })
 })
