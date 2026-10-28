@@ -164,7 +164,12 @@ export class NativeScript extends Schema.TaggedClass<NativeScript>("NativeScript
   }
 
   [Hash.symbol](): number {
-    return Hash.hash(JSON.stringify(toJSON(this.script)))
+    // Hashed from the variant itself, not from `toJSON`: that form refuses a uint64 slot above
+    // `Number.MAX_SAFE_INTEGER`, and before it did, it truncated one — so two scripts differing
+    // only above that bound hashed equal.
+    return Hash.hash(
+      JSON.stringify(this.script, (_key, value) => (typeof value === "bigint" ? value.toString() : value))
+    )
   }
 }
 
@@ -262,7 +267,25 @@ export const makeScriptNOfK = (required: bigint, scripts: ReadonlyArray<NativeSc
 // ============================================================================
 
 /**
+ * Maximum integer a JSON number carries exactly. The cardano-cli JSON form uses JSON numbers for
+ * `slot` and `required`, so a CDDL uint64 above this has no representation in it.
+ */
+const JSON_SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER)
+
+const jsonNumber = (value: bigint, field: string): number => {
+  // Refused rather than truncated: `Number(2n ** 53n + 1n)` silently returns a different slot,
+  // and a script decoded from the chain may legitimately carry any uint64.
+  if (value > JSON_SAFE_MAX) {
+    throw new Error(`${field} ${value} exceeds what the cardano-cli JSON form can represent exactly`)
+  }
+  return Number(value)
+}
+
+/**
  * Convert a NativeScript to JSON representation matching cardano-cli format
+ *
+ * Throws if `slot` or `required` exceeds `Number.MAX_SAFE_INTEGER`, which the JSON form cannot
+ * carry exactly.
  *
  * @since 2.0.0
  * @category conversion
@@ -277,12 +300,12 @@ export const toJSON = (script: NativeScriptVariants): any => {
     case "InvalidBefore":
       return {
         type: "after" as const,
-        slot: Number(script.slot)
+        slot: jsonNumber(script.slot, "slot")
       }
     case "InvalidHereafter":
       return {
         type: "before" as const,
-        slot: Number(script.slot)
+        slot: jsonNumber(script.slot, "slot")
       }
     case "ScriptAll":
       return {
@@ -297,7 +320,7 @@ export const toJSON = (script: NativeScriptVariants): any => {
     case "ScriptNOfK":
       return {
         type: "atLeast" as const,
-        required: Number(script.required),
+        required: jsonNumber(script.required, "required"),
         scripts: script.scripts.map(toJSON)
       }
   }
