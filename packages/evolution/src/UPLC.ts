@@ -888,13 +888,13 @@ const decodeConst = (state: DecodeState): [DataType, ConstantValue] => {
  * @since 2.0.0
  * @category internal
  */
-const allowsConstrCase = (version: SemVer): boolean => {
+const allowsConstrCase = (version: string): boolean => {
   // Plutus PlutusCore/Version.hs: plcVersion110, and Ord Version compares major, then minor, then patch.
-  const { major, minor } = parseSemVer(version)
-  return major > 1 || (major === 1 && minor >= 1)
+  const [major, minor] = version.split(".")
+  return Number(major) > 1 || (Number(major) === 1 && Number(minor) >= 1)
 }
 
-const notAllowedBefore110 = (term: "constr" | "case", version: SemVer): UPLCError =>
+const notAllowedBefore110 = (term: "constr" | "case", version: string): UPLCError =>
   new UPLCError({ message: `'${term}' is not allowed before version 1.1.0, this program has version: ${version}` })
 
 /**
@@ -1180,8 +1180,10 @@ const encodeData = (state: EncodeState, dataType: DataType, value: ConstantValue
       })
     })
   } else if ("array" in dataType) {
-    const arrayVal = value as { items: ReadonlyArray<ConstantValue> }
-    encodeList(state, arrayVal.items, (item) => encodeData(state, dataType.array, item))
+    if (typeof value !== "object" || value === null || !("items" in value)) {
+      throw new UPLCError({ message: "Array constant must have an items array" })
+    }
+    encodeList(state, value.items, (item) => encodeData(state, dataType.array, item))
   } else if ("list" in dataType) {
     const listVal = value as { items: ReadonlyArray<ConstantValue> }
     encodeList(state, listVal.items, (item) => encodeData(state, dataType.list, item))
@@ -1210,7 +1212,7 @@ const encodeConst = (state: EncodeState, valueType: DataType, value: ConstantVal
  * @since 2.0.0
  * @category internal
  */
-const encodeTerm = (state: EncodeState, version: SemVer, term: Term): void => {
+const encodeTerm = (state: EncodeState, version: string, term: Term): void => {
   switch (term.type) {
     case "Var":
       pushBits(state, TermTags.Var, 4)
@@ -1273,7 +1275,7 @@ const encodeTerm = (state: EncodeState, version: SemVer, term: Term): void => {
 const encodeProgram = (program: Program): Uint8Array => {
   const state: EncodeState = { bytes: [], currentByte: 0, bitCount: 0 }
   encodeVersion(state, program.version as SemVer)
-  encodeTerm(state, program.version as SemVer, program.body)
+  encodeTerm(state, program.version, program.body)
   // Add filler at end to reach byte alignment
   pad(state)
   return getBytes(state)
@@ -1404,10 +1406,9 @@ const constantToJSON = (value: ConstantValue): unknown => {
   if (typeof value === "string") return value
   if (typeof value === "boolean") return value
   if (value instanceof Uint8Array) return Bytes.toHex(value)
-  if ("entries" in value && Array.isArray(value.entries)) {
-    const nativeValue = value as ValueConstant
+  if ("entries" in value && !("size" in value)) {
     return {
-      entries: nativeValue.entries.map(({ currency, tokens }) => ({
+      entries: value.entries.map(({ currency, tokens }) => ({
         currency: Bytes.toHex(currency),
         tokens: tokens.map(({ name, quantity }) => ({ name: Bytes.toHex(name), quantity: quantity.toString() }))
       }))
