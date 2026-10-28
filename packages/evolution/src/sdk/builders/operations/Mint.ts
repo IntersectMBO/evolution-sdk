@@ -65,11 +65,11 @@ export const createMintAssetsProgram = (
     const policyIds = new Set<string>()
 
     for (const [policyId, assetMap] of params.assets.multiAsset.map.entries()) {
-      // Track policy IDs for redeemer association
-      policyIds.add(PolicyId.toHex(policyId))
-
       for (const [assetName, amount] of assetMap.entries()) {
         if (amount === 0n) continue
+
+        // Track policy IDs for redeemer association
+        policyIds.add(PolicyId.toHex(policyId))
 
         // Validate amount is within NonZeroInt64 range
         if (amount < NonZeroInt64.NEG_INT64_MIN || amount > NonZeroInt64.POS_INT64_MAX) {
