@@ -1,3 +1,21 @@
+/**
+ * Transaction outputs, as a union of a Shelley-era and a Babbage-era class.
+ *
+ * ⚠️ **Deprecated: use {@link TxOut} instead.** This is a SECOND, parallel model of a transaction
+ * output -- `address: AddressEras` and `amount: Value` -- while `TxOut` carries the one
+ * `TransactionBody`, the builders and the sdk actually use (`address: Address`, `assets: Assets`,
+ * one class covering both eras). Both are public from the package entry point under names that
+ * give no hint which is which, and they reject each other: an output built here cannot be placed
+ * in a `TransactionBody`, and the error reads `Expected TransactionOutput, actual [toString
+ * threw]` about a value that IS a `TransactionOutput` -- the other one.
+ *
+ * It stays exported, and keeps working, because removing it or pointing it at `TxOut` would break
+ * every caller that holds a `BabbageTransactionOutput`. New code should reach for `TxOut`.
+ *
+ * @since 2.0.0
+ * @deprecated Use `TxOut` instead; see the module note above.
+ */
+
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AddressEras from "./AddressEras.js"
@@ -30,6 +48,7 @@ const decScriptRef = ParseResult.decodeUnknownEither(ScriptRef.FromCDDL)
  *
  * @since 2.0.0
  * @category model
+ * @deprecated Use `TxOut.TransactionOutput` instead.
  */
 export class ShelleyTransactionOutput extends Schema.TaggedClass<ShelleyTransactionOutput>()(
   "ShelleyTransactionOutput",
@@ -82,6 +101,7 @@ export class ShelleyTransactionOutput extends Schema.TaggedClass<ShelleyTransact
  *
  * @since 2.0.0
  * @category model
+ * @deprecated Use `TxOut.TransactionOutput` instead.
  */
 export class BabbageTransactionOutput extends Schema.TaggedClass<BabbageTransactionOutput>()(
   "BabbageTransactionOutput",
@@ -138,6 +158,7 @@ export class BabbageTransactionOutput extends Schema.TaggedClass<BabbageTransact
  *
  * @since 2.0.0
  * @category schemas
+ * @deprecated Use `TxOut.TransactionOutput` instead.
  */
 export const TransactionOutput = Schema.Union(ShelleyTransactionOutput, BabbageTransactionOutput)
 
