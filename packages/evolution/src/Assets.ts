@@ -90,17 +90,46 @@ export const fromAsset = (
 }
 
 /**
- * Create a single asset from unit string format (policyId.assetName or policyId for empty asset name).
+ * Split a unit string into its policy-id and asset-name hex halves, lowercased.
+ *
+ * ⚠️ **Two spellings reach this module and both have to work.** The canonical one is the
+ * concatenation `policyId(56) + assetName`, which is what {@link getUnits} emits and what
+ * `Unit.fromUnit` documents. `fromUnit` has always also accepted `policyId.assetName`, and a dot
+ * cannot occur in hex, so the form is unambiguous and both are honoured here.
+ *
+ * Before this was shared, the two disagreed: `fromUnit("<policy>.<name>", 42n)` built the asset
+ * and `getByUnit` with that SAME string answered `0n`, because it sliced the dotted text at 56.
+ * Zero is a plausible answer -- it reads as "this asset is not here" -- so the disagreement was
+ * silent, and silent is how it reaches a balance.
+ *
+ * Lowercased for the same reason: hex is case-insensitive and `Bytes.fromHex` accepts either case,
+ * so `fromUnit` built an asset from an uppercase unit that `getByUnit` then answered `0n` for,
+ * because it compares against `PolicyId.toHex`, which emits lowercase.
+ */
+const splitUnit = (unit: string): readonly [string, string] => {
+  const dot = unit.indexOf(".")
+  const [policyIdHex, assetNameHex] =
+    dot === -1 ? [unit.slice(0, 56), unit.slice(56)] : [unit.slice(0, dot), unit.slice(dot + 1)]
+  return [policyIdHex.toLowerCase(), assetNameHex.toLowerCase()]
+}
+
+/**
+ * Create a single asset from unit string format.
+ *
+ * The unit is either the concatenation `policyId(56) + assetName` that {@link getUnits} emits, or
+ * `policyId.assetName`, or a bare `policyId` for an empty asset name. Either case of hex is
+ * accepted, and the halves are read back case-insensitively.
+ *
+ * ⚠️ The concatenated spelling is newly accepted here. Sharing one parse with {@link getByUnit}
+ * means a unit longer than 56 characters with no dot now splits at 56, where before the whole
+ * string was taken as the policy id and rejected with a `PolicyId` parse error.
  *
  * @since 2.0.0
  * @category constructors
  */
 export const fromUnit = (unit: string, quantity: bigint, lovelace: bigint = 0n): Eff.Effect<Assets, Error> =>
   Eff.gen(function* () {
-    // Parse "policyId.assetName" or "policyId" (empty asset name)
-    const dotIndex = unit.indexOf(".")
-    const policyIdHex = dotIndex === -1 ? unit : unit.slice(0, dotIndex)
-    const assetNameHex = dotIndex === -1 ? "" : unit.slice(dotIndex + 1)
+    const [policyIdHex, assetNameHex] = splitUnit(unit)
 
     // Decode policy ID from hex (28 bytes = 56 hex chars)
     const policyIdBytes = Bytes.fromHex(policyIdHex)
@@ -159,10 +188,8 @@ export const fromRecord = (record: Record<string, bigint>): Assets => {
   for (const [key, value] of Object.entries(record)) {
     if (key === "lovelace") continue
 
-    // First 56 chars are policyId, rest is assetName
     // Schema validation in addByHex will handle invalid inputs
-    const policyIdHex = key.slice(0, 56)
-    const assetNameHex = key.slice(56)
+    const [policyIdHex, assetNameHex] = splitUnit(key)
     result = addByHex(result, policyIdHex, assetNameHex, value)
   }
 
@@ -511,7 +538,8 @@ export const hasOnlyLovelace = (assets: Assets): boolean => {
 
 /**
  * Get asset quantity by unit string.
- * Unit is either "lovelace" or "policyId.assetName" (hex encoded).
+ * Unit is either "lovelace", the concatenation "policyId" + "assetName", or "policyId.assetName"
+ * (hex encoded, either case).
  *
  * @since 2.0.0
  * @category inspection
@@ -519,9 +547,7 @@ export const hasOnlyLovelace = (assets: Assets): boolean => {
 export const getByUnit = (assets: Assets, unit: string): bigint => {
   if (unit === "lovelace") return assets.lovelace
 
-  // Parse unit: first 56 chars are policy ID, rest is asset name
-  const policyIdHex = unit.slice(0, 56)
-  const assetNameHex = unit.slice(56)
+  const [policyIdHex, assetNameHex] = splitUnit(unit)
 
   if (!assets.multiAsset) return 0n
 
