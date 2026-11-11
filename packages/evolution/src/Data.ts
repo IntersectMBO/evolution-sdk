@@ -1041,6 +1041,14 @@ export const hash = (data: Data): number => {
  */
 export const equals: (a: Data, b: Data) => boolean = Schema.equivalence(DataSchema)
 
+/**
+ * Plutus data in its JSON-safe encoded form.
+ *
+ * @since 2.0.0
+ * @category conversions
+ */
+export const toJSON: (data: Data) => DataEncoded = Schema.encodeSync(DataSchema)
+
 export const CDDLSchema = CBOR.CBORSchema
 
 /**
