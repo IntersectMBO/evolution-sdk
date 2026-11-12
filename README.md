@@ -280,6 +280,7 @@ Join our thriving community of Cardano developers:
   - [x] `Blockfrost` - Blockfrost API provider
   - [x] `Koios` - Koios API provider
   - [x] `KupoOgmios` - Kupo/Ogmios provider
+  - [x] `BlockchainApplied` - Blockchain Applied API provider
   - [ ] `UtxoRpc` - UTXO RPC provider
   - [x] Provider abstraction layer
   - [ ] Failover and load balancing
@@ -333,7 +334,7 @@ Join our thriving community of Cardano developers:
   - [x] Schema types from Plutus blueprint types (codegen)
 
 ### Current Focus
-The core SDK covers transaction building, smart contracts (Plutus V1/V2/V3), providers (Blockfrost, Maestro, Koios, Kupo/Ogmios), CIP-30 wallet integration, Conway governance, and staking. Current priorities include additional coin selection algorithms, UTXO RPC provider support, hardware wallet integration, and Hydra integration.
+The core SDK covers transaction building, smart contracts (Plutus V1/V2/V3), providers (Blockfrost, Maestro, Koios, Kupo/Ogmios, Blockchain Applied), CIP-30 wallet integration, Conway governance, and staking. Current priorities include additional coin selection algorithms, UTXO RPC provider support, hardware wallet integration, and Hydra integration.
 
 ## Contributing
 

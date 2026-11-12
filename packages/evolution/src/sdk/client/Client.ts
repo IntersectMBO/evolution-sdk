@@ -98,7 +98,7 @@ export interface KoiosConfig {
  */
 export interface BlockchainAppliedConfig {
   readonly baseUrl: string
-  readonly token?: string
+  readonly token: string
 }
 
 /**

@@ -1,11 +1,11 @@
 ---
 title: Provider Types
-description: Compare and configure Blockfrost, Kupmios, Maestro, and Koios providers
+description: Compare and configure Blockfrost, Kupmios, Maestro, Koios, and Blockchain Applied providers
 ---
 
 # Provider Types
 
-The Evolution SDK supports four provider types, each connecting to different Cardano infrastructure. Choose based on your deployment model, feature requirements, and infrastructure preferences.
+The Evolution SDK supports five provider types, each connecting to different Cardano infrastructure. Choose based on your deployment model, feature requirements, and infrastructure preferences.
 
 ## Blockfrost
 
@@ -276,19 +276,65 @@ Applications prioritizing decentralization, community infrastructure, or wanting
 
 ---
 
+## Blockchain Applied
+
+Hosted REST API by [Blockchain Applied](https://blockchain-applied.com), backed by cardano-db-sync and a Cardano node.
+
+### Configuration
+
+```typescript twoslash
+import { mainnet, Client } from "@evolution-sdk/evolution"
+
+const client = Client.make(mainnet)
+  .withBlockchainApplied({
+    baseUrl: "https://api.blockchain-applied.com/api_ada/v1",
+    token: process.env.BCA_API_KEY!
+  })
+```
+
+### Network Endpoints
+
+```typescript
+// Mainnet
+baseUrl: "https://api.blockchain-applied.com/api_ada/v1"
+
+// Preprod testnet
+baseUrl: "https://api.blockchain-applied.com/api_preprod/v1"
+
+// Preview testnet
+baseUrl: "https://api.blockchain-applied.com/api_preview/v1"
+```
+
+### Best For
+
+Applications that want a hosted REST API with a bearer token.
+
+**Advantages:**
+
+- Simple setup
+- UTxO queries by address or payment credential
+- Transaction submission and script evaluation included
+
+**Considerations:**
+
+- API token required for every endpoint
+- Rate limits per token
+
+---
+
 ## Provider Comparison Matrix
 
-| Feature               | Blockfrost       | Kupmios              | Maestro    | Koios            |
-| --------------------- | ---------------- | -------------------- | ---------- | ---------------- |
-| **Setup Complexity**  | Low              | High                 | Low        | Low              |
-| **Infrastructure**    | Hosted           | Self-hosted          | Hosted     | Community-hosted |
-| **API Key Required**  | Yes              | No                   | Yes        | No               |
-| **Rate Limits**       | Yes              | No                   | Yes        | Varies           |
-| **Cost**              | Free tier + paid | Infrastructure costs | Paid tiers | Free             |
-| **Data Sovereignty**  | No               | Yes                  | No         | No               |
-| **Decentralization**  | Low              | High                 | Low        | Medium           |
-| **Advanced Features** | Standard         | Full control         | Extended   | Standard         |
-| **Uptime SLA**        | Commercial       | Self-managed         | Commercial | Best effort      |
+| Feature               | Blockfrost       | Kupmios              | Maestro    | Koios            | Blockchain Applied |
+| --------------------- | ---------------- | -------------------- | ---------- | ---------------- | ------------------ |
+| **Setup Complexity**  | Low              | High                 | Low        | Low              | Low                |
+| **Infrastructure**    | Hosted           | Self-hosted          | Hosted     | Community-hosted | Hosted             |
+| **API Key Required**  | Yes              | No                   | Yes        | No               | Yes                |
+| **Rate Limits**       | Yes              | No                   | Yes        | Varies           | Yes                |
+| **Cost**              | Free tier + paid | Infrastructure costs | Paid tiers | Free             | Paid tiers         |
+| **Data Sovereignty**  | No               | Yes                  | No         | No               | No                 |
+| **Decentralization**  | Low              | High                 | Low        | Medium           | Low                |
+| **Advanced Features** | Standard         | Full control         | Extended   | Standard         | Standard           |
+| **Uptime SLA**        | Commercial       | Self-managed         | Commercial | Best effort      | Commercial         |
 
 ## Switching Providers
 

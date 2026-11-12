@@ -66,9 +66,7 @@ describe.skipIf(!process.env.KOIOS_PREVIEW_ENABLED)("Koios (preview)", () => {
 
 // ── Blockfrost ────────────────────────────────────────────────────────────────
 describe.skipIf(!isConfigured(BLOCKFROST_KEY, "preprodXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))("Blockfrost", () => {
-  registerConformanceTests(() => new BlockfrostProvider(BLOCKFROST_URL, BLOCKFROST_KEY), {
-    supportsCredentialQueries: true
-  })
+  registerConformanceTests(() => new BlockfrostProvider(BLOCKFROST_URL, BLOCKFROST_KEY), { supportsCredentialQueries: true })
 })
 
 // ── Maestro ───────────────────────────────────────────────────────────────────
@@ -78,12 +76,13 @@ describe.skipIf(!isConfigured(MAESTRO_KEY, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))(
 
 // ── Blockchain Applied (BCA) ──────────────────────────────────────────────────
 describe.skipIf(!isConfigured(BCA_KEY, "bca_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"))("BlockchainApplied", () => {
-  registerConformanceTests(() => new BlockchainAppliedProvider(BCA_URL, BCA_KEY))
+  registerConformanceTests(() => new BlockchainAppliedProvider(BCA_URL, BCA_KEY!), { supportsCredentialQueries: true })
 })
 
 // ── Kupmios (self-hosted or Demeter) ──────────────────────────────────────────
 describe.skipIf(
-  !isConfigured(KUPO_URL, "https://your-kupo-endpoint") || !isConfigured(OGMIOS_URL, "https://your-ogmios-endpoint")
+  !isConfigured(KUPO_URL, "https://your-kupo-endpoint") ||
+    !isConfigured(OGMIOS_URL, "https://your-ogmios-endpoint")
 )("Kupmios", () => {
   registerConformanceTests(
     () =>

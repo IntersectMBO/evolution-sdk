@@ -34,7 +34,7 @@ import type * as Provider from "../Provider.js"
 // ============================================================================
 
 /**
- * Some BCA resource endpoints (datum, script) wrap their payload as
+ * Some BCA resource endpoints (datum) wrap their payload as
  * { summary, details }. `summary` is a resource-category label, not a
  * union discriminator.
  */
@@ -82,16 +82,12 @@ export interface UtxoResponse extends Schema.Schema.Type<typeof UtxoResponse> {}
 export const PaginatedUtxoResponse = PaginatedResponse(UtxoResponse)
 
 // ============================================================================
-// Transaction (GET /tx/{hash}) — inputs/outputs are UtxoResponse-shaped, so
-// getUtxosByOutRef can reuse the same UTxO resolution path as GET /utxos/{address}.
+// Transaction (GET /tx/{hash}) — awaitTx only needs to know the tx is indexed.
 // ============================================================================
 
-export const TransactionResponse = Schema.Struct({
-  hash: Schema.String,
-  inputs: Schema.Array(UtxoResponse),
-  outputs: Schema.Array(UtxoResponse)
+export const TxHashResponse = Schema.Struct({
+  hash: Schema.String
 })
-export interface TransactionResponse extends Schema.Schema.Type<typeof TransactionResponse> {}
 
 // ============================================================================
 // Datum (GET /datum/{datumhash})
@@ -104,20 +100,6 @@ export const DatumDetails = Schema.Struct({
   bytes: Schema.String
 })
 export interface DatumDetails extends Schema.Schema.Type<typeof DatumDetails> {}
-
-// ============================================================================
-// Script (GET /script/{scripthash})
-// ============================================================================
-
-export const ScriptDetails = Schema.Struct({
-  hash: Schema.String,
-  size: Schema.BigInt,
-  type: Schema.String,
-  json: Schema.Unknown,
-  bytes: Schema.String,
-  tx_hash: Schema.String
-})
-export interface ScriptDetails extends Schema.Schema.Type<typeof ScriptDetails> {}
 
 // ============================================================================
 // Staking (GET /staking/{stakeaddr}) — current pool delegation and reward
@@ -147,17 +129,21 @@ export const ProtocolParametersResponse = Schema.Struct({
   max_val_size: Schema.BigInt,
   key_deposit: Schema.BigInt,
   pool_deposit: Schema.BigInt,
+  drep_deposit: Schema.BigInt,
+  gov_action_deposit: Schema.BigInt,
   price_mem: Schema.NumberFromString,
   price_step: Schema.NumberFromString,
   max_tx_ex_mem: Schema.BigInt,
   max_tx_ex_steps: Schema.BigInt,
-  cost_models: Schema.Unknown,
-  coins_per_utxo_size: Schema.optional(Schema.NullOr(Schema.BigInt)),
-  collateral_percentage: Schema.optional(Schema.NullOr(Schema.BigInt)),
-  drep_deposit: Schema.optional(Schema.NullOr(Schema.BigInt)),
-  gov_action_deposit: Schema.optional(Schema.NullOr(Schema.BigInt)),
-  max_collateral_inputs: Schema.optional(Schema.NullOr(Schema.BigInt)),
-  min_fee_ref_script_cost_per_byte: Schema.optional(Schema.NullOr(Schema.NumberFromString))
+  coins_per_utxo_size: Schema.BigInt,
+  collateral_percentage: Schema.BigInt,
+  max_collateral_inputs: Schema.BigInt,
+  min_fee_ref_script_cost_per_byte: Schema.NumberFromString,
+  cost_models: Schema.Struct({
+    PlutusV1: Schema.Array(Schema.BigInt),
+    PlutusV2: Schema.Array(Schema.BigInt),
+    PlutusV3: Schema.Array(Schema.BigInt)
+  })
 })
 export interface ProtocolParametersResponse extends Schema.Schema.Type<typeof ProtocolParametersResponse> {}
 
@@ -175,7 +161,7 @@ export const ExUnits = Schema.Struct({
 })
 
 export const EvalRedeemerResponse = Schema.Struct({
-  redeemer_tag: Schema.Literal("spend", "mint", "cert", "reward", "vote", "propose"),
+  redeemer_tag: Redeemer.RedeemerTag,
   redeemer_index: Schema.BigInt,
   ex_units: ExUnits
 })
@@ -199,28 +185,8 @@ export interface AdditionalUtxo {
 // Transformation utilities
 // ============================================================================
 
-/** BCA declares `cost_models` as an opaque object — normalize either array or object shapes. */
-const normalizeCostModel = (raw: unknown): Record<string, number> => {
-  if (Array.isArray(raw)) {
-    return Object.fromEntries(raw.map((value, index) => [index.toString(), Number(value)]))
-  }
-  if (raw && typeof raw === "object") {
-    return Object.fromEntries(
-      Object.entries(raw as Record<string, unknown>).map(([key, value]) => [key, Number(value)])
-    )
-  }
-  return {}
-}
-
-const extractCostModel = (costModels: unknown, keys: ReadonlyArray<string>): Record<string, number> => {
-  if (costModels && typeof costModels === "object") {
-    for (const key of keys) {
-      const value = (costModels as Record<string, unknown>)[key]
-      if (value !== undefined) return normalizeCostModel(value)
-    }
-  }
-  return {}
-}
+const toCostModel = (costs: ReadonlyArray<bigint>): Record<string, number> =>
+  Object.fromEntries(costs.map((value, index) => [index.toString(), Number(value)]))
 
 export const transformProtocolParameters = (response: ProtocolParametersResponse): Provider.ProtocolParameters => ({
   minFeeA: Number(response.min_fee_a),
@@ -229,20 +195,20 @@ export const transformProtocolParameters = (response: ProtocolParametersResponse
   maxValSize: Number(response.max_val_size),
   keyDeposit: response.key_deposit,
   poolDeposit: response.pool_deposit,
-  drepDeposit: response.drep_deposit ?? 0n,
-  govActionDeposit: response.gov_action_deposit ?? 0n,
+  drepDeposit: response.drep_deposit,
+  govActionDeposit: response.gov_action_deposit,
   priceMem: response.price_mem,
   priceStep: response.price_step,
   maxTxExMem: response.max_tx_ex_mem,
   maxTxExSteps: response.max_tx_ex_steps,
-  coinsPerUtxoByte: response.coins_per_utxo_size ?? 0n,
-  collateralPercentage: Number(response.collateral_percentage ?? 0n),
-  maxCollateralInputs: Number(response.max_collateral_inputs ?? 0n),
-  minFeeRefScriptCostPerByte: response.min_fee_ref_script_cost_per_byte ?? 0,
+  coinsPerUtxoByte: response.coins_per_utxo_size,
+  collateralPercentage: Number(response.collateral_percentage),
+  maxCollateralInputs: Number(response.max_collateral_inputs),
+  minFeeRefScriptCostPerByte: response.min_fee_ref_script_cost_per_byte,
   costModels: {
-    PlutusV1: extractCostModel(response.cost_models, ["PlutusV1", "plutus_v1"]),
-    PlutusV2: extractCostModel(response.cost_models, ["PlutusV2", "plutus_v2"]),
-    PlutusV3: extractCostModel(response.cost_models, ["PlutusV3", "plutus_v3"])
+    PlutusV1: toCostModel(response.cost_models.PlutusV1),
+    PlutusV2: toCostModel(response.cost_models.PlutusV2),
+    PlutusV3: toCostModel(response.cost_models.PlutusV3)
   }
 })
 
@@ -277,7 +243,7 @@ export const transformDelegation = (response: StakingResponse): Provider.Delegat
 })
 
 export const transformEvalRedeemer = (redeemer: Schema.Schema.Type<typeof EvalRedeemerResponse>): EvalRedeemer => ({
-  redeemer_tag: redeemer.redeemer_tag as Redeemer.RedeemerTag,
+  redeemer_tag: redeemer.redeemer_tag,
   redeemer_index: Number(redeemer.redeemer_index),
   ex_units: new Redeemer.ExUnits({
     mem: redeemer.ex_units.mem,

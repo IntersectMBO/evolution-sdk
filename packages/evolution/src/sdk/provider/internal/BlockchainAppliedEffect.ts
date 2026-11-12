@@ -12,7 +12,6 @@ import * as Bytes from "../../../Bytes.js"
 import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
-import type * as DatumOption from "../../../DatumOption.js"
 import * as NativeScripts from "../../../NativeScripts.js"
 import * as PolicyId from "../../../PolicyId.js"
 import type * as RewardAddress from "../../../RewardAddress.js"
@@ -28,8 +27,7 @@ import * as HttpUtils from "./HttpUtils.js"
 const PAGE_SIZE = 100
 const TIMEOUT = 10_000
 
-const bearerHeaders = (token?: string): Record<string, string> | undefined =>
-  token ? { Authorization: `Bearer ${token}` } : undefined
+const bearerHeaders = (token: string): Record<string, string> => ({ Authorization: `Bearer ${token}` })
 
 const wrapError = (operation: string) => (cause: unknown) =>
   Effect.fail(
@@ -46,70 +44,59 @@ const is404 = (error: unknown): boolean =>
   error instanceof HttpUtils.HttpResponseError && error.status === 404
 
 // ============================================================================
-// Script / datum resolution
+// UTxO resolution
 // ============================================================================
-// BCA's UtxoResponse carries inline_datum / reference_script_cbor directly
-// when available; only fall back to a separate lookup by hash for older
-// rows that predate those fields.
+// BCA's UtxoResponse carries the inline datum and the reference script CBOR
+// (rebuilt server-side for native scripts, which db-sync stores no CBOR for),
+// so no follow-up lookups are needed.
 
-const fetchScript =
-  (baseUrl: string, headers: Record<string, string> | undefined) =>
-  (scriptHash: string): Effect.Effect<Script.Script | undefined, unknown> =>
-    HttpUtils.get(`${baseUrl}/script/${scriptHash}`, BCA.Envelope(BCA.ScriptDetails), headers).pipe(
-      Effect.timeout(TIMEOUT),
-      Effect.map((response) => BCA.transformScript(response.details))
+const decodeScriptRef = (item: BCA.UtxoResponse): Effect.Effect<Script.Script | undefined, Provider.ProviderError> => {
+  if (!item.reference_script_hash && !item.reference_script_cbor) return Effect.succeed(undefined)
+  const { reference_script_cbor: bytes, reference_script_type: type } = item
+  return Effect.try({
+    try: () => (bytes && type ? BCA.transformScript({ type, bytes }) : undefined),
+    catch: (cause) => new Provider.ProviderError({ message: "Failed to decode reference script", cause })
+  }).pipe(
+    // Without its reference script the UTxO would be left out of the reference
+    // script fee, and the node would reject the transaction.
+    Effect.filterOrFail(
+      (script): script is Script.Script => script !== undefined,
+      () =>
+        new Provider.ProviderError({
+          message: `No usable reference script for ${item.tx_hash}#${item.output_index}`,
+          cause: { reference_script_hash: item.reference_script_hash, reference_script_type: type }
+        })
     )
+  )
+}
 
-const fetchDatumOption =
-  (baseUrl: string, headers: Record<string, string> | undefined) =>
-  (datumHash: string): Effect.Effect<DatumOption.DatumOption, unknown> =>
-    HttpUtils.get(`${baseUrl}/datum/${datumHash}`, BCA.Envelope(BCA.DatumDetails), headers).pipe(
-      Effect.timeout(TIMEOUT),
-      Effect.map((response) => BCA.inlineDatumFromCBORHex(response.details.bytes))
-    )
-
-const resolveUtxo =
-  (baseUrl: string, headers: Record<string, string> | undefined) =>
-  (item: BCA.UtxoResponse): Effect.Effect<CoreUTxO.UTxO, unknown> => {
-    const scriptEffect =
-      item.reference_script_cbor && item.reference_script_type
-        ? Effect.succeed(BCA.transformScript({ type: item.reference_script_type, bytes: item.reference_script_cbor }))
-        : item.reference_script_hash
-          ? fetchScript(
-              baseUrl,
-              headers
-            )(item.reference_script_hash).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-          : Effect.succeed(undefined)
-
-    const datumEffect = item.inline_datum
-      ? Effect.succeed(BCA.inlineDatumFromCBORHex(item.inline_datum))
-      : item.datum_hash
-        ? fetchDatumOption(
-            baseUrl,
-            headers
-          )(item.datum_hash).pipe(Effect.catchAll(() => Effect.succeed(BCA.datumHashFromHex(item.datum_hash!))))
-        : Effect.succeed(undefined)
-
-    return Effect.all([scriptEffect, datumEffect]).pipe(
-      Effect.map(
-        ([scriptRef, datumOption]) =>
+const resolveUtxo = (item: BCA.UtxoResponse): Effect.Effect<CoreUTxO.UTxO, Provider.ProviderError> =>
+  decodeScriptRef(item).pipe(
+    Effect.flatMap((scriptRef) =>
+      Effect.try({
+        try: () =>
           new CoreUTxO.UTxO({
             transactionId: TransactionHash.fromHex(item.tx_hash),
             index: item.output_index,
             address: CoreAddress.fromBech32(item.address),
             assets: BCA.transformAssets(item.lovelace, item.assets),
-            datumOption,
+            datumOption: item.inline_datum
+              ? BCA.inlineDatumFromCBORHex(item.inline_datum)
+              : item.datum_hash
+                ? BCA.datumHashFromHex(item.datum_hash)
+                : undefined,
             scriptRef
-          })
-      )
+          }),
+        catch: (cause) => new Provider.ProviderError({ message: "Failed to decode UTxO", cause })
+      })
     )
-  }
+  )
 
 // ============================================================================
 // Paginated UTxO fetch (GET /utxos/{address}, GET /assets/{unit}/utxos)
 // ============================================================================
 
-const fetchAllUtxoPages = (url: string, headers: Record<string, string> | undefined) =>
+const fetchAllUtxoPages = (url: string, headers: Record<string, string>) =>
   Effect.gen(function* () {
     let all: Array<BCA.UtxoResponse> = []
     // BCA pages are 0-indexed (CIP-30 Paginate convention).
@@ -131,7 +118,7 @@ const fetchAllUtxoPages = (url: string, headers: Record<string, string> | undefi
 // Protocol parameters
 // ============================================================================
 
-export const getProtocolParameters = (baseUrl: string, token?: string) =>
+export const getProtocolParameters = (baseUrl: string, token: string) =>
   HttpUtils.get(`${baseUrl}/protocol_parameters/latest`, BCA.ProtocolParametersResponse, bearerHeaders(token)).pipe(
     Effect.map(BCA.transformProtocolParameters),
     Effect.timeout(TIMEOUT),
@@ -143,28 +130,28 @@ export const getProtocolParameters = (baseUrl: string, token?: string) =>
 // ============================================================================
 
 export const getUtxos =
-  (baseUrl: string, token?: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
+  (baseUrl: string, token: string) => (addressOrCredential: CoreAddress.Address | Credential.Credential) => {
     const headers = bearerHeaders(token)
     const addressPath = getAddressPath(addressOrCredential)
     return fetchAllUtxoPages(`${baseUrl}/utxos/${addressPath}`, headers).pipe(
-      Effect.flatMap((utxos) => Effect.forEach(utxos, resolveUtxo(baseUrl, headers), { concurrency: 10 })),
+      Effect.flatMap((utxos) => Effect.forEach(utxos, resolveUtxo)),
       Effect.catchAll(wrapError("getUtxos"))
     )
   }
 
 export const getUtxosWithUnit =
-  (baseUrl: string, token?: string) =>
+  (baseUrl: string, token: string) =>
   (addressOrCredential: CoreAddress.Address | Credential.Credential, unit: string) => {
     const headers = bearerHeaders(token)
     const addressPath = getAddressPath(addressOrCredential)
     return fetchAllUtxoPages(`${baseUrl}/utxos/${addressPath}`, headers).pipe(
       Effect.map((utxos) => utxos.filter((utxo) => utxo.assets.some((a) => `${a.policy_id}${a.asset_name}` === unit))),
-      Effect.flatMap((utxos) => Effect.forEach(utxos, resolveUtxo(baseUrl, headers), { concurrency: 10 })),
+      Effect.flatMap((utxos) => Effect.forEach(utxos, resolveUtxo)),
       Effect.catchAll(wrapError("getUtxosWithUnit"))
     )
   }
 
-export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string) => {
+export const getUtxoByUnit = (baseUrl: string, token: string) => (unit: string) => {
   const headers = bearerHeaders(token)
   return fetchAllUtxoPages(`${baseUrl}/assets/${unit}/utxos`, headers).pipe(
     Effect.flatMap((utxos) => {
@@ -179,14 +166,14 @@ export const getUtxoByUnit = (baseUrl: string, token?: string) => (unit: string)
           })
         )
       }
-      return resolveUtxo(baseUrl, headers)(utxos[0])
+      return resolveUtxo(utxos[0])
     }),
     Effect.catchAll(wrapError("getUtxoByUnit"))
   )
 }
 
 export const getUtxosByOutRef =
-  (baseUrl: string, token?: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) => {
+  (baseUrl: string, token: string) => (inputs: ReadonlyArray<TransactionInput.TransactionInput>) => {
     const headers = bearerHeaders(token)
 
     return Effect.forEach(
@@ -195,7 +182,7 @@ export const getUtxosByOutRef =
         const txHash = TransactionHash.toHex(input.transactionId)
         return HttpUtils.get(`${baseUrl}/utxo/${txHash}/${Number(input.index)}`, BCA.UtxoResponse, headers).pipe(
           Effect.timeout(TIMEOUT),
-          Effect.flatMap(resolveUtxo(baseUrl, headers)),
+          Effect.flatMap(resolveUtxo),
           Effect.map((utxo) => Option.some(utxo)),
           Effect.catchIf(is404, () => Effect.succeed(Option.none())),
           Effect.catchAll(wrapError("getUtxosByOutRef"))
@@ -209,12 +196,12 @@ export const getUtxosByOutRef =
 // Delegation
 // ============================================================================
 
-export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress: RewardAddress.RewardAddress) =>
+export const getDelegation = (baseUrl: string, token: string) => (rewardAddress: RewardAddress.RewardAddress) =>
   HttpUtils.get(`${baseUrl}/staking/${rewardAddress}`, BCA.StakingResponse, bearerHeaders(token)).pipe(
     Effect.timeout(TIMEOUT),
     Effect.map(BCA.transformDelegation),
     // 404 — stake address not registered/never delegated.
-    Effect.catchIf(is404, () => Effect.succeed({ poolId: null, rewards: 0n } as Provider.Delegation)),
+    Effect.catchIf(is404, () => Effect.succeed({ poolId: null, rewards: 0n })),
     Effect.catchAll(wrapError("getDelegation"))
   )
 
@@ -222,7 +209,7 @@ export const getDelegation = (baseUrl: string, token?: string) => (rewardAddress
 // Datum
 // ============================================================================
 
-export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHash.DatumHash) => {
+export const getDatum = (baseUrl: string, token: string) => (datumHash: DatumHash.DatumHash) => {
   const datumHashHex = Bytes.toHex(datumHash.hash)
   return HttpUtils.get(`${baseUrl}/datum/${datumHashHex}`, BCA.Envelope(BCA.DatumDetails), bearerHeaders(token)).pipe(
     Effect.timeout(TIMEOUT),
@@ -241,17 +228,18 @@ export const getDatum = (baseUrl: string, token?: string) => (datumHash: DatumHa
 // ============================================================================
 
 export const awaitTx =
-  (baseUrl: string, token?: string) =>
+  (baseUrl: string, token: string) =>
   (txHash: TransactionHash.TransactionHash, checkInterval = 20_000, timeout = 160_000) => {
     const txHashHex = TransactionHash.toHex(txHash)
     const headers = bearerHeaders(token)
 
-    // GET /tx/{hash} 404s until the tx is indexed, 200s once confirmed.
-    const checkTx = HttpUtils.get(`${baseUrl}/tx/${txHashHex}`, BCA.TransactionResponse, headers).pipe(
+    // GET /tx/{hash} 404s until the tx is indexed, 200s once confirmed. Any
+    // other failure (e.g. a 401) ends the wait at once.
+    const checkTx = HttpUtils.get(`${baseUrl}/tx/${txHashHex}`, BCA.TxHashResponse, headers).pipe(
       Effect.timeout(TIMEOUT)
     )
 
-    return Effect.retry(checkTx, Schedule.spaced(`${checkInterval} millis`)).pipe(
+    return Effect.retry(checkTx, { schedule: Schedule.spaced(`${checkInterval} millis`), while: is404 }).pipe(
       Effect.timeout(timeout),
       Effect.as(true),
       Effect.catchAllCause((cause) =>
@@ -264,7 +252,7 @@ export const awaitTx =
 // submitTx / evaluateTx
 // ============================================================================
 
-export const submitTx = (baseUrl: string, token?: string) => (tx: Transaction.Transaction) =>
+export const submitTx = (baseUrl: string, token: string) => (tx: Transaction.Transaction) =>
   HttpUtils.postUint8Array(
     `${baseUrl}/tx/submit`,
     Transaction.toCBORBytes(tx),
@@ -310,7 +298,7 @@ const toReferenceScriptFields = (
 }
 
 export const evaluateTx =
-  (baseUrl: string, token?: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) => {
+  (baseUrl: string, token: string) => (tx: Transaction.Transaction, additionalUTxOs?: Array<CoreUTxO.UTxO>) => {
     const body = {
       cbor: Transaction.toCBORHex(tx),
       ...(additionalUTxOs && additionalUTxOs.length > 0

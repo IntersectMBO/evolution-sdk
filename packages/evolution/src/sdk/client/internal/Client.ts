@@ -143,8 +143,7 @@ const createSigningClient = (
 const createReadClient = (chain: Chain, provider: Provider.Provider): ReadClient => ({
   ...provider,
   chain,
-  withAddress: (address, rewardAddress) =>
-    createReadOnlyClient(chain, provider, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
+  withAddress: (address, rewardAddress) => createReadOnlyClient(chain, provider, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
   withSeed: (config) => createSigningClient(chain, provider, Wallets.seedWallet(config)(chain)),
   withPrivateKey: (config) => createSigningClient(chain, provider, Wallets.privateKeyWallet(config)(chain)),
   withCip30: (api) => createSigningClient(chain, provider, Wallets.cip30Wallet(api)(chain)),
@@ -159,8 +158,7 @@ export const client = (chain: Chain = mainnet): ClientAssembly => ({
   withKupmios: (config) => createReadClient(chain, Providers.kupmios(config)),
   withMaestro: (config) => createReadClient(chain, Providers.maestro(config)),
   withBlockchainApplied: (config) => createReadClient(chain, Providers.blockchainApplied(config)),
-  withAddress: (address, rewardAddress) =>
-    createAddressClient(chain, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
+  withAddress: (address, rewardAddress) => createAddressClient(chain, Wallets.readOnlyWallet(address, rewardAddress)(chain)),
   withSeed: (config) => createOfflineSignerClient(chain, Wallets.seedWallet(config)(chain)),
   withPrivateKey: (config) => createOfflineSignerClient(chain, Wallets.privateKeyWallet(config)(chain)),
   withCip30: (api) => createOfflineSignerClient(chain, Wallets.cip30Wallet(api)(chain))

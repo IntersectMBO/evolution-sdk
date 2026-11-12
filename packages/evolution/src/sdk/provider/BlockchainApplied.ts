@@ -7,7 +7,7 @@ const HOST = "https://api.blockchain-applied.com"
 
 /**
  * Blockchain Applied (BCA) provider for Cardano blockchain data access.
- * Supports Bearer token authentication.
+ * Every endpoint requires a Bearer token.
  *
  * @since 2.0.0
  * @category constructors
@@ -15,9 +15,9 @@ const HOST = "https://api.blockchain-applied.com"
 export class BlockchainAppliedProvider implements Provider {
   readonly effect: ProviderEffect
   readonly baseUrl: string
-  readonly token?: string
+  readonly token: string
 
-  constructor(baseUrl: string, token?: string) {
+  constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl
     this.token = token
 
@@ -73,7 +73,7 @@ export class BlockchainAppliedProvider implements Provider {
  * @since 2.0.0
  * @category constructors
  */
-export const mainnet = (token?: string): BlockchainAppliedProvider =>
+export const mainnet = (token: string): BlockchainAppliedProvider =>
   new BlockchainAppliedProvider(`${HOST}/api_ada/v1`, token)
 
 /**
@@ -82,7 +82,7 @@ export const mainnet = (token?: string): BlockchainAppliedProvider =>
  * @since 2.0.0
  * @category constructors
  */
-export const preprod = (token?: string): BlockchainAppliedProvider =>
+export const preprod = (token: string): BlockchainAppliedProvider =>
   new BlockchainAppliedProvider(`${HOST}/api_preprod/v1`, token)
 
 /**
@@ -91,7 +91,7 @@ export const preprod = (token?: string): BlockchainAppliedProvider =>
  * @since 2.0.0
  * @category constructors
  */
-export const preview = (token?: string): BlockchainAppliedProvider =>
+export const preview = (token: string): BlockchainAppliedProvider =>
   new BlockchainAppliedProvider(`${HOST}/api_preview/v1`, token)
 
 /**
@@ -100,5 +100,5 @@ export const preview = (token?: string): BlockchainAppliedProvider =>
  * @since 2.0.0
  * @category constructors
  */
-export const custom = (baseUrl: string, token?: string): BlockchainAppliedProvider =>
+export const custom = (baseUrl: string, token: string): BlockchainAppliedProvider =>
   new BlockchainAppliedProvider(baseUrl, token)
