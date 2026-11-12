@@ -13,6 +13,7 @@ import * as Credential from "../../../Credential.js"
 import * as PlutusData from "../../../Data.js"
 import type * as DatumHash from "../../../DatumHash.js"
 import * as NativeScripts from "../../../NativeScripts.js"
+import * as OriginalBytes from "../../../OriginalBytes.js"
 import * as PolicyId from "../../../PolicyId.js"
 import type * as RewardAddress from "../../../RewardAddress.js"
 import type * as Script from "../../../Script.js"
@@ -215,7 +216,12 @@ export const getDatum = (baseUrl: string, token: string) => (datumHash: DatumHas
     Effect.timeout(TIMEOUT),
     Effect.flatMap((response) =>
       Effect.try({
-        try: () => Schema.decodeSync(PlutusData.FromCBORHex())(response.details.bytes),
+        try: () => {
+          // Keep the fetched bytes: a witness set writes the datum with them
+          const bytes = Bytes.fromHex(response.details.bytes)
+          const data = PlutusData.fromCBORBytes(bytes)
+          return typeof data === "bigint" ? data : OriginalBytes.record(data, bytes)
+        },
         catch: (error) => new Provider.ProviderError({ message: "Failed to parse datum CBOR", cause: error })
       })
     ),
