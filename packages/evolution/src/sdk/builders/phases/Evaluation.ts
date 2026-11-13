@@ -17,7 +17,7 @@ import * as PolicyId from "../../../PolicyId.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import type * as Provider from "../../provider/Provider.js"
 import * as EvaluationStateManager from "../EvaluationStateManager.js"
-import { assembleTransaction } from "../internal/txBuilder.js"
+import { assembleTransaction, certCredential } from "../internal/txBuilder.js"
 import type { IndexedInput } from "../RedeemerBuilder.js"
 import {
   BuildOptionsTag,
@@ -401,20 +401,11 @@ export const executeEvaluation = (): Effect.Effect<
     // Certificate redeemers are indexed by their position in the certificates array
     const certIndexMapping = new Map<number, string>()
     for (let i = 0; i < updatedState.certificates.length; i++) {
-      const cert = updatedState.certificates[i]!
-      // Handle stake-related certificates (stakeCredential)
-      if ("stakeCredential" in cert && cert.stakeCredential) {
-        const credHex = Bytes.toHex(cert.stakeCredential.hash)
-        const key = `cert:${credHex}`
+      const credential = certCredential(updatedState.certificates[i]!)
+      if (credential !== undefined) {
+        const key = `cert:${Bytes.toHex(credential.hash)}`
         certIndexMapping.set(i, key)
-        yield* Effect.logDebug(`[Evaluation] Cert ${i} maps to stake credential: ${key}`)
-      }
-      // Handle DRep-related certificates (drepCredential): RegDrepCert, UnregDrepCert, UpdateDrepCert
-      else if ("drepCredential" in cert && cert.drepCredential) {
-        const credHex = Bytes.toHex(cert.drepCredential.hash)
-        const key = `cert:${credHex}`
-        certIndexMapping.set(i, key)
-        yield* Effect.logDebug(`[Evaluation] Cert ${i} maps to drep credential: ${key}`)
+        yield* Effect.logDebug(`[Evaluation] Cert ${i} maps to credential: ${key}`)
       }
     }
 
