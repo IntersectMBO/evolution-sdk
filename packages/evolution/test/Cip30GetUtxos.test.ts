@@ -2,47 +2,50 @@ import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
 
 import * as CoreAddress from "../src/Address.js"
-import * as AddressEras from "../src/AddressEras.js"
 import * as AssetName from "../src/AssetName.js"
+import * as Assets from "../src/Assets.js"
 import * as Bytes from "../src/Bytes.js"
 import * as CBOR from "../src/CBOR.js"
 import * as DatumHash from "../src/DatumHash.js"
 import * as KeyHash from "../src/KeyHash.js"
 import * as MultiAsset from "../src/MultiAsset.js"
+import * as PlutusV3 from "../src/PlutusV3.js"
 import * as PolicyId from "../src/PolicyId.js"
 import * as PrivateKey from "../src/PrivateKey.js"
+import * as Script from "../src/Script.js"
+import * as ScriptRef from "../src/ScriptRef.js"
 import { resolveAvailableUtxos } from "../src/sdk/builders/internal/resolve.js"
 import { preprod } from "../src/sdk/client/Chain.js"
 import { cip30UtxoFromCBORHex, cip30Wallet } from "../src/sdk/client/internal/Wallets.js"
 import type * as Wallet from "../src/sdk/wallet/Wallet.js"
 import * as TransactionHash from "../src/TransactionHash.js"
 import * as TransactionInput from "../src/TransactionInput.js"
-import * as TransactionOutput from "../src/TransactionOutput.js"
-import * as Value from "../src/Value.js"
+import * as TxOut from "../src/TxOut.js"
 
 // Build a real enterprise (testnet) address bound to a fresh key.
 const keyHash = KeyHash.fromPrivateKey(PrivateKey.fromBytes(PrivateKey.generate()))
 const addressHex = CoreAddress.toHex(new CoreAddress.Address({ networkId: 0, paymentCredential: keyHash }))
-const addressEras = AddressEras.fromHex(addressHex)
+const address = CoreAddress.fromHex(addressHex)
 
 // Build a CIP-30 UTxO: CBOR hex of [transaction_input, transaction_output].
-const makeCip30UtxoHex = (amount: Value.Value, index: bigint): string => {
+const makeCip30UtxoHex = (
+  assets: Assets.Assets,
+  index: bigint,
+  extra: { scriptRef?: ScriptRef.ScriptRef } = {}
+): string => {
   const input = new TransactionInput.TransactionInput(
     { transactionId: TransactionHash.fromHex("aa".repeat(32)), index },
     { disableValidation: true }
   )
-  const output = new TransactionOutput.BabbageTransactionOutput(
-    { address: addressEras, amount },
-    { disableValidation: true }
-  )
+  const output = new TxOut.TransactionOutput({ address, assets, ...extra }, { disableValidation: true })
   const inputCBOR = CBOR.fromCBORBytes(TransactionInput.toCBORBytes(input))
-  const outputCBOR = CBOR.fromCBORBytes(TransactionOutput.toCBORBytes(output))
+  const outputCBOR = CBOR.fromCBORBytes(TxOut.toCBORBytes(output))
   return Bytes.toHex(CBOR.toCBORBytes([inputCBOR, outputCBOR]))
 }
 
 describe("CIP-30 getUtxos (#414)", () => {
   it("parses a CIP-30 UTxO hex into a typed UTxO", () => {
-    const utxo = cip30UtxoFromCBORHex(makeCip30UtxoHex(Value.onlyCoin(5_000_000n), 1n))
+    const utxo = cip30UtxoFromCBORHex(makeCip30UtxoHex(Assets.fromLovelace(5_000_000n), 1n))
     expect(TransactionHash.toHex(utxo.transactionId)).toBe("aa".repeat(32))
     expect(utxo.index).toBe(1n)
     expect(CoreAddress.toHex(utxo.address)).toBe(addressHex)
@@ -52,7 +55,7 @@ describe("CIP-30 getUtxos (#414)", () => {
   })
 
   it("getUtxos parses every UTxO the CIP-30 api returns", async () => {
-    const hexes = [makeCip30UtxoHex(Value.onlyCoin(2_000_000n), 0n), makeCip30UtxoHex(Value.onlyCoin(7_000_000n), 1n)]
+    const hexes = [makeCip30UtxoHex(Assets.fromLovelace(2_000_000n), 0n), makeCip30UtxoHex(Assets.fromLovelace(7_000_000n), 1n)]
     const api = { getUtxos: () => Promise.resolve(hexes) } as unknown as Wallet.WalletApi
     const wallet = cip30Wallet(api)(preprod)
 
@@ -69,7 +72,7 @@ describe("CIP-30 getUtxos (#414)", () => {
 
   it("the builder resolves UTxOs from a CIP-30 wallet with no provider", async () => {
     const api = {
-      getUtxos: () => Promise.resolve([makeCip30UtxoHex(Value.onlyCoin(9_000_000n), 0n)])
+      getUtxos: () => Promise.resolve([makeCip30UtxoHex(Assets.fromLovelace(9_000_000n), 0n)])
     } as unknown as Wallet.WalletApi
     const wallet = cip30Wallet(api)(preprod)
 
@@ -104,19 +107,19 @@ describe("CIP-30 getUtxos (#414)", () => {
     )
     const policyId = PolicyId.fromHex("bb".repeat(28))
     const assetName = AssetName.fromHex("cafe")
-    const value = Value.withAssets(3_000_000n, MultiAsset.singleton(policyId, assetName, 42n))
+    const assets = Assets.withMultiAsset(3_000_000n, MultiAsset.singleton(policyId, assetName, 42n))
     const datumHash = DatumHash.fromHex("dd".repeat(32))
 
     const input = new TransactionInput.TransactionInput(
       { transactionId: TransactionHash.fromHex("aa".repeat(32)), index: 0n },
       { disableValidation: true }
     )
-    const output = new TransactionOutput.BabbageTransactionOutput(
-      { address: AddressEras.fromHex(baseAddressHex), amount: value, datumOption: datumHash },
+    const output = new TxOut.TransactionOutput(
+      { address: CoreAddress.fromHex(baseAddressHex), assets, datumOption: datumHash },
       { disableValidation: true }
     )
     const inputCBOR = CBOR.fromCBORBytes(TransactionInput.toCBORBytes(input))
-    const outputCBOR = CBOR.fromCBORBytes(TransactionOutput.toCBORBytes(output))
+    const outputCBOR = CBOR.fromCBORBytes(TxOut.toCBORBytes(output))
     const utxoHex = Bytes.toHex(CBOR.toCBORBytes([inputCBOR, outputCBOR]))
 
     const utxo = cip30UtxoFromCBORHex(utxoHex)
@@ -127,6 +130,16 @@ describe("CIP-30 getUtxos (#414)", () => {
     expect(utxo.assets.lovelace).toBe(3_000_000n)
     // Datum hash preserved as a DatumHash datum option
     expect(utxo.datumOption?._tag).toBe("DatumHash")
+  })
+
+  it("preserves a reference script as a Script", () => {
+    const script = new PlutusV3.PlutusV3({ bytes: Bytes.fromHex("4e4d01000033222220051200120011") })
+    const scriptRef = new ScriptRef.ScriptRef({ bytes: Script.toCBOR(script) })
+
+    const utxo = cip30UtxoFromCBORHex(makeCip30UtxoHex(Assets.fromLovelace(5_000_000n), 0n, { scriptRef }))
+
+    expect(utxo.scriptRef?._tag).toBe("PlutusV3")
+    expect(Script.toCBORHex(utxo.scriptRef!)).toBe(Script.toCBORHex(script))
   })
 })
 
