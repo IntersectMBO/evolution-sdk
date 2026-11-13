@@ -210,7 +210,7 @@ export class TransactionWitnessSet extends Schema.Class<TransactionWitnessSet>("
       nativeScripts: this.nativeScripts?.map((s) => Schema.encodeSync(NativeScripts.NativeScript)(s)),
       bootstrapWitnesses: this.bootstrapWitnesses?.map((b) => b.toJSON()),
       plutusV1Scripts: this.plutusV1Scripts,
-      plutusData: this.plutusData,
+      plutusData: this.plutusData?.map(PlutusData.toJSON),
       redeemers: this.redeemers?.toJSON(),
       plutusV2Scripts: this.plutusV2Scripts,
       plutusV3Scripts: this.plutusV3Scripts
@@ -230,7 +230,7 @@ export class TransactionWitnessSet extends Schema.Class<TransactionWitnessSet>("
    * @category inspect
    */
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), plutusData: this.plutusData, redeemers: this.redeemers }
   }
 
   /**

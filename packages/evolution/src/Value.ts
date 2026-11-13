@@ -27,7 +27,7 @@ export class OnlyCoin extends Schema.TaggedClass<OnlyCoin>("OnlyCoin")("OnlyCoin
   toJSON() {
     return {
       _tag: this._tag,
-      coin: this.coin
+      coin: this.coin.toString()
     }
   }
 
@@ -36,7 +36,7 @@ export class OnlyCoin extends Schema.TaggedClass<OnlyCoin>("OnlyCoin")("OnlyCoin
   }
 
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), coin: this.coin }
   }
 
   [Equal.symbol](that: unknown): boolean {
@@ -55,7 +55,7 @@ export class WithAssets extends Schema.TaggedClass<WithAssets>("WithAssets")("Wi
   toJSON() {
     return {
       _tag: this._tag,
-      coin: this.coin,
+      coin: this.coin.toString(),
       assets: this.assets
     }
   }
@@ -65,7 +65,7 @@ export class WithAssets extends Schema.TaggedClass<WithAssets>("WithAssets")("Wi
   }
 
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), coin: this.coin }
   }
 
   [Equal.symbol](that: unknown): boolean {
