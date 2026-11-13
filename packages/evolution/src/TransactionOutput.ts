@@ -1,3 +1,20 @@
+/**
+ * Transaction outputs, as a union of a Shelley-era and a Babbage-era class.
+ *
+ * ⚠️ **Deprecated: use {@link TxOut} instead.** This is a SECOND, parallel model of a transaction
+ * output -- `address: AddressEras` and `amount: Value` -- while `TxOut` carries the one
+ * `TransactionBody`, the builders and the sdk actually use (`address: Address`, `assets: Assets`,
+ * one class covering both eras). Both are public from the package entry point under names that
+ * give no hint which is which, and they reject each other: an output built here cannot be placed
+ * in a `TransactionBody`, and the error reads `Expected TransactionOutput, actual [toString
+ * threw]` about a value that IS a `TransactionOutput` -- the other one.
+ *
+ * It stays exported, and keeps working, because removing it or pointing it at `TxOut` would break
+ * every caller that holds a `BabbageTransactionOutput`. New code should reach for `TxOut`.
+ *
+ * @since 2.0.0
+ */
+
 import { Either as E, Equal, FastCheck, Hash, Inspectable, ParseResult, Schema } from "effect"
 
 import * as AddressEras from "./AddressEras.js"
@@ -30,6 +47,7 @@ const decScriptRef = ParseResult.decodeUnknownEither(ScriptRef.FromCDDL)
  *
  * @since 2.0.0
  * @category model
+ * @deprecated Use `TxOut.TransactionOutput` instead; `TransactionOutput` is a second, parallel model.
  */
 export class ShelleyTransactionOutput extends Schema.TaggedClass<ShelleyTransactionOutput>()(
   "ShelleyTransactionOutput",
@@ -82,6 +100,7 @@ export class ShelleyTransactionOutput extends Schema.TaggedClass<ShelleyTransact
  *
  * @since 2.0.0
  * @category model
+ * @deprecated Use `TxOut.TransactionOutput` instead; `TransactionOutput` is a second, parallel model.
  */
 export class BabbageTransactionOutput extends Schema.TaggedClass<BabbageTransactionOutput>()(
   "BabbageTransactionOutput",
@@ -138,11 +157,20 @@ export class BabbageTransactionOutput extends Schema.TaggedClass<BabbageTransact
  *
  * @since 2.0.0
  * @category schemas
+ * @deprecated Use `TxOut.TransactionOutput` instead; `TransactionOutput` is a second, parallel model.
  */
 export const TransactionOutput = Schema.Union(ShelleyTransactionOutput, BabbageTransactionOutput)
 
+/**
+ * @since 2.0.0
+ * @deprecated Use `TxOut.TransactionOutput` instead; `TransactionOutput` is a second, parallel model.
+ */
 export type TransactionOutput = typeof TransactionOutput.Type
 
+/**
+ * @since 2.0.0
+ * @deprecated Use `TxOut.ShelleyTransactionOutputCDDL` instead; `TransactionOutput` is a second, parallel model.
+ */
 export const ShelleyTransactionOutputCDDL = Schema.Tuple(
   Schema.Uint8ArrayFromSelf, // address as bytes
   Value.CDDLSchema, // value
@@ -154,6 +182,7 @@ export const ShelleyTransactionOutputCDDL = Schema.Tuple(
  *
  * @since 2.0.0
  * @category transformation
+ * @deprecated Use `TxOut.FromShelleyTransactionOutputCDDL` instead; `TransactionOutput` is a second, parallel model.
  */
 export const FromShelleyTransactionOutputCDDLSchema = Schema.transformOrFail(
   ShelleyTransactionOutputCDDL,
@@ -257,11 +286,16 @@ const makeFromBabbageTransactionOutputCDDLSchema = (plutusData: CBOR.CodecOption
  *
  * @since 2.0.0
  * @category transformation
+ * @deprecated Use `TxOut.FromBabbageTransactionOutputCDDL` instead; `TransactionOutput` is a second, parallel model.
  */
 export const FromBabbageTransactionOutputCDDLSchema = makeFromBabbageTransactionOutputCDDLSchema(
   PlutusData.DEFAULT_CBOR_OPTIONS
 )
 
+/**
+ * @since 2.0.0
+ * @deprecated Use `TxOut.CDDLSchema` instead; `TransactionOutput` is a second, parallel model.
+ */
 export const CDDLSchema = Schema.Union(ShelleyTransactionOutputCDDL, BabbageTransactionOutputCDDL)
 
 /**
@@ -269,6 +303,7 @@ export const CDDLSchema = Schema.Union(ShelleyTransactionOutputCDDL, BabbageTran
  *
  * @since 2.0.0
  * @category transformer
+ * @deprecated Use `TxOut.FromCDDL` instead; `TransactionOutput` is a second, parallel model.
  */
 export const FromCDDL = Schema.Union(FromShelleyTransactionOutputCDDLSchema, FromBabbageTransactionOutputCDDLSchema)
 
@@ -279,6 +314,7 @@ export const FromCDDL = Schema.Union(FromShelleyTransactionOutputCDDLSchema, Fro
  *
  * @since 2.0.0
  * @category transformer
+ * @deprecated Use `TxOut.FromCBORBytes` instead; `TransactionOutput` is a second, parallel model.
  */
 export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) => {
   const { ledger, plutusData } = CBOR.toTxCodecOptions(options)
@@ -300,6 +336,7 @@ export const FromCBORBytes = (options: CBOR.TxCodecOptions | CBOR.CodecOptions =
  *
  * @since 2.0.0
  * @category transformer
+ * @deprecated Use `TxOut.FromCBORHex` instead; `TransactionOutput` is a second, parallel model.
  */
 export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = CBOR.TX_DEFAULT_OPTIONS) =>
   Schema.compose(
@@ -314,6 +351,7 @@ export const FromCBORHex = (options: CBOR.TxCodecOptions | CBOR.CodecOptions = C
 /**
  * @since 2.0.0
  * @category arbitrary
+ * @deprecated Use `TxOut.arbitrary` instead; `TransactionOutput` is a second, parallel model.
  */
 export const arbitrary = FastCheck.oneof(
   // Shelley TransactionOutput
@@ -337,6 +375,7 @@ export const arbitrary = FastCheck.oneof(
  *
  * @since 2.0.0
  * @category encoding
+ * @deprecated Use `TxOut.toCBORBytes` instead; `TransactionOutput` is a second, parallel model.
  */
 export const toCBORBytes = (
   data: TransactionOutput,
@@ -348,6 +387,7 @@ export const toCBORBytes = (
  *
  * @since 2.0.0
  * @category encoding
+ * @deprecated Use `TxOut.toCBORHex` instead; `TransactionOutput` is a second, parallel model.
  */
 export const toCBORHex = (
   data: TransactionOutput,
@@ -359,6 +399,7 @@ export const toCBORHex = (
  *
  * @since 2.0.0
  * @category decoding
+ * @deprecated Use `TxOut.fromCBORBytes` instead; `TransactionOutput` is a second, parallel model.
  */
 export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.decodeSync(FromCBORBytes(options))(bytes)
@@ -368,6 +409,7 @@ export const fromCBORBytes = (bytes: Uint8Array, options: CBOR.CodecOptions = CB
  *
  * @since 2.0.0
  * @category decoding
+ * @deprecated Use `TxOut.fromCBORHex` instead; `TransactionOutput` is a second, parallel model.
  */
 export const fromCBORHex = (hex: string, options: CBOR.CodecOptions = CBOR.CML_DEFAULT_OPTIONS) =>
   Schema.decodeSync(FromCBORHex(options))(hex)
