@@ -95,7 +95,7 @@ export class Redeemer extends Schema.Class<Redeemer>("Redeemer")({
       _tag: "Redeemer",
       tag: this.tag,
       index: this.index.toString(),
-      data: this.data,
+      data: PlutusData.toJSON(this.data),
       exUnits: this.exUnits.toJSON()
     }
   }
@@ -117,7 +117,7 @@ export class Redeemer extends Schema.Class<Redeemer>("Redeemer")({
    * @category conversions
    */
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), data: this.data }
   }
 
   /**

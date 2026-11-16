@@ -56,7 +56,7 @@ export class TransactionOutput extends Schema.TaggedClass<TransactionOutput>()("
   }
 
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), datumOption: this.datumOption }
   }
 
   [Equal.symbol](that: unknown): boolean {

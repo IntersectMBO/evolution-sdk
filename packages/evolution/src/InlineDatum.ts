@@ -16,7 +16,7 @@ export class InlineDatum extends Schema.TaggedClass<InlineDatum>()("InlineDatum"
    * @category json
    */
   toJSON() {
-    return { _tag: "InlineDatum" as const, data: this.data }
+    return { _tag: "InlineDatum" as const, data: PlutusData.toJSON(this.data) }
   }
 
   /**
@@ -32,7 +32,7 @@ export class InlineDatum extends Schema.TaggedClass<InlineDatum>()("InlineDatum"
    * @category inspect
    */
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { _tag: "InlineDatum" as const, data: this.data }
   }
 
   /**

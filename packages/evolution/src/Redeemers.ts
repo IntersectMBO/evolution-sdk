@@ -66,6 +66,18 @@ export class RedeemerValue extends Schema.Class<RedeemerValue>("RedeemerValue")(
   data: Schema.typeSchema(Data.DataSchema),
   exUnits: Redeemer.ExUnits
 }) {
+  toJSON() {
+    return { data: Data.toJSON(this.data), exUnits: this.exUnits.toJSON() }
+  }
+
+  toString(): string {
+    return Inspectable.format(this.toJSON())
+  }
+
+  [Inspectable.NodeInspectSymbol](): unknown {
+    return { data: this.data, exUnits: this.exUnits }
+  }
+
   [Equal.symbol](that: unknown): boolean {
     return (
       that instanceof RedeemerValue && Data.equals(this.data, that.data) && Equal.equals(this.exUnits, that.exUnits)
@@ -144,7 +156,7 @@ export class RedeemerMap extends Schema.TaggedClass<RedeemerMap>()("RedeemerMap"
       _tag: "RedeemerMap" as const,
       entries: Array.from(this.value.entries()).map(([[tag, index], { data, exUnits }]) => ({
         key: { tag, index: index.toString() },
-        value: { data, exUnits: exUnits.toJSON() }
+        value: { data: Data.toJSON(data), exUnits: exUnits.toJSON() }
       }))
     }
   }
@@ -154,7 +166,7 @@ export class RedeemerMap extends Schema.TaggedClass<RedeemerMap>()("RedeemerMap"
   }
 
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), entries: Array.from(this.value.entries()).map(([key, value]) => ({ key, value })) }
   }
 
   [Equal.symbol](that: unknown): boolean {
@@ -246,7 +258,7 @@ export class RedeemerArray extends Schema.TaggedClass<RedeemerArray>()("Redeemer
   }
 
   [Inspectable.NodeInspectSymbol](): unknown {
-    return this.toJSON()
+    return { ...this.toJSON(), value: this.value }
   }
 
   [Equal.symbol](that: unknown): boolean {
