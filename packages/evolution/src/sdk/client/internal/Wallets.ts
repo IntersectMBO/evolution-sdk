@@ -1,8 +1,6 @@
 import { Effect, ParseResult, Schema } from "effect"
 
 import * as CoreAddress from "../../../Address.js"
-import * as AddressEras from "../../../AddressEras.js"
-import * as Assets from "../../../Assets.js"
 import * as CBOR from "../../../CBOR.js"
 import { runEffectPromise } from "../../../EffectRuntime.js"
 import * as CoreRewardAccount from "../../../RewardAccount.js"
@@ -11,8 +9,8 @@ import * as Script from "../../../Script.js"
 import * as Transaction from "../../../Transaction.js"
 import * as TransactionHash from "../../../TransactionHash.js"
 import * as TransactionInput from "../../../TransactionInput.js"
-import * as TransactionOutput from "../../../TransactionOutput.js"
 import * as TransactionWitnessSet from "../../../TransactionWitnessSet.js"
+import * as TxOut from "../../../TxOut.js"
 import * as CoreUTxO from "../../../UTxO.js"
 import * as Derivation from "../../wallet/Derivation.js"
 import * as Wallet from "../../wallet/Wallet.js"
@@ -158,33 +156,15 @@ export const cip30UtxoFromCBORHex = (hex: string): CoreUTxO.UTxO => {
     throw new Error(`Unexpected CIP-30 UTxO CBOR shape: ${hex}`)
   }
   const input = TransactionInput.fromCBORBytes(CBOR.toCBORBytes(decoded[0]))
-  const output = TransactionOutput.fromCBORBytes(CBOR.toCBORBytes(decoded[1]))
-
-  // The output address is era-tagged (AddressEras); UTxO uses AddressStructure.
-  // The bytes are identical, so convert by re-decoding them.
-  const address = Schema.decodeSync(CoreAddress.FromBytes)(Schema.encodeSync(AddressEras.FromBytes)(output.address))
-
-  const amount = output.amount
-  const assets =
-    amount._tag === "WithAssets"
-      ? Assets.withMultiAsset(amount.coin, amount.assets)
-      : Assets.fromLovelace(amount.coin)
-
-  // Babbage outputs carry datumOption + scriptRef; legacy Shelley outputs a datumHash
-  // (which is itself a valid DatumOption).
-  const datumOption = output._tag === "BabbageTransactionOutput" ? output.datumOption : output.datumHash
-  const scriptRef =
-    output._tag === "BabbageTransactionOutput" && output.scriptRef
-      ? Script.fromCBOR(output.scriptRef.bytes)
-      : undefined
+  const output = TxOut.fromCBORBytes(CBOR.toCBORBytes(decoded[1]))
 
   return new CoreUTxO.UTxO({
     transactionId: input.transactionId,
     index: input.index,
-    address,
-    assets,
-    datumOption,
-    scriptRef
+    address: output.address,
+    assets: output.assets,
+    datumOption: output.datumOption,
+    scriptRef: output.scriptRef ? Script.fromCBOR(output.scriptRef.bytes) : undefined
   })
 }
 
