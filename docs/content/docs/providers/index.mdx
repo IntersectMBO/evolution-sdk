@@ -41,12 +41,13 @@ const txHash = await client.submitTx(signedTx)
 
 ## Available Providers
 
-| Provider       | Infrastructure | Best For                           |
-| -------------- | -------------- | ---------------------------------- |
-| **Blockfrost** | Hosted API     | Production apps, rapid development |
-| **Kupmios**    | Ogmios + Kupo  | Self-hosted, full control          |
-| **Maestro**    | Hosted API     | Advanced features, analytics       |
-| **Koios**      | Community API  | Decentralized infrastructure       |
+| Provider               | Infrastructure | Best For                           |
+| ---------------------- | -------------- | ---------------------------------- |
+| **Blockfrost**         | Hosted API     | Production apps, rapid development |
+| **Kupmios**            | Ogmios + Kupo  | Self-hosted, full control          |
+| **Maestro**            | Hosted API     | Advanced features, analytics       |
+| **Koios**              | Community API  | Decentralized infrastructure       |
+| **Blockchain Applied** | Hosted API     | Hosted REST API, bearer token      |
 
 See [Provider Types](/docs/providers/provider-types) for detailed comparison and configuration.
 
@@ -88,7 +89,7 @@ Understanding the difference helps choose the right architecture:
 
 <Cards>
   <Card title="Provider Types" href="/docs/providers/provider-types">
-    Compare Blockfrost, Kupmios, Maestro, and Koios configurations
+    Compare Blockfrost, Kupmios, Maestro, Koios, and Blockchain Applied configurations
   </Card>
   <Card title="Provider-Only Client" href="/docs/providers/provider-only-client">
     Learn to use provider without wallet for generic queries
