@@ -1,5 +1,25 @@
 # @evolution-sdk/evolution
 
+## 0.8.1
+
+### Patch Changes
+
+- [#710](https://github.com/IntersectMBO/evolution-sdk/pull/710) [`7a25bcd`](https://github.com/IntersectMBO/evolution-sdk/commit/7a25bcd26917ccea1e80698ac70f39b7e3c67df7) Thanks [@jorbuedo](https://github.com/jorbuedo)! - `Assets.getByUnit` reads a dotted unit (`policyId.assetName`), which `Assets.fromUnit` has always accepted. The two disagreed: a value built from a dotted unit answered `0n` when read back with that same string, because the reader sliced the dotted text at 56 characters. `0n` reads as "this asset is not here", so the disagreement was silent. `fromUnit`, `fromRecord` and `getByUnit` now share one parse, and a dot cannot occur in hex, so both spellings stay unambiguous.
+
+  The same shared parse reads a unit case-insensitively. `Bytes.fromHex` accepts either case, so `fromUnit` built an asset from an uppercase unit that `getByUnit` then answered `0n` for, because it compares against `PolicyId.toHex`, which emits lowercase. `getUnits` still emits the canonical lowercase spelling.
+
+  ⚠️ `Assets.fromUnit` accepts one input it rejected before: the concatenated spelling `policyId` followed by `assetName` with no dot, which is what `getUnits` emits. Sharing the parse means a dotless unit longer than 56 characters now splits at 56, where before the whole string was taken as the policy id and failed with a `PolicyId` parse error.
+
+- [#709](https://github.com/IntersectMBO/evolution-sdk/pull/709) [`36dd2e4`](https://github.com/IntersectMBO/evolution-sdk/commit/36dd2e47e894a48da007c3113b88c5e5e569257c) Thanks [@jorbuedo](https://github.com/jorbuedo)! - Decoding a transaction body refuses a key the schema does not model, instead of dropping it. The decoder reads its fields by key, so a key it never reads is absent from the result and missing from the re-encode: measured on a mainnet transaction, a body given one extra key went in at 1271 bytes and came back out as the original 1268, byte for byte, with nothing raised, as a different transaction with a different id. Every valid Conway body key is modelled, so an unmodelled key is either a pre-Conway field this schema cannot represent or a field from a newer era, and carrying the bytes through would let a wallet sign a field it cannot display.
+
+- [#711](https://github.com/IntersectMBO/evolution-sdk/pull/711) [`cd2d9b3`](https://github.com/IntersectMBO/evolution-sdk/commit/cd2d9b377ab93f196d539f1bca41abc985687e5d) Thanks [@jorbuedo](https://github.com/jorbuedo)! - `NativeScripts.toJSON` refuses a `slot` or `required` outside ±`Number.MAX_SAFE_INTEGER` instead of truncating it. The cardano-cli JSON form carries both as JSON numbers, so a `uint64` slot above 2^53-1 has no exact representation in it, and `Number(slot)` returned a different slot with no error; `required` is an `int64` the ledger allows to be negative, so the lower bound is reachable the same way. A script decoded from the chain may carry either, so this was reachable on read, not only when authoring a script. The refusal is the module's `NativeScriptError`, so callers can catch it by tag.
+
+  `NativeScript`'s `Hash.symbol` now hashes the variant structurally instead of routing through `toJSON`, so such a script still hashes and compares. The structural hash also hashes a key hash from its bytes rather than its container, which keeps `Equal.equals` true for a `Buffer` and a `Uint8Array` over the same bytes.
+
+- [#712](https://github.com/IntersectMBO/evolution-sdk/pull/712) [`1d9c06a`](https://github.com/IntersectMBO/evolution-sdk/commit/1d9c06a257779fd54a7f791a50a90c447771301b) Thanks [@jorbuedo](https://github.com/jorbuedo)! - `TransactionOutput` is deprecated in favour of `TxOut`. It is a second, parallel model of a transaction output (`address: AddressEras`, `amount: Value`, a Shelley and a Babbage class) while `TxOut` carries the one `TransactionBody`, the builders and the sdk use (`address: Address`, `assets: Assets`, one class for both eras). Both are public under names that give no hint which is which, and they reject each other: an output built with `TransactionOutput` cannot go into a `TransactionBody`. Nothing is removed or re-pointed, so no caller breaks.
+
+  Every export of the module carries the tag, each naming its `TxOut` counterpart, since TypeScript cannot deprecate a namespace re-export and a tag on the module alone reaches no caller.
+
 ## 0.8.0
 
 ### Minor Changes
