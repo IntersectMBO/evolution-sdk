@@ -29,7 +29,7 @@
     "twoslash": "^0.3.4"
   },
   "devDependencies": {
-    "@shikijs/twoslash": "^4.4.3",
+    "@shikijs/twoslash": "^4.6.0",
     "@tailwindcss/postcss": "^4.1.12",
     "@types/mdx": "^2.0.13",
     "@types/node": "26.6.5",
@@ -38,7 +38,7 @@
     "baseline-browser-mapping": "^2.9.8",
     "effect": "^3.21.1",
     "postcss": "^8.5.6",
-    "shiki": "^4.0.2",
+    "shiki": "^4.6.0",
     "tailwindcss": "^4.1.12",
     "typescript": "^6.0.3"
   }
