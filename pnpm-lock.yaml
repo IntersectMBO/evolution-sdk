@@ -173,7 +173,7 @@ importers:
         version: 2.11.33
       effect:
         specifier: ^3.21.1
-        version: 3.22.2
+        version: 3.22.1
       postcss:
         specifier: ^8.5.6
         version: 8.5.32
@@ -237,7 +237,7 @@ importers:
         version: link:../evolution
       effect:
         specifier: ^3.21.1
-        version: 3.22.2
+        version: 3.22.1
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -262,7 +262,7 @@ importers:
         version: 2.4.0
       effect:
         specifier: ^3.21.1
-        version: 3.22.2
+        version: 3.22.1
     devDependencies:
       '@dcspark/cardano-multiplatform-lib-nodejs':
         specifier: ^6.2.0
@@ -330,7 +330,7 @@ importers:
         version: link:../evolution
       effect:
         specifier: ^3.21.1
-        version: 3.22.2
+        version: 3.22.1
       scalus:
         specifier: ^0.17.0
         version: 0.17.0
@@ -3902,6 +3902,9 @@ packages:
 
   effect@3.21.2:
     resolution: {integrity: sha512-rXd2FGDM8KdjSIrc+mqEELo7ScW7xTVxEf1iInmPSpIde9/nyGuFM710cjTo7/EreGXiUX2MOonPpprbz2XHCg==}
+
+  effect@3.22.1:
+    resolution: {integrity: sha512-TNoXushmPOBAjJlthF5d2QwnX2xBPEtcNJr5XKNKbRLbDvBcOYkXlYDfvGfSA0zriwLFuCll5MDtNMAdZL17PQ==}
 
   effect@3.22.2:
     resolution: {integrity: sha512-fm1CQXCs7GTMwpadZxwU5rnAb2bN6mbQpknq/pXBGCzSKkosNYb9k0wsoL0TfB10rSa5xOEZJjo77u/KLXSANg==}
@@ -10189,6 +10192,11 @@ snapshots:
   eastasianwidth@0.2.0: {}
 
   effect@3.21.2:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      fast-check: 3.23.2
+
+  effect@3.22.1:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
