@@ -46,7 +46,7 @@ function checksum(num: string): string {
  * @since 2.0.0
  * @category conversions
  * @example
- * ```typescript
+ * ```ts
  * import * as Label from "@evolution-sdk/evolution/Label"
  *
  * const label = Label.toLabel(222)
@@ -70,7 +70,7 @@ export const toLabel = (num: number): string => {
  * @since 2.0.0
  * @category conversions
  * @example
- * ```typescript
+ * ```ts
  * import * as Label from "@evolution-sdk/evolution/Label"
  *
  * const num = Label.fromLabel("000de140")
@@ -97,7 +97,7 @@ export const fromLabel = (label: string): number | undefined => {
  * @since 2.0.0
  * @category schemas
  * @example
- * ```typescript
+ * ```ts
  * import * as Label from "@evolution-sdk/evolution/Label"
  * import { Schema } from "effect"
  *

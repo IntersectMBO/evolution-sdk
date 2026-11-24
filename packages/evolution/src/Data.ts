@@ -1224,7 +1224,7 @@ export const withSchema = <A, I extends Data>(
  * @since 2.0.0
  * @category hashing
  * @example
- * ```typescript
+ * ```ts
  * import * as Data from "@evolution-sdk/evolution/Data"
  *
  * // Hash a simple integer

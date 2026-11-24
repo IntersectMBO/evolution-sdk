@@ -552,7 +552,7 @@ export interface BuildOptions {
    * pass it to `collectFrom({ datums })`.
    *
    * @example
-   * ```typescript
+   * ```ts
    * const signBuilder = await client
    *   .newTx()
    *   .collectFrom({ inputs: [scriptUtxo], redeemer })
@@ -653,7 +653,7 @@ export interface BuildOptions {
    * `CBOR.TX_CANONICAL_OPTIONS` writes them in length-first order.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as CBOR from "@evolution-sdk/evolution/CBOR"
    *
    * const signBuilder = await client
@@ -891,7 +891,7 @@ export interface ChainResult {
  * - TransactionResultBase: When wallet is read-only (ReadOnlyClient)
  *
  * Usage Pattern:
- * ```typescript
+ * ```ts
  * const builder = makeTxBuilder(provider, params, costModels, utxos)
  *   .payToAddress({ address: "addr1...", assets: { lovelace: 5_000_000n } })
  *   .collectFrom({ inputs: [utxo1, utxo2] })
@@ -971,7 +971,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import { Address } from "@evolution-sdk/evolution"
    *
    * const tx = await client
@@ -996,7 +996,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as Script from "../../Script.js"
    * import * as NativeScripts from "../../NativeScripts.js"
    *
@@ -1028,7 +1028,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * // Mint tokens from a native script policy
    * const tx = await builder
    *   .mintAssets({
@@ -1074,7 +1074,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as UTxO from "../../UTxO.js"
    *
    * // Use reference script stored on-chain instead of attaching to transaction
@@ -1376,7 +1376,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as Time from "@evolution-sdk/Time"
    *
    * // Transaction valid for 10 minutes from now
@@ -1415,7 +1415,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as VotingProcedures from "@evolution-sdk/VotingProcedures"
    * import * as Vote from "@evolution-sdk/Vote"
    * import * as Data from "@evolution-sdk/Data"
@@ -1477,7 +1477,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as Data from "@evolution-sdk/Data"
    * import * as GovernanceAction from "@evolution-sdk/GovernanceAction"
    * import * as RewardAccount from "@evolution-sdk/RewardAccount"
@@ -1548,7 +1548,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import * as KeyHash from "@evolution-sdk/KeyHash"
    * import * as Address from "@evolution-sdk/Address"
    *
@@ -1584,7 +1584,7 @@ export interface TransactionBuilderBase {
    * Returns the same builder for method chaining.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import { fromEntries } from "@evolution-sdk/evolution/TransactionMetadatum"
    *
    * // Attach a simple message (CIP-20)
@@ -1627,7 +1627,7 @@ export interface TransactionBuilderBase {
    * compose() is called will not affect this builder.
    *
    * @example
-   * ```typescript
+   * ```ts
    * // Create reusable builder for common operations
    * const mintBuilder = builder
    *   .mintAssets({ policyId, assets: { tokenName: 1n }, redeemer })
@@ -1677,7 +1677,7 @@ export interface TransactionBuilderBase {
    * Use this when building multiple dependent transactions in sequence.
    *
    * @example
-   * ```typescript
+   * ```ts
    * // Build first transaction, get remaining UTxOs
    * const tx1 = await builder
    *   .payTo({ address, value: { lovelace: 5_000_000n } })

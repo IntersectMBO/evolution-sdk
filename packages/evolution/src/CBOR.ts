@@ -618,7 +618,7 @@ export type CBOR =
  * Maps `ReadonlyMap<CBOR, CBOR>` preserve insertion order for all key types.
  *
  * **Example:**
- * ```typescript
+ * ```ts
  * // Map preserves insertion order: ["text", 42n, 999n]
  * const map = new Map([["text", "a"], [42n, "b"], [999n, "c"]])
  *

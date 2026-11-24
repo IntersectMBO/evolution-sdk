@@ -1,19 +1,13 @@
 {
+  "$schema": "../../node_modules/@effect/docgen/schema.json",
   "theme": "mikearnaldi/docgen-template",
   "srcDir": "src",
   "outDir": "docs",
-  "examplesDir": "examples",
-  "parseReadme": true,
   "enableSearch": true,
   "enforceDescriptions": false,
   "enforceExamples": false,
   "enforceVersion": false,
-  "enforceExports": false,
-  "skipExamplesValidation": true,
-  "skipModulesValidation": true,
   "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/test/**", "**/tests/**", "**/internal/**", "**/index.ts", "**/debug/**", "**/Cardano.ts"],
   "projectHomepage": "https://github.com/IntersectMBO/evolution-sdk",
-  "docsHomepage": "TBD",
-  "projectName": "Evolution SDK",
-  "packageName": "@evolution-sdk/evolution"
+  "srcLink": "https://github.com/IntersectMBO/evolution-sdk/blob/main/packages/evolution/src/"
 }
