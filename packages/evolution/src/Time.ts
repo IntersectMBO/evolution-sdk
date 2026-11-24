@@ -24,7 +24,7 @@ import { now as nowFn } from "./UnixTime.js"
  * @since 2.0.0
  *
  * @example
- * ```typescript
+ * ```ts
  * import * as Time from "@evolution-sdk/evolution/Time"
  *
  * const slot = 12345678n
@@ -49,7 +49,7 @@ export const slotToUnixTime = (slot: Slot, slotConfig: SlotConfig): UnixTime => 
  * @since 2.0.0
  *
  * @example
- * ```typescript
+ * ```ts
  * import * as Time from "@evolution-sdk/evolution/Time"
  *
  * const unixTime = 1596059091000n
@@ -73,7 +73,7 @@ export const unixTimeToSlot = (unixTime: UnixTime, slotConfig: SlotConfig): Slot
  * @since 2.0.0
  *
  * @example
- * ```typescript
+ * ```ts
  * import * as Time from "@evolution-sdk/evolution/Time"
  *
  * const currentSlot = Time.getCurrentSlot("Mainnet")
@@ -129,7 +129,7 @@ export const isSlotInPast = (slot: Slot, slotConfig: SlotConfig): boolean => {
  * @since 2.0.0
  *
  * @example
- * ```typescript
+ * ```ts
  * import * as Time from "@evolution-sdk/evolution/Time"
  *
  * // Get slot 5 minutes from now

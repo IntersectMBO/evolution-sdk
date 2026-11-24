@@ -185,7 +185,7 @@ const optionsCache = new WeakMap<Transaction, CBOR.TxCodecOptions>()
  * captured when the transaction was decoded take precedence.
  *
  * @example
- * ```typescript
+ * ```ts
  * import * as CBOR from "@evolution-sdk/evolution/CBOR"
  * import * as Transaction from "@evolution-sdk/evolution/Transaction"
  * import * as TransactionBody from "@evolution-sdk/evolution/TransactionBody"

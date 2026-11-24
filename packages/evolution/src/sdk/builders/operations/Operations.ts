@@ -85,7 +85,7 @@ export interface CollectFromParams {
    * `onMissingDatum: "provider"`.
    *
    * @example
-   * ```typescript
+   * ```ts
    * if (utxo.datumOption?._tag !== "DatumHash") throw new Error("expected a datum hash")
    * const datum = await client.getDatum(utxo.datumOption)
    * client.newTx().collectFrom({ inputs: [utxo], redeemer, datums: [datum] })

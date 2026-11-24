@@ -261,7 +261,7 @@ export const toBytes = Schema.encodeSync(FromBytes)
  * @category Functions
  *
  * @example
- * ```typescript
+ * ```ts
  * import * as Address from "@evolution-sdk/evolution/Address"
  *
  * const address = Address.fromSeed("test test test test test test test test test test test test test test test test test test test test test test test sauce", {
@@ -327,7 +327,7 @@ export interface AddressDetails {
  * @since 2.0.0
  * @category Utils
  * @example
- * ```typescript
+ * ```ts
  * import * as Address from "@evolution-sdk/evolution/Address"
  *
  * const details = Address.getAddressDetails("addr_test1qp...")

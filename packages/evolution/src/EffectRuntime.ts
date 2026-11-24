@@ -8,7 +8,7 @@ import { Cause, Effect, Exit } from "effect"
  * it in Effect's internal `FiberFailure`.
  *
  * @example
- * ```typescript
+ * ```ts
  * import { Effect } from "effect"
  * import { runEffect } from "@evolution-sdk/evolution/EffectRuntime"
  *
@@ -44,7 +44,7 @@ export function runEffect<A, E>(effect: Effect.Effect<A, E>): A {
  * it in Effect's internal `FiberFailure`.
  *
  * @example
- * ```typescript
+ * ```ts
  * import { Effect } from "effect"
  * import { runEffectPromise } from "@evolution-sdk/evolution/EffectRuntime"
  *
