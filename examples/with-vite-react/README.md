@@ -130,6 +130,16 @@ const tx = await Client.make(chain)
 `pnpm dev` serves the API from the Vite dev server. In production, `server/index.ts` serves it with
 the built app. The API is public, so add rate limiting or an origin check before deploying it.
 
+To use the Blockchain Applied (BCA) provider instead, swap the provider on the server:
+
+```typescript
+// Server (server/payments.ts): the BCA provider, with the token
+const tx = await Client.make(chain)
+  .withBlockchainApplied({ baseUrl: "https://api.blockchain-applied.com/api_preprod/v1", token: process.env.BCA_TOKEN })
+  .withAddress(from)
+  // ...
+```
+
 ## Development
 
 ### Building for Production
