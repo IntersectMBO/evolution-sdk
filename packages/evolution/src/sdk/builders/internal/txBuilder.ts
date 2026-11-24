@@ -311,8 +311,8 @@ const certScriptHashHex = (certificate: Certificate.Certificate): string | undef
     case "UnregDrepCert":
     case "AuthCommitteeHotCert":
     case "ResignCommitteeColdCert": {
-      const credential = certCredential(certificate)!
-      return credential._tag === "ScriptHash" ? Bytes.toHex(credential.hash) : undefined
+      const credential = certCredential(certificate)
+      return credential?._tag === "ScriptHash" ? Bytes.toHex(credential.hash) : undefined
     }
     default:
       return undefined
